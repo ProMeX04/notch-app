@@ -1,0 +1,280 @@
+import AppKit
+import Combine
+import Foundation
+import SwiftUI
+
+@MainActor
+final class MusicProbeViewModel: ObservableObject {
+    @Published private(set) var state: PlaybackState = .init(bundleIdentifier: "")
+    @Published private(set) var albumArt: NSImage = MusicProbeViewModel.fallbackArtwork
+    @Published private(set) var accentColor: NSColor = .white
+    @Published private(set) var appIcon: NSImage?
+    @Published private(set) var usingAppIconForArtwork = false
+    @Published private(set) var showCompactLiveActivity = false
+    @Published private(set) var isPlayerIdle = true
+
+    private let controller: NowPlayingController?
+    private var cancellables = Set<AnyCancellable>()
+    private var artworkComputationToken: UUID?
+    private var debounceIdleTask: Task<Void, Never>?
+    private var visualSignature = VisualSignature.empty
+
+    init() {
+        controller = NowPlayingController()
+        updateVisualState(for: state)
+
+        controller?.playbackStatePublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] state in
+                guard let self else { return }
+
+                let previousState = self.state
+                let playbackChanged = state.isPlaying != previousState.isPlaying
+                self.state = state
+
+                if playbackChanged {
+                    withAnimation(.smooth) {
+                        self.updateIdleState(isPlaying: state.isPlaying)
+                    }
+                }
+
+                self.refreshLiveActivityVisibility()
+                self.updateVisualState(for: state)
+            }
+            .store(in: &cancellables)
+    }
+
+    var primaryText: String {
+        state.title.isEmpty ? "Nothing Playing" : state.title
+    }
+
+    var secondaryText: String {
+        if !state.artist.isEmpty {
+            return state.artist
+        }
+
+        return sourceLabel
+    }
+
+    var sourceLabel: String {
+        switch state.bundleIdentifier {
+        case "com.apple.Music":
+            return "Apple Music"
+        case "com.spotify.client":
+            return "Spotify"
+        case let bundleID where bundleID.contains("youtube"):
+            return "YouTube Music"
+        default:
+            return "System Media"
+        }
+    }
+
+    var isPlaying: Bool {
+        state.isPlaying
+    }
+
+    var isShuffled: Bool {
+        state.isShuffled
+    }
+
+    var repeatMode: RepeatMode {
+        state.repeatMode
+    }
+
+    var volume: Double {
+        state.volume
+    }
+
+    var supportsVolumeControl: Bool {
+        controller?.supportsVolumeControl ?? false
+    }
+
+    var supportsFavorite: Bool {
+        controller?.supportsFavorite ?? false
+    }
+
+    var isFavoriteTrack: Bool {
+        state.isFavorite
+    }
+
+    var hasTrack: Bool {
+        !state.title.isEmpty && state.title != "Nothing Playing"
+    }
+
+    func estimatedPlaybackPosition(at date: Date = Date()) -> TimeInterval {
+        guard state.isPlaying else {
+            return min(state.currentTime, state.duration)
+        }
+
+        let timeDifference = date.timeIntervalSince(state.lastUpdated)
+        let estimated = state.currentTime + (timeDifference * state.playbackRate)
+        return min(max(0, estimated), state.duration)
+    }
+
+    func togglePlay() {
+        Task {
+            await controller?.togglePlay()
+        }
+    }
+
+    func nextTrack() {
+        Task {
+            await controller?.nextTrack()
+        }
+    }
+
+    func previousTrack() {
+        Task {
+            await controller?.previousTrack()
+        }
+    }
+
+    func seek(to position: TimeInterval) {
+        Task {
+            await controller?.seek(to: position)
+        }
+    }
+
+    func skip(seconds: TimeInterval) {
+        let newPosition = min(max(0, state.currentTime + seconds), state.duration)
+        seek(to: newPosition)
+    }
+
+    func toggleShuffle() {
+        Task {
+            await controller?.toggleShuffle()
+        }
+    }
+
+    func toggleRepeat() {
+        Task {
+            await controller?.toggleRepeat()
+        }
+    }
+
+    func toggleFavoriteTrack() {
+        Task {
+            await controller?.setFavorite(!state.isFavorite)
+        }
+    }
+
+    func setVolume(to level: Double) {
+        Task {
+            await controller?.setVolume(level)
+        }
+    }
+
+    func openCurrentApp() {
+        let bundleID = state.bundleIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !bundleID.isEmpty else { return }
+
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
+            return
+        }
+
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.openApplication(at: url, configuration: configuration)
+    }
+
+    func shutdown() {
+        debounceIdleTask?.cancel()
+        controller?.shutdown()
+    }
+
+    private func updateVisualState(for state: PlaybackState) {
+        let nextSignature = VisualSignature(
+            bundleIdentifier: state.bundleIdentifier,
+            artwork: state.artwork
+        )
+
+        guard nextSignature != visualSignature else { return }
+        visualSignature = nextSignature
+
+        updateAppIcon(for: state.bundleIdentifier)
+        updateAlbumArt(using: state)
+        updateAccentColor()
+    }
+
+    private func updateAppIcon(for bundleIdentifier: String) {
+        guard !bundleIdentifier.isEmpty,
+              let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) else {
+            appIcon = nil
+            return
+        }
+
+        appIcon = NSWorkspace.shared.icon(forFile: appURL.path)
+    }
+
+    private func updateAlbumArt(using state: PlaybackState) {
+        if let artworkData = state.artwork, let image = NSImage(data: artworkData) {
+            albumArt = image
+            usingAppIconForArtwork = false
+            return
+        }
+
+        if let appIcon {
+            albumArt = appIcon
+            usingAppIconForArtwork = true
+            return
+        }
+
+        albumArt = Self.fallbackArtwork
+        usingAppIconForArtwork = true
+    }
+
+    private func updateAccentColor() {
+        let image = albumArt
+        let token = UUID()
+        artworkComputationToken = token
+
+        image.averageColor { [weak self] color in
+            Task { @MainActor in
+                guard let self, self.artworkComputationToken == token else { return }
+                self.accentColor = color ?? .white
+            }
+        }
+    }
+
+    private func updateIdleState(isPlaying: Bool) {
+        if isPlaying {
+            isPlayerIdle = false
+            debounceIdleTask?.cancel()
+            return
+        }
+
+        debounceIdleTask?.cancel()
+        debounceIdleTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+
+            withAnimation(.smooth) {
+                self.isPlayerIdle = !self.state.isPlaying
+                self.refreshLiveActivityVisibility()
+            }
+        }
+    }
+
+    private func refreshLiveActivityVisibility() {
+        let shouldShowCompactLiveActivity = state.isPlaying || !isPlayerIdle
+
+        if showCompactLiveActivity != shouldShowCompactLiveActivity {
+            withAnimation(.smooth) {
+                showCompactLiveActivity = shouldShowCompactLiveActivity
+            }
+        } else {
+            showCompactLiveActivity = shouldShowCompactLiveActivity
+        }
+    }
+
+    private static let fallbackArtwork =
+        NSImage(systemSymbolName: "music.note", accessibilityDescription: "Album artwork") ?? NSImage()
+}
+
+private struct VisualSignature: Equatable {
+    let bundleIdentifier: String
+    let artwork: Data?
+
+    static let empty = VisualSignature(bundleIdentifier: "", artwork: nil)
+}

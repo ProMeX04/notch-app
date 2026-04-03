@@ -1,0 +1,135 @@
+import SwiftUI
+struct ShelfPanelView: View {
+    @ObservedObject var shelf: NotchShelfViewModel
+
+    var body: some View {
+        VStack(spacing: 10) {
+            HStack {
+                Text("Drop files, links, or text onto the notch")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.4))
+
+                Spacer()
+
+                if shelf.hasItems {
+                    GeminiSecondaryButton(title: "Clear") {
+                        shelf.clear()
+                    }
+                }
+            }
+
+            if shelf.hasItems {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 8) {
+                        ForEach(shelf.items) { item in
+                            ShelfItemCardView(item: item, shelf: shelf)
+                        }
+                    }
+                    .padding(.vertical, 1)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            } else {
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.white.opacity(shelf.isDropTargeted ? 0.28 : 0.1), style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [10]))
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(Color.white.opacity(shelf.isDropTargeted ? 0.08 : 0.03))
+                    )
+                    .overlay {
+                        VStack(spacing: 10) {
+                            Image(systemName: shelf.isDropTargeted ? "tray.and.arrow.down.fill" : "tray.and.arrow.down")
+                                .font(.system(size: 22, weight: .semibold))
+                                .foregroundStyle(Color(nsColor: .systemBlue).ensureMinimumBrightness(factor: 0.72))
+
+                            Text(shelf.isDropTargeted ? "Release to add to shelf" : "Drop here")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.88))
+                        }
+                    }
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 116, alignment: .topLeading)
+    }
+}
+
+struct ShelfItemCardView: View {
+    let item: NotchShelfItem
+    @ObservedObject var shelf: NotchShelfViewModel
+    @State private var thumbnail: NSImage?
+
+    private let tileSize = CGSize(width: 58, height: 58)
+
+    var body: some View {
+        VStack(spacing: 4) {
+            ZStack(alignment: .topTrailing) {
+                previewTile
+
+                Button {
+                    shelf.remove(item)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .frame(width: 16, height: 16)
+                        .background(Circle().fill(Color.black.opacity(0.72)))
+                }
+                .buttonStyle(.plain)
+                .padding(5)
+            }
+
+            Text(item.displayName)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.white.opacity(0.92))
+                .lineLimit(2)
+                .truncationMode(.middle)
+                .multilineTextAlignment(.center)
+                .frame(height: 30, alignment: .top)
+        }
+        .frame(width: 105)
+        .padding(.vertical, 10)
+        .padding(.horizontal, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.white.opacity(0.035))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            shelf.activate(item)
+        }
+        .onDrag {
+            item.dragItemProvider
+        }
+        .task(id: item.id) {
+            await loadThumbnailIfNeeded()
+        }
+    }
+
+    private var previewImage: NSImage {
+        thumbnail ?? item.fallbackPreviewImage
+    }
+
+    private var previewTile: some View {
+        Image(nsImage: previewImage)
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .frame(width: tileSize.width, height: tileSize.height)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .shadow(color: .black.opacity(0.18), radius: 3, x: 0, y: 2)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 2)
+    }
+
+    @MainActor
+    private func loadThumbnailIfNeeded() async {
+        guard case let .file(reference) = item.kind else {
+            thumbnail = nil
+            return
+        }
+
+        thumbnail = await NotchShelfThumbnailService.shared.thumbnail(for: reference.url, size: tileSize)
+    }
+}

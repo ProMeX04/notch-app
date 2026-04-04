@@ -117,6 +117,12 @@ final class MusicProbeViewModel: ObservableObject {
         }
     }
 
+    func stop() {
+        Task {
+            await controller?.stop()
+        }
+    }
+
     func nextTrack() {
         Task {
             await controller?.nextTrack()
@@ -268,8 +274,9 @@ final class MusicProbeViewModel: ObservableObject {
         }
     }
 
+    /// Khi không có artwork / không phát — waveform trung tính hơn `music.note`.
     private static let fallbackArtwork =
-        NSImage(systemSymbolName: "music.note", accessibilityDescription: "Album artwork") ?? NSImage()
+        NSImage(systemSymbolName: "waveform", accessibilityDescription: "No media playing") ?? NSImage()
 }
 
 private struct VisualSignature: Equatable {

@@ -155,47 +155,41 @@ struct CompactTalkView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            HStack(spacing: 4) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(accentColor.opacity(0.18))
+            ZStack {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(accentColor.opacity(0.18))
 
+                HStack(spacing: 0) {
                     Image(systemName: gemini.compactSymbolName)
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(accentColor)
+                        .padding(.leading, 4)
+                    Spacer(minLength: 0)
                 }
-                .frame(width: sideSize, height: sideSize)
-
+            }
+            .frame(width: sideSize, height: sideSize)
+            .overlay(alignment: .topTrailing) {
                 if gemini.isScreenSharingEnabled {
                     Image(systemName: "eye.fill")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(Color(nsColor: .systemGreen).ensureMinimumBrightness(factor: 0.72).opacity(0.85))
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(Color(nsColor: .systemGreen).ensureMinimumBrightness(factor: 0.72).opacity(0.9))
+                        .padding(3)
                 }
             }
 
             Rectangle()
                 .fill(.black)
-                .overlay {
-                    HStack(spacing: 8) {
-                        if !gemini.compactStatusText.isEmpty {
-                            Text(gemini.compactStatusText)
-                                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                .foregroundStyle(.white.opacity(0.92))
-                                .lineLimit(1)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        } else {
-                            Spacer(minLength: 0)
-                        }
-
-                        CompactTalkPulseView(
-                            tint: accentColor,
-                            isAnimated: gemini.isModelSpeaking
-                        )
-                    }
-                    .padding(.horizontal, 10)
-                }
                 .frame(width: max(0, closedNotchWidth - NotchMetrics.closedCornerRadius.top))
 
+            HStack {
+                Spacer(minLength: 0)
+                CompactTalkPulseView(
+                    tint: accentColor,
+                    isAnimated: gemini.isModelSpeaking
+                )
+                Spacer(minLength: 0)
+            }
+            .frame(width: sideSize, height: sideSize)
         }
         .frame(height: closedNotchHeight, alignment: .center)
     }

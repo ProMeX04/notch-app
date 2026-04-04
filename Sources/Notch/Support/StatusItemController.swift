@@ -12,6 +12,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     // Live timer menu bar items — one per tool
     private var pomodoroStatusItem: NSStatusItem?
     private var countdownStatusItem: NSStatusItem?
+    private var counterStatusItem: NSStatusItem?
     private var timerTick: Timer?
 
     private lazy var visibilityItem = NSMenuItem(
@@ -151,6 +152,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
         .receive(on: DispatchQueue.main)
         .sink { [weak self] _ in self?.updateCountdownStatusItem() }
+        .store(in: &cancellables)
+
+        // Observe stopwatch (counter) session state
+        let counter = windowController.counterViewModel
+        Publishers.CombineLatest(
+            counter.$isRunning,
+            counter.$hasActiveSession
+        )
+        .receive(on: DispatchQueue.main)
+        .sink { [weak self] _ in self?.updateCounterStatusItem() }
         .store(in: &cancellables)
     }
 
@@ -427,6 +438,46 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         windowController.presentationModel.selectedFocusTool = .countdown
     }
 
+    // MARK: Stopwatch (counter) status item
+
+    private func updateCounterStatusItem() {
+        let counter = windowController.counterViewModel
+
+        if counter.hasActiveSession {
+            if counterStatusItem == nil {
+                let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+                if let btn = item.button {
+                    btn.target = self
+                    btn.action = #selector(counterStatusItemTapped)
+                    btn.sendAction(on: [.leftMouseUp])
+                }
+                counterStatusItem = item
+                startTickIfNeeded()
+            }
+            refreshCounterLabel()
+        } else {
+            if let item = counterStatusItem {
+                NSStatusBar.system.removeStatusItem(item)
+                counterStatusItem = nil
+            }
+            stopTickIfUnused()
+        }
+    }
+
+    private func refreshCounterLabel() {
+        guard let btn = counterStatusItem?.button else { return }
+        let counter = windowController.counterViewModel
+        btn.image = generateTimerImage(symbolName: "stopwatch", text: counter.elapsedText(at: .now))
+        btn.title = ""
+        btn.imagePosition = .imageOnly
+    }
+
+    @objc
+    private func counterStatusItemTapped() {
+        windowController.showFocusPanel()
+        windowController.presentationModel.selectedFocusTool = .counter
+    }
+
     // MARK: Shared tick timer
 
     private func startTickIfNeeded() {
@@ -435,12 +486,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             Task { @MainActor [weak self] in
                 self?.refreshPomodoroLabel()
                 self?.refreshCountdownLabel()
+                self?.refreshCounterLabel()
             }
         }
     }
 
     private func stopTickIfUnused() {
-        guard pomodoroStatusItem == nil, countdownStatusItem == nil else { return }
+        guard pomodoroStatusItem == nil, countdownStatusItem == nil, counterStatusItem == nil else { return }
         timerTick?.invalidate()
         timerTick = nil
     }

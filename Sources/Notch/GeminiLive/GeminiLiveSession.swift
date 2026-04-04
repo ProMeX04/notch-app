@@ -274,8 +274,8 @@ final class GeminiLiveSession: @unchecked Sendable {
                     "properties": [
                         "action": [
                             "type": "STRING",
-                            "enum": ["play", "pause", "toggle", "next", "previous", "skip_forward", "skip_backward", "volume", "shuffle", "repeat"],
-                            "description": "Media action."
+                            "enum": ["play", "pause", "stop", "toggle", "next", "previous", "skip_forward", "skip_backward", "volume", "shuffle", "repeat", "favorite"],
+                            "description": "Media action. 'favorite' toggles loved state (Apple Music only). 'stop' sends system stop command."
                         ],
                         "value": [
                             "type": "NUMBER",

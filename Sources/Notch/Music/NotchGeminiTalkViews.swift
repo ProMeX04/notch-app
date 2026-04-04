@@ -247,22 +247,18 @@ struct GeminiTalkPanelView: View {
                                 }
                                 .padding(.top, 4)
 
-                                TextField("Paste your Gemini API key (AI Studio)", text: $gemini.apiKeyText, onCommit: {
-                                    guard !gemini.apiKeyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-                                    Task {
-                                        if await gemini.saveAPIKey() {
-                                            isEditingKey = false
+                                GeminiStyledAPIKeyField(
+                                    placeholder: "Gemini API key",
+                                    text: $gemini.apiKeyText,
+                                    onCommit: {
+                                        guard !gemini.apiKeyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+                                        Task {
+                                            if await gemini.saveAPIKey() {
+                                                isEditingKey = false
+                                            }
                                         }
                                     }
-                                })
-                                .textFieldStyle(.plain)
-                                .font(.system(size: 11, weight: .regular, design: .monospaced))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 10)
-                                .background(Color.white.opacity(0.06))
-                                .cornerRadius(10)
-                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.12), lineWidth: 1))
-                                .contentShape(Rectangle())
+                                )
 
                                 if !gemini.apiKeyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                                     GeminiActionButton(
@@ -278,14 +274,10 @@ struct GeminiTalkPanelView: View {
                                     }
                                     .disabled(gemini.isSavingAPIKey || gemini.connectionState == .connecting)
                                     .transition(.move(edge: .bottom).combined(with: .opacity))
-                                } else {
-                                    Text("Get your free key at aistudio.google.com")
-                                        .font(.system(size: 10, weight: .regular))
-                                        .foregroundStyle(.blue.opacity(0.7))
                                 }
 
-                                GeminiCompactKeyField(label: "Pexels", placeholder: "Pexels API key (images)", text: $gemini.pexelsAPIKeyText)
-                                GeminiCompactKeyField(label: "Brave", placeholder: "Brave Search API key", text: $gemini.braveSearchAPIKeyText)
+                                GeminiStyledAPIKeyField(placeholder: "Pexels API key", text: $gemini.pexelsAPIKeyText)
+                                GeminiStyledAPIKeyField(placeholder: "Brave Search API key", text: $gemini.braveSearchAPIKeyText)
 
                                 if !gemini.hasSavedAPIKey {
                                     systemPromptSection
@@ -592,34 +584,29 @@ struct GeminiControlToggle: View {
     }
 }
 
-struct GeminiCompactKeyField: View {
-    let label: String
+/// Ô nhập key: placeholder + viền, nền, font monospaced.
+struct GeminiStyledAPIKeyField: View {
     let placeholder: String
     @Binding var text: String
+    var onCommit: (() -> Void)?
 
-    var isSaved: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    init(placeholder: String, text: Binding<String>, onCommit: (() -> Void)? = nil) {
+        self.placeholder = placeholder
+        self._text = text
+        self.onCommit = onCommit
+    }
 
     var body: some View {
-        HStack(spacing: 6) {
-            Text(label)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.white.opacity(0.4))
-                .frame(width: 34, alignment: .leading)
-            TextField(placeholder, text: $text)
-                .textFieldStyle(.plain)
-                .font(.system(size: 10, weight: .regular, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.8))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(Color.white.opacity(0.05))
-                .cornerRadius(7)
-                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.white.opacity(0.08), lineWidth: 1))
-            if isSaved {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.green.opacity(0.7))
-            }
-        }
+        TextField(placeholder, text: $text, onCommit: { onCommit?() })
+            .textFieldStyle(.plain)
+            .font(.system(size: 11, weight: .regular, design: .monospaced))
+            .foregroundStyle(.white.opacity(0.92))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
+            .background(Color.white.opacity(0.06))
+            .cornerRadius(10)
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.12), lineWidth: 1))
+            .contentShape(Rectangle())
     }
 }
 

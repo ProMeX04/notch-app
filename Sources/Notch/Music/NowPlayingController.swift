@@ -128,6 +128,12 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
         mediaRemoteSendCommand(2, nil)
     }
 
+    /// `kMRStop` — dừng phát; hành vi tùy app (Music/Spotify thường dừng và giữ track).
+    func stop() async {
+        guard canControlPlayback else { return }
+        mediaRemoteSendCommand(3, nil)
+    }
+
     func nextTrack() async {
         guard canControlPlayback else { return }
         mediaRemoteSendCommand(4, nil)

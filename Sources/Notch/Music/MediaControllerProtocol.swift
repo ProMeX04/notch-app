@@ -15,6 +15,7 @@ protocol MediaControllerProtocol: ObservableObject {
     func nextTrack() async
     func previousTrack() async
     func togglePlay() async
+    func stop() async
     func toggleShuffle() async
     func toggleRepeat() async
     func setVolume(_ level: Double) async

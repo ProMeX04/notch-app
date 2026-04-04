@@ -7,7 +7,11 @@ APP_NAME="Notch"
 APP_DIR="$ROOT_DIR/dist/$APP_NAME.app"
 
 cd "$ROOT_DIR"
-swift package clean
+# Mặc định KHÔNG clean — giữ incremental build cho lặp nhanh.
+# Khi đổi dependency / build lỗi lạ: CLEAN=1 ./build-app.sh
+if [[ "${CLEAN:-}" == "1" ]]; then
+    swift package clean
+fi
 swift build
 
 BIN_DIR="$(swift build --show-bin-path)"

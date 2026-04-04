@@ -502,6 +502,9 @@ final class GeminiLiveViewModel: ObservableObject {
         case "pause":
             if pb.isPlaying { pb.togglePlay() }
             (result, icon) = ("Paused", "pause.fill")
+        case "stop":
+            pb.stop()
+            (result, icon) = ("Stopped playback", "stop.fill")
         case "toggle":
             pb.togglePlay()
             (result, icon) = (pb.isPlaying ? "Paused" : "Playing", "playpause.fill")
@@ -529,6 +532,12 @@ final class GeminiLiveViewModel: ObservableObject {
         case "repeat":
             pb.toggleRepeat()
             (result, icon) = ("Repeat", "repeat")
+        case "favorite":
+            guard pb.supportsFavorite else {
+                return "Favorite is only available when Apple Music is playing."
+            }
+            pb.toggleFavoriteTrack()
+            (result, icon) = ("Favorite updated", "heart.fill")
         default:
             return "Unknown action: \(action)"
         }
@@ -588,19 +597,6 @@ final class GeminiLiveViewModel: ObservableObject {
             return true
         case .failed, .disconnected:
             return false
-        }
-    }
-
-    var compactStatusText: String {
-        switch connectionState {
-        case .connecting:
-            return ""
-        case .connected:
-            return isMicrophoneEnabled ? "Live" : "Mic Off"
-        case .failed:
-            return "Error"
-        case .disconnected:
-            return "Talk"
         }
     }
 
@@ -729,6 +725,11 @@ final class GeminiLiveViewModel: ObservableObject {
         cancelReconnect()
         stopScreenCapture()
         displayedImageOverlay = nil
+        toastClearTask?.cancel()
+        toastClearTask = nil
+        lastToolAction = nil
+        // Transcript có thể rất dài; giữ lại sau khi ngắt kết nối làm RAM không giảm trong Activity Monitor.
+        clearTranscripts()
         session.disconnect(userInitiated: true)
         connectionState = .disconnected
         statusText = hasConfiguredAPIKey ? "Ready to connect to Gemini Live." : "Paste your Gemini API key to start Gemini Live."

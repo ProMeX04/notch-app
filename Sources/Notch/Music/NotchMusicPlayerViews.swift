@@ -63,10 +63,6 @@ struct ExpandedMusicControlsView: View {
         Color(nsColor: playback.accentColor).ensureMinimumBrightness(factor: 0.72)
     }
 
-    private var activeSlots: [MusicControlSlot] {
-        MusicControlSlot.defaultLayout
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             GeometryReader { geometry in
@@ -108,8 +104,8 @@ struct ExpandedMusicControlsView: View {
             .padding(.top, 10)
             .padding(.leading, 5)
 
-            HStack(spacing: 6) {
-                ForEach(Array(activeSlots.enumerated()), id: \.offset) { _, slot in
+            HStack(spacing: 4) {
+                ForEach(MusicControlSlot.allControls) { slot in
                     slotView(for: slot)
                 }
             }
@@ -152,6 +148,10 @@ struct ExpandedMusicControlsView: View {
         case .goForward:
             HoverButton(icon: "goforward.15", scale: .medium) {
                 playback.skip(seconds: 15)
+            }
+        case .stop:
+            HoverButton(icon: "stop.fill", scale: .medium) {
+                playback.stop()
             }
         case .none:
             Color.clear.frame(width: 30, height: 30)
@@ -434,16 +434,20 @@ enum MusicControlSlot: String, CaseIterable, Identifiable {
     case favorite
     case goBackward
     case goForward
+    case stop
     case none
 
     var id: String { rawValue }
 
-    static let defaultLayout: [MusicControlSlot] = [
+    /// Một hàng: không tăng chiều cao panel (stop/volume/favorite bỏ — không ổn định trên mọi app).
+    static let allControls: [MusicControlSlot] = [
+        .shuffle,
         .goBackward,
         .previous,
         .playPause,
         .next,
         .goForward,
+        .repeatMode,
     ]
 }
 

@@ -24,23 +24,44 @@ def read_api_key() -> str:
     if env_key:
         return env_key
 
-    result = subprocess.run(
-        [
-            "security",
-            "find-generic-password",
-            "-s",
-            KEYCHAIN_SERVICE,
-            "-a",
-            KEYCHAIN_ACCOUNT,
-            "-w",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "security",
+                "find-generic-password",
+                "-s",
+                KEYCHAIN_SERVICE,
+                "-a",
+                KEYCHAIN_ACCOUNT,
+                "-w",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as e:
+        raise RuntimeError(
+            "Không gọi được lệnh `security` (Keychain). "
+            f"Đặt biến môi trường GEMINI_API_KEY hoặc chạy trên macOS. Chi tiết: {e}"
+        ) from e
+
+    if result.returncode != 0:
+        # 44 = errSecItemNotFound — chưa lưu key trong Keychain giống app Notch
+        hint = (
+            "Không đọc được API key từ Keychain (exit "
+            f"{result.returncode}). Cách nhanh: export GEMINI_API_KEY='...' rồi chạy lại probe. "
+            f"Hoặc thêm generic password: service={KEYCHAIN_SERVICE!r}, account={KEYCHAIN_ACCOUNT!r} "
+            "(đúng như app Notch dùng)."
+        )
+        if result.stderr.strip():
+            hint += f" stderr: {result.stderr.strip()}"
+        raise RuntimeError(hint)
+
     key = result.stdout.strip()
     if not key:
-        raise RuntimeError("Gemini API key not found in environment or Keychain.")
+        raise RuntimeError(
+            "Keychain trả về rỗng. Đặt GEMINI_API_KEY hoặc kiểm tra mục Keychain dev.notch / GeminiLiveAPIKey."
+        )
     return key
 
 
@@ -48,7 +69,25 @@ async def send_json(ws, payload: dict) -> None:
     await ws.send(json.dumps(payload))
 
 
+async def send_realtime_text(ws, user_text: str) -> None:
+    """Gửi text input theo luồng realtime của Live API.
+
+    Với `gemini-3.1-flash-live-preview`, tài liệu capability yêu cầu dùng
+    `send_realtime_input(text=...)` cho text trong hội thoại. Ở raw WebSocket,
+    payload tương ứng là `{"realtimeInput": {"text": ...}}`.
+    """
+    await send_json(
+        ws,
+        {
+            "realtimeInput": {
+                "text": user_text,
+            }
+        },
+    )
+
+
 async def capture_audio(ws, args, summary: dict) -> None:
+    """Gửi PCM từ ffmpeg. Phải gọi sau khi server đã gửi setupComplete (giống Notch Swift)."""
     ffmpeg_cmd = [
         "ffmpeg",
         "-hide_banner",
@@ -87,19 +126,25 @@ async def capture_audio(ws, args, summary: dict) -> None:
 
             summary["audio_chunks"] += 1
             summary["audio_bytes"] += len(chunk)
-            await send_json(
-                ws,
-                {
-                    "realtimeInput": {
-                        "audio": {
-                            "data": base64.b64encode(chunk).decode("ascii"),
-                            "mimeType": "audio/pcm;rate=16000",
+            try:
+                await send_json(
+                    ws,
+                    {
+                        "realtimeInput": {
+                            "audio": {
+                                "data": base64.b64encode(chunk).decode("ascii"),
+                                "mimeType": "audio/pcm;rate=16000",
+                            }
                         }
-                    }
-                },
-            )
+                    },
+                )
+            except websockets.ConnectionClosed as e:
+                summary["audio_send_stopped"] = repr(e)
+                print(f"[probe] WebSocket đóng khi gửi audio: {e}", file=sys.stderr)
+                break
 
-        await send_json(ws, {"realtimeInput": {"audioStreamEnd": True}})
+        with suppress(websockets.ConnectionClosed):
+            await send_json(ws, {"realtimeInput": {"audioStreamEnd": True}})
     finally:
         with suppress(ProcessLookupError):
             proc.send_signal(signal.SIGINT)
@@ -114,16 +159,32 @@ async def capture_audio(ws, args, summary: dict) -> None:
             summary["ffmpeg_stderr"] = stderr.decode("utf-8", errors="replace").strip()
 
 
-async def receive_events(ws, args, summary: dict) -> None:
-    deadline = time.monotonic() + args.duration + args.tail_seconds
+async def receive_events(
+    ws,
+    args,
+    summary: dict,
+    *,
+    recv_until: dict[str, float],
+    setup_gate: asyncio.Event | None = None,
+    setup_fail: list[str | None] | None = None,
+    text_input_mode: bool = False,
+) -> None:
+    def release_setup_gate(message: str | None) -> None:
+        if setup_gate is None or setup_gate.is_set():
+            return
+        if message is not None and setup_fail is not None:
+            setup_fail[0] = message
+        setup_gate.set()
 
-    while time.monotonic() < deadline:
-        timeout = max(0.1, deadline - time.monotonic())
+    while time.monotonic() < recv_until["t"]:
+        timeout = max(0.1, recv_until["t"] - time.monotonic())
         try:
             message = await asyncio.wait_for(ws.recv(), timeout=timeout)
         except asyncio.TimeoutError:
             continue
-        except websockets.ConnectionClosed:
+        except websockets.ConnectionClosed as e:
+            summary["ws_closed"] = repr(e)
+            release_setup_gate(f"WebSocket đóng trước setupComplete: {e}")
             break
 
         if isinstance(message, bytes):
@@ -135,10 +196,19 @@ async def receive_events(ws, args, summary: dict) -> None:
             print(f"[raw] {message}")
             continue
 
+        if getattr(args, "debug_ws", False):
+            print(f"[debug-ws] top-level keys: {sorted(payload.keys())}")
+
+        if "setupComplete" in payload:
+            print("[probe] setupComplete")
+            release_setup_gate(None)
+
         error = payload.get("error")
         if error:
-            print(f"[error] {error.get('message', error)}")
+            msg = error.get("message", error) if isinstance(error, dict) else str(error)
+            print(f"[error] {msg}")
             summary["errors"].append(error)
+            release_setup_gate(str(msg))
             continue
 
         server = payload.get("serverContent") or {}
@@ -160,6 +230,11 @@ async def receive_events(ws, args, summary: dict) -> None:
 
         model_turn = server.get("modelTurn") or {}
         for part in model_turn.get("parts") or []:
+            raw_text = part.get("text")
+            if raw_text and text_input_mode:
+                summary["model_text_parts"].append(raw_text)
+                print(f"[model-text] {raw_text}")
+
             inline = part.get("inlineData") or {}
             data = inline.get("data")
             if data:
@@ -173,12 +248,48 @@ async def receive_events(ws, args, summary: dict) -> None:
 
 
 async def main() -> int:
-    parser = argparse.ArgumentParser(description="Probe Gemini Live using mic audio from ffmpeg.")
+    parser = argparse.ArgumentParser(
+        description="Probe Gemini Live: mic (ffmpeg) hoặc gửi text qua realtimeInput.text sau setupComplete."
+    )
     parser.add_argument("--device", default=":0", help="FFmpeg avfoundation input, default ':0' for the first mic.")
     parser.add_argument("--duration", type=float, default=12.0, help="Seconds to capture microphone audio.")
     parser.add_argument("--tail-seconds", type=float, default=8.0, help="Seconds to keep listening after mic capture stops.")
     parser.add_argument("--chunk-bytes", type=int, default=4096, help="PCM bytes to batch into each websocket frame.")
+    parser.add_argument(
+        "--request-text-modality",
+        action="store_true",
+        help=(
+            "Thử responseModalities TEXT+AUDIO (vẫn có speechConfig). "
+            "Với gemini-3.1-flash-live-preview thường bị đóng WebSocket 1011 ngay sau setup — chỉ để thử API."
+        ),
+    )
+    parser.add_argument(
+        "--send-text",
+        default=None,
+        metavar="MSG",
+        help=(
+            "Sau setupComplete gửi text qua realtimeInput.text (không bật mic/ffmpeg). "
+            "Dùng '-' để đọc nội dung từ stdin. Thời gian chờ phản hồi: --tail-seconds (tối thiểu 30s nội bộ nếu tail nhỏ)."
+        ),
+    )
+    parser.add_argument(
+        "--debug-ws",
+        action="store_true",
+        help="In top-level keys của mỗi JSON nhận từ server (debug).",
+    )
     args = parser.parse_args()
+
+    user_text_turn: str | None
+    if args.send_text is None:
+        user_text_turn = None
+    elif args.send_text.strip() == "-":
+        user_text_turn = sys.stdin.read().strip()
+    else:
+        user_text_turn = args.send_text.strip()
+
+    if args.send_text is not None and not user_text_turn:
+        print("[probe] --send-text cần nội dung không rỗng (hoặc stdin khi dùng '-').", file=sys.stderr)
+        return 2
 
     api_key = read_api_key()
     url = (
@@ -193,9 +304,22 @@ async def main() -> int:
         "output_audio_bytes": 0,
         "user_transcripts": [],
         "model_transcripts": [],
+        "model_text_parts": [],
         "errors": [],
         "ffmpeg_stderr": "",
     }
+
+    # TEXT+AUDIO trong setup hay gây 1011 (internal error) trước setupComplete — mặc định chỉ AUDIO.
+    if args.request_text_modality:
+        modalities = ["TEXT", "AUDIO"]
+        print(
+            "[probe] cảnh báo: --request-text-modality hay bị server trả 1011.",
+            file=sys.stderr,
+        )
+    else:
+        modalities = ["AUDIO"]
+
+    base_instruction = "You are a concise voice assistant. Keep spoken replies brief."
 
     print("[probe] connecting to Gemini Live...")
     async with websockets.connect(url, max_size=None) as ws:
@@ -207,7 +331,7 @@ async def main() -> int:
                     "inputAudioTranscription": {},
                     "outputAudioTranscription": {},
                     "generationConfig": {
-                        "responseModalities": ["AUDIO"],
+                        "responseModalities": modalities,
                         "speechConfig": {
                             "voiceConfig": {
                                 "prebuiltVoiceConfig": {
@@ -219,20 +343,66 @@ async def main() -> int:
                     "systemInstruction": {
                         "parts": [
                             {
-                                "text": (
-                                    "You are a concise voice assistant. "
-                                    "Keep spoken replies brief."
-                                )
+                                "text": base_instruction,
                             }
                         ]
                     },
                 }
             },
         )
-        print("[probe] connected. speak now...")
+        print("[probe] đã gửi setup — chờ setupComplete từ server...")
 
-        receiver = asyncio.create_task(receive_events(ws, args, summary))
-        await capture_audio(ws, args, summary)
+        # Hạn nhận: ban đầu rộng để không cắt ngang lúc chờ setup; main sẽ thu hẹp sau setupComplete.
+        recv_until: dict[str, float] = {"t": time.monotonic() + 600.0}
+
+        setup_gate = asyncio.Event()
+        setup_fail: list[str | None] = [None]
+        text_input_mode = user_text_turn is not None
+        receiver = asyncio.create_task(
+            receive_events(
+                ws,
+                args,
+                summary,
+                recv_until=recv_until,
+                setup_gate=setup_gate,
+                setup_fail=setup_fail,
+                text_input_mode=text_input_mode,
+            )
+        )
+        try:
+            await asyncio.wait_for(setup_gate.wait(), timeout=30.0)
+        except asyncio.TimeoutError:
+            print("[probe] Hết thời gian chờ setupComplete (30s).", file=sys.stderr)
+            receiver.cancel()
+            with suppress(asyncio.CancelledError):
+                await receiver
+            return 1
+
+        if setup_fail[0]:
+            print(f"[probe] Setup không thành công: {setup_fail[0]}", file=sys.stderr)
+            receiver.cancel()
+            with suppress(asyncio.CancelledError):
+                await receiver
+            return 1
+
+        now = time.monotonic()
+        if user_text_turn is not None:
+            listen = max(args.tail_seconds, 30.0)
+            recv_until["t"] = now + listen
+            try:
+                await send_realtime_text(ws, user_text_turn)
+            except websockets.ConnectionClosed as e:
+                print(f"[probe] WebSocket đóng khi gửi text: {e}", file=sys.stderr)
+                receiver.cancel()
+                with suppress(asyncio.CancelledError):
+                    await receiver
+                return 1
+            print(f"[probe] đã gửi realtimeInput.text ({len(user_text_turn)} chars) — chờ model (~{listen:.0f}s)...")
+        else:
+            recv_until["t"] = now + args.duration + args.tail_seconds
+            print("[probe] speak now...")
+            await capture_audio(ws, args, summary)
+
         await receiver
 
     print(
@@ -242,6 +412,7 @@ async def main() -> int:
         f"out_audio_bytes={summary['output_audio_bytes']} "
         f"user_tx={len(summary['user_transcripts'])} "
         f"model_tx={len(summary['model_transcripts'])} "
+        f"model_text_parts={len(summary['model_text_parts'])} "
         f"errors={len(summary['errors'])}"
     )
     if summary["ffmpeg_stderr"]:
@@ -252,5 +423,8 @@ async def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(asyncio.run(main()))
+    except RuntimeError as e:
+        print(f"[probe] {e}", file=sys.stderr)
+        raise SystemExit(1)
     except KeyboardInterrupt:
         raise SystemExit(130)

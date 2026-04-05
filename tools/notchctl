@@ -1,0 +1,164 @@
+#!/bin/zsh
+
+set -euo pipefail
+
+open_url() {
+    open -g "$1"
+}
+
+usage() {
+    cat <<'EOF'
+Usage:
+  notchctl panel <music|focus|talk|shelf>
+  notchctl visibility <show|hide|toggle>
+  notchctl pin <on|off|toggle>
+  notchctl talk <show|connect|disconnect|toggle|mute|unmute|mic-toggle>
+  notchctl screen <full|region|window|stop>
+  notchctl caption <on|off|toggle>
+  notchctl focus <show|pause|resume|toggle|reset|skip> [pomodoro|countdown|counter|stopwatch]
+  notchctl focus set <pomodoro|countdown|counter|stopwatch> [duration] [break-duration]
+  notchctl focus start <pomodoro|countdown|counter|stopwatch> [duration] [break-duration]
+  notchctl image <show|search> <query> [landscape|portrait|square]
+  notchctl image url <image-url> [caption]
+  notchctl image file <path> [caption]
+  notchctl image clear
+  notchctl media <play|pause|toggle|stop|next|previous|open>
+  notchctl media volume <0-100>
+  notchctl media skip-forward <seconds>
+  notchctl media skip-backward <seconds>
+
+Examples:
+  notchctl panel talk
+  notchctl talk connect
+  notchctl talk mute
+  notchctl screen region
+  notchctl caption off
+  notchctl focus start pomodoro 25m 5m
+  notchctl focus set countdown 10m
+  notchctl focus reset countdown
+  notchctl focus skip pomodoro
+  notchctl image search "red panda wallpaper" landscape
+  notchctl image url "https://images.example.com/picture.jpg"
+  notchctl media next
+  notchctl media volume 35
+  notchctl media skip-forward 30
+EOF
+}
+
+url_encode() {
+    python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"
+}
+
+[[ $# -gt 0 ]] || {
+    usage
+    exit 1
+}
+
+domain="$1"
+shift
+
+case "$domain" in
+    panel)
+        [[ $# -eq 1 ]] || { usage; exit 1; }
+        open_url "notch://panel/$1"
+        ;;
+    visibility)
+        [[ $# -eq 1 ]] || { usage; exit 1; }
+        open_url "notch://visibility/$1"
+        ;;
+    pin)
+        [[ $# -eq 1 ]] || { usage; exit 1; }
+        open_url "notch://pin/$1"
+        ;;
+    talk)
+        [[ $# -eq 1 ]] || { usage; exit 1; }
+        open_url "notch://talk/$1"
+        ;;
+    screen)
+        [[ $# -eq 1 ]] || { usage; exit 1; }
+        open_url "notch://screen/$1"
+        ;;
+    caption)
+        [[ $# -eq 1 ]] || { usage; exit 1; }
+        open_url "notch://caption/$1"
+        ;;
+    focus)
+        [[ $# -ge 1 && $# -le 4 ]] || { usage; exit 1; }
+        action="$1"
+        tool="${2:-}"
+        duration="${3:-}"
+        break_duration="${4:-}"
+        url="notch://focus/$action"
+        if [[ -n "$tool" ]]; then
+            url="${url}?tool=${tool}"
+            if [[ -n "$duration" ]]; then
+                url="${url}&duration=${duration}"
+            fi
+            if [[ -n "$break_duration" ]]; then
+                url="${url}&break=${break_duration}"
+            fi
+        fi
+        open_url "$url"
+        ;;
+    image)
+        [[ $# -ge 1 ]] || { usage; exit 1; }
+        action="$1"
+        shift
+        case "$action" in
+            show|search)
+                [[ $# -ge 1 && $# -le 2 ]] || { usage; exit 1; }
+                query_encoded="$(url_encode "$1")"
+                url="notch://image/show?query=${query_encoded}"
+                if [[ $# -eq 2 ]]; then
+                    url="${url}&orientation=$(url_encode "$2")"
+                fi
+                open_url "$url"
+                ;;
+            url)
+                [[ $# -ge 1 && $# -le 2 ]] || { usage; exit 1; }
+                url="notch://image/url?url=$(url_encode "$1")"
+                if [[ $# -eq 2 ]]; then
+                    url="${url}&caption=$(url_encode "$2")"
+                fi
+                open_url "$url"
+                ;;
+            file)
+                [[ $# -ge 1 && $# -le 2 ]] || { usage; exit 1; }
+                url="notch://image/file?path=$(url_encode "$1")"
+                if [[ $# -eq 2 ]]; then
+                    url="${url}&caption=$(url_encode "$2")"
+                fi
+                open_url "$url"
+                ;;
+            clear)
+                [[ $# -eq 0 ]] || { usage; exit 1; }
+                open_url "notch://image/clear"
+                ;;
+            *)
+                usage
+                exit 1
+                ;;
+        esac
+        ;;
+    media)
+        [[ $# -ge 1 ]] || { usage; exit 1; }
+        action="$1"
+        if [[ "$action" == "volume" ]]; then
+            [[ $# -eq 2 ]] || { usage; exit 1; }
+            open_url "notch://media/volume?level=$2"
+        elif [[ "$action" == "skip-forward" || "$action" == "skip-backward" ]]; then
+            [[ $# -eq 2 ]] || { usage; exit 1; }
+            open_url "notch://media/$action?seconds=$2"
+        else
+            [[ $# -eq 1 ]] || { usage; exit 1; }
+            open_url "notch://media/$action"
+        fi
+        ;;
+    help|-h|--help)
+        usage
+        ;;
+    *)
+        usage
+        exit 1
+        ;;
+esac

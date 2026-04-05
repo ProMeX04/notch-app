@@ -74,6 +74,13 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         notchController?.shutdown()
     }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard let notchController else { return }
+        for url in urls {
+            NotchCommandRouter.handle(url: url, controller: notchController)
+        }
+    }
 }
 
 extension NotchAppDelegate: UNUserNotificationCenterDelegate {

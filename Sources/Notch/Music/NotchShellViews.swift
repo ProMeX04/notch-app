@@ -168,14 +168,6 @@ struct CompactTalkView: View {
                 }
             }
             .frame(width: sideSize, height: sideSize)
-            .overlay(alignment: .topTrailing) {
-                if gemini.isScreenSharingEnabled {
-                    Image(systemName: "eye.fill")
-                        .font(.system(size: 7, weight: .bold))
-                        .foregroundStyle(Color(nsColor: .systemGreen).ensureMinimumBrightness(factor: 0.72).opacity(0.9))
-                        .padding(3)
-                }
-            }
 
             Rectangle()
                 .fill(.black)

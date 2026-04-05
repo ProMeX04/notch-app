@@ -8,6 +8,14 @@ enum GeminiLiveCaptureMode {
     case standard
 }
 
+struct PendingExecApprovalCall {
+    let toolCallID: String
+    let args: [String: Any]
+    let command: String
+    let workingDirectory: String?
+    let timeoutSeconds: Double
+}
+
 final class GeminiLiveSession: @unchecked Sendable {
     var onStateChange: (@Sendable (GeminiLiveConnectionState, String?) -> Void)?
     var onUserTranscript: (@Sendable (String) -> Void)?
@@ -17,6 +25,10 @@ final class GeminiLiveSession: @unchecked Sendable {
     var onMediaControl: (@Sendable (_ action: String, _ value: Double?, _ valueString: String?) -> String)?
     var onFunctionExecuted: (@Sendable (_ name: String, _ args: [String: Any], _ result: [String: Any]) -> Void)?
     var onDisplayImageRequest: (@Sendable (ImageOverlayRequest) -> Void)?
+    var onReadDocument: (@Sendable (_ kind: ReadDocKind, _ id: String, _ snapshot: SkillSessionSnapshot?) -> [String: Any])?
+    var onWriteMemory: (@Sendable (_ content: String) -> [String: Any])?
+    var onShouldAutoApproveExec: (@Sendable (_ command: String, _ workingDirectory: String?) -> Bool)?
+    var onExecApprovalRequested: (@Sendable (ExecApprovalRequest) -> Void)?
 
     func sendScreenFrame(_ data: Data) {
         sendJSONObject([
@@ -66,8 +78,9 @@ final class GeminiLiveSession: @unchecked Sendable {
     )!
 
     var socketTask: URLSessionWebSocketTask?
-    var enabledTools: Set<GeminiTool> = Set(GeminiTool.allCases)
+    var enabledTools: Set<GeminiTool> = GeminiTool.coreToolSet
     var microphoneEnabled = true
+    var outputVolume: Float = 1
     var outputPrepared = false
     var userInitiatedDisconnect = false
     var hasCompletedSetup = false
@@ -79,6 +92,8 @@ final class GeminiLiveSession: @unchecked Sendable {
     var latestSessionHandle: String?
     var latestSessionHandleIsResumable = false
     var pendingReconnectWorkItem: DispatchWorkItem?
+    private let execApprovalQueue = DispatchQueue(label: "dev.notch.gemini.exec-approval")
+    private var pendingExecApprovalsByID: [String: PendingExecApprovalCall] = [:]
 
     deinit {
         disconnect(userInitiated: true)
@@ -93,7 +108,8 @@ final class GeminiLiveSession: @unchecked Sendable {
         voiceName: String = "Kore",
         pexelsAPIKey: String? = nil,
         braveSearchAPIKey: String? = nil,
-        enabledTools: Set<GeminiTool> = Set(GeminiTool.allCases),
+        enabledTools: Set<GeminiTool> = GeminiTool.coreToolSet,
+        skillSnapshot: SkillSessionSnapshot? = nil,
         resumeSession: Bool = false
     ) {
         cancelPendingReconnect()
@@ -113,14 +129,17 @@ final class GeminiLiveSession: @unchecked Sendable {
             thinkingBudget: thinkingBudget,
             voiceName: voiceName,
             pexelsAPIKey: pexelsAPIKey,
-            braveSearchAPIKey: braveSearchAPIKey
+            braveSearchAPIKey: braveSearchAPIKey,
+            skillSnapshot: skillSnapshot
         )
         currentConfiguration = configuration
+        let shouldPreserveAudioSession = outputPrepared && captureMode == .webRTC
 
         startConnection(
             using: configuration,
             statusText: resumeSession && latestSessionHandle != nil ? "Resuming Gemini Live..." : "Connecting to Gemini Live...",
-            displayState: resumeSession && latestSessionHandle != nil ? .connected : .connecting
+            displayState: resumeSession && latestSessionHandle != nil ? .connected : .connecting,
+            preserveAudioSession: shouldPreserveAudioSession
         )
     }
 
@@ -132,6 +151,7 @@ final class GeminiLiveSession: @unchecked Sendable {
             currentConfiguration = nil
             latestSessionHandle = nil
             latestSessionHandleIsResumable = false
+            clearPendingExecApprovals()
         }
 
         tearDownConnection()
@@ -139,6 +159,24 @@ final class GeminiLiveSession: @unchecked Sendable {
         if userInitiated {
             isResumingConnection = false
             onStateChange?(.disconnected, "Disconnected.")
+        }
+    }
+
+    func enqueuePendingExecApproval(_ call: PendingExecApprovalCall) {
+        execApprovalQueue.sync {
+            pendingExecApprovalsByID[call.toolCallID] = call
+        }
+    }
+
+    func takePendingExecApproval(toolCallID: String) -> PendingExecApprovalCall? {
+        execApprovalQueue.sync {
+            pendingExecApprovalsByID.removeValue(forKey: toolCallID)
+        }
+    }
+
+    func clearPendingExecApprovals() {
+        execApprovalQueue.sync {
+            pendingExecApprovalsByID.removeAll()
         }
     }
 
@@ -168,6 +206,18 @@ final class GeminiLiveSession: @unchecked Sendable {
         } else {
             stopMicrophone(notifyModel: true)
             cancelAudioCaptureMonitor()
+        }
+    }
+
+    func setOutputVolume(_ volume: Double) {
+        let clamped = Float(min(max(volume, 0), 1))
+        outputVolume = clamped
+        if captureMode == .webRTC {
+            webRTCAudioIO?.setOutputVolume(clamped)
+        } else {
+            playbackQueue.async { [weak self] in
+                self?.outputPlayer.volume = clamped
+            }
         }
     }
 
@@ -375,7 +425,7 @@ final class GeminiLiveSession: @unchecked Sendable {
         if enabledTools.contains(.webSearch) {
             decls.append([
                 "name": "webSearch",
-                "description": "Search the web using DuckDuckGo and return a concise summary of the top results. Use this when the user asks a question that requires up-to-date information or facts you may not know.",
+                "description": "Search the web and return a concise summary of the top results. Prefer Brave Search when a Brave API key is configured, and fall back to lightweight public search otherwise. Use this when the user asks for up-to-date information or facts you may not know.",
                 "parameters": [
                     "type": "OBJECT",
                     "properties": [
@@ -389,6 +439,179 @@ final class GeminiLiveSession: @unchecked Sendable {
                         ]
                     ],
                     "required": ["query"]
+                ]
+            ])
+        }
+        if enabledTools.contains(.exec) {
+            decls.append([
+                "name": "exec",
+                "description": "Run a local shell command on the user's Mac using zsh. Use this for command-line tools such as curl, jq, python3, or git. Commands run in ~/.notch/workspace by default unless a working directory is provided. New or untrusted commands may require approval. Prefer concise commands and read-only inspection unless the user clearly wants a change.",
+                "parameters": [
+                    "type": "OBJECT",
+                    "properties": [
+                        "command": [
+                            "type": "STRING",
+                            "description": "The exact shell command to run, for example: curl -s https://example.com"
+                        ],
+                        "workingDirectory": [
+                            "type": "STRING",
+                            "description": "Optional absolute path or ~/ path to run the command in. If omitted, Notch uses ~/.notch/workspace."
+                        ],
+                        "timeoutSeconds": [
+                            "type": "NUMBER",
+                            "description": "Optional timeout in seconds. Use 1-30. Defaults to 15."
+                        ]
+                    ],
+                    "required": ["command"]
+                ]
+            ])
+        }
+        if enabledTools.contains(.read) {
+            decls.append([
+                "name": "read",
+                "description": "Read a UTF-8 text file. Relative paths are resolved from ~/.notch/workspace. Absolute paths are allowed for files inside ~/.notch/workspace and for built-in skill SKILL.md locations listed in <available_skills>.",
+                "parameters": [
+                    "type": "OBJECT",
+                    "properties": [
+                        "path": [
+                            "type": "STRING",
+                            "description": "Relative path from ~/.notch/workspace, or an absolute path inside ~/.notch/workspace, or a built-in skill location from <available_skills>."
+                        ]
+                    ],
+                    "required": ["path"]
+                ]
+            ])
+        }
+        if enabledTools.contains(.write) {
+            decls.append([
+                "name": "write",
+                "description": "Create or overwrite a UTF-8 text file inside ~/.notch/workspace.",
+                "parameters": [
+                    "type": "OBJECT",
+                    "properties": [
+                        "path": [
+                            "type": "STRING",
+                            "description": "Relative path from ~/.notch/workspace, or an absolute path still inside that workspace."
+                        ],
+                        "content": [
+                            "type": "STRING",
+                            "description": "The full file contents to write."
+                        ]
+                    ],
+                    "required": ["path", "content"]
+                ]
+            ])
+        }
+        if enabledTools.contains(.find) {
+            decls.append([
+                "name": "find",
+                "description": "Find files or folders inside ~/.notch/workspace by name or relative path fragment.",
+                "parameters": [
+                    "type": "OBJECT",
+                    "properties": [
+                        "pattern": [
+                            "type": "STRING",
+                            "description": "Case-insensitive file or path fragment to look for."
+                        ],
+                        "baseDirectory": [
+                            "type": "STRING",
+                            "description": "Optional relative path inside ~/.notch/workspace to start from. Defaults to the workspace root."
+                        ],
+                        "maxResults": [
+                            "type": "NUMBER",
+                            "description": "Optional max number of matches to return. Use 1-100. Defaults to 20."
+                        ]
+                    ],
+                    "required": ["pattern"]
+                ]
+            ])
+        }
+        if enabledTools.contains(.grep) {
+            decls.append([
+                "name": "grep",
+                "description": "Search text content inside files in ~/.notch/workspace. Supports plain text and regular expressions.",
+                "parameters": [
+                    "type": "OBJECT",
+                    "properties": [
+                        "pattern": [
+                            "type": "STRING",
+                            "description": "Plain text or regular expression to search for."
+                        ],
+                        "path": [
+                            "type": "STRING",
+                            "description": "Optional file or directory path inside ~/.notch/workspace to search. Defaults to the workspace root."
+                        ],
+                        "maxResults": [
+                            "type": "NUMBER",
+                            "description": "Optional max number of matches to return. Use 1-100. Defaults to 20."
+                        ]
+                    ],
+                    "required": ["pattern"]
+                ]
+            ])
+        }
+        if enabledTools.contains(.edit) {
+            decls.append([
+                "name": "edit",
+                "description": "Make a precise string replacement in an existing UTF-8 text file inside ~/.notch/workspace.",
+                "parameters": [
+                    "type": "OBJECT",
+                    "properties": [
+                        "path": [
+                            "type": "STRING",
+                            "description": "Relative path from ~/.notch/workspace, or an absolute path still inside that workspace."
+                        ],
+                        "oldText": [
+                            "type": "STRING",
+                            "description": "The exact text to replace."
+                        ],
+                        "newText": [
+                            "type": "STRING",
+                            "description": "Replacement text."
+                        ],
+                        "replaceAll": [
+                            "type": "BOOLEAN",
+                            "description": "Replace every occurrence. Defaults to false."
+                        ]
+                    ],
+                    "required": ["path", "oldText", "newText"]
+                ]
+            ])
+        }
+        if enabledTools.contains(.readDoc) {
+            decls.append([
+                "name": "readDoc",
+                "description": "Read one active Notch skill by exact name, or read the main user or memory document.",
+                "parameters": [
+                    "type": "OBJECT",
+                    "properties": [
+                        "kind": [
+                            "type": "STRING",
+                            "enum": ["skill", "user", "memory"],
+                            "description": "Use 'skill' for an active skill, 'user' for the main user profile document, or 'memory' for the main memory document."
+                        ],
+                        "id": [
+                            "type": "STRING",
+                            "description": "For skill: exact skill name. For user and memory: use 'main'."
+                        ]
+                    ],
+                    "required": ["kind", "id"]
+                ]
+            ])
+        }
+        if enabledTools.contains(.writeMemory) {
+            decls.append([
+                "name": "writeMemory",
+                "description": "Append important facts or preferences to the main memory document.",
+                "parameters": [
+                    "type": "OBJECT",
+                    "properties": [
+                        "content": [
+                            "type": "STRING",
+                            "description": "Text to append to MEMORY.md."
+                        ]
+                    ],
+                    "required": ["content"]
                 ]
             ])
         }
@@ -573,7 +796,10 @@ final class GeminiLiveSession: @unchecked Sendable {
             do {
                 let data = try JSONSerialization.data(withJSONObject: object)
                 guard let message = String(data: data, encoding: .utf8) else {
-                    self.handleFailure(message: "Couldn't encode the Gemini Live message.")
+                    self.handleFailure(
+                        message: "Couldn't encode the Gemini Live message.",
+                        preserveAudioSession: self.hasCompletedSetup && self.captureMode == .webRTC
+                    )
                     onCompletion?(false)
                     return
                 }
@@ -595,14 +821,20 @@ final class GeminiLiveSession: @unchecked Sendable {
                             return
                         }
 
-                        self.handleFailure(message: "Gemini Live send failed: \(error.localizedDescription)")
+                        self.handleFailure(
+                            message: "Gemini Live send failed: \(error.localizedDescription)",
+                            preserveAudioSession: hadCompletedSetup && self.captureMode == .webRTC
+                        )
                         onCompletion?(false)
                     } else {
                         onCompletion?(true)
                     }
                 }
             } catch {
-                self.handleFailure(message: "Couldn't prepare the Gemini Live payload.")
+                self.handleFailure(
+                    message: "Couldn't prepare the Gemini Live payload.",
+                    preserveAudioSession: self.hasCompletedSetup && self.captureMode == .webRTC
+                )
                 onCompletion?(false)
             }
         }
@@ -644,7 +876,10 @@ final class GeminiLiveSession: @unchecked Sendable {
                     return
                 }
 
-                self.handleFailure(message: "Gemini Live disconnected: \(error.localizedDescription)")
+                self.handleFailure(
+                    message: "Gemini Live disconnected: \(error.localizedDescription)",
+                    preserveAudioSession: hadCompletedSetup && self.captureMode == .webRTC
+                )
             case let .success(message):
                 self.handleMessage(message)
                 self.receiveNextMessage()
@@ -673,7 +908,7 @@ final class GeminiLiveSession: @unchecked Sendable {
 
         if let error = object["error"] as? [String: Any] {
             let message = (error["message"] as? String) ?? "Gemini Live returned an unknown error."
-            handleFailure(message: message)
+            handleFailure(message: message, preserveAudioSession: hasCompletedSetup && captureMode == .webRTC)
             return
         }
 
@@ -752,4 +987,5 @@ struct LiveSessionConfiguration {
     let voiceName: String
     let pexelsAPIKey: String?
     let braveSearchAPIKey: String?
+    let skillSnapshot: SkillSessionSnapshot?
 }

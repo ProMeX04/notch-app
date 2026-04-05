@@ -1,0 +1,284 @@
+import AppKit
+import Foundation
+
+@MainActor
+enum NotchCommandRouter {
+    static func handle(url: URL, controller: NotchWindowController) {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "notch" else {
+            return
+        }
+
+        let host = components.host?.lowercased() ?? ""
+        let pathComponents = url.pathComponents.filter { $0 != "/" }.map { $0.lowercased() }
+        let action = pathComponents.first ?? ""
+        let queryItems = Dictionary(
+            uniqueKeysWithValues: (components.queryItems ?? []).map { ($0.name.lowercased(), $0.value ?? "") }
+        )
+
+        do {
+            switch host {
+            case "panel":
+                try handlePanel(action: action, queryItems: queryItems, controller: controller)
+            case "visibility":
+                try handleVisibility(action: action, controller: controller)
+            case "pin":
+                try handlePin(action: action, controller: controller)
+            case "talk":
+                try handleTalk(action: action, controller: controller)
+            case "screen":
+                try handleScreen(action: action, controller: controller)
+            case "caption":
+                try handleCaption(action: action, controller: controller)
+            case "focus":
+                try handleFocus(action: action, queryItems: queryItems, controller: controller)
+            case "media":
+                try handleMedia(action: action, queryItems: queryItems, controller: controller)
+            case "image":
+                try handleImage(action: action, queryItems: queryItems, controller: controller)
+            default:
+                throw NotchCommandError.unsupportedCommand(url.absoluteString)
+            }
+        } catch {
+            NotchLog.app.error("Command routing failed for \(url.absoluteString): \(error.localizedDescription)")
+        }
+    }
+
+    private static func handlePanel(action: String, queryItems: [String: String], controller: NotchWindowController) throws {
+        let panelName = firstNonEmpty(action, queryItems["name"], queryItems["panel"])
+        guard let panel = panelName.flatMap(NotchPanel.init(rawValue:)) else {
+            throw NotchCommandError.invalidValue("panel", action)
+        }
+        controller.showPanel(panel)
+    }
+
+    private static func handleVisibility(action: String, controller: NotchWindowController) throws {
+        switch action {
+        case "show":
+            controller.show()
+        case "hide":
+            controller.hide()
+        case "toggle":
+            controller.toggleVisibility()
+        default:
+            throw NotchCommandError.invalidAction("visibility", action)
+        }
+    }
+
+    private static func handlePin(action: String, controller: NotchWindowController) throws {
+        switch action {
+        case "on", "true", "pin":
+            controller.setPinned(true)
+        case "off", "false", "unpin":
+            controller.setPinned(false)
+        case "toggle":
+            controller.togglePinned()
+        default:
+            throw NotchCommandError.invalidAction("pin", action)
+        }
+    }
+
+    private static func handleTalk(action: String, controller: NotchWindowController) throws {
+        switch action {
+        case "show":
+            controller.showTalkPanel()
+        case "connect":
+            controller.connectGeminiLive()
+        case "disconnect":
+            controller.disconnectGeminiLive()
+        case "toggle":
+            controller.toggleGeminiLive()
+        case "mute", "mic-off":
+            controller.muteGeminiLive()
+        case "unmute", "mic-on":
+            controller.unmuteGeminiLive()
+        case "mic-toggle":
+            controller.toggleGeminiLiveMicrophone()
+        default:
+            throw NotchCommandError.invalidAction("talk", action)
+        }
+    }
+
+    private static func handleScreen(action: String, controller: NotchWindowController) throws {
+        switch action {
+        case "full", "fullscreen":
+            controller.startFullScreenShare()
+        case "region", "selection":
+            controller.startRegionScreenShare()
+        case "window", "app":
+            controller.startWindowScreenShare()
+        case "stop", "off", "clear":
+            controller.stopScreenShare()
+        default:
+            throw NotchCommandError.invalidAction("screen", action)
+        }
+    }
+
+    private static func handleCaption(action: String, controller: NotchWindowController) throws {
+        switch action {
+        case "on", "show", "enable":
+            controller.setGeminiLiveCaptionsEnabled(true)
+        case "off", "hide", "disable":
+            controller.setGeminiLiveCaptionsEnabled(false)
+        case "toggle":
+            controller.toggleGeminiLiveCaptions()
+        default:
+            throw NotchCommandError.invalidAction("caption", action)
+        }
+    }
+
+    private static func handleFocus(action: String, queryItems: [String: String], controller: NotchWindowController) throws {
+        let toolName = firstNonEmpty(queryItems["tool"], queryItems["name"])
+        let tool = parseFocusTool(toolName)
+        let duration = firstNonEmpty(queryItems["duration"], queryItems["value"])
+        let breakDuration = firstNonEmpty(queryItems["break"], queryItems["breakduration"])
+
+        switch action {
+        case "show":
+            controller.showFocusTool(tool)
+        case "set":
+            try controller.configureFocusTool(tool, duration: duration, breakDuration: breakDuration)
+        case "start":
+            try controller.startFocusTool(tool, duration: duration, breakDuration: breakDuration)
+        case "pause":
+            try controller.pauseFocusTool(tool)
+        case "resume":
+            try controller.resumeFocusTool(tool)
+        case "toggle":
+            controller.toggleFocusTool(tool)
+        case "reset":
+            try controller.resetFocusTool(tool)
+        case "skip":
+            try controller.skipFocusTool(tool)
+        default:
+            throw NotchCommandError.invalidAction("focus", action)
+        }
+    }
+
+    private static func handleMedia(action: String, queryItems: [String: String], controller: NotchWindowController) throws {
+        switch action {
+        case "play":
+            controller.playMedia()
+        case "pause":
+            controller.pauseMedia()
+        case "toggle", "playpause":
+            controller.toggleMediaPlayback()
+        case "stop":
+            controller.stopMedia()
+        case "next":
+            controller.nextMediaTrack()
+        case "previous", "prev":
+            controller.previousMediaTrack()
+        case "skip-forward", "forward":
+            let seconds = try requiredSeconds(queryItems: queryItems)
+            controller.skipMedia(seconds: seconds)
+        case "skip-backward", "backward":
+            let seconds = try requiredSeconds(queryItems: queryItems)
+            controller.skipMedia(seconds: -seconds)
+        case "open":
+            controller.openCurrentMediaApp()
+        case "volume":
+            guard let levelRaw = queryItems["level"], let level = Double(levelRaw) else {
+                throw NotchCommandError.missingParameter("level")
+            }
+            controller.setMediaVolume(level)
+        default:
+            throw NotchCommandError.invalidAction("media", action)
+        }
+    }
+
+    private static func handleImage(action: String, queryItems: [String: String], controller: NotchWindowController) throws {
+        switch action {
+        case "show", "search":
+            guard let query = firstNonEmptyRaw(queryItems["query"], queryItems["q"], queryItems["value"]) else {
+                throw NotchCommandError.missingParameter("query")
+            }
+            let caption = firstNonEmptyRaw(queryItems["caption"], queryItems["title"])
+            let orientation = firstNonEmptyRaw(queryItems["orientation"], queryItems["shape"])
+            controller.showImageOverlay(query: query, caption: caption, orientation: orientation)
+        case "url":
+            guard let rawURL = firstNonEmptyRaw(queryItems["url"], queryItems["value"]),
+                  let url = URL(string: rawURL) else {
+                throw NotchCommandError.invalidValue("url", queryItems["url"] ?? queryItems["value"] ?? "")
+            }
+            let query = firstNonEmptyRaw(queryItems["query"], queryItems["q"])
+            let caption = firstNonEmptyRaw(queryItems["caption"], queryItems["title"])
+            controller.showImageOverlay(url: url, query: query, caption: caption)
+        case "file":
+            guard let path = firstNonEmptyRaw(queryItems["path"], queryItems["value"]) else {
+                throw NotchCommandError.missingParameter("path")
+            }
+            let query = firstNonEmptyRaw(queryItems["query"], queryItems["q"])
+            let caption = firstNonEmptyRaw(queryItems["caption"], queryItems["title"])
+            controller.showImageOverlay(url: URL(fileURLWithPath: path), query: query, caption: caption)
+        case "clear":
+            controller.clearImageOverlay()
+        default:
+            throw NotchCommandError.invalidAction("image", action)
+        }
+    }
+
+    private static func requiredSeconds(queryItems: [String: String]) throws -> Double {
+        guard let raw = firstNonEmpty(queryItems["seconds"], queryItems["secs"], queryItems["value"]),
+              let seconds = Double(raw) else {
+            throw NotchCommandError.missingParameter("seconds")
+        }
+        return seconds
+    }
+
+    private static func firstNonEmpty(_ values: String?...) -> String? {
+        for value in values {
+            guard let value else { continue }
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                return trimmed.lowercased()
+            }
+        }
+        return nil
+    }
+
+    private static func firstNonEmptyRaw(_ values: String?...) -> String? {
+        for value in values {
+            guard let value else { continue }
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                return trimmed
+            }
+        }
+        return nil
+    }
+
+    private static func parseFocusTool(_ raw: String?) -> FocusTool? {
+        switch raw {
+        case "pomodoro":
+            return .pomodoro
+        case "countdown":
+            return .countdown
+        case "counter", "stopwatch":
+            return .counter
+        default:
+            return nil
+        }
+    }
+}
+
+private enum NotchCommandError: LocalizedError {
+    case unsupportedCommand(String)
+    case invalidAction(String, String)
+    case invalidValue(String, String)
+    case missingParameter(String)
+
+    var errorDescription: String? {
+        switch self {
+        case let .unsupportedCommand(command):
+            return "Unsupported command: \(command)"
+        case let .invalidAction(domain, action):
+            return "Invalid action '\(action)' for \(domain)."
+        case let .invalidValue(name, value):
+            return "Invalid \(name) value '\(value)'."
+        case let .missingParameter(name):
+            return "Missing required parameter '\(name)'."
+        }
+    }
+}

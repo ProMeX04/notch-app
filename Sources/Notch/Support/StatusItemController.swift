@@ -28,7 +28,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     )
 
     private lazy var musicItem = NSMenuItem(
-        title: "Open Music",
+        title: "Open Media",
         action: #selector(showMusicPanel),
         keyEquivalent: ""
     )
@@ -80,7 +80,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         super.init()
 
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "menubar.rectangle", accessibilityDescription: "Notch")
+            button.image = loadStatusBarTemplateImage()
+            button.imagePosition = .imageOnly
+            button.imageScaling = .scaleProportionallyDown
         }
 
         menu.delegate = self
@@ -95,13 +97,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         toggleTalkItem.target = self
         resetPomodoroItem.target = self
         launchAtLoginItem.target = self
-
-        let repositionItem = NSMenuItem(
-            title: "Reposition",
-            action: #selector(reposition),
-            keyEquivalent: ""
-        )
-        repositionItem.target = self
 
         let quitItem = NSMenuItem(
             title: "Quit",
@@ -125,8 +120,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             resetPomodoroItem,
             .separator(),
             launchAtLoginItem,
-            .separator(),
-            repositionItem,
             .separator(),
             quitItem,
         ]
@@ -256,11 +249,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             alert.alertStyle = .warning
             alert.runModal()
         }
-    }
-
-    @objc
-    private func reposition() {
-        windowController.reposition()
     }
 
     @objc
@@ -495,5 +483,28 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard pomodoroStatusItem == nil, countdownStatusItem == nil, counterStatusItem == nil else { return }
         timerTick?.invalidate()
         timerTick = nil
+    }
+
+    private func loadStatusBarTemplateImage() -> NSImage {
+        guard
+            let url = Bundle.module.url(forResource: "status-template", withExtension: "png", subdirectory: "MenuBar"),
+            let image = NSImage(contentsOf: url)
+        else {
+            let fallback = NSImage(systemSymbolName: "menubar.rectangle", accessibilityDescription: "Notch") ?? NSImage()
+            fallback.isTemplate = true
+            return fallback
+        }
+
+        image.isTemplate = true
+        let originalSize = image.size
+        let maxDimension: CGFloat = 24
+        if originalSize.width > 0, originalSize.height > 0 {
+            let scale = min(maxDimension / originalSize.width, maxDimension / originalSize.height)
+            image.size = NSSize(
+                width: floor(originalSize.width * scale),
+                height: floor(originalSize.height * scale)
+            )
+        }
+        return image
     }
 }

@@ -117,6 +117,18 @@ final class MusicProbeViewModel: ObservableObject {
         }
     }
 
+    func play() {
+        Task {
+            await controller?.play()
+        }
+    }
+
+    func pause() {
+        Task {
+            await controller?.pause()
+        }
+    }
+
     func stop() {
         Task {
             await controller?.stop()

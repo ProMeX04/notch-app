@@ -109,6 +109,13 @@ final class GeminiLiveWebRTCAudioIO: NSObject, @unchecked Sendable {
         _ = audioDeviceModule.setMicrophoneMuted(muted)
     }
 
+    func setOutputVolume(_ volume: Float) {
+        let clamped = min(max(volume, 0), 1)
+        queue.async { [weak self] in
+            self?.outputPlayer.volume = clamped
+        }
+    }
+
     func stopCapture() {
         onCapture = nil
 

@@ -11,6 +11,7 @@ extension GeminiLiveSession {
 
             do {
                 try audioIO.startOutput()
+                audioIO.setOutputVolume(outputVolume)
                 outputPrepared = true
 
                 // Start capture early so WebRTC AEC can calibrate the echo path
@@ -36,6 +37,7 @@ extension GeminiLiveSession {
 
         outputEngine.attach(outputPlayer)
         outputEngine.connect(outputPlayer, to: outputEngine.mainMixerNode, format: outputFormat)
+        outputPlayer.volume = outputVolume
         outputPrepared = true
     }
 
@@ -208,9 +210,9 @@ extension GeminiLiveSession {
         )
     }
 
-    func handleFailure(message: String) {
+    func handleFailure(message: String, preserveAudioSession: Bool = false) {
         cancelPendingReconnect()
-        tearDownConnection()
+        tearDownConnection(preserveAudioSession: preserveAudioSession)
         isResumingConnection = false
         onStateChange?(.failed, message)
     }

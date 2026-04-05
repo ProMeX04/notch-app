@@ -95,6 +95,110 @@ struct ToolActionToast: Equatable {
     let icon: String
 }
 
+struct ExecApprovalRequest: Identifiable, Equatable, Sendable {
+    let toolCallID: String
+    let command: String
+    let workingDirectory: String?
+    let timeoutSeconds: Double
+
+    var id: String { toolCallID }
+    var commandFamily: String? { execCommandFamily(for: command) }
+}
+
+func execCommandFamily(for command: String) -> String? {
+    let tokens = shellStyleTokens(from: command, maxTokens: 12)
+    guard !tokens.isEmpty else { return nil }
+
+    var index = 0
+    if tokens[index] == "env" {
+        index += 1
+    }
+
+    while index < tokens.count, isShellEnvAssignment(tokens[index]) {
+        index += 1
+    }
+
+    guard index < tokens.count else { return nil }
+    let executable = tokens[index]
+    let basename = URL(fileURLWithPath: executable).lastPathComponent
+    let trimmed = basename.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed.lowercased()
+}
+
+private func isShellEnvAssignment(_ token: String) -> Bool {
+    guard let equalIndex = token.firstIndex(of: "="), equalIndex != token.startIndex else { return false }
+    let name = token[..<equalIndex]
+    guard let first = name.first, first == "_" || first.isLetter else { return false }
+    return name.dropFirst().allSatisfy { $0 == "_" || $0.isLetter || $0.isNumber }
+}
+
+private func shellStyleTokens(from raw: String, maxTokens: Int) -> [String] {
+    let characters = Array(raw)
+    var tokens: [String] = []
+    var current = ""
+    var index = 0
+    var quote: Character?
+
+    while index < characters.count {
+        let character = characters[index]
+
+        if let quote {
+            if character == quote {
+                selfConsumingAdvance(&index)
+                selfAppendIfNeeded()
+                continue
+            }
+            if character == "\\", quote == "\"", index + 1 < characters.count {
+                current.append(characters[index + 1])
+                index += 2
+                continue
+            }
+            current.append(character)
+            index += 1
+            continue
+        }
+
+        if character.isWhitespace {
+            if !current.isEmpty {
+                tokens.append(current)
+                if tokens.count >= maxTokens { return tokens }
+                current.removeAll(keepingCapacity: true)
+            }
+            index += 1
+            continue
+        }
+
+        if character == "'" || character == "\"" {
+            quote = character
+            index += 1
+            continue
+        }
+
+        if character == "\\", index + 1 < characters.count {
+            current.append(characters[index + 1])
+            index += 2
+            continue
+        }
+
+        current.append(character)
+        index += 1
+    }
+
+    if !current.isEmpty, tokens.count < maxTokens {
+        tokens.append(current)
+    }
+    return tokens
+
+    func selfConsumingAdvance(_ index: inout Int) {
+        quote = nil
+        index += 1
+    }
+
+    func selfAppendIfNeeded() {
+        // Intentionally empty. Closing a quote only changes parser state.
+    }
+}
+
 struct ImageOverlayRequest: Identifiable, Equatable {
     let id = UUID()
     let query: String
@@ -122,7 +226,7 @@ struct TranscriptOverlayInput: Equatable {
             || toolAction != nil || imageRequest != nil
     }
 
-    var shouldShow: Bool { isConnected && hasVisibleContent }
+    var shouldShow: Bool { imageRequest != nil || (isConnected && hasVisibleContent) }
 
     /// Used to suppress panel re-opening when only extras (image/toast) clear.
     var transcriptKey: String { userText + "\u{1F}" + modelText }
@@ -138,8 +242,28 @@ enum GeminiTool: String, CaseIterable, Identifiable {
     case controlVolume = "controlVolume"
     case displayImage = "displayImage"
     case webSearch = "webSearch"
+    case read = "read"
+    case write = "write"
+    case find = "find"
+    case grep = "grep"
+    case edit = "edit"
+    case readDoc = "readDoc"
+    case writeMemory = "writeMemory"
+    case exec = "exec"
 
     var id: String { rawValue }
+
+    static let coreCases: [GeminiTool] = [
+        .webSearch,
+        .read,
+        .write,
+        .exec,
+        .find,
+        .grep,
+        .edit,
+    ]
+
+    static let coreToolSet: Set<GeminiTool> = Set(coreCases)
 
     var displayName: String {
         switch self {
@@ -152,6 +276,14 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         case .controlVolume: return "Volume"
         case .displayImage: return "Images"
         case .webSearch: return "Search"
+        case .read: return "Read"
+        case .write: return "Write"
+        case .find: return "Find"
+        case .grep: return "Grep"
+        case .edit: return "Edit"
+        case .readDoc: return "Read Doc"
+        case .writeMemory: return "Memory"
+        case .exec: return "Exec"
         }
     }
 
@@ -166,6 +298,14 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         case .controlVolume: return "speaker.wave.3"
         case .displayImage: return "photo.on.rectangle"
         case .webSearch: return "magnifyingglass"
+        case .read: return "doc.text"
+        case .write: return "square.and.pencil"
+        case .find: return "folder"
+        case .grep: return "text.magnifyingglass"
+        case .edit: return "slider.horizontal.below.rectangle"
+        case .readDoc: return "doc.text.magnifyingglass"
+        case .writeMemory: return "brain"
+        case .exec: return "terminal"
         }
     }
 }
@@ -198,7 +338,7 @@ struct GeminiSystemPromptPreset: Identifiable, Codable, Hashable {
     }
 
     var toolSet: Set<GeminiTool> {
-        Set(enabledTools.compactMap(GeminiTool.init(rawValue:)))
+        Set(enabledTools.compactMap(GeminiTool.init(rawValue:))).intersection(GeminiTool.coreToolSet)
     }
 
     var voiceEnum: GeminiVoice {
@@ -219,7 +359,7 @@ struct GeminiSystemPromptPreset: Identifiable, Codable, Hashable {
         - Be cute, friendly, natural, and brief.
         - Hieu speaks to you in English, so respond in English unless he clearly asks for another language.
         """,
-        enabledTools: GeminiTool.allCases.map(\.rawValue),
+        enabledTools: GeminiTool.coreCases.map(\.rawValue),
         voice: GeminiVoice.kore.rawValue,
         thinkingLevel: GeminiThinkingLevel.off.rawValue
     )

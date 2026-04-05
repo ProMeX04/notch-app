@@ -2,11 +2,19 @@
 import AppKit
 import Combine
 import Foundation
+@preconcurrency import ScreenCaptureKit
 import Security
 import SwiftUI
+import UniformTypeIdentifiers
 
 @MainActor
 final class GeminiLiveViewModel: ObservableObject {
+    enum ScreenShareMode {
+        case fullScreen
+        case selectedRegion
+        case appWindow
+    }
+
     @Published private(set) var connectionState: GeminiLiveConnectionState = .disconnected
     @Published private(set) var isMicrophoneEnabled = true {
         didSet { persistSettings() }
@@ -19,6 +27,7 @@ final class GeminiLiveViewModel: ObservableObject {
 
     @Published private(set) var isScreenSharingEnabled = false
     @Published private(set) var isModelSpeaking = false
+    @Published private(set) var outputVolume = 1.0
 
     // All three properties below are per-preset: reading reflects the active preset,
     // writing updates the active preset and persists.
@@ -46,17 +55,26 @@ final class GeminiLiveViewModel: ObservableObject {
             persistSettings()
         }
     }
+    @Published var enabledSkillNames: Set<String> = [] {
+        didSet {
+            normalizeEnabledSkillNames()
+            persistSettings()
+        }
+    }
     @Published var showTranscriptOverlay: Bool = true {
         didSet { persistSettings() }
     }
     @Published private(set) var systemPromptPresets: [GeminiSystemPromptPreset] = GeminiSystemPromptPreset.defaultPresets
     @Published private(set) var selectedSystemPromptID = GeminiSystemPromptPreset.defaultPreset.id
+    @Published private(set) var installedSkills: [InstalledSkill] = []
     @Published private(set) var hasSavedAPIKey = false
     @Published private(set) var isSavingAPIKey = false
+    @Published private(set) var isSavingServiceKeys = false
     @Published private(set) var lastToolAction: ToolActionToast?
     @Published private(set) var displayedImageOverlay: ImageOverlayRequest?
     @Published private(set) var overlayInput = TranscriptOverlayInput.idle
     @Published private(set) var isAutoReconnecting = false
+    @Published private(set) var pendingExecApprovals: [ExecApprovalRequest] = []
     private var toastClearTask: Task<Void, Never>?
     private var reconnectTask: Task<Void, Never>?
     private var reconnectAttempt = 0
@@ -64,9 +82,24 @@ final class GeminiLiveViewModel: ObservableObject {
     private var lastDisconnectWasUserInitiated = false
     private var pendingTurnSeparator = false
     private var screenCaptureTimer: Timer?
+    private let screenRegionSelectionController = ScreenRegionSelectionController()
+    private let windowShareSelectionController = WindowShareSelectionController()
+    private let screenShareHighlightController = ScreenShareHighlightController()
+    private var screenShareMode: ScreenShareMode = .fullScreen
+    private var screenShareRegion: CGRect?
+    private var screenShareFilter: SCContentFilter?
     private let session: GeminiLiveSession
     private let keyStore: GeminiLiveAPIKeyStore
+    private let pexelsKeyStore: GeminiLiveSecretStore
+    private let braveSearchKeyStore: GeminiLiveSecretStore
     private let settingsStore: GeminiLiveSettingsStore
+    private let execApprovalStore: GeminiLiveExecApprovalStore
+    private let skillStore: SkillStore
+    private let skillPackageService: SkillPackageService
+    private let userStore: UserStore
+    private let memoryStore: MemoryStore
+    private var currentSkillSnapshot: SkillSessionSnapshot?
+    private var isNormalizingEnabledSkillNames = false
 
     weak var pomodoro: PomodoroViewModel?
     weak var countdown: CountdownViewModel?
@@ -76,18 +109,13 @@ final class GeminiLiveViewModel: ObservableObject {
     private let environmentPexelsAPIKey: String?
     private let environmentBraveSearchAPIKey: String?
     private var storedAPIKey: String?
+    var onExecApprovalAttentionRequested: (() -> Void)?
 
-    @Published var pexelsAPIKeyText: String = "" {
-        didSet {
-            let trimmed = pexelsAPIKeyText.trimmingCharacters(in: .whitespacesAndNewlines)
-            UserDefaults.standard.set(trimmed.isEmpty ? nil : trimmed, forKey: "dev.notch.pexels-api-key")
-        }
-    }
-    @Published var braveSearchAPIKeyText: String = "" {
-        didSet {
-            let trimmed = braveSearchAPIKeyText.trimmingCharacters(in: .whitespacesAndNewlines)
-            UserDefaults.standard.set(trimmed.isEmpty ? nil : trimmed, forKey: "dev.notch.brave-search-api-key")
-        }
+    @Published var pexelsAPIKeyText: String = ""
+    @Published var braveSearchAPIKeyText: String = ""
+
+    var currentPendingExecApproval: ExecApprovalRequest? {
+        pendingExecApprovals.first
     }
 
     init(processInfo: ProcessInfo = .processInfo, session: GeminiLiveSession = GeminiLiveSession()) {
@@ -96,13 +124,31 @@ final class GeminiLiveViewModel: ObservableObject {
         environmentPexelsAPIKey = processInfo.environment["PEXELS_API_KEY"]
         environmentBraveSearchAPIKey = processInfo.environment["BRAVE_SEARCH_API_KEY"]
         keyStore = GeminiLiveAPIKeyStore(processInfo: processInfo)
+        pexelsKeyStore = GeminiLiveSecretStore(
+            processInfo: processInfo,
+            developmentFileURL: GeminiLiveStoragePaths.developmentPexelsAPIKeyFile,
+            keychainAccount: "PexelsAPIKey"
+        )
+        braveSearchKeyStore = GeminiLiveSecretStore(
+            processInfo: processInfo,
+            developmentFileURL: GeminiLiveStoragePaths.developmentBraveSearchAPIKeyFile,
+            keychainAccount: "BraveSearchAPIKey"
+        )
         settingsStore = GeminiLiveSettingsStore()
+        execApprovalStore = GeminiLiveExecApprovalStore()
+        skillStore = SkillStore()
+        skillPackageService = SkillPackageService(skillStore: skillStore)
+        userStore = UserStore()
+        memoryStore = MemoryStore()
+        installedSkills = skillStore.listInstalledSkills()
 
         if let savedSettings = settingsStore.read() {
             isMicrophoneEnabled = savedSettings.isMicrophoneEnabled
             showTranscriptOverlay = savedSettings.showTranscriptOverlay
+            outputVolume = min(max(savedSettings.outputVolume, 0), 1)
             systemPromptPresets = savedSettings.systemPromptPresets
             selectedSystemPromptID = savedSettings.selectedSystemPromptID
+            _enabledSkillNames = Published(initialValue: Set(savedSettings.enabledSkillNames))
         }
 
         if let environmentAPIKey, !environmentAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -118,10 +164,8 @@ final class GeminiLiveViewModel: ObservableObject {
             apiKeyText = ""
         }
 
-        // Load stored API keys for auxiliary services without triggering didSet saves.
-        let defaults = UserDefaults.standard
-        _pexelsAPIKeyText = Published(initialValue: defaults.string(forKey: "dev.notch.pexels-api-key") ?? "")
-        _braveSearchAPIKeyText = Published(initialValue: defaults.string(forKey: "dev.notch.brave-search-api-key") ?? "")
+        _pexelsAPIKeyText = Published(initialValue: configuredPexelsAPIKey ?? "")
+        _braveSearchAPIKeyText = Published(initialValue: configuredBraveSearchAPIKey ?? "")
 
         normalizeSystemPromptSelection()
         // Load all per-preset settings without triggering write-through didSets.
@@ -129,6 +173,10 @@ final class GeminiLiveViewModel: ObservableObject {
         _thinkingLevel = Published(initialValue: active.thinkingEnum)
         _selectedVoice = Published(initialValue: active.voiceEnum)
         _enabledTools = Published(initialValue: active.toolSet)
+        normalizeEnabledSkillNames()
+        let userStore = self.userStore
+        let memoryStore = self.memoryStore
+        session.setOutputVolume(outputVolume)
 
         session.onStateChange = { [weak self] state, message in
             DispatchQueue.main.async {
@@ -215,6 +263,7 @@ final class GeminiLiveViewModel: ObservableObject {
 
         session.onFunctionExecuted = { [weak self] name, args, result in
             let action = args["action"] as? String
+            let documentKind = args["kind"] as? String
             let resultSuccess = result["success"] as? Bool
             let resultMessage = result["message"] as? String
             let resultError = result["error"] as? String
@@ -242,6 +291,59 @@ final class GeminiLiveViewModel: ObservableObject {
                             self.postToolAction(label: error, icon: "exclamationmark.triangle")
                         }
                     }
+                } else if name == "read" {
+                    if resultSuccess == true {
+                        self.postToolAction(label: "Read file", icon: "doc.text")
+                    } else if let error = resultError {
+                        self.postToolAction(label: error, icon: "exclamationmark.triangle")
+                    }
+                } else if name == "write" {
+                    if resultSuccess == true {
+                        self.postToolAction(label: "Wrote file", icon: "square.and.pencil")
+                    } else if let error = resultError {
+                        self.postToolAction(label: error, icon: "exclamationmark.triangle")
+                    }
+                } else if name == "exec" {
+                    if resultSuccess == true {
+                        self.postToolAction(label: "Ran command", icon: "terminal")
+                    } else if let error = resultError {
+                        self.postToolAction(label: error, icon: "exclamationmark.triangle")
+                    }
+                } else if name == "find" {
+                    if resultSuccess == true {
+                        self.postToolAction(label: "Found files", icon: "folder")
+                    } else if let error = resultError {
+                        self.postToolAction(label: error, icon: "exclamationmark.triangle")
+                    }
+                } else if name == "grep" {
+                    if resultSuccess == true {
+                        self.postToolAction(label: "Searched files", icon: "text.magnifyingglass")
+                    } else if let error = resultError {
+                        self.postToolAction(label: error, icon: "exclamationmark.triangle")
+                    }
+                } else if name == "edit" {
+                    if resultSuccess == true {
+                        self.postToolAction(label: "Edited file", icon: "slider.horizontal.below.rectangle")
+                    } else if let error = resultError {
+                        self.postToolAction(label: error, icon: "exclamationmark.triangle")
+                    }
+                } else if name == "readDoc" {
+                    let label: String
+                    switch documentKind {
+                    case ReadDocKind.skill.rawValue:
+                        label = "Read skill"
+                    case ReadDocKind.user.rawValue:
+                        label = "Read user"
+                    default:
+                        label = "Read memory"
+                    }
+                    self.postToolAction(label: label, icon: "book.pages")
+                } else if name == "writeMemory" {
+                    if resultSuccess == true {
+                        self.postToolAction(label: "Memory updated", icon: "brain")
+                    } else if let error = resultError {
+                        self.postToolAction(label: error, icon: "exclamationmark.triangle")
+                    }
                 }
             }
         }
@@ -249,6 +351,73 @@ final class GeminiLiveViewModel: ObservableObject {
         session.onDisplayImageRequest = { [weak self] request in
             DispatchQueue.main.async {
                 self?.displayedImageOverlay = request
+            }
+        }
+
+        session.onReadDocument = { [weak self] kind, id, snapshot in
+            guard self != nil else {
+                return ["success": false, "error": "Document reader is unavailable."]
+            }
+            switch kind {
+            case .skill:
+                guard let snapshot, let skill = snapshot.skillsByName[id] else {
+                    return ["success": false, "error": "Skill \"\(id)\" is not active in this session."]
+                }
+                return [
+                    "success": true,
+                    "kind": kind.rawValue,
+                    "id": skill.metadata.name,
+                    "name": skill.metadata.name,
+                    "description": skill.metadata.description,
+                    "category": skill.metadata.category,
+                    "instructions": skill.instructions
+                ]
+            case .user:
+                guard id == "main" else {
+                    return ["success": false, "error": "Unknown user document \"\(id)\"."]
+                }
+                return [
+                    "success": true,
+                    "kind": kind.rawValue,
+                    "id": "main",
+                    "content": userStore.readUserProfile()
+                ]
+            case .memory:
+                guard id == "main" else {
+                    return ["success": false, "error": "Unknown memory document \"\(id)\"."]
+                }
+                return [
+                    "success": true,
+                    "kind": kind.rawValue,
+                    "id": "main",
+                    "content": memoryStore.readMainMemory()
+                ]
+            }
+        }
+
+        session.onWriteMemory = { [weak self] content in
+            guard self != nil else {
+                return ["success": false, "error": "Memory store is unavailable."]
+            }
+            do {
+                try memoryStore.appendToMainMemory(content)
+                return ["success": true, "message": "Memory updated."]
+            } catch {
+                return ["success": false, "error": "Couldn't update memory: \(error.localizedDescription)"]
+            }
+        }
+
+        session.onShouldAutoApproveExec = { [execApprovalStore] command, workingDirectory in
+            execApprovalStore.isApproved(command: command, workingDirectory: workingDirectory)
+        }
+
+        session.onExecApprovalRequested = { [weak self] request in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if !self.pendingExecApprovals.contains(where: { $0.toolCallID == request.toolCallID }) {
+                    self.pendingExecApprovals.append(request)
+                }
+                self.onExecApprovalAttentionRequested?()
             }
         }
 
@@ -284,6 +453,22 @@ final class GeminiLiveViewModel: ObservableObject {
         systemPromptPresets.first(where: { $0.id == selectedSystemPromptID })
             ?? systemPromptPresets.first
             ?? GeminiSystemPromptPreset.defaultPreset
+    }
+
+    var activeInstalledSkills: [InstalledSkill] {
+        installedSkills.filter { enabledSkillNames.contains($0.metadata.name) }
+    }
+
+    var userInstalledSkills: [InstalledSkill] {
+        installedSkills.filter { $0.metadata.category.lowercased() != "builtin" }
+    }
+
+    var effectiveEnabledTools: Set<GeminiTool> {
+        enabledTools
+    }
+
+    var canManageSkills: Bool {
+        connectionState != .connecting && connectionState != .connected
     }
 
     var selectedSystemPromptTitle: String {
@@ -370,9 +555,30 @@ final class GeminiLiveViewModel: ObservableObject {
         }
     }
 
-    private func buildSystemPrompt(currentTime: String) -> String {
+    private func buildSystemPrompt(
+        currentTime: String,
+        activeSkills: [InstalledSkill],
+        effectiveTools: Set<GeminiTool>,
+        userContent: String
+    ) -> String {
         let promptBody = selectedSystemPromptPreset.content.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedPromptBody = promptBody.isEmpty ? GeminiSystemPromptPreset.defaultPreset.content : promptBody
+        let skillPrompt = SkillPromptComposer.buildPromptSection(
+            for: activeSkills,
+            canReadSkills: effectiveTools.contains(.read)
+        )
+        let trimmedUser = userContent.trimmingCharacters(in: .whitespacesAndNewlines)
+        let userPrompt = trimmedUser.isEmpty ? "" : """
+
+        User profile:
+        <user>
+        \(trimmedUser)
+        </user>
+        """
+        let optionalSkillSection = skillPrompt.isEmpty ? "" : "\n\n\(skillPrompt)"
+        let optionalUserSection = userPrompt.isEmpty ? "" : "\n\n\(userPrompt)"
+        let toolRules = buildToolRules(for: effectiveTools)
+        let optionalToolRulesSection = toolRules.isEmpty ? "" : "\n\nTool rules:\n\(toolRules)"
 
         return """
         \(resolvedPromptBody)
@@ -381,10 +587,38 @@ final class GeminiLiveViewModel: ObservableObject {
         - Time: \(currentTime) (Hanoi timezone, UTC+7)
         - Location: Hanoi, Vietnam
 
-        Tool rules:
-        - When the user wants to open music, a song, an album, an artist, or a music video without giving a direct link, use the `controlBrowser` tool with `action: "open"` and pass the target text in `query`. The app will use DuckDuckGo Lucky to open the best matching result in the default browser.
-        - When the user wants you to show a photo, wallpaper, illustration, or inspirational image on screen, use the `displayImage` tool with a short descriptive `query`.
+        \(optionalToolRulesSection)
+        \(optionalUserSection)
+        \(optionalSkillSection)
         """
+    }
+
+    private func buildToolRules(for effectiveTools: Set<GeminiTool>) -> String {
+        var lines: [String] = []
+
+        if effectiveTools.contains(.webSearch) {
+            lines.append("- When the user asks for up-to-date information, use `webSearch` instead of guessing. This is the default web lookup tool.")
+        }
+        if effectiveTools.contains(.exec) {
+            lines.append("- Use `exec` for local shell commands on this Mac, such as `curl`, `python3`, `jq`, or `git`. Commands default to `~/.notch/workspace`, and new commands may require approval.")
+        }
+        if effectiveTools.contains(.read) {
+            lines.append("- Use `read` to open files inside `~/.notch/workspace`, including `USER.md` and `MEMORY.md`, and to open built-in skill `SKILL.md` files via the exact `location` values listed in `<available_skills>`.")
+        }
+        if effectiveTools.contains(.write) {
+            lines.append("- Use `write` to create or overwrite text files inside `~/.notch/workspace`. For persistent notes, update `MEMORY.md` deliberately.")
+        }
+        if effectiveTools.contains(.find) {
+            lines.append("- Use `find` when you need to locate a file or folder path before reading or editing it.")
+        }
+        if effectiveTools.contains(.grep) {
+            lines.append("- Use `grep` to search file contents before guessing where text lives.")
+        }
+        if effectiveTools.contains(.edit) {
+            lines.append("- Use `edit` for small precise replacements in an existing file instead of rewriting the whole file.")
+        }
+
+        return lines.joined(separator: "\n")
     }
 
     private func executeControlTimerAction(
@@ -617,6 +851,31 @@ final class GeminiLiveViewModel: ObservableObject {
         connectionState.accentColor
     }
 
+    var screenSharingLabel: String {
+        if isWindowScreenSharing {
+            return "App"
+        }
+        return isRegionScreenSharing ? "Region" : "Screen"
+    }
+
+    var screenSharingIcon: String {
+        if isWindowScreenSharing {
+            return "macwindow"
+        }
+        if isRegionScreenSharing {
+            return "crop"
+        }
+        return isScreenSharingEnabled ? "eye.fill" : "eye"
+    }
+
+    var isRegionScreenSharing: Bool {
+        isScreenSharingEnabled && screenShareMode == .selectedRegion
+    }
+
+    var isWindowScreenSharing: Bool {
+        isScreenSharingEnabled && screenShareMode == .appWindow
+    }
+
     var isCompactIndicatorAnimated: Bool {
         connectionState == .connected && isMicrophoneEnabled
     }
@@ -628,6 +887,16 @@ final class GeminiLiveViewModel: ObservableObject {
         case .disconnected, .failed:
             connect()
         }
+    }
+
+    func connectIfNeeded() {
+        guard connectionState != .connected, connectionState != .connecting else { return }
+        connect()
+    }
+
+    func disconnectIfNeeded() {
+        guard connectionState == .connected || connectionState == .connecting else { return }
+        disconnect()
     }
 
     func saveAPIKey() async -> Bool {
@@ -670,6 +939,45 @@ final class GeminiLiveViewModel: ObservableObject {
         }
     }
 
+    func saveServiceKeys() async -> Bool {
+        let trimmedGeminiKey = apiKeyText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let needsGeminiSave = !trimmedGeminiKey.isEmpty && trimmedGeminiKey != (configuredAPIKey ?? "")
+
+        if needsGeminiSave {
+            guard await saveAPIKey() else { return false }
+        } else if configuredAPIKey == nil {
+            lastErrorMessage = "Gemini API key is missing."
+            statusText = "Paste a Gemini API key, then save again."
+            return false
+        }
+
+        isSavingServiceKeys = true
+        defer { isSavingServiceKeys = false }
+
+        let didSavePexels = persistServiceKey(
+            draftValue: pexelsAPIKeyText,
+            envValue: environmentPexelsAPIKey,
+            store: pexelsKeyStore
+        )
+        let didSaveBrave = persistServiceKey(
+            draftValue: braveSearchAPIKeyText,
+            envValue: environmentBraveSearchAPIKey,
+            store: braveSearchKeyStore
+        )
+
+        guard didSavePexels && didSaveBrave else {
+            lastErrorMessage = "Couldn't save one or more service keys."
+            statusText = "Saving service keys failed."
+            return false
+        }
+
+        pexelsAPIKeyText = configuredPexelsAPIKey ?? ""
+        braveSearchAPIKeyText = configuredBraveSearchAPIKey ?? ""
+        lastErrorMessage = nil
+        statusText = "Keys saved."
+        return true
+    }
+
     func connect(clearingTranscripts: Bool = true) {
         guard let configuredAPIKey else {
             connectionState = .failed
@@ -701,7 +1009,20 @@ final class GeminiLiveViewModel: ObservableObject {
                 formatter.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")
                 let currentTime = formatter.string(from: now)
 
-                let systemPrompt = self.buildSystemPrompt(currentTime: currentTime)
+                let skillSnapshot: SkillSessionSnapshot
+                if clearingTranscripts || self.currentSkillSnapshot == nil {
+                    skillSnapshot = self.makeSkillSessionSnapshot()
+                    self.currentSkillSnapshot = skillSnapshot
+                } else {
+                    skillSnapshot = self.currentSkillSnapshot ?? self.makeSkillSessionSnapshot()
+                }
+
+                let systemPrompt = self.buildSystemPrompt(
+                    currentTime: currentTime,
+                    activeSkills: skillSnapshot.activeSkills,
+                    effectiveTools: skillSnapshot.effectiveTools,
+                    userContent: userStore.readUserProfile()
+                )
 
                 let preset = self.selectedSystemPromptPreset
                 self.session.connect(
@@ -713,7 +1034,8 @@ final class GeminiLiveViewModel: ObservableObject {
                     voiceName: preset.voiceEnum.apiName,
                     pexelsAPIKey: self.configuredPexelsAPIKey,
                     braveSearchAPIKey: self.configuredBraveSearchAPIKey,
-                    enabledTools: preset.toolSet,
+                    enabledTools: skillSnapshot.effectiveTools,
+                    skillSnapshot: skillSnapshot,
                     resumeSession: !clearingTranscripts
                 )
             }
@@ -725,11 +1047,13 @@ final class GeminiLiveViewModel: ObservableObject {
         cancelReconnect()
         stopScreenCapture()
         displayedImageOverlay = nil
+        pendingExecApprovals.removeAll()
         toastClearTask?.cancel()
         toastClearTask = nil
         lastToolAction = nil
         // Transcript có thể rất dài; giữ lại sau khi ngắt kết nối làm RAM không giảm trong Activity Monitor.
         clearTranscripts()
+        currentSkillSnapshot = nil
         session.disconnect(userInitiated: true)
         connectionState = .disconnected
         statusText = hasConfiguredAPIKey ? "Ready to connect to Gemini Live." : "Paste your Gemini API key to start Gemini Live."
@@ -764,33 +1088,169 @@ final class GeminiLiveViewModel: ObservableObject {
         isAutoReconnecting = false
     }
 
-    func toggleScreenSharing() {
-        isScreenSharingEnabled.toggle()
-        if isScreenSharingEnabled {
-            startScreenCapture()
-        } else {
-            stopScreenCapture()
+    func startFullScreenSharing() {
+        guard ensureScreenCapturePermission() else { return }
+        screenRegionSelectionController.cancelSelection(notify: false)
+        windowShareSelectionController.cancelSelection(notify: false)
+        screenShareMode = .fullScreen
+        screenShareRegion = nil
+        screenShareFilter = nil
+        screenShareHighlightController.hide()
+        beginScreenCapture(statusMessage: "Sharing full screen.")
+    }
+
+    func startRegionScreenSharing() {
+        guard ensureScreenCapturePermission() else { return }
+        let wasSharing = isScreenSharingEnabled
+        let previousMode = screenShareMode
+        let previousRegion = screenShareRegion
+        let previousFilter = screenShareFilter
+
+        pauseScreenCapture()
+        isScreenSharingEnabled = false
+        screenShareHighlightController.hide()
+        statusText = "Drag to select a screen region. Press Esc to cancel."
+
+        screenRegionSelectionController.beginSelection { [weak self] rect in
+            guard let self else { return }
+
+            guard let rect, rect.width >= 12, rect.height >= 12 else {
+                if wasSharing {
+                    self.screenShareMode = previousMode
+                    self.screenShareRegion = previousRegion
+                    self.screenShareFilter = previousFilter
+                    self.beginScreenCapture(statusMessage: self.statusMessage(for: previousMode, selectedFilter: previousFilter))
+                } else if self.connectionState == .connected || self.connectionState == .connecting {
+                    self.statusText = "Region selection cancelled."
+                }
+                return
+            }
+
+            self.screenShareMode = .selectedRegion
+            self.screenShareRegion = rect.integral
+            self.screenShareFilter = nil
+            self.updateScreenShareHighlight()
+            self.beginScreenCapture(statusMessage: "Sharing selected region.")
         }
     }
 
-    private func startScreenCapture() {
+    func startWindowSharing() {
+        guard ensureScreenCapturePermission() else { return }
+        let wasSharing = isScreenSharingEnabled
+        let previousMode = screenShareMode
+        let previousRegion = screenShareRegion
+        let previousFilter = screenShareFilter
+
+        pauseScreenCapture()
+        isScreenSharingEnabled = false
+        screenShareHighlightController.hide()
+        statusText = "Choose an app or window to share."
+
+        windowShareSelectionController.beginSelection { [weak self] selectedFilter in
+            guard let self else { return }
+
+            guard let selectedFilter else {
+                if wasSharing {
+                    self.screenShareMode = previousMode
+                    self.screenShareRegion = previousRegion
+                    self.screenShareFilter = previousFilter
+                    self.beginScreenCapture(statusMessage: self.statusMessage(for: previousMode, selectedFilter: previousFilter))
+                } else if self.connectionState == .connected || self.connectionState == .connecting {
+                    self.statusText = "App or window selection cancelled."
+                }
+                return
+            }
+
+            self.screenShareMode = .appWindow
+            self.screenShareRegion = nil
+            self.screenShareFilter = selectedFilter
+            self.updateScreenShareHighlight()
+            self.beginScreenCapture(statusMessage: self.statusMessage(for: .appWindow, selectedFilter: selectedFilter))
+        }
+    }
+
+    func stopScreenSharing() {
+        stopScreenCapture()
+        if connectionState == .connected || connectionState == .connecting {
+            statusText = "Screen sharing stopped."
+        }
+    }
+
+    private func beginScreenCapture(statusMessage: String) {
+        pauseScreenCapture()
+        isScreenSharingEnabled = true
+        statusText = statusMessage
         let captureSession = session
+        let captureRegion = screenShareRegion
+        let captureFilter = screenShareFilter
+        updateScreenShareHighlight()
         screenCaptureTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { _ in
-            Task.detached {
-                guard let jpeg = GeminiLiveViewModel.captureAndEncodeScreen() else { return }
+            Task { @MainActor in
+                self.updateScreenShareHighlight()
+                guard let jpeg = await GeminiLiveViewModel.captureAndEncodeScreen(region: captureRegion, contentFilter: captureFilter) else { return }
                 captureSession.sendScreenFrame(jpeg)
             }
         }
     }
 
-    private func stopScreenCapture() {
-        screenCaptureTimer?.invalidate()
-        screenCaptureTimer = nil
-        isScreenSharingEnabled = false
+    private func ensureScreenCapturePermission() -> Bool {
+        if CGPreflightScreenCaptureAccess() {
+            return true
+        }
+
+        let granted = CGRequestScreenCaptureAccess()
+        if granted {
+            return true
+        }
+
+        lastErrorMessage = "Screen Recording permission is required to share your screen."
+        statusText = "Allow Screen Recording for Notch, then try again."
+        return false
     }
 
-    private nonisolated static func captureAndEncodeScreen() -> Data? {
-        let mainScreenBounds = NSScreen.main.map { screen in
+    private func pauseScreenCapture() {
+        screenCaptureTimer?.invalidate()
+        screenCaptureTimer = nil
+    }
+
+    private func stopScreenCapture() {
+        screenRegionSelectionController.cancelSelection(notify: false)
+        windowShareSelectionController.cancelSelection(notify: false)
+        pauseScreenCapture()
+        isScreenSharingEnabled = false
+        screenShareHighlightController.hide()
+    }
+
+    private func updateScreenShareHighlight() {
+        guard isScreenSharingEnabled || screenShareMode != .fullScreen else {
+            screenShareHighlightController.hide()
+            return
+        }
+
+        switch screenShareMode {
+        case .fullScreen:
+            screenShareHighlightController.hide()
+        case .selectedRegion:
+            guard let screenShareRegion else {
+                screenShareHighlightController.hide()
+                return
+            }
+            screenShareHighlightController.show(rect: screenShareRegion)
+        case .appWindow:
+            screenShareHighlightController.hide()
+        }
+    }
+
+    private nonisolated static func captureAndEncodeScreen(region: CGRect?, contentFilter: SCContentFilter?) async -> Data? {
+        if let contentFilter {
+            return await captureAndEncodeSharedContent(contentFilter)
+        }
+
+        return captureAndEncodeDisplayRegion(region)
+    }
+
+    private nonisolated static func captureAndEncodeDisplayRegion(_ region: CGRect?) -> Data? {
+        let captureRect = region ?? NSScreen.main.map { screen in
             CGRect(
                 x: screen.frame.origin.x,
                 y: screen.frame.origin.y,
@@ -799,10 +1259,14 @@ final class GeminiLiveViewModel: ObservableObject {
             )
         } ?? CGRect.infinite
 
-        guard let fullImage = CGWindowListCreateImage(
-            mainScreenBounds, .optionAll, kCGNullWindowID, [.boundsIgnoreFraming]
-        ) else { return nil }
+        let fullImage = CGWindowListCreateImage(
+            captureRect, .optionAll, kCGNullWindowID, [.boundsIgnoreFraming]
+        )
+        guard let fullImage else { return nil }
+        return encodeJPEG(from: fullImage)
+    }
 
+    private nonisolated static func encodeJPEG(from fullImage: CGImage) -> Data? {
         let maxWidth: CGFloat = 1280
         let originalWidth = CGFloat(fullImage.width)
         let originalHeight = CGFloat(fullImage.height)
@@ -828,10 +1292,57 @@ final class GeminiLiveViewModel: ObservableObject {
         return bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: 0.6])
     }
 
+    @available(macOS 14.0, *)
+    private nonisolated static func captureAndEncodeSharedContent(_ contentFilter: SCContentFilter) async -> Data? {
+        let contentInfo = SCShareableContent.info(for: contentFilter)
+        let contentRect = contentInfo.contentRect.standardized
+        guard contentRect.width > 0, contentRect.height > 0 else { return nil }
+
+        let streamConfiguration = SCStreamConfiguration()
+        let pixelScale = CGFloat(max(contentInfo.pointPixelScale, 1))
+        streamConfiguration.width = max(Int((contentRect.width * pixelScale).rounded(.up)), 1)
+        streamConfiguration.height = max(Int((contentRect.height * pixelScale).rounded(.up)), 1)
+        streamConfiguration.showsCursor = false
+
+        let image = await withCheckedContinuation { (continuation: CheckedContinuation<CGImage?, Never>) in
+            SCScreenshotManager.captureImage(contentFilter: contentFilter, configuration: streamConfiguration) { image, error in
+                guard error == nil else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                continuation.resume(returning: image)
+            }
+        }
+
+        guard let image else { return nil }
+        return encodeJPEG(from: image)
+    }
+
     func toggleMicrophone() {
         isMicrophoneEnabled.toggle()
         session.setMicrophoneEnabled(isMicrophoneEnabled)
         statusText = isMicrophoneEnabled ? "Microphone is live." : "Microphone muted."
+    }
+
+    func setMicrophoneEnabled(_ enabled: Bool) {
+        guard isMicrophoneEnabled != enabled else { return }
+        isMicrophoneEnabled = enabled
+        session.setMicrophoneEnabled(isMicrophoneEnabled)
+        statusText = isMicrophoneEnabled ? "Microphone is live." : "Microphone muted."
+    }
+
+    func setOutputVolume(_ volume: Double) {
+        let clamped = min(max(volume, 0), 1)
+        guard abs(outputVolume - clamped) > 0.001 else { return }
+        outputVolume = clamped
+        session.setOutputVolume(clamped)
+        persistSettings()
+    }
+
+    func setTranscriptOverlayEnabled(_ enabled: Bool) {
+        guard showTranscriptOverlay != enabled else { return }
+        showTranscriptOverlay = enabled
+        statusText = showTranscriptOverlay ? "Captions enabled." : "Captions hidden."
     }
 
     func clearTranscripts() {
@@ -859,11 +1370,263 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     func shutdown() {
+        currentSkillSnapshot = nil
+        pendingExecApprovals.removeAll()
+        screenRegionSelectionController.cancelSelection(notify: false)
+        windowShareSelectionController.cancelSelection(notify: false)
         session.disconnect(userInitiated: true)
+    }
+
+    private func statusMessage(for mode: ScreenShareMode, selectedFilter: SCContentFilter?) -> String {
+        switch mode {
+        case .fullScreen:
+            return "Sharing full screen."
+        case .selectedRegion:
+            return "Sharing selected region."
+        case .appWindow:
+            guard let selectedFilter else {
+                return "Sharing selected app or window."
+            }
+            let style = SCShareableContent.info(for: selectedFilter).style
+            switch style {
+            case .application:
+                return "Sharing selected app."
+            case .window:
+                return "Sharing selected window."
+            default:
+                return "Sharing selected content."
+            }
+        }
     }
 
     func clearDisplayedImageOverlay() {
         displayedImageOverlay = nil
+    }
+
+    func showDisplayedImageOverlay(query: String, caption: String?, orientation: String?) {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else {
+            postToolAction(label: "Image query is empty", icon: "exclamationmark.triangle")
+            return
+        }
+
+        guard let apiKey = configuredPexelsAPIKey else {
+            postToolAction(label: "[Pexels] API key is missing.", icon: "exclamationmark.triangle")
+            return
+        }
+
+        guard var components = URLComponents(string: "https://api.pexels.com/v1/search") else {
+            postToolAction(label: "[Pexels] Couldn't create request.", icon: "exclamationmark.triangle")
+            return
+        }
+
+        components.queryItems = [
+            URLQueryItem(name: "query", value: trimmedQuery),
+            URLQueryItem(name: "per_page", value: "1"),
+            URLQueryItem(name: "page", value: "1"),
+            URLQueryItem(name: "orientation", value: normalizedPexelsOrientationValue(orientation)),
+        ]
+
+        guard let url = components.url else {
+            postToolAction(label: "[Pexels] Couldn't encode query.", icon: "exclamationmark.triangle")
+            return
+        }
+
+        let trimmedCaption = caption?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        Task { [weak self] in
+            var request = URLRequest(url: url)
+            request.setValue(apiKey, forHTTPHeaderField: "Authorization")
+            request.timeoutInterval = 15
+
+            do {
+                let (data, response) = try await URLSession(configuration: .ephemeral).data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    await MainActor.run {
+                        self?.postToolAction(label: "[Pexels] Invalid response.", icon: "exclamationmark.triangle")
+                    }
+                    return
+                }
+
+                guard (200 ... 299).contains(httpResponse.statusCode) else {
+                    let message = Self.decodePexelsOverlayError(from: data) ?? "Returned HTTP \(httpResponse.statusCode)."
+                    await MainActor.run {
+                        self?.postToolAction(label: "[Pexels] \(message)", icon: "exclamationmark.triangle")
+                    }
+                    return
+                }
+
+                let payload = try JSONDecoder().decode(OverlayPexelsSearchResponse.self, from: data)
+                guard let photo = payload.photos.first,
+                      let imageURL = photo.src.large2x ?? photo.src.large ?? photo.src.medium else {
+                    await MainActor.run {
+                        self?.postToolAction(label: "[Pexels] No matching images.", icon: "exclamationmark.triangle")
+                    }
+                    return
+                }
+
+                let resolvedCaption = (trimmedCaption?.isEmpty == false ? trimmedCaption : nil)
+                    ?? trimmedQuery.prefix(1).uppercased() + trimmedQuery.dropFirst()
+
+                let overlay = ImageOverlayRequest(
+                    query: trimmedQuery,
+                    imageURL: imageURL,
+                    sourceURL: photo.url,
+                    caption: resolvedCaption,
+                    photographer: photo.photographer
+                )
+
+                await MainActor.run {
+                    self?.displayedImageOverlay = overlay
+                }
+            } catch {
+                await MainActor.run {
+                    self?.postToolAction(
+                        label: "[Pexels] Request failed: \(error.localizedDescription)",
+                        icon: "exclamationmark.triangle"
+                    )
+                }
+            }
+        }
+    }
+
+    func showDisplayedImageOverlay(url: URL, query: String?, caption: String?) {
+        let trimmedCaption = caption?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedQuery = query?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedQuery = (trimmedQuery?.isEmpty == false ? trimmedQuery : nil) ?? "image"
+        let resolvedCaption = (trimmedCaption?.isEmpty == false ? trimmedCaption : nil) ?? "Image"
+
+        displayedImageOverlay = ImageOverlayRequest(
+            query: resolvedQuery,
+            imageURL: url,
+            sourceURL: url.isFileURL ? nil : url,
+            caption: resolvedCaption,
+            photographer: nil
+        )
+    }
+
+    private static func decodePexelsOverlayError(from data: Data) -> String? {
+        if let envelope = try? JSONDecoder().decode(OverlayPexelsErrorResponse.self, from: data),
+           !envelope.error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return envelope.error
+        }
+
+        if let raw = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !raw.isEmpty {
+            return raw
+        }
+
+        return nil
+    }
+
+    func approveCurrentExecApprovalOnce() {
+        guard let request = currentPendingExecApproval else { return }
+        pendingExecApprovals.removeAll { $0.toolCallID == request.toolCallID }
+        session.approveExecCall(toolCallID: request.toolCallID)
+    }
+
+    func approveCurrentExecApprovalExact() {
+        guard let request = currentPendingExecApproval else { return }
+        execApprovalStore.approveExact(command: request.command, workingDirectory: request.workingDirectory)
+        pendingExecApprovals.removeAll { $0.toolCallID == request.toolCallID }
+        session.approveExecCall(toolCallID: request.toolCallID)
+    }
+
+    func approveCurrentExecApprovalFamily() {
+        guard let request = currentPendingExecApproval else { return }
+        execApprovalStore.approveFamily(command: request.command, workingDirectory: request.workingDirectory)
+        pendingExecApprovals.removeAll { $0.toolCallID == request.toolCallID }
+        session.approveExecCall(toolCallID: request.toolCallID)
+    }
+
+    func denyCurrentExecApproval() {
+        guard let request = currentPendingExecApproval else { return }
+        pendingExecApprovals.removeAll { $0.toolCallID == request.toolCallID }
+        session.denyExecCall(toolCallID: request.toolCallID)
+    }
+
+    func importSkill() {
+        guard canManageSkills else { return }
+
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "skill") ?? .zip]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = true
+        panel.prompt = "Import"
+        panel.message = "Choose a .skill package or a folder containing SKILL.md."
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let installed: InstalledSkill
+            do {
+                installed = try skillPackageService.importSkillSource(from: url)
+            } catch SkillImportError.duplicateSkill(let name) {
+                let alert = NSAlert()
+                alert.alertStyle = .warning
+                alert.messageText = "Replace existing skill?"
+                alert.informativeText = "A skill named \"\(name)\" is already installed. Replace it with this package?"
+                alert.addButton(withTitle: "Replace")
+                alert.addButton(withTitle: "Cancel")
+                guard alert.runModal() == .alertFirstButtonReturn else { return }
+                installed = try skillPackageService.importSkillSource(from: url, replacingExisting: true)
+            }
+
+            reloadInstalledSkills()
+            enabledSkillNames.insert(installed.metadata.name)
+            statusText = "Imported skill \"\(installed.metadata.name)\"."
+            lastErrorMessage = nil
+        } catch {
+            lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            statusText = "Skill import failed."
+        }
+    }
+
+    func deleteSkill(named name: String) {
+        guard canManageSkills else { return }
+        guard !skillStore.isBuiltInSkill(named: name) else {
+            lastErrorMessage = "Built-in skill \"\(name)\" can't be deleted."
+            statusText = "Skill deletion blocked."
+            return
+        }
+
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Delete skill?"
+        alert.informativeText = "Delete \"\(name)\" from Notch? This removes the skill package from your Mac."
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        do {
+            try skillStore.deleteSkill(named: name)
+            enabledSkillNames.remove(name)
+            reloadInstalledSkills()
+            statusText = "Deleted skill \"\(name)\"."
+            lastErrorMessage = nil
+        } catch {
+            lastErrorMessage = "Couldn't delete skill \"\(name)\": \(error.localizedDescription)"
+            statusText = "Skill deletion failed."
+        }
+    }
+
+    func canDeleteSkill(_ skill: InstalledSkill) -> Bool {
+        !skillStore.isBuiltInSkill(named: skill.metadata.name)
+    }
+
+    func clearKeyDrafts() {
+        apiKeyText = ""
+        pexelsAPIKeyText = ""
+        braveSearchAPIKeyText = ""
+    }
+
+    func reloadKeyDrafts() {
+        let currentGeminiKey = currentStoredGeminiKey()
+        storedAPIKey = currentGeminiKey
+        apiKeyText = currentGeminiKey ?? ""
+        pexelsAPIKeyText = currentStoredPexelsKey() ?? ""
+        braveSearchAPIKeyText = currentStoredBraveSearchKey() ?? ""
     }
 
     private func persistSettings() {
@@ -871,10 +1634,39 @@ final class GeminiLiveViewModel: ObservableObject {
             GeminiLiveSettings(
                 isMicrophoneEnabled: isMicrophoneEnabled,
                 showTranscriptOverlay: showTranscriptOverlay,
+                outputVolume: outputVolume,
                 systemPromptPresets: systemPromptPresets,
-                selectedSystemPromptID: selectedSystemPromptID
+                selectedSystemPromptID: selectedSystemPromptID,
+                enabledSkillNames: enabledSkillNames.sorted()
             )
         )
+    }
+
+    private func reloadInstalledSkills() {
+        installedSkills = skillStore.listInstalledSkills()
+        normalizeEnabledSkillNames()
+    }
+
+    private func makeSkillSessionSnapshot() -> SkillSessionSnapshot {
+        let skillsByName = Dictionary(uniqueKeysWithValues: activeInstalledSkills.map { ($0.metadata.name, $0) })
+        let enabledNames = activeInstalledSkills.map(\.metadata.name).sorted()
+        return SkillSessionSnapshot(
+            skillsByName: skillsByName,
+            enabledSkillNames: enabledNames,
+            effectiveTools: effectiveEnabledTools
+        )
+    }
+
+    private func normalizeEnabledSkillNames() {
+        guard !isNormalizingEnabledSkillNames else { return }
+        isNormalizingEnabledSkillNames = true
+        defer { isNormalizingEnabledSkillNames = false }
+
+        let validNames = Set(installedSkills.map(\.metadata.name))
+        let filtered = enabledSkillNames.intersection(validNames)
+        if filtered != enabledSkillNames {
+            enabledSkillNames = filtered
+        }
     }
 
     private var draftAPIKey: String? {
@@ -890,56 +1682,61 @@ final class GeminiLiveViewModel: ObservableObject {
             }
         }
 
-        guard let storedKey = storedAPIKey?.trimmingCharacters(in: .whitespacesAndNewlines), !storedKey.isEmpty else {
-            return nil
-        }
-        return storedKey
+        return currentStoredGeminiKey()
     }
 
     private var configuredPexelsAPIKey: String? {
-        if let environmentPexelsAPIKey {
-            let trimmedEnvironmentKey = environmentPexelsAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmedEnvironmentKey.isEmpty {
-                return trimmedEnvironmentKey
-            }
-        }
-
-        let defaults = UserDefaults.standard
-        let storedKeys = [
-            defaults.string(forKey: "PEXELS_API_KEY"),
-            defaults.string(forKey: "dev.notch.pexels-api-key"),
-        ]
-
-        for candidate in storedKeys {
-            guard let candidate else { continue }
-            let trimmedCandidate = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmedCandidate.isEmpty {
-                return trimmedCandidate
-            }
-        }
-
-        return nil
+        currentStoredPexelsKey()
     }
 
     private var configuredBraveSearchAPIKey: String? {
+        currentStoredBraveSearchKey()
+    }
+
+    private func currentStoredGeminiKey() -> String? {
+        if let environmentAPIKey {
+            let trimmed = environmentAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { return trimmed }
+        }
+        return normalizedStoredSecret(storedAPIKey ?? keyStore.read())
+    }
+
+    private func currentStoredPexelsKey() -> String? {
+        if let environmentPexelsAPIKey {
+            let trimmed = environmentPexelsAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { return trimmed }
+        }
+        return normalizedStoredSecret(pexelsKeyStore.read())
+    }
+
+    private func currentStoredBraveSearchKey() -> String? {
         if let environmentBraveSearchAPIKey {
             let trimmed = environmentBraveSearchAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty { return trimmed }
         }
+        return normalizedStoredSecret(braveSearchKeyStore.read())
+    }
 
-        let defaults = UserDefaults.standard
-        let storedKeys = [
-            defaults.string(forKey: "BRAVE_SEARCH_API_KEY"),
-            defaults.string(forKey: "dev.notch.brave-search-api-key"),
-        ]
+    private func normalizedStoredSecret(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
 
-        for candidate in storedKeys {
-            guard let candidate else { continue }
-            let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty { return trimmed }
+    private func persistServiceKey(draftValue: String, envValue: String?, store: GeminiLiveSecretStore) -> Bool {
+        if let envValue, !envValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return true
         }
 
-        return nil
+        let trimmed = draftValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return true
+        }
+        return store.save(trimmed)
+    }
+
+    var hasConfiguredPexelsKey: Bool {
+        configuredPexelsAPIKey != nil
     }
 
     private func normalizedPexelsOrientationValue(_ value: String?) -> String {
@@ -1023,4 +1820,24 @@ final class GeminiLiveViewModel: ObservableObject {
             completion(false)
         }
     }
+}
+
+private struct OverlayPexelsSearchResponse: Decodable {
+    let photos: [OverlayPexelsPhoto]
+}
+
+private struct OverlayPexelsPhoto: Decodable {
+    let url: URL?
+    let photographer: String?
+    let src: OverlayPexelsPhotoSource
+}
+
+private struct OverlayPexelsPhotoSource: Decodable {
+    let medium: URL?
+    let large: URL?
+    let large2x: URL?
+}
+
+private struct OverlayPexelsErrorResponse: Decodable {
+    let error: String
 }

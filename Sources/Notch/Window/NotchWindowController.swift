@@ -70,6 +70,9 @@ final class NotchWindowController {
 
         transcriptOverlay.setPreferredScreen(initialScreen)
         transcriptOverlay.observe(gemini: geminiLiveViewModel)
+        geminiLiveViewModel.onExecApprovalAttentionRequested = { [weak self] in
+            self?.presentExecApproval()
+        }
     }
 
     func show() {
@@ -85,6 +88,20 @@ final class NotchWindowController {
 
     func toggleVisibility() {
         isVisible ? hide() : show()
+    }
+
+    func showPanel(_ panel: NotchPanel) {
+        show()
+        presentationModel.selectPanel(panel, reveal: true)
+    }
+
+    func togglePinned() {
+        presentationModel.togglePinned()
+    }
+
+    func setPinned(_ pinned: Bool) {
+        guard presentationModel.isPinnedOpen != pinned else { return }
+        presentationModel.togglePinned()
     }
 
     func reposition() {
@@ -104,16 +121,16 @@ final class NotchWindowController {
     }
 
     func showMusicPanel() {
-        presentationModel.selectPanel(.music, reveal: true)
+        showPanel(.music)
     }
 
     func showPomodoroPanel() {
-        presentationModel.selectPanel(.focus, reveal: true)
+        showPanel(.focus)
         presentationModel.selectedFocusTool = .pomodoro
     }
 
     func showCountdownPanel() {
-        presentationModel.selectPanel(.focus, reveal: true)
+        showPanel(.focus)
         presentationModel.selectedFocusTool = .countdown
     }
 
@@ -130,20 +147,193 @@ final class NotchWindowController {
     }
 
     func showFocusPanel() {
-        presentationModel.selectPanel(.focus, reveal: true)
+        showPanel(.focus)
     }
 
     func showTalkPanel() {
+        showPanel(.talk)
+    }
+
+    func presentExecApproval() {
+        show()
         presentationModel.selectPanel(.talk, reveal: true)
+        NSApp.activate(ignoringOtherApps: true)
+        window.orderFrontRegardless()
     }
 
     func showShelfPanel() {
-        presentationModel.selectPanel(.shelf, reveal: true)
+        showPanel(.shelf)
     }
 
     func toggleGeminiLive() {
-        presentationModel.selectPanel(.talk, reveal: true)
+        showTalkPanel()
         geminiLiveViewModel.toggleConnection()
+    }
+
+    func connectGeminiLive() {
+        showTalkPanel()
+        geminiLiveViewModel.connectIfNeeded()
+    }
+
+    func disconnectGeminiLive() {
+        geminiLiveViewModel.disconnectIfNeeded()
+    }
+
+    func muteGeminiLive() {
+        geminiLiveViewModel.setMicrophoneEnabled(false)
+    }
+
+    func unmuteGeminiLive() {
+        geminiLiveViewModel.setMicrophoneEnabled(true)
+    }
+
+    func toggleGeminiLiveMicrophone() {
+        geminiLiveViewModel.toggleMicrophone()
+    }
+
+    func setGeminiLiveCaptionsEnabled(_ enabled: Bool) {
+        geminiLiveViewModel.setTranscriptOverlayEnabled(enabled)
+    }
+
+    func toggleGeminiLiveCaptions() {
+        geminiLiveViewModel.setTranscriptOverlayEnabled(!geminiLiveViewModel.showTranscriptOverlay)
+    }
+
+    func startFullScreenShare() {
+        geminiLiveViewModel.startFullScreenSharing()
+    }
+
+    func startRegionScreenShare() {
+        geminiLiveViewModel.startRegionScreenSharing()
+    }
+
+    func startWindowScreenShare() {
+        geminiLiveViewModel.startWindowSharing()
+    }
+
+    func stopScreenShare() {
+        geminiLiveViewModel.stopScreenSharing()
+    }
+
+    func showImageOverlay(query: String, caption: String?, orientation: String?) {
+        geminiLiveViewModel.showDisplayedImageOverlay(query: query, caption: caption, orientation: orientation)
+    }
+
+    func showImageOverlay(url: URL, query: String?, caption: String?) {
+        geminiLiveViewModel.showDisplayedImageOverlay(url: url, query: query, caption: caption)
+    }
+
+    func clearImageOverlay() {
+        geminiLiveViewModel.clearDisplayedImageOverlay()
+    }
+
+    func showFocusTool(_ tool: FocusTool?) {
+        showFocusPanel()
+        selectFocusTool(tool)
+    }
+
+    private func selectFocusTool(_ tool: FocusTool?) {
+        if let tool {
+            presentationModel.selectedFocusTool = tool
+        }
+    }
+
+    func toggleFocusTool(_ tool: FocusTool?) {
+        selectFocusTool(tool)
+        toggleSelectedFocusTool()
+    }
+
+    func configureFocusTool(_ tool: FocusTool?, duration: String?, breakDuration: String?) throws {
+        selectFocusTool(tool)
+        switch presentationModel.selectedFocusTool {
+        case .pomodoro:
+            let focusMinutes = try resolvedPomodoroMinutes(
+                from: duration,
+                fallbackMinutes: pomodoroViewModel.focusMinutes,
+                parameterName: "duration"
+            )
+            let breakMinutes = try resolvedPomodoroMinutes(
+                from: breakDuration,
+                fallbackMinutes: pomodoroViewModel.breakMinutes,
+                parameterName: "break"
+            )
+            pomodoroViewModel.updateCurrentDurations(focusMinutes: focusMinutes, breakMinutes: breakMinutes)
+        case .countdown:
+            if breakDuration != nil {
+                throw NotchFocusCommandError.unsupportedBreakDuration
+            }
+            guard let duration, !duration.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            guard countdownViewModel.setDuration(from: duration) else {
+                throw NotchFocusCommandError.invalidDuration(duration)
+            }
+        case .counter:
+            if duration != nil || breakDuration != nil {
+                throw NotchFocusCommandError.counterDoesNotUseDurations
+            }
+        }
+    }
+
+    func startFocusTool(_ tool: FocusTool?, duration: String? = nil, breakDuration: String? = nil) throws {
+        try configureFocusTool(tool, duration: duration, breakDuration: breakDuration)
+        try performFocusAction(tool: tool, action: .start)
+    }
+
+    func pauseFocusTool(_ tool: FocusTool?) throws {
+        try performFocusAction(tool: tool, action: .pause)
+    }
+
+    func resumeFocusTool(_ tool: FocusTool?) throws {
+        try performFocusAction(tool: tool, action: .resume)
+    }
+
+    func resetFocusTool(_ tool: FocusTool?) throws {
+        try performFocusAction(tool: tool, action: .reset)
+    }
+
+    func skipFocusTool(_ tool: FocusTool?) throws {
+        selectFocusTool(tool)
+        switch presentationModel.selectedFocusTool {
+        case .pomodoro:
+            pomodoroViewModel.skipPhase()
+        case .countdown, .counter:
+            throw NotchFocusCommandError.skipUnsupported(presentationModel.selectedFocusTool.rawValue)
+        }
+    }
+
+    func playMedia() {
+        playbackViewModel.play()
+    }
+
+    func pauseMedia() {
+        playbackViewModel.pause()
+    }
+
+    func toggleMediaPlayback() {
+        playbackViewModel.togglePlay()
+    }
+
+    func stopMedia() {
+        playbackViewModel.stop()
+    }
+
+    func nextMediaTrack() {
+        playbackViewModel.nextTrack()
+    }
+
+    func previousMediaTrack() {
+        playbackViewModel.previousTrack()
+    }
+
+    func setMediaVolume(_ level: Double) {
+        playbackViewModel.setVolume(to: min(max(level / 100.0, 0), 1))
+    }
+
+    func skipMedia(seconds: Double) {
+        playbackViewModel.skip(seconds: seconds)
+    }
+
+    func openCurrentMediaApp() {
+        playbackViewModel.openCurrentApp()
     }
 
     func toggleSelectedFocusTool() {
@@ -183,6 +373,104 @@ final class NotchWindowController {
 
         if isVisible {
             window.orderFrontRegardless()
+        }
+    }
+
+    private func performFocusAction(tool: FocusTool?, action: FocusCommandAction) throws {
+        selectFocusTool(tool)
+        switch presentationModel.selectedFocusTool {
+        case .pomodoro:
+            try action.apply(
+                isRunning: pomodoroViewModel.isRunning,
+                hasActiveSession: pomodoroViewModel.hasActiveSession,
+                start: { pomodoroViewModel.start() },
+                pause: { pomodoroViewModel.pause() },
+                reset: { pomodoroViewModel.reset() }
+            )
+        case .countdown:
+            try action.apply(
+                isRunning: countdownViewModel.isRunning,
+                hasActiveSession: countdownViewModel.hasActiveSession,
+                start: { countdownViewModel.start() },
+                pause: { countdownViewModel.pause() },
+                reset: { countdownViewModel.reset() }
+            )
+        case .counter:
+            try action.apply(
+                isRunning: counterViewModel.isRunning,
+                hasActiveSession: counterViewModel.hasActiveSession,
+                start: { counterViewModel.start() },
+                pause: { counterViewModel.pause() },
+                reset: { counterViewModel.reset() }
+            )
+        }
+    }
+
+    private func resolvedPomodoroMinutes(from raw: String?, fallbackMinutes: Int, parameterName: String) throws -> Int {
+        guard let raw, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return fallbackMinutes
+        }
+        guard let seconds = DurationParser.parse(raw) else {
+            throw NotchFocusCommandError.invalidParameter(parameterName, raw)
+        }
+        return max(1, Int(ceil(Double(seconds) / 60.0)))
+    }
+}
+
+private enum FocusCommandAction {
+    case start
+    case pause
+    case resume
+    case reset
+
+    func apply(
+        isRunning: Bool,
+        hasActiveSession: Bool,
+        start: () -> Void,
+        pause: () -> Void,
+        reset: () -> Void
+    ) throws {
+        switch self {
+        case .start:
+            guard !isRunning else { return }
+            start()
+        case .pause:
+            guard isRunning else { return }
+            pause()
+        case .resume:
+            guard !isRunning else { return }
+            guard hasActiveSession else {
+                throw NotchFocusCommandError.resumeWithoutSession
+            }
+            start()
+        case .reset:
+            reset()
+        }
+    }
+}
+
+private enum NotchFocusCommandError: LocalizedError {
+    case resumeWithoutSession
+    case invalidDuration(String)
+    case invalidParameter(String, String)
+    case unsupportedBreakDuration
+    case counterDoesNotUseDurations
+    case skipUnsupported(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .resumeWithoutSession:
+            return "Can't resume because the selected focus tool has no active session."
+        case let .invalidDuration(value):
+            return "Couldn't parse duration '\(value)'."
+        case let .invalidParameter(name, value):
+            return "Couldn't parse \(name) value '\(value)'."
+        case .unsupportedBreakDuration:
+            return "Break duration is only supported for pomodoro."
+        case .counterDoesNotUseDurations:
+            return "Stopwatch does not use durations."
+        case let .skipUnsupported(tool):
+            return "Skip is not supported for \(tool)."
         }
     }
 }

@@ -123,9 +123,6 @@ final class GeminiLiveSession: @unchecked Sendable {
         resumeSession: Bool = false
     ) {
         cancelPendingReconnect()
-        NotchLog.geminiLive.notice(
-            "Session connect requested. resumeSession=\(resumeSession), hadHandle=\(self.latestSessionHandle != nil), resumableHandle=\(self.latestSessionHandleIsResumable), preserveAudioCandidate=\(self.outputPrepared && self.captureMode == .webRTC)"
-        )
 
         self.enabledTools = enabledTools
         self.microphoneEnabled = microphoneEnabled
@@ -156,7 +153,6 @@ final class GeminiLiveSession: @unchecked Sendable {
     }
 
     func disconnect(userInitiated: Bool) {
-        NotchLog.geminiLive.notice("Session disconnect requested. userInitiated=\(userInitiated)")
         userInitiatedDisconnect = userInitiated
         cancelPendingReconnect()
 
@@ -468,9 +464,6 @@ final class GeminiLiveSession: @unchecked Sendable {
     }
 
     func cancelPendingReconnect() {
-        if pendingReconnectWorkItem != nil {
-            NotchLog.geminiLive.notice("Session pending reconnect cancelled.")
-        }
         pendingReconnectWorkItem?.cancel()
         pendingReconnectWorkItem = nil
     }
@@ -487,33 +480,22 @@ final class GeminiLiveSession: @unchecked Sendable {
         guard !userInitiatedDisconnect,
               pendingReconnectWorkItem == nil,
               let currentConfiguration else {
-            NotchLog.geminiLive.notice(
-                "Session reconnect rejected. userInitiated=\(self.userInitiatedDisconnect), pending=\(self.pendingReconnectWorkItem != nil), hasConfiguration=\(self.currentConfiguration != nil)"
-            )
             return false
         }
 
         if requireSafeResumptionHandle && (!latestSessionHandleIsResumable || latestSessionHandle == nil) {
-            NotchLog.geminiLive.notice("Session reconnect rejected because no safe resumable handle is available.")
             return false
         }
 
         if latestSessionHandle == nil && !allowFreshReconnectWithoutHandle {
-            NotchLog.geminiLive.notice("Session reconnect rejected because no handle is available and fresh reconnect is disallowed.")
             return false
         }
 
         let displayState: GeminiLiveConnectionState = preserveConnectedState ? .connected : .connecting
-        NotchLog.geminiLive.notice(
-            "Session scheduled reconnect after \(delay, format: .fixed(precision: 2))s. status=\(statusText, privacy: .public), requireSafeHandle=\(requireSafeResumptionHandle), hadHandle=\(self.latestSessionHandle != nil), resumableHandle=\(self.latestSessionHandleIsResumable), allowFresh=\(allowFreshReconnectWithoutHandle), preserveConnectedState=\(preserveConnectedState), preserveAudio=\(preserveAudioSession)"
-        )
         let workItem = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.pendingReconnectWorkItem = nil
             guard !self.userInitiatedDisconnect else { return }
-            NotchLog.geminiLive.notice(
-                "Session reconnect firing. resuming=\(self.latestSessionHandle != nil), resumableHandle=\(self.latestSessionHandleIsResumable)"
-            )
 
             self.startConnection(
                 using: currentConfiguration,
@@ -607,8 +589,12 @@ final class GeminiLiveSession: @unchecked Sendable {
                 }
 
                 socketTask.send(.string(message)) { error in
+                    guard self.socketTask === socketTask else {
+                        onCompletion?(false)
+                        return
+                    }
+
                     if let error {
-                        NotchLog.geminiLive.error("Gemini Live send failed: \(error.localizedDescription, privacy: .public)")
                         let hadCompletedSetup = self.hasCompletedSetup
                         let shouldPreserveAudioSession = hadCompletedSetup && self.captureMode == .webRTC
                         self.tearDownConnection(preserveAudioSession: shouldPreserveAudioSession)
@@ -648,11 +634,13 @@ final class GeminiLiveSession: @unchecked Sendable {
 
         socketTask.receive { [weak self] result in
             guard let self else { return }
+            guard self.socketTask === socketTask else {
+                return
+            }
 
             switch result {
             case let .failure(error):
                 guard !self.userInitiatedDisconnect else { return }
-                NotchLog.geminiLive.error("Gemini Live receive failed: \(error.localizedDescription, privacy: .public)")
 
                 let hadCompletedSetup = self.hasCompletedSetup
                 let shouldPreserveAudioSession = hadCompletedSetup && self.captureMode == .webRTC
@@ -786,6 +774,7 @@ final class GeminiLiveSession: @unchecked Sendable {
             }
         }
     }
+
 }
 
 struct LiveSessionConfiguration {

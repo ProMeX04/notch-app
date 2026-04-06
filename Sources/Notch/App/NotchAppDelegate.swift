@@ -24,10 +24,6 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
         let counterViewModel = CounterViewModel(learningStatsStore: learningStatsStore)
         let geminiLiveViewModel = GeminiLiveViewModel()
         let shelfViewModel = NotchShelfViewModel()
-        geminiLiveViewModel.pomodoro = pomodoroViewModel
-        geminiLiveViewModel.countdown = countdownViewModel
-        geminiLiveViewModel.counter = counterViewModel
-        geminiLiveViewModel.playback = playbackViewModel
         let presentationModel = NotchPresentationModel()
         let notchController = NotchWindowController(
             playbackViewModel: playbackViewModel,

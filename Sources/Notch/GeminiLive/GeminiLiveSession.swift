@@ -21,12 +21,7 @@ final class GeminiLiveSession: @unchecked Sendable {
     var onUserTranscript: (@Sendable (String) -> Void)?
     var onModelTranscript: (@Sendable (String) -> Void)?
     var onTurnComplete: (@Sendable () -> Void)?
-    var onTimerControl: (@Sendable (_ timer: String, _ action: String, _ duration: String?, _ breakDuration: String?, _ minutes: Int?, _ breakMinutes: Int?) -> String)?
-    var onMediaControl: (@Sendable (_ action: String, _ value: Double?, _ valueString: String?) -> String)?
     var onFunctionExecuted: (@Sendable (_ name: String, _ args: [String: Any], _ result: [String: Any]) -> Void)?
-    var onDisplayImageRequest: (@Sendable (ImageOverlayRequest) -> Void)?
-    var onReadDocument: (@Sendable (_ kind: ReadDocKind, _ id: String, _ snapshot: SkillSessionSnapshot?) -> [String: Any])?
-    var onWriteMemory: (@Sendable (_ content: String) -> [String: Any])?
     var onShouldAutoApproveExec: (@Sendable (_ command: String, _ workingDirectory: String?) -> Bool)?
     var onExecApprovalRequested: (@Sendable (ExecApprovalRequest) -> Void)?
 
@@ -57,7 +52,8 @@ final class GeminiLiveSession: @unchecked Sendable {
     }
 
     let urlSession = URLSession(configuration: .default)
-    let pexelsSession = URLSession(configuration: .ephemeral)
+    /// Shared ephemeral session for Brave search and other tool HTTP (not Pexels-specific).
+    let toolHTTPURLSession = URLSession(configuration: .ephemeral)
     let sendQueue = DispatchQueue(label: "dev.notch.gemini.send")
     let audioProcessingQueue = DispatchQueue(label: "dev.notch.gemini.capture")
     let playbackQueue = DispatchQueue(label: "dev.notch.gemini.playback")
@@ -121,7 +117,6 @@ final class GeminiLiveSession: @unchecked Sendable {
         microphoneEnabled: Bool,
         thinkingBudget: Int,
         voiceName: String = "Kore",
-        pexelsAPIKey: String? = nil,
         braveSearchAPIKey: String? = nil,
         enabledTools: Set<GeminiTool> = GeminiTool.coreToolSet,
         skillSnapshot: SkillSessionSnapshot? = nil,
@@ -143,7 +138,6 @@ final class GeminiLiveSession: @unchecked Sendable {
             systemPrompt: systemPrompt,
             thinkingBudget: thinkingBudget,
             voiceName: voiceName,
-            pexelsAPIKey: pexelsAPIKey,
             braveSearchAPIKey: braveSearchAPIKey,
             skillSnapshot: skillSnapshot
         )
@@ -246,197 +240,6 @@ final class GeminiLiveSession: @unchecked Sendable {
 
     var enabledToolDeclarations: [[String: Any]] {
         var decls: [[String: Any]] = []
-        if enabledTools.contains(.controlApp) {
-            decls.append([
-                "name": "controlApp",
-                "description": "Control an application on the user's macOS computer. You can open or close applications by their name. If the user asks to open something like Youtube, you might open a browser like Safari or Chrome.",
-                "parameters": [
-                    "type": "OBJECT",
-                    "properties": [
-                        "appName": [
-                            "type": "STRING",
-                            "description": "The name of the application, e.g. Safari, Mail, Terminal, Spotify, etc."
-                        ],
-                        "action": [
-                            "type": "STRING",
-                            "enum": ["open", "close"],
-                            "description": "The action to perform: 'open' or 'close'."
-                        ]
-                    ],
-                    "required": ["appName", "action"]
-                ]
-            ])
-        }
-        if enabledTools.contains(.controlBrowser) {
-            decls.append([
-                "name": "controlBrowser",
-                "description": "Control browser tabs on macOS. Automatically uses the user's default browser (Chrome, Safari, Firefox, Edge). You can open a link, or open the top DuckDuckGo Lucky result for a search query, close a tab, switch tab, list tabs, reload, or read the current page's content. For music requests, prefer action='open' with query.",
-                "parameters": [
-                    "type": "OBJECT",
-                    "properties": [
-                        "action": [
-                            "type": "STRING",
-                            "enum": ["open", "close", "list", "switch", "reload", "read"],
-                            "description": "The action. 'read' extracts text from the active tab."
-                        ],
-                        "url": [
-                            "type": "STRING",
-                            "description": "The URL to open for action='open' when an exact link is already known."
-                        ],
-                        "query": [
-                            "type": "STRING",
-                            "description": "For action='open', a search query that should open the top DuckDuckGo Lucky result. Use this for music/song requests. For action='close' and action='switch', this is a title or URL fragment to identify the tab."
-                        ]
-                    ],
-                    "required": ["action"]
-                ]
-            ])
-        }
-        if enabledTools.contains(.controlTimer) {
-            decls.append([
-                "name": "controlTimer",
-                "description": "Control the built-in focus timers in the Notch app. Use this when the user asks to start, stop, pause, resume or reset the Pomodoro, Countdown or Stopwatch.",
-                "parameters": [
-                    "type": "OBJECT",
-                    "properties": [
-                        "timer": [
-                            "type": "STRING",
-                            "enum": ["pomodoro", "countdown", "stopwatch"],
-                            "description": "Which timer to control."
-                        ],
-                        "action": [
-                            "type": "STRING",
-                            "enum": ["start", "pause", "resume", "reset", "skip"],
-                            "description": "Action: 'start', 'pause', 'resume', 'reset', or 'skip' (Pomodoro only)."
-                        ],
-                        "duration": [
-                            "type": "STRING",
-                            "description": "Optional. Duration as a human string, e.g. '25m', '1h30m', '90s', '1h 30m 15s'. For Pomodoro this is the focus duration. For Countdown this is the timer length. Defaults to 25m for Pomodoro, 10m for Countdown."
-                        ],
-                        "breakDuration": [
-                            "type": "STRING",
-                            "description": "Optional. Break duration for Pomodoro as a human string, e.g. '5m', '10m'. Defaults to 5m."
-                        ],
-                        "minutes": [
-                            "type": "NUMBER",
-                            "description": "Optional. Legacy numeric focus minutes (prefer 'duration' string instead)."
-                        ],
-                        "breakMinutes": [
-                            "type": "NUMBER",
-                            "description": "Optional. Legacy numeric break minutes (prefer 'breakDuration' string instead)."
-                        ]
-                    ],
-                    "required": ["timer", "action"]
-                ]
-            ])
-        }
-        if enabledTools.contains(.controlMedia) {
-            decls.append([
-                "name": "controlMedia",
-                "description": "Control media playback (music, podcast, etc.) on the user's Mac.",
-                "parameters": [
-                    "type": "OBJECT",
-                    "properties": [
-                        "action": [
-                            "type": "STRING",
-                            "enum": ["play", "pause", "stop", "toggle", "next", "previous", "skip_forward", "skip_backward", "volume", "shuffle", "repeat", "favorite"],
-                            "description": "Media action. 'favorite' toggles loved state (Apple Music only). 'stop' sends system stop command."
-                        ],
-                        "value": [
-                            "type": "NUMBER",
-                            "description": "Optional. For 'volume': 0-100. For 'skip_*': seconds as a number (default 15)."
-                        ],
-                        "valueString": [
-                            "type": "STRING",
-                            "description": "Optional. For 'skip_forward'/'skip_backward': duration as a string, e.g. '30s', '1m'. Takes priority over 'value'."
-                        ]
-                    ],
-                    "required": ["action"]
-                ]
-            ])
-        }
-        if enabledTools.contains(.readClipboard) {
-            decls.append([
-                "name": "readClipboard",
-                "description": "Read the current text content from the user's macOS clipboard (pasteboard). Use this when the user asks you to summarize, translate, read or process the text they just copied.",
-                "parameters": [
-                    "type": "OBJECT",
-                    "properties": [:],
-                    "required": []
-                ]
-            ])
-        }
-        if enabledTools.contains(.manageNotes) {
-            decls.append([
-                "name": "manageNotes",
-                "description": "Manage user's macOS Notes and Reminders. You can use this to quickly write down a note, create a reminder or to-do list item.",
-                "parameters": [
-                    "type": "OBJECT",
-                    "properties": [
-                        "action": [
-                            "type": "STRING",
-                            "enum": ["add_note", "add_reminder"],
-                            "description": "Action to perform: 'add_note' or 'add_reminder'."
-                        ],
-                        "content": [
-                            "type": "STRING",
-                            "description": "Content of the note or the reminder."
-                        ],
-                        "title": [
-                            "type": "STRING",
-                            "description": "Optional title for the note (if creating a note)."
-                        ]
-                    ],
-                    "required": ["action", "content"]
-                ]
-            ])
-        }
-        if enabledTools.contains(.controlVolume) {
-            decls.append([
-                "name": "controlVolume",
-                "description": "Control the macOS system volume. Can set volume level, get current volume, mute or unmute.",
-                "parameters": [
-                    "type": "OBJECT",
-                    "properties": [
-                        "action": [
-                            "type": "STRING",
-                            "enum": ["set", "get", "mute", "unmute"],
-                            "description": "Action: 'set' to set volume level, 'get' to read it, 'mute' to mute, 'unmute' to unmute."
-                        ],
-                        "level": [
-                            "type": "NUMBER",
-                            "description": "Volume level 0–100. Required when action is 'set'."
-                        ]
-                    ],
-                    "required": ["action"]
-                ]
-            ])
-        }
-        if enabledTools.contains(.displayImage) {
-            decls.append([
-                "name": "displayImage",
-                "description": "Search Pexels and show a small image above the live transcript; visibility matches the transcript overlay timing.",
-                "parameters": [
-                    "type": "OBJECT",
-                    "properties": [
-                        "query": [
-                            "type": "STRING",
-                            "description": "A short descriptive query for the image to show."
-                        ],
-                        "caption": [
-                            "type": "STRING",
-                            "description": "Optional caption (for tool result metadata)."
-                        ],
-                        "orientation": [
-                            "type": "STRING",
-                            "enum": ["landscape", "portrait", "square"],
-                            "description": "Optional preferred orientation. Use landscape unless the user asks for portrait or square."
-                        ]
-                    ],
-                    "required": ["query"]
-                ]
-            ])
-        }
         if enabledTools.contains(.webSearch) {
             decls.append([
                 "name": "webSearch",
@@ -590,43 +393,6 @@ final class GeminiLiveSession: @unchecked Sendable {
                         ]
                     ],
                     "required": ["path", "oldText", "newText"]
-                ]
-            ])
-        }
-        if enabledTools.contains(.readDoc) {
-            decls.append([
-                "name": "readDoc",
-                "description": "Read one active Notch skill by exact name, or read the main user or memory document.",
-                "parameters": [
-                    "type": "OBJECT",
-                    "properties": [
-                        "kind": [
-                            "type": "STRING",
-                            "enum": ["skill", "user", "memory"],
-                            "description": "Use 'skill' for an active skill, 'user' for the main user profile document, or 'memory' for the main memory document."
-                        ],
-                        "id": [
-                            "type": "STRING",
-                            "description": "For skill: exact skill name. For user and memory: use 'main'."
-                        ]
-                    ],
-                    "required": ["kind", "id"]
-                ]
-            ])
-        }
-        if enabledTools.contains(.writeMemory) {
-            decls.append([
-                "name": "writeMemory",
-                "description": "Append important facts or preferences to the main memory document.",
-                "parameters": [
-                    "type": "OBJECT",
-                    "properties": [
-                        "content": [
-                            "type": "STRING",
-                            "description": "Text to append to MEMORY.md."
-                        ]
-                    ],
-                    "required": ["content"]
                 ]
             ])
         }
@@ -973,6 +739,11 @@ final class GeminiLiveSession: @unchecked Sendable {
             onTurnComplete?()
         }
 
+        if let generationComplete = serverContent["generationComplete"] as? Bool, generationComplete {
+            // Docs: signals the model finished generating its response.
+            // Audio playback may still be in progress at this point.
+        }
+
         if
             let modelTurn = serverContent["modelTurn"] as? [String: Any],
             let parts = modelTurn["parts"] as? [[String: Any]]
@@ -1000,7 +771,6 @@ struct LiveSessionConfiguration {
     let systemPrompt: String?
     let thinkingBudget: Int
     let voiceName: String
-    let pexelsAPIKey: String?
     let braveSearchAPIKey: String?
     let skillSnapshot: SkillSessionSnapshot?
 }

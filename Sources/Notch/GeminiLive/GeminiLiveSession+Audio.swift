@@ -190,11 +190,13 @@ extension GeminiLiveSession {
     }
 
     func handleSessionResumptionUpdate(_ update: [String: Any]) {
-        if let newHandle = update["newHandle"] as? String, !newHandle.isEmpty {
+        let resumable = update["resumable"] as? Bool ?? false
+        latestSessionHandleIsResumable = resumable
+
+        // Docs: only retain the handle when both resumable AND newHandle are present.
+        if resumable, let newHandle = update["newHandle"] as? String, !newHandle.isEmpty {
             latestSessionHandle = newHandle
         }
-
-        latestSessionHandleIsResumable = update["resumable"] as? Bool ?? false
     }
 
     func handleGoAway(_ goAway: [String: Any]) {

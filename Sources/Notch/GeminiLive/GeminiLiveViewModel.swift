@@ -113,10 +113,6 @@ final class GeminiLiveViewModel: ObservableObject {
     private var currentSkillSnapshot: SkillSessionSnapshot?
     private var isNormalizingEnabledSkillNames = false
 
-    weak var pomodoro: PomodoroViewModel?
-    weak var countdown: CountdownViewModel?
-    weak var counter: CounterViewModel?
-    weak var playback: MusicProbeViewModel?
     private var storedAPIKey: String?
     var onExecApprovalAttentionRequested: (() -> Void)?
     /// Present the API key window (standard `NSWindow`, set by `NotchWindowController`).
@@ -182,8 +178,6 @@ final class GeminiLiveViewModel: ObservableObject {
         _enabledSkillNames = Published(initialValue: Set(active.enabledSkillNames))
         normalizeEnabledSkillNames()
         syncEnabledSkillNamesToActivePreset()
-        let userStore = self.userStore
-        let memoryStore = self.memoryStore
         session.setOutputVolume(outputVolume)
 
         session.onStateChange = { [weak self] state, message in
@@ -239,65 +233,16 @@ final class GeminiLiveViewModel: ObservableObject {
             }
         }
 
-        session.onTimerControl = { [weak self] timerName, action, duration, breakDuration, minutes, breakMinutes in
-            final class Box: @unchecked Sendable { var value = "" }
-            let box = Box()
-            let sema = DispatchSemaphore(value: 0)
-            DispatchQueue.main.async {
-                guard let self else { sema.signal(); return }
-                box.value = self.executeControlTimerAction(
-                    timer: timerName, action: action,
-                    duration: duration, breakDuration: breakDuration,
-                    minutes: minutes, breakMinutes: breakMinutes
-                )
-                sema.signal()
-            }
-            sema.wait()
-            return box.value
-        }
-
-        session.onMediaControl = { [weak self] action, value, valueString in
-            final class Box: @unchecked Sendable { var value = "" }
-            let box = Box()
-            let sema = DispatchSemaphore(value: 0)
-            DispatchQueue.main.async {
-                guard let self else { sema.signal(); return }
-                box.value = self.executeMediaAction(action: action, value: value, valueString: valueString)
-                sema.signal()
-            }
-            sema.wait()
-            return box.value
-        }
-
         session.onFunctionExecuted = { [weak self] name, args, result in
-            let action = args["action"] as? String
-            let documentKind = args["kind"] as? String
             let resultSuccess = result["success"] as? Bool
-            let resultMessage = result["message"] as? String
             let resultError = result["error"] as? String
             DispatchQueue.main.async {
                 guard let self else { return }
-                if name == "controlApp" {
-                    if let success = resultSuccess {
-                        if success, let message = resultMessage {
-                            self.postToolAction(label: message, icon: "macwindow")
-                        } else if let error = resultError {
-                            self.postToolAction(label: error, icon: "exclamationmark.triangle")
-                        }
-                    }
-                } else if name == "controlBrowser" {
-                    let actionWord = action == "open" ? "Opened link" : "Controlled tab"
-                    self.postToolAction(label: actionWord, icon: "safari")
-                } else if name == "readClipboard" {
-                    self.postToolAction(label: "Read clipboard", icon: "doc.on.clipboard")
-                } else if name == "manageNotes" {
-                    let actionLabel = action == "add_reminder" ? "Added reminder" : "Added note"
-                    self.postToolAction(label: actionLabel, icon: "square.and.pencil")
-                } else if name == "displayImage" {
-                    if let success = resultSuccess {
-                        if !success, let error = resultError {
-                            self.postToolAction(label: error, icon: "exclamationmark.triangle")
-                        }
+                if name == "webSearch" {
+                    if resultSuccess == true {
+                        self.postToolAction(label: "Web search", icon: "magnifyingglass", showsInOverlay: false)
+                    } else if let error = resultError {
+                        self.postToolAction(label: error, icon: "exclamationmark.triangle", showsInOverlay: false)
                     }
                 } else if name == "read" {
                     if resultSuccess == true {
@@ -335,84 +280,7 @@ final class GeminiLiveViewModel: ObservableObject {
                     } else if let error = resultError {
                         self.postToolAction(label: error, icon: "exclamationmark.triangle", showsInOverlay: false)
                     }
-                } else if name == "readDoc" {
-                    let label: String
-                    switch documentKind {
-                    case ReadDocKind.skill.rawValue:
-                        label = "Read skill"
-                    case ReadDocKind.user.rawValue:
-                        label = "Read user"
-                    default:
-                        label = "Read memory"
-                    }
-                    self.postToolAction(label: label, icon: "book.pages", showsInOverlay: false)
-                } else if name == "writeMemory" {
-                    if resultSuccess == true {
-                        self.postToolAction(label: "Memory updated", icon: "brain")
-                    } else if let error = resultError {
-                        self.postToolAction(label: error, icon: "exclamationmark.triangle")
-                    }
                 }
-            }
-        }
-
-        session.onDisplayImageRequest = { [weak self] request in
-            DispatchQueue.main.async {
-                self?.displayedImageOverlay = request
-                self?.scheduleImageOverlayAutoDismissIfNeeded()
-            }
-        }
-
-        session.onReadDocument = { [weak self] kind, id, snapshot in
-            guard self != nil else {
-                return ["success": false, "error": "Document reader is unavailable."]
-            }
-            switch kind {
-            case .skill:
-                guard let snapshot, let skill = snapshot.skillsByName[id] else {
-                    return ["success": false, "error": "Skill \"\(id)\" is not active in this session."]
-                }
-                return [
-                    "success": true,
-                    "kind": kind.rawValue,
-                    "id": skill.metadata.name,
-                    "name": skill.metadata.name,
-                    "description": skill.metadata.description,
-                    "category": skill.metadata.category,
-                    "instructions": skill.instructions
-                ]
-            case .user:
-                guard id == "main" else {
-                    return ["success": false, "error": "Unknown user document \"\(id)\"."]
-                }
-                return [
-                    "success": true,
-                    "kind": kind.rawValue,
-                    "id": "main",
-                    "content": userStore.readUserProfile()
-                ]
-            case .memory:
-                guard id == "main" else {
-                    return ["success": false, "error": "Unknown memory document \"\(id)\"."]
-                }
-                return [
-                    "success": true,
-                    "kind": kind.rawValue,
-                    "id": "main",
-                    "content": memoryStore.readMainMemory()
-                ]
-            }
-        }
-
-        session.onWriteMemory = { [weak self] content in
-            guard self != nil else {
-                return ["success": false, "error": "Memory store is unavailable."]
-            }
-            do {
-                try memoryStore.appendToMainMemory(content)
-                return ["success": true, "message": "Memory updated."]
-            } catch {
-                return ["success": false, "error": "Couldn't update memory: \(error.localizedDescription)"]
             }
         }
 
@@ -679,7 +547,8 @@ final class GeminiLiveViewModel: ObservableObject {
         currentTime: String,
         activeSkills: [InstalledSkill],
         effectiveTools: Set<GeminiTool>,
-        userContent: String
+        userContent: String,
+        memoryContent: String
     ) -> String {
         let promptBody = selectedSystemPromptPreset.content.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedPromptBody = promptBody
@@ -687,16 +556,19 @@ final class GeminiLiveViewModel: ObservableObject {
             for: activeSkills,
             canReadSkills: effectiveTools.contains(.read)
         )
-        let trimmedUser = userContent.trimmingCharacters(in: .whitespacesAndNewlines)
-        let userPrompt = trimmedUser.isEmpty ? "" : """
-
-        User profile:
-        <user>
-        \(trimmedUser)
-        </user>
-        """
+        let userPrompt = buildInjectedPromptSection(
+            title: "User profile",
+            tag: "user",
+            content: userContent
+        )
+        let memoryPrompt = buildInjectedPromptSection(
+            title: "Memory",
+            tag: "memory",
+            content: memoryContent
+        )
         let optionalSkillSection = skillPrompt.isEmpty ? "" : "\n\n\(skillPrompt)"
         let optionalUserSection = userPrompt.isEmpty ? "" : "\n\n\(userPrompt)"
+        let optionalMemorySection = memoryPrompt.isEmpty ? "" : "\n\n\(memoryPrompt)"
         let toolRules = buildToolRules(for: effectiveTools)
         let optionalToolRulesSection = toolRules.isEmpty ? "" : "\n\nTool rules:\n\(toolRules)"
 
@@ -709,7 +581,20 @@ final class GeminiLiveViewModel: ObservableObject {
 
         \(optionalToolRulesSection)
         \(optionalUserSection)
+        \(optionalMemorySection)
         \(optionalSkillSection)
+        """
+    }
+
+    private func buildInjectedPromptSection(title: String, tag: String, content: String) -> String {
+        let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedContent.isEmpty else { return "" }
+
+        return """
+        \(title):
+        <\(tag)>
+        \(trimmedContent)
+        </\(tag)>
         """
     }
 
@@ -723,10 +608,10 @@ final class GeminiLiveViewModel: ObservableObject {
             lines.append("- Use `exec` for local shell commands on this Mac, such as `curl`, `python3`, `jq`, or `git`. Commands default to `~/.notch/workspace`, and new commands may require approval.")
         }
         if effectiveTools.contains(.read) {
-            lines.append("- Use `read` to open files inside `~/.notch/workspace`, including `USER.md` and `MEMORY.md`, and to open built-in skill `SKILL.md` files via the exact `location` values listed in `<available_skills>`.")
+            lines.append("- Use `read` to open files inside `~/.notch/workspace`, including `USER.md` for user profile details and `MEMORY.md` for broader durable notes, and to open built-in skill `SKILL.md` files via the exact `location` values listed in `<available_skills>`.")
         }
         if effectiveTools.contains(.write) {
-            lines.append("- Use `write` to create or overwrite text files inside `~/.notch/workspace`. For persistent notes, update `MEMORY.md` deliberately.")
+            lines.append("- Use `write` to create or overwrite text files inside `~/.notch/workspace`. Store stable user identity details in `USER.md` and broader durable notes in `MEMORY.md`.")
         }
         if effectiveTools.contains(.find) {
             lines.append("- Use `find` when you need to locate a file or folder path before reading or editing it.")
@@ -739,164 +624,6 @@ final class GeminiLiveViewModel: ObservableObject {
         }
 
         return lines.joined(separator: "\n")
-    }
-
-    private func executeControlTimerAction(
-        timer: String, action: String,
-        duration: String?, breakDuration: String?,
-        minutes: Int?, breakMinutes: Int?
-    ) -> String {
-        // Resolve seconds from duration string or fall back to minutes parameter
-        func resolveSeconds(_ str: String?, fallbackMinutes: Int?, default defaultMinutes: Int) -> Int {
-            if let str, let s = DurationParser.parse(str) { return s }
-            return (fallbackMinutes ?? defaultMinutes) * 60
-        }
-
-        switch timer {
-        case "pomodoro":
-            guard let pom = pomodoro else { return "Pomodoro not available" }
-            switch action {
-            case "start":
-                let focusSeconds = resolveSeconds(duration, fallbackMinutes: minutes, default: 30)
-                let breakSeconds = resolveSeconds(breakDuration, fallbackMinutes: breakMinutes, default: 5)
-                pom.updateCurrentDurations(
-                    focusMinutes: focusSeconds / 60,
-                    breakMinutes: max(1, breakSeconds / 60)
-                )
-                pom.start()
-                let fl = DurationParser.displayString(for: focusSeconds)
-                let bl = DurationParser.displayString(for: breakSeconds)
-                postToolAction(label: "Pomodoro \(fl)/\(bl)", icon: "timer")
-                return "Pomodoro started: \(fl) focus / \(bl) break"
-            case "pause":
-                pom.pause()
-                postToolAction(label: "Pomodoro paused", icon: "pause.circle")
-                return "Pomodoro paused, \(pom.remainingText()) remaining"
-            case "resume":
-                pom.start()
-                postToolAction(label: "Pomodoro resumed", icon: "play.circle")
-                return "Pomodoro resumed"
-            case "reset":
-                pom.reset()
-                postToolAction(label: "Pomodoro reset", icon: "arrow.counterclockwise")
-                return "Pomodoro reset"
-            case "skip":
-                pom.skipPhase()
-                postToolAction(label: "Phase skipped", icon: "forward.end.fill")
-                return "Skipped to next Pomodoro phase"
-            default:
-                return "Unknown action: \(action)"
-            }
-        case "countdown":
-            guard let cd = countdown else { return "Countdown not available" }
-            switch action {
-            case "start":
-                let secs = resolveSeconds(duration, fallbackMinutes: minutes, default: 10)
-                cd.selectPreset(secs)
-                cd.start()
-                let label = DurationParser.displayString(for: cd.presetSeconds)
-                postToolAction(label: "Countdown \(label)", icon: "timer")
-                return "Countdown started for \(label)"
-            case "pause":
-                cd.pause()
-                postToolAction(label: "Countdown paused", icon: "pause.circle")
-                return "Countdown paused, \(cd.remainingText()) remaining"
-            case "resume":
-                cd.start()
-                postToolAction(label: "Countdown resumed", icon: "play.circle")
-                return "Countdown resumed"
-            case "reset":
-                cd.reset()
-                postToolAction(label: "Countdown reset", icon: "arrow.counterclockwise")
-                return "Countdown reset"
-            default:
-                return "Unknown action: \(action)"
-            }
-        case "stopwatch":
-            guard let sw = counter else { return "Stopwatch not available" }
-            switch action {
-            case "start":
-                sw.start()
-                postToolAction(label: "Stopwatch started", icon: "stopwatch")
-                return "Stopwatch started"
-            case "pause":
-                sw.pause()
-                postToolAction(label: "Stopwatch paused", icon: "pause.circle")
-                return "Stopwatch paused, \(sw.elapsedText(at: .now)) elapsed"
-            case "resume":
-                sw.start()
-                postToolAction(label: "Stopwatch resumed", icon: "play.circle")
-                return "Stopwatch resumed"
-            case "reset":
-                sw.reset()
-                postToolAction(label: "Stopwatch reset", icon: "arrow.counterclockwise")
-                return "Stopwatch reset"
-            default:
-                return "Unknown action: \(action)"
-            }
-        default:
-            return "Unknown timer: \(timer)"
-        }
-    }
-
-    private func executeMediaAction(action: String, value: Double?, valueString: String?) -> String {
-        guard let pb = playback else { return "Media player not available" }
-
-        // Resolve skip seconds: prefer free-form string (e.g. "30s", "1m"), fallback to numeric value
-        func resolveSkipSeconds(default defaultVal: Double) -> Double {
-            if let str = valueString, let secs = DurationParser.parse(str) { return Double(secs) }
-            return value ?? defaultVal
-        }
-
-        let (result, icon): (String, String)
-        switch action {
-        case "play":
-            if !pb.isPlaying { pb.togglePlay() }
-            (result, icon) = ("Playing \(pb.primaryText)", "play.fill")
-        case "pause":
-            if pb.isPlaying { pb.togglePlay() }
-            (result, icon) = ("Paused", "pause.fill")
-        case "stop":
-            pb.stop()
-            (result, icon) = ("Stopped playback", "stop.fill")
-        case "toggle":
-            pb.togglePlay()
-            (result, icon) = (pb.isPlaying ? "Paused" : "Playing", "playpause.fill")
-        case "next":
-            pb.nextTrack()
-            (result, icon) = ("Next track", "forward.fill")
-        case "previous":
-            pb.previousTrack()
-            (result, icon) = ("Previous track", "backward.fill")
-        case "skip_forward":
-            let secs = resolveSkipSeconds(default: 15)
-            pb.skip(seconds: secs)
-            (result, icon) = ("+\(Int(secs))s", "goforward")
-        case "skip_backward":
-            let secs = resolveSkipSeconds(default: 15)
-            pb.skip(seconds: -secs)
-            (result, icon) = ("-\(Int(secs))s", "gobackward")
-        case "volume":
-            guard let v = value else { return "Volume level required" }
-            pb.setVolume(to: min(max(v / 100.0, 0), 1))
-            (result, icon) = ("Volume \(Int(v))%", "speaker.wave.2.fill")
-        case "shuffle":
-            pb.toggleShuffle()
-            (result, icon) = ("Shuffle", "shuffle")
-        case "repeat":
-            pb.toggleRepeat()
-            (result, icon) = ("Repeat", "repeat")
-        case "favorite":
-            guard pb.supportsFavorite else {
-                return "Favorite is only available when Apple Music is playing."
-            }
-            pb.toggleFavoriteTrack()
-            (result, icon) = ("Favorite updated", "heart.fill")
-        default:
-            return "Unknown action: \(action)"
-        }
-        postToolAction(label: result, icon: icon)
-        return result
     }
 
     func postToolAction(label: String, icon: String, showsInOverlay: Bool = true) {
@@ -1113,7 +840,8 @@ final class GeminiLiveViewModel: ObservableObject {
                     currentTime: currentTime,
                     activeSkills: skillSnapshot.activeSkills,
                     effectiveTools: skillSnapshot.effectiveTools,
-                    userContent: userStore.readUserProfile()
+                    userContent: userStore.readUserProfile(),
+                    memoryContent: memoryStore.readMainMemory()
                 )
 
                 let preset = self.selectedSystemPromptPreset
@@ -1124,7 +852,6 @@ final class GeminiLiveViewModel: ObservableObject {
                     microphoneEnabled: self.isMicrophoneEnabled,
                     thinkingBudget: preset.thinkingEnum.budget,
                     voiceName: preset.voiceEnum.apiName,
-                    pexelsAPIKey: self.configuredPexelsAPIKey,
                     braveSearchAPIKey: self.configuredBraveSearchAPIKey,
                     enabledTools: skillSnapshot.effectiveTools,
                     skillSnapshot: skillSnapshot,

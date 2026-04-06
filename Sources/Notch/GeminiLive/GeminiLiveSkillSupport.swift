@@ -1,12 +1,6 @@
 import AppKit
 import Foundation
 
-enum ReadDocKind: String, CaseIterable, Sendable {
-    case skill
-    case user
-    case memory
-}
-
 struct SkillFrontmatter: Hashable, Sendable {
     let name: String
     let description: String

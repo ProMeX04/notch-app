@@ -241,23 +241,13 @@ struct TranscriptOverlayInput: Equatable {
 }
 
 enum GeminiTool: String, CaseIterable, Identifiable {
-    case controlApp = "controlApp"
-    case controlBrowser = "controlBrowser"
-    case controlTimer = "controlTimer"
-    case controlMedia = "controlMedia"
-    case readClipboard = "readClipboard"
-    case manageNotes = "manageNotes"
-    case controlVolume = "controlVolume"
-    case displayImage = "displayImage"
     case webSearch = "webSearch"
     case read = "read"
     case write = "write"
+    case exec = "exec"
     case find = "find"
     case grep = "grep"
     case edit = "edit"
-    case readDoc = "readDoc"
-    case writeMemory = "writeMemory"
-    case exec = "exec"
 
     var id: String { rawValue }
 
@@ -275,44 +265,24 @@ enum GeminiTool: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .controlApp: return "App"
-        case .controlBrowser: return "Browser"
-        case .controlTimer: return "Timer"
-        case .controlMedia: return "Media"
-        case .readClipboard: return "Clipboard"
-        case .manageNotes: return "Notes"
-        case .controlVolume: return "Volume"
-        case .displayImage: return "Images"
         case .webSearch: return "Search"
         case .read: return "Read"
         case .write: return "Write"
         case .find: return "Find"
         case .grep: return "Grep"
         case .edit: return "Edit"
-        case .readDoc: return "Read Doc"
-        case .writeMemory: return "Memory"
         case .exec: return "Exec"
         }
     }
 
     var icon: String {
         switch self {
-        case .controlApp: return "macwindow"
-        case .controlBrowser: return "safari"
-        case .controlTimer: return "timer"
-        case .controlMedia: return "playpause"
-        case .readClipboard: return "doc.on.clipboard"
-        case .manageNotes: return "square.and.pencil"
-        case .controlVolume: return "speaker.wave.3"
-        case .displayImage: return "photo.on.rectangle"
         case .webSearch: return "magnifyingglass"
         case .read: return "doc.text"
         case .write: return "square.and.pencil"
         case .find: return "folder"
         case .grep: return "text.magnifyingglass"
         case .edit: return "slider.horizontal.below.rectangle"
-        case .readDoc: return "doc.text.magnifyingglass"
-        case .writeMemory: return "brain"
         case .exec: return "terminal"
         }
     }
@@ -431,13 +401,7 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
     static let defaultPreset = GeminiSystemPromptPreset(
         id: "default",
         title: "Default",
-        content: """
-        You are Hieu's assistant.
-
-        Communication style:
-        - Be cute, friendly, natural, and brief.
-        - Hieu speaks to you in English, so respond in English unless he clearly asks for another language.
-        """,
+        content: "",
         enabledTools: GeminiTool.coreCases.map(\.rawValue),
         voice: GeminiVoice.kore.rawValue,
         thinkingLevel: GeminiThinkingLevel.off.rawValue

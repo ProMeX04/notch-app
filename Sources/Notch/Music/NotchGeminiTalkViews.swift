@@ -148,7 +148,7 @@ struct GeminiTalkPanelView: View {
         if gemini.hasSavedAPIKey {
             setupViewMode = .agentSettings
         } else {
-            gemini.requestGeminiAPIKeyPanel()
+            gemini.requestManageKeysPanel()
         }
         promptEditorMode = nil
         promptDraftTitle = ""
@@ -160,7 +160,7 @@ struct GeminiTalkPanelView: View {
         if gemini.hasSavedAPIKey {
             setupViewMode = .agentSettings
         } else {
-            gemini.requestGeminiAPIKeyPanel()
+            gemini.requestManageKeysPanel()
         }
         promptEditorMode = .edit(selectedPrompt.id)
         promptDraftTitle = selectedPrompt.title
@@ -282,7 +282,7 @@ struct GeminiTalkPanelView: View {
                 icon: "key.fill",
                 tint: statusColor
             ) {
-                gemini.requestAllServiceKeysPanel()
+                gemini.requestManageKeysPanel()
             }
             .frame(maxWidth: .infinity)
 

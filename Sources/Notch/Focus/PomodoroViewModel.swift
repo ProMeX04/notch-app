@@ -77,6 +77,8 @@ final class PomodoroViewModel: ObservableObject {
     @Published private(set) var isRunning = false
     @Published private(set) var hasActiveSession = false
     @Published private(set) var completedFocusSessions = 0
+    @Published private(set) var focusDurationOverrideSeconds: Int?
+    @Published private(set) var breakDurationOverrideSeconds: Int?
 
     private var phaseCompletionTask: Task<Void, Never>?
     private var phaseEndDate: Date?
@@ -115,6 +117,14 @@ final class PomodoroViewModel: ObservableObject {
         preset.breakMinutes
     }
 
+    var focusDurationSeconds: Int {
+        focusDurationOverrideSeconds ?? (preset.focusMinutes * 60)
+    }
+
+    var breakDurationSeconds: Int {
+        breakDurationOverrideSeconds ?? (preset.breakMinutes * 60)
+    }
+
     var showCompactIndicator: Bool {
         hasActiveSession || isRunning
     }
@@ -136,13 +146,13 @@ final class PomodoroViewModel: ObservableObject {
             return "Paused with \(remainingText()) remaining"
         }
 
-        return "Ready for your next \(preset.focusMinutes)-minute session"
+        return "Ready for your next \(DurationParser.displayString(for: focusDurationSeconds)) session"
     }
 
     var nextPhaseLine: String {
         let nextPhase = phase == .focus ? "Break" : "Focus"
-        let nextDuration = phase == .focus ? preset.breakMinutes : preset.focusMinutes
-        return "Up next: \(nextPhase) \(nextDuration)m"
+        let nextDurationSeconds = phase == .focus ? breakDurationSeconds : focusDurationSeconds
+        return "Up next: \(nextPhase) \(DurationParser.displayString(for: nextDurationSeconds))"
     }
 
     func remainingSeconds(at date: Date = .now) -> Int {
@@ -195,6 +205,8 @@ final class PomodoroViewModel: ObservableObject {
         phase = .focus
         remainingSeconds = duration(for: .focus, preset: preset)
         recordedFocusSecondsForCurrentPhase = 0
+        focusDurationOverrideSeconds = nil
+        breakDurationOverrideSeconds = nil
     }
 
     func skipPhase() {
@@ -221,6 +233,8 @@ final class PomodoroViewModel: ObservableObject {
         phase = .focus
         remainingSeconds = duration(for: .focus, preset: preset)
         recordedFocusSecondsForCurrentPhase = 0
+        focusDurationOverrideSeconds = nil
+        breakDurationOverrideSeconds = nil
     }
 
     func updateCustomPreset(slotIndex: Int, focusMinutes: Int, breakMinutes: Int) {
@@ -260,7 +274,31 @@ final class PomodoroViewModel: ObservableObject {
 
         customPresets[targetIndex] = updatedPreset
         persistCustomPresets()
+        focusDurationOverrideSeconds = nil
+        breakDurationOverrideSeconds = nil
         selectPreset(updatedPreset)
+    }
+
+    func updateCurrentDurations(focusSeconds: Int, breakSeconds: Int) {
+        let clampedFocusSeconds = max(1, min(focusSeconds, 180 * 60))
+        let clampedBreakSeconds = max(1, min(breakSeconds, 60 * 60))
+
+        guard focusDurationSeconds != clampedFocusSeconds || breakDurationSeconds != clampedBreakSeconds else {
+            return
+        }
+
+        recordCurrentFocusProgressIfNeeded(referenceDate: .now)
+        phaseCompletionTask?.cancel()
+        phaseCompletionTask = nil
+        phaseEndDate = nil
+        isRunning = false
+        hasActiveSession = false
+        completedFocusSessions = 0
+        phase = .focus
+        focusDurationOverrideSeconds = clampedFocusSeconds
+        breakDurationOverrideSeconds = clampedBreakSeconds
+        remainingSeconds = clampedFocusSeconds
+        recordedFocusSecondsForCurrentPhase = 0
     }
 
     func shutdown() {
@@ -318,9 +356,9 @@ final class PomodoroViewModel: ObservableObject {
     private func duration(for phase: PomodoroPhase, preset: PomodoroPreset) -> Int {
         switch phase {
         case .focus:
-            return preset.focusMinutes * 60
+            return focusDurationOverrideSeconds ?? (preset.focusMinutes * 60)
         case .shortBreak:
-            return preset.breakMinutes * 60
+            return breakDurationOverrideSeconds ?? (preset.breakMinutes * 60)
         }
     }
 

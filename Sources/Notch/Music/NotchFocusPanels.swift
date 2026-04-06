@@ -11,9 +11,9 @@ struct PomodoroPanelView: View {
     private var idleDisplayedSeconds: Int {
         switch idleEditorPhase {
         case .focus:
-            return pomodoro.focusMinutes * 60
+            return pomodoro.focusDurationSeconds
         case .shortBreak:
-            return pomodoro.breakMinutes * 60
+            return pomodoro.breakDurationSeconds
         }
     }
 

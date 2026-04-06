@@ -65,15 +65,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         keyEquivalent: ""
     )
 
-    private lazy var changeGeminiKeyItem = NSMenuItem(
-        title: "Change Gemini API Key…",
-        action: #selector(showTalkKeyEditor),
-        keyEquivalent: ""
-    )
-
     private lazy var manageServiceKeysItem = NSMenuItem(
-        title: "Manage Service Keys (Gemini, Pexels, Brave)…",
-        action: #selector(showAllServiceKeys),
+        title: "Manage Keys…",
+        action: #selector(showManageKeys),
         keyEquivalent: ""
     )
 
@@ -109,7 +103,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         shelfItem.target = self
         togglePomodoroItem.target = self
         toggleTalkItem.target = self
-        changeGeminiKeyItem.target = self
         manageServiceKeysItem.target = self
         resetPomodoroItem.target = self
         launchAtLoginItem.target = self
@@ -130,7 +123,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             .separator(),
             talkItem,
             toggleTalkItem,
-            changeGeminiKeyItem,
             manageServiceKeysItem,
             .separator(),
             pomodoroItem,
@@ -153,7 +145,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             pomo.$hasActiveSession
         )
         .receive(on: DispatchQueue.main)
-        .sink { [weak self] _ in self?.updatePomodoroStatusItem() }
+        .sink { [weak self] _ in self?.refreshAllFocusStatusItems() }
         .store(in: &cancellables)
 
         // Observe countdown session state
@@ -162,7 +154,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             countdown.$hasActiveSession
         )
         .receive(on: DispatchQueue.main)
-        .sink { [weak self] _ in self?.updateCountdownStatusItem() }
+        .sink { [weak self] _ in self?.refreshAllFocusStatusItems() }
         .store(in: &cancellables)
 
         // Observe stopwatch (counter) session state
@@ -172,13 +164,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             counter.$hasActiveSession
         )
         .receive(on: DispatchQueue.main)
-        .sink { [weak self] _ in self?.updateCounterStatusItem() }
+        .sink { [weak self] _ in self?.refreshAllFocusStatusItems() }
         .store(in: &cancellables)
 
         windowController.geminiLiveViewModel.$lastToolAction
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.updateGeminiToolStatusItem() }
             .store(in: &cancellables)
+
+        refreshAllFocusStatusItems()
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
@@ -257,13 +251,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     @objc
-    private func showTalkKeyEditor() {
-        windowController.showTalkKeyEditorFromStatusMenu()
-    }
-
-    @objc
-    private func showAllServiceKeys() {
-        windowController.presentAllServiceKeysFromStatusMenu()
+    private func showManageKeys() {
+        windowController.presentManageKeysFromStatusMenu()
     }
 
     @objc
@@ -380,6 +369,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     // MARK: Pomodoro status item
 
+    private func refreshAllFocusStatusItems() {
+        updatePomodoroStatusItem()
+        updateCountdownStatusItem()
+        updateCounterStatusItem()
+    }
+
     private func updatePomodoroStatusItem() {
         let pomo = windowController.pomodoroViewModel
 
@@ -392,14 +387,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     btn.sendAction(on: [.leftMouseUp])
                 }
                 pomodoroStatusItem = item
-                startTickIfNeeded()
             }
+            pomodoroStatusItem?.isVisible = true
+            startTickIfNeeded()
             refreshPomodoroLabel()
         } else {
-            if let item = pomodoroStatusItem {
-                NSStatusBar.system.removeStatusItem(item)
-                pomodoroStatusItem = nil
-            }
+            pomodoroStatusItem?.isVisible = false
             stopTickIfUnused()
         }
     }
@@ -433,14 +426,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     btn.sendAction(on: [.leftMouseUp])
                 }
                 countdownStatusItem = item
-                startTickIfNeeded()
             }
+            countdownStatusItem?.isVisible = true
+            startTickIfNeeded()
             refreshCountdownLabel()
         } else {
-            if let item = countdownStatusItem {
-                NSStatusBar.system.removeStatusItem(item)
-                countdownStatusItem = nil
-            }
+            countdownStatusItem?.isVisible = false
             stopTickIfUnused()
         }
     }
@@ -473,14 +464,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     btn.sendAction(on: [.leftMouseUp])
                 }
                 counterStatusItem = item
-                startTickIfNeeded()
             }
+            counterStatusItem?.isVisible = true
+            startTickIfNeeded()
             refreshCounterLabel()
         } else {
-            if let item = counterStatusItem {
-                NSStatusBar.system.removeStatusItem(item)
-                counterStatusItem = nil
-            }
+            counterStatusItem?.isVisible = false
             stopTickIfUnused()
         }
     }
@@ -562,7 +551,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func stopTickIfUnused() {
-        guard pomodoroStatusItem == nil, countdownStatusItem == nil, counterStatusItem == nil else { return }
+        guard
+            pomodoroStatusItem?.isVisible != true,
+            countdownStatusItem?.isVisible != true,
+            counterStatusItem?.isVisible != true
+        else { return }
         timerTick?.invalidate()
         timerTick = nil
     }

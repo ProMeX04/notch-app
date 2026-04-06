@@ -19,13 +19,14 @@ extension GeminiLiveSession {
                 // with `hasCompletedSetup`, so no audio will be sent prematurely.
                 if microphoneEnabled {
                     try audioIO.startCapture { [weak self] buffer in
-                        guard let self, let clonedBuffer = GeminiPCMBufferCloner.clone(buffer) else { return }
+                        guard let self else { return }
+                        // Buffer is already cloned by GeminiLiveWebRTCAudioIO — no second clone needed.
                         self.audioProcessingQueue.async { [weak self] in
                             guard let self else { return }
                             if self.inputConverter == nil {
-                                self.inputConverter = AVAudioConverter(from: clonedBuffer.format, to: self.inputTargetFormat)
+                                self.inputConverter = AVAudioConverter(from: buffer.format, to: self.inputTargetFormat)
                             }
-                            self.processCapturedBuffer(clonedBuffer)
+                            self.processCapturedBuffer(buffer)
                         }
                     }
                 }
@@ -191,17 +192,22 @@ extension GeminiLiveSession {
 
     func handleSessionResumptionUpdate(_ update: [String: Any]) {
         let resumable = update["resumable"] as? Bool ?? false
+        let hasNewHandle = ((update["newHandle"] as? String)?.isEmpty == false)
         latestSessionHandleIsResumable = resumable
 
         // Docs: only retain the handle when both resumable AND newHandle are present.
         if resumable, let newHandle = update["newHandle"] as? String, !newHandle.isEmpty {
             latestSessionHandle = newHandle
         }
+        NotchLog.geminiLive.notice(
+            "Session resumption update received. resumable=\(resumable), hasNewHandle=\(hasNewHandle), hasStoredHandle=\(self.latestSessionHandle != nil)"
+        )
     }
 
     func handleGoAway(_ goAway: [String: Any]) {
         guard latestSessionHandle != nil else { return }
         guard let timeLeft = parseGoAwayTimeLeft(goAway["timeLeft"] as? String) else { return }
+        NotchLog.geminiLive.notice("GoAway received. timeLeft=\(timeLeft, format: .fixed(precision: 2))s, resumableHandle=\(self.latestSessionHandleIsResumable)")
 
         _ = scheduleAutomaticReconnect(
             after: max(0.1, timeLeft - 1.0),
@@ -213,6 +219,7 @@ extension GeminiLiveSession {
     }
 
     func handleFailure(message: String, preserveAudioSession: Bool = false) {
+        NotchLog.geminiLive.error("Gemini Live failure: \(message, privacy: .public), preserveAudioSession=\(preserveAudioSession)")
         cancelPendingReconnect()
         tearDownConnection(preserveAudioSession: preserveAudioSession)
         isResumingConnection = false
@@ -239,6 +246,9 @@ extension GeminiLiveSession {
         hasCompletedSetup = true
         setupCompleteTime = Date()
         let statusMessage = isResumingConnection ? "Gemini Live resumed." : "Gemini Live is ready."
+        NotchLog.geminiLive.notice(
+            "Gemini Live setup complete. resumed=\(self.isResumingConnection), captureMode=\(String(describing: self.captureMode), privacy: .public), microphoneEnabled=\(self.microphoneEnabled)"
+        )
         isResumingConnection = false
         onStateChange?(.connected, statusMessage)
 
@@ -277,7 +287,7 @@ extension GeminiLiveSession {
         }
 
         if !microphoneTapInstalled {
-            inputNode.installTap(onBus: 0, bufferSize: 2_048, format: inputFormat) { [weak self] buffer, _ in
+            inputNode.installTap(onBus: 0, bufferSize: 512, format: inputFormat) { [weak self] buffer, _ in
                 guard let self, let clonedBuffer = GeminiPCMBufferCloner.clone(buffer) else { return }
 
                 self.audioProcessingQueue.async { [weak self] in
@@ -312,14 +322,14 @@ extension GeminiLiveSession {
 
         do {
             try audioIO.startCapture { [weak self] buffer in
-                guard let self, let clonedBuffer = GeminiPCMBufferCloner.clone(buffer) else { return }
-
+                guard let self else { return }
+                // Buffer is already cloned by GeminiLiveWebRTCAudioIO — no second clone needed.
                 self.audioProcessingQueue.async { [weak self] in
                     guard let self else { return }
                     if self.inputConverter == nil {
-                        self.inputConverter = AVAudioConverter(from: clonedBuffer.format, to: self.inputTargetFormat)
+                        self.inputConverter = AVAudioConverter(from: buffer.format, to: self.inputTargetFormat)
                     }
-                    self.processCapturedBuffer(clonedBuffer)
+                    self.processCapturedBuffer(buffer)
                 }
             }
         } catch {
@@ -340,7 +350,7 @@ extension GeminiLiveSession {
         }
 
         if !microphoneTapInstalled {
-            inputNode.installTap(onBus: 0, bufferSize: 2_048, format: inputFormat) { [weak self] buffer, _ in
+            inputNode.installTap(onBus: 0, bufferSize: 512, format: inputFormat) { [weak self] buffer, _ in
                 guard let self, let clonedBuffer = GeminiPCMBufferCloner.clone(buffer) else { return }
 
                 self.audioProcessingQueue.async { [weak self] in

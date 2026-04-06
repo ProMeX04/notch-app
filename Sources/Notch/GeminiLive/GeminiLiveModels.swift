@@ -3,12 +3,6 @@ import Combine
 import Foundation
 import SwiftUI
 
-/// Floating panel mode for API keys (Gemini / Pexels / Brave) — shown outside the notch.
-enum GeminiSecretsPanelMode: Equatable {
-    case geminiOnly
-    case allServiceKeys
-}
-
 enum GeminiLiveConnectionState: Equatable {
     case disconnected
     case connecting

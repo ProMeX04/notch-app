@@ -115,8 +115,8 @@ final class GeminiLiveViewModel: ObservableObject {
 
     private var storedAPIKey: String?
     var onExecApprovalAttentionRequested: (() -> Void)?
-    /// Present the API key window (standard `NSWindow`, set by `NotchWindowController`).
-    var onPresentSecretsPanel: ((GeminiSecretsPanelMode) -> Void)?
+    /// Present the service keys window (standard `NSWindow`, set by `NotchWindowController`).
+    var onPresentSecretsPanel: (() -> Void)?
 
     @Published var pexelsAPIKeyText: String = ""
     @Published var braveSearchAPIKeyText: String = ""
@@ -183,6 +183,9 @@ final class GeminiLiveViewModel: ObservableObject {
         session.onStateChange = { [weak self] state, message in
             DispatchQueue.main.async {
                 guard let self else { return }
+                NotchLog.geminiLive.notice(
+                    "ViewModel state change: \(String(describing: self.connectionState)) -> \(String(describing: state)), userInitiated=\(self.lastDisconnectWasUserInitiated), autoReconnect=\(self.isAutoReconnecting), message=\(message ?? "<none>", privacy: .public)"
+                )
                 self.connectionState = state
                 if let message, !message.isEmpty {
                     self.statusText = message
@@ -194,10 +197,10 @@ final class GeminiLiveViewModel: ObservableObject {
                 if state == .failed && !self.lastDisconnectWasUserInitiated {
                     self.scheduleReconnect()
                 } else if state == .connected {
-                    // Reset counter on successful connect
-                    self.reconnectAttempt = 0
-                    self.isAutoReconnecting = false
-                    self.reconnectTask = nil
+                    // A successful session-level reconnect must cancel any pending
+                    // view-model reconnect task, otherwise it will fire later and
+                    // start a fresh connect loop on top of the recovered session.
+                    self.cancelReconnect()
                 }
             }
         }
@@ -328,12 +331,8 @@ final class GeminiLiveViewModel: ObservableObject {
         !(configuredAPIKey?.isEmpty ?? true)
     }
 
-    func requestGeminiAPIKeyPanel() {
-        onPresentSecretsPanel?(.geminiOnly)
-    }
-
-    func requestAllServiceKeysPanel() {
-        onPresentSecretsPanel?(.allServiceKeys)
+    func requestManageKeysPanel() {
+        onPresentSecretsPanel?()
     }
 
     var selectedSystemPromptPreset: GeminiSystemPromptPreset {
@@ -802,18 +801,24 @@ final class GeminiLiveViewModel: ObservableObject {
             connectionState = .failed
             lastErrorMessage = "Gemini API key is missing."
             statusText = "Save a Gemini API key, then connect again."
+            NotchLog.geminiLive.error("Connect requested without a configured Gemini API key.")
             return
         }
 
         if clearingTranscripts { clearTranscripts() }
+        lastDisconnectWasUserInitiated = false
         connectionState = .connecting
         lastErrorMessage = nil
         statusText = "Requesting microphone access..."
+        NotchLog.geminiLive.notice(
+            "Connect requested. clearingTranscripts=\(clearingTranscripts), microphoneEnabled=\(self.isMicrophoneEnabled), tools=\(self.enabledTools.count), skills=\(self.enabledSkillNames.count)"
+        )
 
         requestMicrophoneAccess { [weak self] granted in
             guard let self else { return }
             Task { @MainActor in
                 guard granted else {
+                    NotchLog.geminiLive.error("Microphone access denied while connecting Gemini Live.")
                     self.connectionState = .failed
                     self.lastErrorMessage = "Microphone access is required for Gemini Live."
                     self.statusText = "Enable microphone access for Notch in System Settings."
@@ -845,6 +850,9 @@ final class GeminiLiveViewModel: ObservableObject {
                 )
 
                 let preset = self.selectedSystemPromptPreset
+                NotchLog.geminiLive.notice(
+                    "Starting Gemini Live session. resumeSession=\(!clearingTranscripts), promptChars=\(systemPrompt.count), voice=\(preset.voiceEnum.apiName, privacy: .public), thinkingBudget=\(preset.thinkingEnum.budget)"
+                )
                 self.session.connect(
                     apiKey: configuredAPIKey,
                     model: "gemini-3.1-flash-live-preview",
@@ -862,6 +870,7 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     func disconnect() {
+        NotchLog.geminiLive.notice("Disconnect requested by user.")
         lastDisconnectWasUserInitiated = true
         cancelReconnect()
         stopScreenCapture()
@@ -881,16 +890,21 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     private func scheduleReconnect() {
-        guard reconnectTask == nil else { return }
+        guard reconnectTask == nil else {
+            NotchLog.geminiLive.notice("ViewModel reconnect skipped because a reconnect task is already pending.")
+            return
+        }
         guard reconnectAttempt < maxReconnectAttempts else {
             isAutoReconnecting = false
             statusText = "Connection lost. Please reconnect manually."
+            NotchLog.geminiLive.error("ViewModel reconnect budget exhausted after \(self.reconnectAttempt) attempts.")
             return
         }
         let delay = pow(2.0, Double(reconnectAttempt)) * 3.0 // 3s, 6s, 12s
         reconnectAttempt += 1
         isAutoReconnecting = true
         statusText = "Reconnecting... (attempt \(reconnectAttempt)/\(maxReconnectAttempts))"
+        NotchLog.geminiLive.notice("ViewModel scheduled reconnect attempt \(self.reconnectAttempt)/\(self.maxReconnectAttempts) after \(delay, format: .fixed(precision: 2))s.")
 
         reconnectTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -898,11 +912,15 @@ final class GeminiLiveViewModel: ObservableObject {
             guard !Task.isCancelled else { return }
             self.reconnectTask = nil
             self.lastDisconnectWasUserInitiated = false
+            NotchLog.geminiLive.notice("ViewModel reconnect firing now.")
             self.connect(clearingTranscripts: false)
         }
     }
 
     private func cancelReconnect() {
+        if reconnectTask != nil || reconnectAttempt > 0 || isAutoReconnecting {
+            NotchLog.geminiLive.notice("ViewModel reconnect cancelled. attempt=\(self.reconnectAttempt), autoReconnect=\(self.isAutoReconnecting)")
+        }
         reconnectTask?.cancel()
         reconnectTask = nil
         reconnectAttempt = 0
@@ -1254,7 +1272,7 @@ final class GeminiLiveViewModel: ObservableObject {
 
         guard let apiKey = configuredPexelsAPIKey else {
             postToolAction(label: "[Pexels] API key is missing.", icon: "exclamationmark.triangle")
-            onPresentSecretsPanel?(.allServiceKeys)
+            onPresentSecretsPanel?()
             return
         }
 

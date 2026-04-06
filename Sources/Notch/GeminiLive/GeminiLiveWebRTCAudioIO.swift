@@ -44,7 +44,7 @@ final class GeminiLiveWebRTCAudioIO: NSObject, @unchecked Sendable {
     override init() {
         let apmConfig = LKRTCAudioProcessingConfig()
         apmConfig.isEchoCancellationEnabled = true
-        apmConfig.isEchoCancellationMobileMode = true
+        apmConfig.isEchoCancellationMobileMode = false
         apmConfig.isNoiseSuppressionEnabled = true
         apmConfig.isHighpassFilterEnabled = true
         apmConfig.isAutoGainControl1Enabled = true
@@ -227,7 +227,7 @@ final class GeminiLiveWebRTCAudioIO: NSObject, @unchecked Sendable {
 
             guard !inputTapInstalled else { return }
 
-            tapNode.installTap(onBus: 0, bufferSize: 2_048, format: format) { [weak self] buffer, _ in
+            tapNode.installTap(onBus: 0, bufferSize: 512, format: format) { [weak self] buffer, _ in
                 guard let self, let clone = self.clone(buffer) else { return }
                 self.handleCapturedBuffer(clone)
             }

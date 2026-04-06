@@ -85,64 +85,20 @@ private struct LTRSecureField: NSViewRepresentable {
 
 private struct GeminiSecretsFloatingContentView: View {
     @ObservedObject var gemini: GeminiLiveViewModel
-    let mode: GeminiSecretsPanelMode
     let onDismiss: () -> Void
-
-    private var canSaveGeminiOnly: Bool {
-        !gemini.apiKeyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !gemini.isSavingAPIKey
-    }
 
     private var canSaveAll: Bool {
         !gemini.isSavingAPIKey && !gemini.isSavingServiceKeys
     }
 
     var body: some View {
-        Group {
-            switch mode {
-            case .geminiOnly:
-                geminiOnlyForm
-            case .allServiceKeys:
-                allKeysForm
-            }
-        }
+        allKeysForm
         // API keys are always entered left-to-right (bullets / cursor follow LTR).
         .environment(\.layoutDirection, .leftToRight)
         .frame(minWidth: 420, minHeight: minContentHeight)
     }
 
-    private var minContentHeight: CGFloat {
-        switch mode {
-        case .geminiOnly: return 140
-        case .allServiceKeys: return 320
-        }
-    }
-
-    private var geminiOnlyForm: some View {
-        Form {
-            Section {
-                LTRSecureField(text: $gemini.apiKeyText, onSubmit: commitSaveGemini)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } header: {
-                Text("Gemini")
-            } footer: {
-                if let err = gemini.lastErrorMessage, !err.isEmpty {
-                    Text(err)
-                        .foregroundStyle(.red)
-                }
-            }
-        }
-        .formStyle(.grouped)
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { onDismiss() }
-            }
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Save") { commitSaveGemini() }
-                    .disabled(!canSaveGeminiOnly)
-            }
-        }
-    }
+    private let minContentHeight: CGFloat = 320
 
     private var allKeysForm: some View {
         Form {
@@ -177,15 +133,6 @@ private struct GeminiSecretsFloatingContentView: View {
         }
     }
 
-    private func commitSaveGemini() {
-        guard canSaveGeminiOnly else { return }
-        Task {
-            if await gemini.saveAPIKey() {
-                onDismiss()
-            }
-        }
-    }
-
     private func commitSaveAll() {
         guard canSaveAll else { return }
         Task {
@@ -204,10 +151,8 @@ final class GeminiSecretsFloatingPanelController {
     private var windowCloseDelegate: GeminiSecretsWindowDelegate?
     private weak var preferredScreen: NSScreen?
     private weak var gemini: GeminiLiveViewModel?
-    private var currentMode: GeminiSecretsPanelMode = .geminiOnly
 
     private let panelWidth: CGFloat = 420
-    private let heightGeminiOnly: CGFloat = 140
     private let heightAllKeys: CGFloat = 380
     private let defaultsKey = "dev.notch.gemini-secrets-floating.frame"
 
@@ -224,11 +169,10 @@ final class GeminiSecretsFloatingPanelController {
         }
     }
 
-    func present(gemini: GeminiLiveViewModel, mode: GeminiSecretsPanelMode) {
+    func present(gemini: GeminiLiveViewModel) {
         self.gemini = gemini
-        currentMode = mode
         gemini.reloadKeyDrafts()
-        ensurePanel(gemini: gemini, mode: mode)
+        ensurePanel(gemini: gemini)
         panel?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -254,23 +198,13 @@ final class GeminiSecretsFloatingPanelController {
         gemini = nil
     }
 
-    private func windowTitle(for mode: GeminiSecretsPanelMode) -> String {
-        switch mode {
-        case .geminiOnly: return "Gemini API Key"
-        case .allServiceKeys: return "Service Keys"
-        }
+    private func windowTitle() -> String {
+        "Manage Keys"
     }
 
-    private func contentHeight(for mode: GeminiSecretsPanelMode) -> CGFloat {
-        switch mode {
-        case .geminiOnly: return heightGeminiOnly
-        case .allServiceKeys: return heightAllKeys
-        }
-    }
-
-    private func defaultFrame(on screen: NSScreen, mode: GeminiSecretsPanelMode) -> CGRect {
+    private func defaultFrame(on screen: NSScreen) -> CGRect {
         let vf = screen.visibleFrame
-        let contentRect = NSRect(x: 0, y: 0, width: panelWidth, height: contentHeight(for: mode))
+        let contentRect = NSRect(x: 0, y: 0, width: panelWidth, height: heightAllKeys)
         let outer = NSWindow.frameRect(forContentRect: contentRect, styleMask: windowStyle)
         let x = vf.midX - outer.width / 2
         let y = vf.minY + 72
@@ -344,7 +278,7 @@ final class GeminiSecretsFloatingPanelController {
         }
     }
 
-    private func ensurePanel(gemini: GeminiLiveViewModel, mode: GeminiSecretsPanelMode) {
+    private func ensurePanel(gemini: GeminiLiveViewModel) {
         let sc = screenForPlacement()
         let onDismiss: () -> Void = { [weak self] in
             guard let self else { return }
@@ -352,9 +286,9 @@ final class GeminiSecretsFloatingPanelController {
         }
 
         if let hv = hostingView, let p = panel {
-            hv.rootView = GeminiSecretsFloatingContentView(gemini: gemini, mode: mode, onDismiss: onDismiss)
-            p.title = windowTitle(for: mode)
-            let contentRect = NSRect(x: 0, y: 0, width: max(p.contentLayoutRect.width, panelWidth), height: contentHeight(for: mode))
+            hv.rootView = GeminiSecretsFloatingContentView(gemini: gemini, onDismiss: onDismiss)
+            p.title = windowTitle()
+            let contentRect = NSRect(x: 0, y: 0, width: max(p.contentLayoutRect.width, panelWidth), height: heightAllKeys)
             let outer = NSWindow.frameRect(forContentRect: contentRect, styleMask: windowStyle)
             var f = p.frame
             f.size = outer.size
@@ -370,7 +304,7 @@ final class GeminiSecretsFloatingPanelController {
             let onScreen = dominantScreen(forWindowFrame: saved) ?? sc
             initial = clampFrame(saved, to: onScreen)
         } else {
-            initial = defaultFrame(on: sc, mode: mode)
+            initial = defaultFrame(on: sc)
         }
 
         let panel = GeminiSecretsKeyWindow(
@@ -379,7 +313,7 @@ final class GeminiSecretsFloatingPanelController {
             backing: .buffered,
             defer: false
         )
-        panel.title = windowTitle(for: mode)
+        panel.title = windowTitle()
         panel.level = .normal
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.fullScreenAuxiliary, .moveToActiveSpace]
@@ -395,7 +329,7 @@ final class GeminiSecretsFloatingPanelController {
         panel.delegate = del
         windowCloseDelegate = del
 
-        let root = GeminiSecretsFloatingContentView(gemini: gemini, mode: mode, onDismiss: onDismiss)
+        let root = GeminiSecretsFloatingContentView(gemini: gemini, onDismiss: onDismiss)
         let hv = NSHostingView(rootView: root)
         hv.frame = panel.contentLayoutRect
         hv.autoresizingMask = [.width, .height]

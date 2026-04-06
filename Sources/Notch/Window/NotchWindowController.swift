@@ -75,8 +75,8 @@ final class NotchWindowController {
         liveChatInputPanel.setPreferredScreen(initialScreen)
         liveChatInputPanel.observe(gemini: geminiLiveViewModel)
         geminiSecretsFloatingPanel.setPreferredScreen(initialScreen)
-        geminiLiveViewModel.onPresentSecretsPanel = { [weak self] mode in
-            self?.presentSecretsFloatingPanel(mode: mode)
+        geminiLiveViewModel.onPresentSecretsPanel = { [weak self] in
+            self?.presentSecretsFloatingPanel()
         }
         geminiLiveViewModel.onExecApprovalAttentionRequested = { [weak self] in
             self?.presentExecApproval()
@@ -166,20 +166,13 @@ final class NotchWindowController {
     }
 
     /// Floating panels for API keys (status bar / tools) — not in the notch.
-    func presentSecretsFloatingPanel(mode: GeminiSecretsPanelMode) {
-        if mode == .geminiOnly {
-            geminiLiveViewModel.disconnectIfNeeded()
-        }
+    func presentSecretsFloatingPanel() {
         NSApp.activate(ignoringOtherApps: true)
-        geminiSecretsFloatingPanel.present(gemini: geminiLiveViewModel, mode: mode)
+        geminiSecretsFloatingPanel.present(gemini: geminiLiveViewModel)
     }
 
-    func showTalkKeyEditorFromStatusMenu() {
-        presentSecretsFloatingPanel(mode: .geminiOnly)
-    }
-
-    func presentAllServiceKeysFromStatusMenu() {
-        presentSecretsFloatingPanel(mode: .allServiceKeys)
+    func presentManageKeysFromStatusMenu() {
+        presentSecretsFloatingPanel()
     }
 
     func presentExecApproval() {
@@ -257,35 +250,35 @@ final class NotchWindowController {
 
     func showFocusTool(_ tool: FocusTool?) {
         showFocusPanel()
-        selectFocusTool(tool)
-    }
-
-    private func selectFocusTool(_ tool: FocusTool?) {
         if let tool {
             presentationModel.selectedFocusTool = tool
         }
     }
 
+    private func resolvedFocusTool(_ tool: FocusTool?) -> FocusTool {
+        tool ?? presentationModel.selectedFocusTool
+    }
+
     func toggleFocusTool(_ tool: FocusTool?) {
-        selectFocusTool(tool)
+        let targetTool = resolvedFocusTool(tool)
+        presentationModel.selectedFocusTool = targetTool
         toggleSelectedFocusTool()
     }
 
     func configureFocusTool(_ tool: FocusTool?, duration: String?, breakDuration: String?) throws {
-        selectFocusTool(tool)
-        switch presentationModel.selectedFocusTool {
+        switch resolvedFocusTool(tool) {
         case .pomodoro:
-            let focusMinutes = try resolvedPomodoroMinutes(
+            let focusSeconds = try resolvedPomodoroSeconds(
                 from: duration,
-                fallbackMinutes: pomodoroViewModel.focusMinutes,
+                fallbackSeconds: pomodoroViewModel.focusDurationSeconds,
                 parameterName: "duration"
             )
-            let breakMinutes = try resolvedPomodoroMinutes(
+            let breakSeconds = try resolvedPomodoroSeconds(
                 from: breakDuration,
-                fallbackMinutes: pomodoroViewModel.breakMinutes,
+                fallbackSeconds: pomodoroViewModel.breakDurationSeconds,
                 parameterName: "break"
             )
-            pomodoroViewModel.updateCurrentDurations(focusMinutes: focusMinutes, breakMinutes: breakMinutes)
+            pomodoroViewModel.updateCurrentDurations(focusSeconds: focusSeconds, breakSeconds: breakSeconds)
         case .countdown:
             if breakDuration != nil {
                 throw NotchFocusCommandError.unsupportedBreakDuration
@@ -319,12 +312,11 @@ final class NotchWindowController {
     }
 
     func skipFocusTool(_ tool: FocusTool?) throws {
-        selectFocusTool(tool)
-        switch presentationModel.selectedFocusTool {
+        switch resolvedFocusTool(tool) {
         case .pomodoro:
             pomodoroViewModel.skipPhase()
         case .countdown, .counter:
-            throw NotchFocusCommandError.skipUnsupported(presentationModel.selectedFocusTool.rawValue)
+            throw NotchFocusCommandError.skipUnsupported(resolvedFocusTool(tool).rawValue)
         }
     }
 
@@ -407,8 +399,7 @@ final class NotchWindowController {
     }
 
     private func performFocusAction(tool: FocusTool?, action: FocusCommandAction) throws {
-        selectFocusTool(tool)
-        switch presentationModel.selectedFocusTool {
+        switch resolvedFocusTool(tool) {
         case .pomodoro:
             try action.apply(
                 isRunning: pomodoroViewModel.isRunning,
@@ -436,14 +427,14 @@ final class NotchWindowController {
         }
     }
 
-    private func resolvedPomodoroMinutes(from raw: String?, fallbackMinutes: Int, parameterName: String) throws -> Int {
+    private func resolvedPomodoroSeconds(from raw: String?, fallbackSeconds: Int, parameterName: String) throws -> Int {
         guard let raw, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return fallbackMinutes
+            return fallbackSeconds
         }
-        guard let seconds = DurationParser.parse(raw) else {
+        guard let seconds = DurationParser.parse(raw), seconds > 0 else {
             throw NotchFocusCommandError.invalidParameter(parameterName, raw)
         }
-        return max(1, Int(ceil(Double(seconds) / 60.0)))
+        return seconds
     }
 }
 
@@ -462,7 +453,9 @@ private enum FocusCommandAction {
     ) throws {
         switch self {
         case .start:
-            guard !isRunning else { return }
+            if isRunning || hasActiveSession {
+                reset()
+            }
             start()
         case .pause:
             guard isRunning else { return }

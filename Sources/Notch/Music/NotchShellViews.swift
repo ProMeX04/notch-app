@@ -1,4 +1,27 @@
 import SwiftUI
+
+final class NotchHeaderAccessoryController: ObservableObject {
+    @Published var leadingActions: [NotchHeaderAction] = []
+
+    func clear() {
+        leadingActions = []
+    }
+}
+
+struct NotchHeaderAction: Identifiable {
+    enum Style {
+        case secondary
+        case primary
+    }
+
+    let id: String
+    let title: String
+    let icon: String?
+    let style: Style
+    let isDisabled: Bool
+    let action: () -> Void
+}
+
 struct CompactSpectrumView: View {
     let accentColor: Color
     let isPlaying: Bool
@@ -18,6 +41,7 @@ struct NotchHeaderView: View {
     let closedNotchWidth: CGFloat
     let closedNotchHeight: CGFloat
     @ObservedObject var presentationModel: NotchPresentationModel
+    @ObservedObject var accessoryController: NotchHeaderAccessoryController
 
     private var displayHeight: CGFloat {
         max(22, closedNotchHeight - 6)
@@ -26,7 +50,28 @@ struct NotchHeaderView: View {
     var body: some View {
         HStack(spacing: 0) {
             HStack {
-                EmptyView()
+                ForEach(accessoryController.leadingActions) { action in
+                    Button(action: action.action) {
+                        HStack(spacing: 5) {
+                            if let icon = action.icon {
+                                Image(systemName: icon)
+                                    .font(.system(size: 10, weight: .bold))
+                            }
+                            Text(action.title)
+                                .font(.system(size: 10, weight: .semibold))
+                        }
+                        .foregroundStyle(foregroundStyle(for: action))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .frame(minHeight: 30)
+                        .background(
+                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .fill(backgroundFill(for: action))
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(action.isDisabled)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, 20)
@@ -45,6 +90,26 @@ struct NotchHeaderView: View {
             .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(.trailing, 20)
             .offset(y: 3)
+        }
+    }
+
+    private func foregroundStyle(for action: NotchHeaderAction) -> Color {
+        switch action.style {
+        case .secondary:
+            return action.isDisabled ? .white.opacity(0.2) : .white.opacity(0.78)
+        case .primary:
+            return action.isDisabled
+                ? .white.opacity(0.2)
+                : Color(nsColor: .systemBlue).ensureMinimumBrightness(factor: 0.72)
+        }
+    }
+
+    private func backgroundFill(for action: NotchHeaderAction) -> Color {
+        switch action.style {
+        case .secondary:
+            return Color.white.opacity(0.04)
+        case .primary:
+            return Color.white.opacity(0.04)
         }
     }
 }
@@ -155,19 +220,8 @@ struct CompactTalkView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(accentColor.opacity(0.18))
-
-                HStack(spacing: 0) {
-                    Image(systemName: gemini.compactSymbolName)
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(accentColor)
-                        .padding(.leading, 4)
-                    Spacer(minLength: 0)
-                }
-            }
-            .frame(width: sideSize, height: sideSize)
+            CompactTalkLiveDot(connectionState: gemini.connectionState)
+                .frame(width: sideSize, height: sideSize)
 
             Rectangle()
                 .fill(.black)
@@ -243,6 +297,47 @@ struct CompactCountdownView: View {
     }
 }
 
+/// Small “on air” dot for closed notch (no extra chrome — just the dot).
+private struct CompactTalkLiveDot: View {
+    let connectionState: GeminiLiveConnectionState
+    @State private var pulse = false
+
+    private var dotColor: Color {
+        switch connectionState {
+        case .connected, .connecting:
+            return Color(nsColor: .systemGreen)
+        case .failed, .disconnected:
+            return Color.white.opacity(0.45)
+        }
+    }
+
+    private var shouldPulse: Bool {
+        switch connectionState {
+        case .connecting, .connected:
+            return true
+        case .failed, .disconnected:
+            return false
+        }
+    }
+
+    private var pulseDuration: Double {
+        connectionState == .connecting ? 0.55 : 1.05
+    }
+
+    var body: some View {
+        Circle()
+            .fill(dotColor)
+            .frame(width: 7, height: 7)
+            .scaleEffect(shouldPulse && pulse ? 1.14 : 1.0)
+            .onAppear {
+                guard shouldPulse else { return }
+                withAnimation(.easeInOut(duration: pulseDuration).repeatForever(autoreverses: true)) {
+                    pulse = true
+                }
+            }
+    }
+}
+
 struct CompactTalkPulseView: View {
     let tint: Color
     let isAnimated: Bool
@@ -313,6 +408,7 @@ struct ExpandedNotchContent: View {
     @ObservedObject var shelf: NotchShelfViewModel
     @ObservedObject var learningStats: LearningStatsStore
     @ObservedObject var presentationModel: NotchPresentationModel
+    @ObservedObject var talkHeaderAccessoryController: NotchHeaderAccessoryController
     let albumArtNamespace: Namespace.ID
 
     var body: some View {
@@ -337,7 +433,10 @@ struct ExpandedNotchContent: View {
                     }
                 }
             } else if presentationModel.selectedPanel == .talk {
-                GeminiTalkPanelView(gemini: gemini)
+                GeminiTalkPanelView(
+                    gemini: gemini,
+                    headerAccessoryController: talkHeaderAccessoryController
+                )
             } else if presentationModel.selectedPanel == .shelf {
                 ShelfPanelView(shelf: shelf)
             } else {

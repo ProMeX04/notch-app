@@ -3,6 +3,12 @@ import Combine
 import Foundation
 import SwiftUI
 
+/// Floating panel mode for API keys (Gemini / Pexels / Brave) — shown outside the notch.
+enum GeminiSecretsPanelMode: Equatable {
+    case geminiOnly
+    case allServiceKeys
+}
+
 enum GeminiLiveConnectionState: Equatable {
     case disconnected
     case connecting
@@ -93,6 +99,8 @@ enum GeminiVoice: String, CaseIterable {
 struct ToolActionToast: Equatable {
     let label: String
     let icon: String
+    /// When false, only drives the menu bar chip — not the floating transcript overlay line.
+    var showsInOverlay: Bool = true
 }
 
 struct ExecApprovalRequest: Identifiable, Equatable, Sendable {
@@ -222,14 +230,14 @@ struct TranscriptOverlayInput: Equatable {
     static let idle = TranscriptOverlayInput()
 
     var hasVisibleContent: Bool {
-        (subsEnabled && (!userText.isEmpty || !modelText.isEmpty))
+        (subsEnabled && (!modelText.isEmpty || isModelSpeaking))
             || toolAction != nil || imageRequest != nil
     }
 
     var shouldShow: Bool { imageRequest != nil || (isConnected && hasVisibleContent) }
 
     /// Used to suppress panel re-opening when only extras (image/toast) clear.
-    var transcriptKey: String { userText + "\u{1F}" + modelText }
+    var transcriptKey: String { modelText }
 }
 
 enum GeminiTool: String, CaseIterable, Identifiable {
@@ -310,31 +318,87 @@ enum GeminiTool: String, CaseIterable, Identifiable {
     }
 }
 
-struct GeminiSystemPromptPreset: Identifiable, Codable, Hashable {
+struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
+    static let defaultAvatarSymbolName = "waveform"
+    static let availableAvatarSymbolNames = [
+        "waveform",
+        "sparkles",
+        "brain.head.profile",
+        "person.crop.circle.fill",
+        "bubble.left.and.bubble.right.fill",
+        "wand.and.stars",
+        "bolt.fill",
+        "lightbulb.fill",
+        "headphones",
+        "globe"
+    ]
+
     let id: String
     var title: String
     var content: String
     /// rawValues of enabled GeminiTool cases. Empty = no tools enabled.
     var enabledTools: [String]
+    /// Installed skill names enabled for this preset (same idea as `enabledTools`).
+    var enabledSkillNames: [String]
     /// GeminiVoice.rawValue for this preset.
     var voice: String
     /// GeminiThinkingLevel.rawValue for this preset.
     var thinkingLevel: String
+    /// SF Symbol used as the agent avatar in setup UI.
+    var avatarSymbolName: String
+    /// Relative filename of a custom avatar image stored in app state.
+    var avatarImageFilename: String?
 
     init(
         id: String,
         title: String,
         content: String,
         enabledTools: [String] = [],
+        enabledSkillNames: [String] = [],
         voice: String = GeminiVoice.kore.rawValue,
-        thinkingLevel: String = GeminiThinkingLevel.off.rawValue
+        thinkingLevel: String = GeminiThinkingLevel.off.rawValue,
+        avatarSymbolName: String = GeminiSystemPromptPreset.defaultAvatarSymbolName,
+        avatarImageFilename: String? = nil
     ) {
         self.id = id
         self.title = title
         self.content = content
         self.enabledTools = enabledTools
+        self.enabledSkillNames = enabledSkillNames
         self.voice = voice
         self.thinkingLevel = thinkingLevel
+        self.avatarSymbolName = avatarSymbolName
+        self.avatarImageFilename = avatarImageFilename
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, content, enabledTools, enabledSkillNames, voice, thinkingLevel, avatarSymbolName, avatarImageFilename
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        title = try c.decode(String.self, forKey: .title)
+        content = try c.decode(String.self, forKey: .content)
+        enabledTools = try c.decodeIfPresent([String].self, forKey: .enabledTools) ?? []
+        enabledSkillNames = try c.decodeIfPresent([String].self, forKey: .enabledSkillNames) ?? []
+        voice = try c.decodeIfPresent(String.self, forKey: .voice) ?? GeminiVoice.kore.rawValue
+        thinkingLevel = try c.decodeIfPresent(String.self, forKey: .thinkingLevel) ?? GeminiThinkingLevel.off.rawValue
+        avatarSymbolName = try c.decodeIfPresent(String.self, forKey: .avatarSymbolName) ?? GeminiSystemPromptPreset.defaultAvatarSymbolName
+        avatarImageFilename = try c.decodeIfPresent(String.self, forKey: .avatarImageFilename)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(title, forKey: .title)
+        try c.encode(content, forKey: .content)
+        try c.encode(enabledTools, forKey: .enabledTools)
+        try c.encode(enabledSkillNames, forKey: .enabledSkillNames)
+        try c.encode(voice, forKey: .voice)
+        try c.encode(thinkingLevel, forKey: .thinkingLevel)
+        try c.encode(avatarSymbolName, forKey: .avatarSymbolName)
+        try c.encodeIfPresent(avatarImageFilename, forKey: .avatarImageFilename)
     }
 
     var toolSet: Set<GeminiTool> {
@@ -347,6 +411,21 @@ struct GeminiSystemPromptPreset: Identifiable, Codable, Hashable {
 
     var thinkingEnum: GeminiThinkingLevel {
         GeminiThinkingLevel(rawValue: thinkingLevel) ?? .off
+    }
+
+    var resolvedAvatarSymbolName: String {
+        if Self.availableAvatarSymbolNames.contains(avatarSymbolName) {
+            return avatarSymbolName
+        }
+        return Self.defaultAvatarSymbolName
+    }
+
+    var hasCustomAvatarImage: Bool {
+        !(avatarImageFilename?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+    }
+
+    var resolvedAvatarImageURL: URL? {
+        GeminiAgentAvatarStore().imageURL(for: avatarImageFilename)
     }
 
     static let defaultPreset = GeminiSystemPromptPreset(

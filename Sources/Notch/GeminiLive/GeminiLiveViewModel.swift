@@ -29,8 +29,7 @@ final class GeminiLiveViewModel: ObservableObject {
     @Published private(set) var isModelSpeaking = false
     @Published private(set) var outputVolume = 1.0
 
-    // All three properties below are per-preset: reading reflects the active preset,
-    // writing updates the active preset and persists.
+    // Per-preset: reading reflects the active preset; writing updates that preset and persists.
     @Published var thinkingLevel: GeminiThinkingLevel = .off {
         didSet {
             if let idx = systemPromptPresets.firstIndex(where: { $0.id == selectedSystemPromptID }) {
@@ -58,10 +57,20 @@ final class GeminiLiveViewModel: ObservableObject {
     @Published var enabledSkillNames: Set<String> = [] {
         didSet {
             normalizeEnabledSkillNames()
+            if let idx = systemPromptPresets.firstIndex(where: { $0.id == selectedSystemPromptID }) {
+                systemPromptPresets[idx].enabledSkillNames = enabledSkillNames.sorted()
+            }
             persistSettings()
         }
     }
     @Published var showTranscriptOverlay: Bool = true {
+        didSet { persistSettings() }
+    }
+    /// When true, the floating transcript overlay fades out shortly after the model stops speaking.
+    @Published var transcriptOverlayAutoHide: Bool = true {
+        didSet { persistSettings() }
+    }
+    @Published var showLiveChatInput: Bool = true {
         didSet { persistSettings() }
     }
     @Published private(set) var systemPromptPresets: [GeminiSystemPromptPreset] = GeminiSystemPromptPreset.defaultPresets
@@ -76,6 +85,8 @@ final class GeminiLiveViewModel: ObservableObject {
     @Published private(set) var isAutoReconnecting = false
     @Published private(set) var pendingExecApprovals: [ExecApprovalRequest] = []
     private var toastClearTask: Task<Void, Never>?
+    /// Clears `displayedImageOverlay` after a fixed delay so images never stick forever (e.g. when `isModelSpeaking` stays true).
+    private var imageOverlayAutoDismissTask: Task<Void, Never>?
     private var reconnectTask: Task<Void, Never>?
     private var reconnectAttempt = 0
     private let maxReconnectAttempts = 3
@@ -94,6 +105,7 @@ final class GeminiLiveViewModel: ObservableObject {
     private let braveSearchKeyStore: GeminiLiveSecretStore
     private let settingsStore: GeminiLiveSettingsStore
     private let execApprovalStore: GeminiLiveExecApprovalStore
+    private let agentAvatarStore: GeminiAgentAvatarStore
     private let skillStore: SkillStore
     private let skillPackageService: SkillPackageService
     private let userStore: UserStore
@@ -105,11 +117,10 @@ final class GeminiLiveViewModel: ObservableObject {
     weak var countdown: CountdownViewModel?
     weak var counter: CounterViewModel?
     weak var playback: MusicProbeViewModel?
-    private let environmentAPIKey: String?
-    private let environmentPexelsAPIKey: String?
-    private let environmentBraveSearchAPIKey: String?
     private var storedAPIKey: String?
     var onExecApprovalAttentionRequested: (() -> Void)?
+    /// Present the API key window (standard `NSWindow`, set by `NotchWindowController`).
+    var onPresentSecretsPanel: ((GeminiSecretsPanelMode) -> Void)?
 
     @Published var pexelsAPIKeyText: String = ""
     @Published var braveSearchAPIKeyText: String = ""
@@ -120,9 +131,6 @@ final class GeminiLiveViewModel: ObservableObject {
 
     init(processInfo: ProcessInfo = .processInfo, session: GeminiLiveSession = GeminiLiveSession()) {
         self.session = session
-        environmentAPIKey = processInfo.environment["GEMINI_API_KEY"]
-        environmentPexelsAPIKey = processInfo.environment["PEXELS_API_KEY"]
-        environmentBraveSearchAPIKey = processInfo.environment["BRAVE_SEARCH_API_KEY"]
         keyStore = GeminiLiveAPIKeyStore(processInfo: processInfo)
         pexelsKeyStore = GeminiLiveSecretStore(
             processInfo: processInfo,
@@ -136,6 +144,7 @@ final class GeminiLiveViewModel: ObservableObject {
         )
         settingsStore = GeminiLiveSettingsStore()
         execApprovalStore = GeminiLiveExecApprovalStore()
+        agentAvatarStore = GeminiAgentAvatarStore()
         skillStore = SkillStore()
         skillPackageService = SkillPackageService(skillStore: skillStore)
         userStore = UserStore()
@@ -145,17 +154,14 @@ final class GeminiLiveViewModel: ObservableObject {
         if let savedSettings = settingsStore.read() {
             isMicrophoneEnabled = savedSettings.isMicrophoneEnabled
             showTranscriptOverlay = savedSettings.showTranscriptOverlay
+            transcriptOverlayAutoHide = savedSettings.transcriptOverlayAutoHide
+            showLiveChatInput = savedSettings.showLiveChatInput
             outputVolume = min(max(savedSettings.outputVolume, 0), 1)
             systemPromptPresets = savedSettings.systemPromptPresets
             selectedSystemPromptID = savedSettings.selectedSystemPromptID
-            _enabledSkillNames = Published(initialValue: Set(savedSettings.enabledSkillNames))
         }
 
-        if let environmentAPIKey, !environmentAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            apiKeyText = environmentAPIKey
-            hasSavedAPIKey = true
-            statusText = "Using GEMINI_API_KEY from the current environment."
-        } else if let storedKey = keyStore.read(), !storedKey.isEmpty {
+        if let storedKey = keyStore.read(), !storedKey.isEmpty {
             storedAPIKey = storedKey
             apiKeyText = storedKey
             hasSavedAPIKey = true
@@ -173,7 +179,9 @@ final class GeminiLiveViewModel: ObservableObject {
         _thinkingLevel = Published(initialValue: active.thinkingEnum)
         _selectedVoice = Published(initialValue: active.voiceEnum)
         _enabledTools = Published(initialValue: active.toolSet)
+        _enabledSkillNames = Published(initialValue: Set(active.enabledSkillNames))
         normalizeEnabledSkillNames()
+        syncEnabledSkillNamesToActivePreset()
         let userStore = self.userStore
         let memoryStore = self.memoryStore
         session.setOutputVolume(outputVolume)
@@ -293,39 +301,39 @@ final class GeminiLiveViewModel: ObservableObject {
                     }
                 } else if name == "read" {
                     if resultSuccess == true {
-                        self.postToolAction(label: "Read file", icon: "doc.text")
+                        self.postToolAction(label: "Read file", icon: "doc.text", showsInOverlay: false)
                     } else if let error = resultError {
-                        self.postToolAction(label: error, icon: "exclamationmark.triangle")
+                        self.postToolAction(label: error, icon: "exclamationmark.triangle", showsInOverlay: false)
                     }
                 } else if name == "write" {
                     if resultSuccess == true {
-                        self.postToolAction(label: "Wrote file", icon: "square.and.pencil")
+                        self.postToolAction(label: "Wrote file", icon: "square.and.pencil", showsInOverlay: false)
                     } else if let error = resultError {
-                        self.postToolAction(label: error, icon: "exclamationmark.triangle")
+                        self.postToolAction(label: error, icon: "exclamationmark.triangle", showsInOverlay: false)
                     }
                 } else if name == "exec" {
                     if resultSuccess == true {
-                        self.postToolAction(label: "Ran command", icon: "terminal")
+                        self.postToolAction(label: "Ran command", icon: "terminal", showsInOverlay: false)
                     } else if let error = resultError {
-                        self.postToolAction(label: error, icon: "exclamationmark.triangle")
+                        self.postToolAction(label: error, icon: "exclamationmark.triangle", showsInOverlay: false)
                     }
                 } else if name == "find" {
                     if resultSuccess == true {
-                        self.postToolAction(label: "Found files", icon: "folder")
+                        self.postToolAction(label: "Found files", icon: "folder", showsInOverlay: false)
                     } else if let error = resultError {
-                        self.postToolAction(label: error, icon: "exclamationmark.triangle")
+                        self.postToolAction(label: error, icon: "exclamationmark.triangle", showsInOverlay: false)
                     }
                 } else if name == "grep" {
                     if resultSuccess == true {
-                        self.postToolAction(label: "Searched files", icon: "text.magnifyingglass")
+                        self.postToolAction(label: "Searched files", icon: "text.magnifyingglass", showsInOverlay: false)
                     } else if let error = resultError {
-                        self.postToolAction(label: error, icon: "exclamationmark.triangle")
+                        self.postToolAction(label: error, icon: "exclamationmark.triangle", showsInOverlay: false)
                     }
                 } else if name == "edit" {
                     if resultSuccess == true {
-                        self.postToolAction(label: "Edited file", icon: "slider.horizontal.below.rectangle")
+                        self.postToolAction(label: "Edited file", icon: "slider.horizontal.below.rectangle", showsInOverlay: false)
                     } else if let error = resultError {
-                        self.postToolAction(label: error, icon: "exclamationmark.triangle")
+                        self.postToolAction(label: error, icon: "exclamationmark.triangle", showsInOverlay: false)
                     }
                 } else if name == "readDoc" {
                     let label: String
@@ -337,7 +345,7 @@ final class GeminiLiveViewModel: ObservableObject {
                     default:
                         label = "Read memory"
                     }
-                    self.postToolAction(label: label, icon: "book.pages")
+                    self.postToolAction(label: label, icon: "book.pages", showsInOverlay: false)
                 } else if name == "writeMemory" {
                     if resultSuccess == true {
                         self.postToolAction(label: "Memory updated", icon: "brain")
@@ -351,6 +359,7 @@ final class GeminiLiveViewModel: ObservableObject {
         session.onDisplayImageRequest = { [weak self] request in
             DispatchQueue.main.async {
                 self?.displayedImageOverlay = request
+                self?.scheduleImageOverlayAutoDismissIfNeeded()
             }
         }
 
@@ -436,17 +445,27 @@ final class GeminiLiveViewModel: ObservableObject {
                 userText: transcripts.0,
                 modelText: transcripts.1,
                 isModelSpeaking: transcripts.2,
-                toolAction: toolAction,
+                toolAction: toolAction.flatMap { $0.showsInOverlay ? $0 : nil },
                 imageRequest: image,
                 subsEnabled: subsOn,
                 isConnected: state == .connected || state == .connecting
             )
         }
         .assign(to: &$overlayInput)
+
+        persistSettings()
     }
 
     var hasConfiguredAPIKey: Bool {
         !(configuredAPIKey?.isEmpty ?? true)
+    }
+
+    func requestGeminiAPIKeyPanel() {
+        onPresentSecretsPanel?(.geminiOnly)
+    }
+
+    func requestAllServiceKeysPanel() {
+        onPresentSecretsPanel?(.allServiceKeys)
     }
 
     var selectedSystemPromptPreset: GeminiSystemPromptPreset {
@@ -475,6 +494,14 @@ final class GeminiLiveViewModel: ObservableObject {
         selectedSystemPromptPreset.title
     }
 
+    var selectedSystemPromptAvatarSymbolName: String {
+        selectedSystemPromptPreset.resolvedAvatarSymbolName
+    }
+
+    var selectedSystemPromptAvatarImageURL: URL? {
+        agentAvatarStore.imageURL(for: selectedSystemPromptPreset.avatarImageFilename)
+    }
+
     var canDeleteSelectedSystemPrompt: Bool {
         systemPromptPresets.count > 1
     }
@@ -487,6 +514,9 @@ final class GeminiLiveViewModel: ObservableObject {
         _thinkingLevel = Published(initialValue: active.thinkingEnum)
         _selectedVoice = Published(initialValue: active.voiceEnum)
         _enabledTools = Published(initialValue: active.toolSet)
+        _enabledSkillNames = Published(initialValue: Set(active.enabledSkillNames))
+        normalizeEnabledSkillNames()
+        syncEnabledSkillNamesToActivePreset()
         persistSettings()
     }
 
@@ -495,19 +525,95 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     @discardableResult
+    func createSystemPrompt() -> GeminiSystemPromptPreset {
+        let preset = GeminiSystemPromptPreset(
+            id: UUID().uuidString,
+            title: nextDefaultAgentTitle(),
+            content: "",
+            enabledTools: [],
+            voice: GeminiVoice.kore.rawValue,
+            thinkingLevel: GeminiThinkingLevel.off.rawValue
+        )
+        systemPromptPresets.append(preset)
+        selectedSystemPromptID = preset.id
+        _thinkingLevel = Published(initialValue: .off)
+        _selectedVoice = Published(initialValue: .kore)
+        _enabledTools = Published(initialValue: [])
+        _enabledSkillNames = Published(initialValue: [])
+        persistSettings()
+        return preset
+    }
+
+    func updateSelectedSystemPromptAvatar(symbolName: String) {
+        guard let existingIndex = systemPromptPresets.firstIndex(where: { $0.id == selectedSystemPromptID }) else { return }
+        let resolvedSymbolName = GeminiSystemPromptPreset.availableAvatarSymbolNames.contains(symbolName)
+            ? symbolName
+            : GeminiSystemPromptPreset.defaultAvatarSymbolName
+        guard systemPromptPresets[existingIndex].avatarSymbolName != resolvedSymbolName else { return }
+        systemPromptPresets[existingIndex].avatarSymbolName = resolvedSymbolName
+        persistSettings()
+    }
+
+    func renameSelectedSystemPrompt(to title: String) {
+        guard let existingIndex = systemPromptPresets.firstIndex(where: { $0.id == selectedSystemPromptID }) else { return }
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedTitle = trimmedTitle.isEmpty ? systemPromptPresets[existingIndex].title : trimmedTitle
+        guard systemPromptPresets[existingIndex].title != resolvedTitle else { return }
+        systemPromptPresets[existingIndex].title = resolvedTitle
+        persistSettings()
+    }
+
+    func chooseSelectedSystemPromptAvatarImage() {
+        guard canManageSkills else { return }
+        guard let existingIndex = systemPromptPresets.firstIndex(where: { $0.id == selectedSystemPromptID }) else { return }
+
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.prompt = "Choose"
+        panel.message = "Choose an image for this agent avatar."
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        do {
+            let filename = try agentAvatarStore.saveImage(from: url, presetID: selectedSystemPromptID)
+            systemPromptPresets[existingIndex].avatarImageFilename = filename
+            persistSettings()
+            statusText = "Agent avatar updated."
+            lastErrorMessage = nil
+        } catch {
+            lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            statusText = "Avatar update failed."
+        }
+    }
+
+    func clearSelectedSystemPromptAvatarImage() {
+        guard canManageSkills else { return }
+        guard let existingIndex = systemPromptPresets.firstIndex(where: { $0.id == selectedSystemPromptID }) else { return }
+        let existingFilename = systemPromptPresets[existingIndex].avatarImageFilename
+        guard existingFilename != nil else { return }
+        agentAvatarStore.deleteImage(named: existingFilename)
+        systemPromptPresets[existingIndex].avatarImageFilename = nil
+        persistSettings()
+        statusText = "Agent avatar removed."
+        lastErrorMessage = nil
+    }
+
+    @discardableResult
     func saveSystemPrompt(id: String?, title: String, content: String) -> Bool {
         let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedContent.isEmpty else { return false }
-
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolvedTitle = trimmedTitle.isEmpty ? "Prompt \(systemPromptPresets.count + (id == nil ? 1 : 0))" : trimmedTitle
 
         if let id, let existingIndex = systemPromptPresets.firstIndex(where: { $0.id == id }) {
+            let resolvedTitle = trimmedTitle.isEmpty ? systemPromptPresets[existingIndex].title : trimmedTitle
             systemPromptPresets[existingIndex].title = resolvedTitle
             systemPromptPresets[existingIndex].content = trimmedContent
             // Tools are managed separately; don't touch them here.
             selectedSystemPromptID = id
         } else {
+            let resolvedTitle = trimmedTitle.isEmpty ? "Agent \(systemPromptPresets.count + 1)" : trimmedTitle
             // New presets start with no tools, default voice, and no thinking.
             let preset = GeminiSystemPromptPreset(
                 id: UUID().uuidString,
@@ -522,6 +628,7 @@ final class GeminiLiveViewModel: ObservableObject {
             _thinkingLevel = Published(initialValue: .off)
             _selectedVoice = Published(initialValue: .kore)
             _enabledTools = Published(initialValue: [])
+            _enabledSkillNames = Published(initialValue: [])
         }
 
         normalizeSystemPromptSelection()
@@ -529,11 +636,24 @@ final class GeminiLiveViewModel: ObservableObject {
         return true
     }
 
+    private func nextDefaultAgentTitle() -> String {
+        let prefix = "Agent "
+        let maxIndex = systemPromptPresets.compactMap { preset -> Int? in
+            guard preset.title.hasPrefix(prefix) else { return nil }
+            let suffix = preset.title.dropFirst(prefix.count)
+            return Int(suffix)
+        }
+        .max() ?? 0
+
+        return "Agent \(maxIndex + 1)"
+    }
+
     @discardableResult
     func deleteSystemPrompt(id: String) -> Bool {
         guard systemPromptPresets.count > 1 else { return false }
         guard let existingIndex = systemPromptPresets.firstIndex(where: { $0.id == id }) else { return false }
 
+        agentAvatarStore.deleteImage(named: systemPromptPresets[existingIndex].avatarImageFilename)
         systemPromptPresets.remove(at: existingIndex)
         normalizeSystemPromptSelection()
         persistSettings()
@@ -562,7 +682,7 @@ final class GeminiLiveViewModel: ObservableObject {
         userContent: String
     ) -> String {
         let promptBody = selectedSystemPromptPreset.content.trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolvedPromptBody = promptBody.isEmpty ? GeminiSystemPromptPreset.defaultPreset.content : promptBody
+        let resolvedPromptBody = promptBody
         let skillPrompt = SkillPromptComposer.buildPromptSection(
             for: activeSkills,
             canReadSkills: effectiveTools.contains(.read)
@@ -779,9 +899,9 @@ final class GeminiLiveViewModel: ObservableObject {
         return result
     }
 
-    func postToolAction(label: String, icon: String) {
+    func postToolAction(label: String, icon: String, showsInOverlay: Bool = true) {
         toastClearTask?.cancel()
-        lastToolAction = ToolActionToast(label: label, icon: icon)
+        lastToolAction = ToolActionToast(label: label, icon: icon, showsInOverlay: showsInOverlay)
         toastClearTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(3))
             guard !Task.isCancelled else { return }
@@ -831,19 +951,6 @@ final class GeminiLiveViewModel: ObservableObject {
             return true
         case .failed, .disconnected:
             return false
-        }
-    }
-
-    var compactSymbolName: String {
-        switch connectionState {
-        case .connecting:
-            return "waveform.and.mic"
-        case .connected:
-            return isMicrophoneEnabled ? "mic.fill" : "mic.slash.fill"
-        case .failed:
-            return "exclamationmark.triangle.fill"
-        case .disconnected:
-            return "waveform.and.mic"
         }
     }
 
@@ -914,13 +1021,6 @@ final class GeminiLiveViewModel: ObservableObject {
         do {
             try await validateAPIKey(draftAPIKey)
 
-            guard environmentAPIKey == nil else {
-                apiKeyText = draftAPIKey
-                hasSavedAPIKey = true
-                statusText = "GEMINI_API_KEY is being provided by the current environment."
-                return true
-            }
-
             guard keyStore.save(draftAPIKey) else {
                 lastErrorMessage = "Couldn't save the Gemini API key."
                 statusText = keyStore.saveFailureMessage
@@ -954,16 +1054,8 @@ final class GeminiLiveViewModel: ObservableObject {
         isSavingServiceKeys = true
         defer { isSavingServiceKeys = false }
 
-        let didSavePexels = persistServiceKey(
-            draftValue: pexelsAPIKeyText,
-            envValue: environmentPexelsAPIKey,
-            store: pexelsKeyStore
-        )
-        let didSaveBrave = persistServiceKey(
-            draftValue: braveSearchAPIKeyText,
-            envValue: environmentBraveSearchAPIKey,
-            store: braveSearchKeyStore
-        )
+        let didSavePexels = persistServiceKey(draftValue: pexelsAPIKeyText, store: pexelsKeyStore)
+        let didSaveBrave = persistServiceKey(draftValue: braveSearchAPIKeyText, store: braveSearchKeyStore)
 
         guard didSavePexels && didSaveBrave else {
             lastErrorMessage = "Couldn't save one or more service keys."
@@ -1046,6 +1138,8 @@ final class GeminiLiveViewModel: ObservableObject {
         lastDisconnectWasUserInitiated = true
         cancelReconnect()
         stopScreenCapture()
+        imageOverlayAutoDismissTask?.cancel()
+        imageOverlayAutoDismissTask = nil
         displayedImageOverlay = nil
         pendingExecApprovals.removeAll()
         toastClearTask?.cancel()
@@ -1345,6 +1439,17 @@ final class GeminiLiveViewModel: ObservableObject {
         statusText = showTranscriptOverlay ? "Captions enabled." : "Captions hidden."
     }
 
+    /// Sends typed text over the Live socket as `realtimeInput.text` (required for Gemini 3.1 Flash Live during conversation).
+    @discardableResult
+    func sendLiveChatMessage(_ raw: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        guard connectionState == .connected else { return false }
+        session.sendClientTextTurn(trimmed)
+        userTranscript = trimmed
+        return true
+    }
+
     func clearTranscripts() {
         userTranscript = ""
         modelTranscript = ""
@@ -1354,12 +1459,6 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     func clearSavedKey() {
-        guard environmentAPIKey == nil else {
-            apiKeyText = environmentAPIKey ?? ""
-            hasSavedAPIKey = true
-            return
-        }
-
         keyStore.delete()
         storedAPIKey = nil
         hasSavedAPIKey = false
@@ -1400,7 +1499,23 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     func clearDisplayedImageOverlay() {
+        imageOverlayAutoDismissTask?.cancel()
+        imageOverlayAutoDismissTask = nil
         displayedImageOverlay = nil
+    }
+
+    private func scheduleImageOverlayAutoDismissIfNeeded() {
+        imageOverlayAutoDismissTask?.cancel()
+        guard let overlay = displayedImageOverlay else { return }
+        let captureID = overlay.id
+        imageOverlayAutoDismissTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(10))
+            guard !Task.isCancelled else { return }
+            guard let self else { return }
+            guard self.displayedImageOverlay?.id == captureID else { return }
+            self.imageOverlayAutoDismissTask = nil
+            self.displayedImageOverlay = nil
+        }
     }
 
     func showDisplayedImageOverlay(query: String, caption: String?, orientation: String?) {
@@ -1412,6 +1527,7 @@ final class GeminiLiveViewModel: ObservableObject {
 
         guard let apiKey = configuredPexelsAPIKey else {
             postToolAction(label: "[Pexels] API key is missing.", icon: "exclamationmark.triangle")
+            onPresentSecretsPanel?(.allServiceKeys)
             return
         }
 
@@ -1478,6 +1594,7 @@ final class GeminiLiveViewModel: ObservableObject {
 
                 await MainActor.run {
                     self?.displayedImageOverlay = overlay
+                    self?.scheduleImageOverlayAutoDismissIfNeeded()
                 }
             } catch {
                 await MainActor.run {
@@ -1503,6 +1620,7 @@ final class GeminiLiveViewModel: ObservableObject {
             caption: resolvedCaption,
             photographer: nil
         )
+        scheduleImageOverlayAutoDismissIfNeeded()
     }
 
     private static func decodePexelsOverlayError(from data: Data) -> String? {
@@ -1601,6 +1719,9 @@ final class GeminiLiveViewModel: ObservableObject {
 
         do {
             try skillStore.deleteSkill(named: name)
+            for i in systemPromptPresets.indices {
+                systemPromptPresets[i].enabledSkillNames.removeAll { $0 == name }
+            }
             enabledSkillNames.remove(name)
             reloadInstalledSkills()
             statusText = "Deleted skill \"\(name)\"."
@@ -1634,10 +1755,11 @@ final class GeminiLiveViewModel: ObservableObject {
             GeminiLiveSettings(
                 isMicrophoneEnabled: isMicrophoneEnabled,
                 showTranscriptOverlay: showTranscriptOverlay,
+                transcriptOverlayAutoHide: transcriptOverlayAutoHide,
+                showLiveChatInput: showLiveChatInput,
                 outputVolume: outputVolume,
                 systemPromptPresets: systemPromptPresets,
-                selectedSystemPromptID: selectedSystemPromptID,
-                enabledSkillNames: enabledSkillNames.sorted()
+                selectedSystemPromptID: selectedSystemPromptID
             )
         )
     }
@@ -1669,20 +1791,18 @@ final class GeminiLiveViewModel: ObservableObject {
         }
     }
 
+    private func syncEnabledSkillNamesToActivePreset() {
+        guard let idx = systemPromptPresets.firstIndex(where: { $0.id == selectedSystemPromptID }) else { return }
+        systemPromptPresets[idx].enabledSkillNames = enabledSkillNames.sorted()
+    }
+
     private var draftAPIKey: String? {
         let trimmedInput = apiKeyText.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmedInput.isEmpty ? nil : trimmedInput
     }
 
     private var configuredAPIKey: String? {
-        if let environmentAPIKey {
-            let trimmedEnvironmentKey = environmentAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmedEnvironmentKey.isEmpty {
-                return trimmedEnvironmentKey
-            }
-        }
-
-        return currentStoredGeminiKey()
+        currentStoredGeminiKey()
     }
 
     private var configuredPexelsAPIKey: String? {
@@ -1694,27 +1814,15 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     private func currentStoredGeminiKey() -> String? {
-        if let environmentAPIKey {
-            let trimmed = environmentAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty { return trimmed }
-        }
-        return normalizedStoredSecret(storedAPIKey ?? keyStore.read())
+        normalizedStoredSecret(storedAPIKey ?? keyStore.read())
     }
 
     private func currentStoredPexelsKey() -> String? {
-        if let environmentPexelsAPIKey {
-            let trimmed = environmentPexelsAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty { return trimmed }
-        }
-        return normalizedStoredSecret(pexelsKeyStore.read())
+        normalizedStoredSecret(pexelsKeyStore.read())
     }
 
     private func currentStoredBraveSearchKey() -> String? {
-        if let environmentBraveSearchAPIKey {
-            let trimmed = environmentBraveSearchAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty { return trimmed }
-        }
-        return normalizedStoredSecret(braveSearchKeyStore.read())
+        normalizedStoredSecret(braveSearchKeyStore.read())
     }
 
     private func normalizedStoredSecret(_ value: String?) -> String? {
@@ -1723,11 +1831,7 @@ final class GeminiLiveViewModel: ObservableObject {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    private func persistServiceKey(draftValue: String, envValue: String?, store: GeminiLiveSecretStore) -> Bool {
-        if let envValue, !envValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return true
-        }
-
+    private func persistServiceKey(draftValue: String, store: GeminiLiveSecretStore) -> Bool {
         let trimmed = draftValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
             return true

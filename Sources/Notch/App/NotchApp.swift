@@ -6,7 +6,7 @@ struct NotchApp: App {
 
     var body: some Scene {
         Settings {
-            EmptyView()
+            NotchSettingsRootView()
         }
     }
 }

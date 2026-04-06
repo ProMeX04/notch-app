@@ -5,37 +5,87 @@ import SwiftUI
 // MARK: - SwiftUI View
 
 private struct TranscriptOverlayView: View {
-    let userText: String
     let modelText: String
     let isModelSpeaking: Bool
     let toolAction: ToolActionToast?
     let imageRequest: ImageOverlayRequest?
 
     var body: some View {
-        VStack(alignment: .center, spacing: 6) {
+        VStack(alignment: .center, spacing: 10) {
             if let imageRequest {
-                CompactImageAboveBubbles(request: imageRequest)
+                CompactImageAboveCaption(request: imageRequest)
             }
-            if !userText.isEmpty {
-                BubbleRow(text: userText, isUser: true)
-            }
-            if !modelText.isEmpty {
-                BubbleRow(text: modelText, isUser: false, isAnimating: isModelSpeaking)
+            if !modelText.isEmpty || isModelSpeaking {
+                HStack(alignment: .bottom, spacing: 8) {
+                    if !modelText.isEmpty {
+                        NotchMarkdownView(text: modelText, isUser: false, widthMode: .hugContent(maxWidth: 480))
+                    }
+                    if isModelSpeaking {
+                        CaptionTypingDots()
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .background {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.black.opacity(0.78))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                        }
+                }
+                .animation(.spring(response: 0.38, dampingFraction: 0.82), value: modelText)
             }
             if let toolAction {
-                ToolBubbleRow(action: toolAction)
+                ToolStatusLine(action: toolAction)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 4)
-        .padding(.bottom, 12)
-        .frame(maxWidth: 480)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .padding(.top, 6)
     }
 }
 
-/// Small preview above chat bubbles: image only, no border, no caption, no chrome.
-private struct CompactImageAboveBubbles: View {
+private struct CaptionTypingDots: View {
+    @State private var dotPhase = false
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(0..<3, id: \.self) { i in
+                Circle()
+                    .fill(.white.opacity(0.72))
+                    .frame(width: 4, height: 4)
+                    .scaleEffect(dotPhase ? 1.0 : 0.4)
+                    .animation(
+                        .easeInOut(duration: 0.5)
+                        .repeatForever()
+                        .delay(Double(i) * 0.15),
+                        value: dotPhase
+                    )
+            }
+        }
+        .onAppear { dotPhase = true }
+        .onDisappear { dotPhase = false }
+        .padding(.bottom, 4)
+    }
+}
+
+private struct ToolStatusLine: View {
+    let action: ToolActionToast
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: action.icon)
+                .font(.system(size: 10, weight: .semibold))
+            Text(action.label)
+                .font(.system(size: 11, weight: .medium))
+        }
+        .foregroundStyle(.white.opacity(0.72))
+        .multilineTextAlignment(.center)
+    }
+}
+
+/// Image preview above caption text.
+private struct CompactImageAboveCaption: View {
     let request: ImageOverlayRequest
     private let width: CGFloat = 306
     private let height: CGFloat = 174
@@ -62,138 +112,6 @@ private struct CompactImageAboveBubbles: View {
     }
 }
 
-private struct ToolBubbleRow: View {
-    let action: ToolActionToast
-
-    var body: some View {
-        HStack {
-            Spacer(minLength: 0)
-
-            HStack(spacing: 8) {
-                Image(systemName: action.icon)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.95))
-
-                Text(action.label)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.96))
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color(nsColor: .systemTeal).opacity(0.18),
-                                        Color.black.opacity(0.12),
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                    }
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(Color.white.opacity(0.14), lineWidth: 1)
-                    }
-                    .shadow(color: .black.opacity(0.16), radius: 10, y: 4)
-            }
-
-            Spacer(minLength: 0)
-        }
-    }
-}
-
-private struct BubbleRow: View {
-    let text: String
-    let isUser: Bool
-    var isAnimating: Bool = false
-
-    @State private var dotPhase = false
-
-    private var bubbleShape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
-    }
-
-    private var bubbleTint: LinearGradient {
-        if isUser {
-            return LinearGradient(
-                colors: [
-                    Color(nsColor: .systemBlue).opacity(0.22),
-                    Color.black.opacity(0.12),
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
-
-        return LinearGradient(
-            colors: [
-                Color.black.opacity(0.24),
-                Color.white.opacity(0.05),
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
-
-    private var bubbleBorder: Color {
-        Color.white.opacity(isUser ? 0.16 : 0.12)
-    }
-
-    var body: some View {
-        HStack(alignment: .bottom, spacing: 6) {
-            // Both branches fill full width so bubbles are symmetric around the center.
-            // User messages sit on the left; model messages sit on the right.
-            if !isUser { Spacer(minLength: 0) }
-
-            HStack(alignment: .bottom, spacing: 6) {
-                NotchMarkdownView(text: text, isUser: isUser)
-
-                if isAnimating && !isUser {
-                    HStack(spacing: 2) {
-                        ForEach(0..<3, id: \.self) { i in
-                            Circle()
-                                .fill(.white.opacity(0.7))
-                                .frame(width: 4, height: 4)
-                                .scaleEffect(dotPhase ? 1.0 : 0.4)
-                                .animation(
-                                    .easeInOut(duration: 0.5)
-                                    .repeatForever()
-                                    .delay(Double(i) * 0.15),
-                                    value: dotPhase
-                                )
-                        }
-                    }
-                    .onAppear { dotPhase = true }
-                    .onDisappear { dotPhase = false }
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background {
-                bubbleShape
-                    .fill(.ultraThinMaterial)
-                    .overlay {
-                        bubbleShape.fill(bubbleTint)
-                    }
-                    .overlay {
-                        bubbleShape.stroke(bubbleBorder, lineWidth: 1)
-                    }
-                    .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
-            }
-
-            if isUser { Spacer(minLength: 0) }
-        }
-    }
-}
-
 // MARK: - Window Controller
 
 @MainActor
@@ -202,6 +120,7 @@ final class TranscriptOverlayWindowController {
     private var hostingView: NSHostingView<TranscriptOverlayView>?
     private var cancellables = Set<AnyCancellable>()
     private var hideTask: Task<Void, Never>?
+    private var hideDebounceWorkItem: DispatchWorkItem?
     private weak var preferredScreen: NSScreen?
     private weak var gemini: GeminiLiveViewModel?
 
@@ -212,6 +131,17 @@ final class TranscriptOverlayWindowController {
     private let panelWidth: CGFloat = 520
     private let maxPanelHeight: CGFloat = 1200
     private let notchSpacing: CGFloat = 4
+
+    /// Auto-hide waits for transcript deltas to settle, then idles before fading — keep total delay
+    /// close to the fade-only path when `shouldShow` flips false so hide timing feels consistent.
+    private enum HideTiming {
+        static let debounceAfterLastUpdate: TimeInterval = 0.12
+        static let idleBeforeFade: TimeInterval = 0.22
+        /// Extra idle after the base delay when a Pexels/inline image is shown (still auto-hide, not forever).
+        static let idleExtraWhenImage: TimeInterval = 2.8
+        static let fadeOutDuration: TimeInterval = 0.28
+        static let fadeInDuration: TimeInterval = 0.22
+    }
 
     func setPreferredScreen(_ newScreen: NSScreen?) {
         preferredScreen = newScreen
@@ -235,6 +165,20 @@ final class TranscriptOverlayWindowController {
                     self.hide(animated: true)
                 } else {
                     self.apply(input)
+                }
+            }
+            .store(in: &cancellables)
+
+        gemini.$transcriptOverlayAutoHide
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] enabled in
+                guard let self else { return }
+                if !enabled {
+                    self.hideTask?.cancel()
+                    self.hideDebounceWorkItem?.cancel()
+                    self.hideDebounceWorkItem = nil
+                } else if self.panel != nil, let g = self.gemini {
+                    self.scheduleAutoHide(isModelSpeaking: g.overlayInput.isModelSpeaking)
                 }
             }
             .store(in: &cancellables)
@@ -277,7 +221,6 @@ final class TranscriptOverlayWindowController {
 
     private func showOrUpdate(with input: TranscriptOverlayInput) {
         let newView = TranscriptOverlayView(
-            userText: input.subsEnabled ? input.userText : "",
             modelText: input.subsEnabled ? input.modelText : "",
             isModelSpeaking: input.isModelSpeaking && input.subsEnabled,
             toolAction: input.toolAction,
@@ -322,7 +265,7 @@ final class TranscriptOverlayWindowController {
 
         panel.orderFrontRegardless()
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.25
+            ctx.duration = HideTiming.fadeInDuration
             panel.animator().alphaValue = 1
         }
     }
@@ -330,17 +273,19 @@ final class TranscriptOverlayWindowController {
     private func ensurePanelVisible() {
         guard let panel, panel.alphaValue < 1 else { return }
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.2
+            ctx.duration = HideTiming.fadeInDuration
             panel.animator().alphaValue = 1
         }
     }
 
     private func hide(animated: Bool) {
         hideTask?.cancel()
+        hideDebounceWorkItem?.cancel()
+        hideDebounceWorkItem = nil
         guard let panel else { return }
         if animated {
             NSAnimationContext.runAnimationGroup({ ctx in
-                ctx.duration = 0.4
+                ctx.duration = HideTiming.fadeOutDuration
                 panel.animator().alphaValue = 0
             }, completionHandler: { [weak self] in
                 Task { @MainActor in
@@ -360,12 +305,31 @@ final class TranscriptOverlayWindowController {
 
     private func scheduleAutoHide(isModelSpeaking: Bool) {
         hideTask?.cancel()
+        hideDebounceWorkItem?.cancel()
+
+        guard gemini?.transcriptOverlayAutoHide != false else { return }
         guard !isModelSpeaking else { return }
 
+        // Transcript keeps publishing small deltas after the model stops; restarting the timer on
+        // every update made the overlay feel like it “never” hid. Wait for a quiet period first.
+        let item = DispatchWorkItem { [weak self] in
+            self?.runHideIdleLoop()
+        }
+        hideDebounceWorkItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + HideTiming.debounceAfterLastUpdate, execute: item)
+    }
+
+    private func runHideIdleLoop() {
+        hideDebounceWorkItem = nil
+        hideTask?.cancel()
         hideTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(6))
-            guard !Task.isCancelled else { return }
             guard let self else { return }
+            guard self.gemini?.transcriptOverlayAutoHide != false else { return }
+            let hasImage = self.gemini?.overlayInput.imageRequest != nil
+            let idle = HideTiming.idleBeforeFade + (hasImage ? HideTiming.idleExtraWhenImage : 0)
+            let ms = Int(idle * 1000)
+            try? await Task.sleep(for: .milliseconds(ms))
+            guard !Task.isCancelled else { return }
             self.suppressedTranscriptKey = self.gemini?.overlayInput.transcriptKey
             self.hide(animated: true)
         }

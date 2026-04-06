@@ -86,6 +86,7 @@ enum GeminiLiveStoragePaths {
             try fileManager.createDirectory(at: workspaceRoot, withIntermediateDirectories: true)
             try fileManager.createDirectory(at: skillsDirectory, withIntermediateDirectories: true)
             try fileManager.createDirectory(at: screenshotsDirectory, withIntermediateDirectories: true)
+            try fileManager.createDirectory(at: agentAvatarsDirectory, withIntermediateDirectories: true)
         } catch {
             // Best-effort setup: stores fall back to empty state if preparation fails.
         }
@@ -106,6 +107,10 @@ enum GeminiLiveStoragePaths {
 
     static var screenshotsDirectory: URL {
         workspaceRoot.appendingPathComponent("screenshots", isDirectory: true)
+    }
+
+    static var agentAvatarsDirectory: URL {
+        stateRoot.appendingPathComponent("agent-avatars", isDirectory: true)
     }
 
     static var builtInSkillsDirectory: URL? {

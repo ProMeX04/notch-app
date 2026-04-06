@@ -21,6 +21,7 @@ struct MusicNotchView: View {
     @ObservedObject var presentationModel: NotchPresentationModel
 
     @Namespace private var albumArtNamespace
+    @StateObject private var talkHeaderAccessoryController = NotchHeaderAccessoryController()
     @State private var isHovering = false
     @State private var didAutoRevealForShelfDrop = false
     @State private var didCommitShelfDrop = false
@@ -139,7 +140,8 @@ struct MusicNotchView: View {
                 NotchHeaderView(
                     closedNotchWidth: presentationModel.closedNotchSize.width,
                     closedNotchHeight: presentationModel.closedNotchSize.height,
-                    presentationModel: presentationModel
+                    presentationModel: presentationModel,
+                    accessoryController: talkHeaderAccessoryController
                 )
                 .frame(height: expandedHeaderHeight)
             } else if compactActivity == .music {
@@ -190,9 +192,10 @@ struct MusicNotchView: View {
                     shelf: shelf,
                     learningStats: learningStats,
                     presentationModel: presentationModel,
+                    talkHeaderAccessoryController: talkHeaderAccessoryController,
                     albumArtNamespace: albumArtNamespace
                 )
-                .padding(.top, -2)
+                .padding(.top, 10)
                 .padding(.horizontal, 31)
                 .padding(.bottom, 12)
             }
@@ -267,5 +270,10 @@ struct MusicNotchView: View {
         .animation(notchAnimation, value: presentationModel.isExpanded)
         .animation(.smooth, value: compactActivity.rawValue)
         .animation(.smooth, value: presentationModel.selectedPanel.rawValue)
+        .onChange(of: presentationModel.selectedPanel) { _, selectedPanel in
+            if selectedPanel != .talk {
+                talkHeaderAccessoryController.clear()
+            }
+        }
     }
 }

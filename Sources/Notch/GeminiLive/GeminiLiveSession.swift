@@ -41,6 +41,21 @@ final class GeminiLiveSession: @unchecked Sendable {
         ])
     }
 
+    /// Sends typed user text during a live session.
+    ///
+    /// For `gemini-3.1-flash-live-preview`, Google documents that `clientContent` is only for
+    /// seeding history with `historyConfig.initialHistoryInClientContent`; ongoing text must use
+    /// `realtimeInput.text` (same as `send_realtime_input` in the official SDKs).
+    func sendClientTextTurn(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        sendJSONObject([
+            "realtimeInput": [
+                "text": trimmed,
+            ],
+        ])
+    }
+
     let urlSession = URLSession(configuration: .default)
     let pexelsSession = URLSession(configuration: .ephemeral)
     let sendQueue = DispatchQueue(label: "dev.notch.gemini.send")

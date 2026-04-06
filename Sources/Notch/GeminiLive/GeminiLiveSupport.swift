@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Security
 
@@ -130,10 +131,12 @@ final class GeminiLiveSecretStore {
 struct GeminiLiveSettings {
     let isMicrophoneEnabled: Bool
     let showTranscriptOverlay: Bool
+    /// When false, the notch transcript overlay stays visible after the model stops (until disconnect or subs off).
+    let transcriptOverlayAutoHide: Bool
+    let showLiveChatInput: Bool
     let outputVolume: Double
     let systemPromptPresets: [GeminiSystemPromptPreset]
     let selectedSystemPromptID: String
-    let enabledSkillNames: [String]
 }
 
 final class GeminiLiveSettingsStore {
@@ -150,13 +153,21 @@ final class GeminiLiveSettingsStore {
             return nil
         }
 
+        var presets = payload.systemPromptPresets ?? GeminiSystemPromptPreset.defaultPresets
+        if let legacySkills = payload.enabledSkillNames, !legacySkills.isEmpty,
+           presets.allSatisfy({ $0.enabledSkillNames.isEmpty }) {
+            let sorted = legacySkills.sorted()
+            presets = presets.map { var p = $0; p.enabledSkillNames = sorted; return p }
+        }
+
         return GeminiLiveSettings(
             isMicrophoneEnabled: payload.isMicrophoneEnabled,
             showTranscriptOverlay: payload.showTranscriptOverlay,
+            transcriptOverlayAutoHide: payload.transcriptOverlayAutoHide ?? true,
+            showLiveChatInput: payload.showLiveChatInput ?? true,
             outputVolume: payload.outputVolume ?? 1,
-            systemPromptPresets: payload.systemPromptPresets ?? GeminiSystemPromptPreset.defaultPresets,
-            selectedSystemPromptID: payload.selectedSystemPromptID ?? GeminiSystemPromptPreset.defaultPreset.id,
-            enabledSkillNames: payload.enabledSkillNames ?? []
+            systemPromptPresets: presets,
+            selectedSystemPromptID: payload.selectedSystemPromptID ?? GeminiSystemPromptPreset.defaultPreset.id
         )
     }
 
@@ -164,10 +175,11 @@ final class GeminiLiveSettingsStore {
         let payload = Payload(
             isMicrophoneEnabled: settings.isMicrophoneEnabled,
             showTranscriptOverlay: settings.showTranscriptOverlay,
+            transcriptOverlayAutoHide: settings.transcriptOverlayAutoHide,
+            showLiveChatInput: settings.showLiveChatInput,
             outputVolume: settings.outputVolume,
             systemPromptPresets: settings.systemPromptPresets,
-            selectedSystemPromptID: settings.selectedSystemPromptID,
-            enabledSkillNames: settings.enabledSkillNames
+            selectedSystemPromptID: settings.selectedSystemPromptID
         )
 
         guard let data = try? JSONEncoder().encode(payload) else { return }
@@ -177,41 +189,50 @@ final class GeminiLiveSettingsStore {
     private struct Payload: Codable {
         let isMicrophoneEnabled: Bool
         let showTranscriptOverlay: Bool
+        let transcriptOverlayAutoHide: Bool?
+        let showLiveChatInput: Bool?
         let outputVolume: Double?
         let systemPromptPresets: [GeminiSystemPromptPreset]?
         let selectedSystemPromptID: String?
+        /// Legacy: skills lived at root; migrated into each preset on read. Not written on save.
         let enabledSkillNames: [String]?
 
         init(
             isMicrophoneEnabled: Bool,
             showTranscriptOverlay: Bool,
+            transcriptOverlayAutoHide: Bool,
+            showLiveChatInput: Bool,
             outputVolume: Double,
             systemPromptPresets: [GeminiSystemPromptPreset],
-            selectedSystemPromptID: String,
-            enabledSkillNames: [String]
+            selectedSystemPromptID: String
         ) {
             self.isMicrophoneEnabled = isMicrophoneEnabled
             self.showTranscriptOverlay = showTranscriptOverlay
+            self.transcriptOverlayAutoHide = transcriptOverlayAutoHide
+            self.showLiveChatInput = showLiveChatInput
             self.outputVolume = outputVolume
             self.systemPromptPresets = systemPromptPresets
             self.selectedSystemPromptID = selectedSystemPromptID
-            self.enabledSkillNames = enabledSkillNames
+            self.enabledSkillNames = nil
         }
 
         func encode(to encoder: Encoder) throws {
             var container = encoder.container(keyedBy: CodingKeys.self)
             try container.encode(isMicrophoneEnabled, forKey: .isMicrophoneEnabled)
             try container.encode(showTranscriptOverlay, forKey: .showTranscriptOverlay)
+            try container.encode(transcriptOverlayAutoHide ?? true, forKey: .transcriptOverlayAutoHide)
+            try container.encode(showLiveChatInput ?? true, forKey: .showLiveChatInput)
             try container.encodeIfPresent(outputVolume, forKey: .outputVolume)
             try container.encodeIfPresent(systemPromptPresets, forKey: .systemPromptPresets)
             try container.encodeIfPresent(selectedSystemPromptID, forKey: .selectedSystemPromptID)
-            try container.encodeIfPresent(enabledSkillNames, forKey: .enabledSkillNames)
         }
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             isMicrophoneEnabled = try container.decode(Bool.self, forKey: .isMicrophoneEnabled)
             showTranscriptOverlay = try container.decode(Bool.self, forKey: .showTranscriptOverlay)
+            transcriptOverlayAutoHide = try container.decodeIfPresent(Bool.self, forKey: .transcriptOverlayAutoHide)
+            showLiveChatInput = try container.decodeIfPresent(Bool.self, forKey: .showLiveChatInput)
             outputVolume = try container.decodeIfPresent(Double.self, forKey: .outputVolume)
             systemPromptPresets = try container.decodeIfPresent([GeminiSystemPromptPreset].self, forKey: .systemPromptPresets)
             selectedSystemPromptID = try container.decodeIfPresent(String.self, forKey: .selectedSystemPromptID)
@@ -221,6 +242,8 @@ final class GeminiLiveSettingsStore {
         enum CodingKeys: String, CodingKey {
             case isMicrophoneEnabled
             case showTranscriptOverlay
+            case transcriptOverlayAutoHide
+            case showLiveChatInput
             case outputVolume
             case systemPromptPresets
             case selectedSystemPromptID
@@ -299,6 +322,86 @@ final class GeminiLiveExecApprovalStore: @unchecked Sendable {
 
     private struct Payload: Codable {
         let approvedKeys: [String]
+    }
+}
+
+enum GeminiAgentAvatarStoreError: LocalizedError {
+    case unreadableImage
+    case failedToPersist
+
+    var errorDescription: String? {
+        switch self {
+        case .unreadableImage:
+            return "The selected file couldn't be used as an avatar image."
+        case .failedToPersist:
+            return "The avatar image couldn't be saved."
+        }
+    }
+}
+
+final class GeminiAgentAvatarStore {
+    private let fileManager: FileManager
+    private let avatarsDirectory: URL
+
+    init(
+        fileManager: FileManager = .default,
+        avatarsDirectory: URL = GeminiLiveStoragePaths.agentAvatarsDirectory
+    ) {
+        GeminiLiveStoragePaths.prepare(fileManager: fileManager)
+        self.fileManager = fileManager
+        self.avatarsDirectory = avatarsDirectory
+    }
+
+    func saveImage(from sourceURL: URL, presetID: String) throws -> String {
+        guard NSImage(contentsOf: sourceURL) != nil else {
+            throw GeminiAgentAvatarStoreError.unreadableImage
+        }
+
+        guard let imageData = try? Data(contentsOf: sourceURL), !imageData.isEmpty else {
+            throw GeminiAgentAvatarStoreError.unreadableImage
+        }
+
+        let sanitizedExtension = normalizedImageExtension(for: sourceURL.pathExtension)
+        let filename = "\(presetID).\(sanitizedExtension)"
+        let destinationURL = avatarsDirectory.appendingPathComponent(filename)
+
+        do {
+            try fileManager.createDirectory(at: avatarsDirectory, withIntermediateDirectories: true)
+            deleteImage(forPresetID: presetID)
+            try imageData.write(to: destinationURL, options: .atomic)
+            return filename
+        } catch {
+            throw GeminiAgentAvatarStoreError.failedToPersist
+        }
+    }
+
+    func imageURL(for filename: String?) -> URL? {
+        guard let filename else { return nil }
+        let trimmed = filename.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let url = avatarsDirectory.appendingPathComponent(trimmed)
+        return fileManager.fileExists(atPath: url.path) ? url : nil
+    }
+
+    func deleteImage(named filename: String?) {
+        guard let url = imageURL(for: filename) else { return }
+        try? fileManager.removeItem(at: url)
+    }
+
+    func deleteImage(forPresetID presetID: String) {
+        guard let urls = try? fileManager.contentsOfDirectory(
+            at: avatarsDirectory,
+            includingPropertiesForKeys: nil
+        ) else { return }
+
+        for url in urls where url.deletingPathExtension().lastPathComponent == presetID {
+            try? fileManager.removeItem(at: url)
+        }
+    }
+
+    private func normalizedImageExtension(for pathExtension: String) -> String {
+        let trimmed = pathExtension.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return trimmed.isEmpty ? "tiff" : trimmed
     }
 }
 

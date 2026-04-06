@@ -17,6 +17,8 @@ final class NotchWindowController {
     private let window: NotchFloatingPanel
     private var cancellables = Set<AnyCancellable>()
     private let transcriptOverlay = TranscriptOverlayWindowController()
+    private let liveChatInputPanel = GeminiLiveChatInputWindowController()
+    private let geminiSecretsFloatingPanel = GeminiSecretsFloatingPanelController()
 
     private(set) var isVisible = true
 
@@ -70,6 +72,12 @@ final class NotchWindowController {
 
         transcriptOverlay.setPreferredScreen(initialScreen)
         transcriptOverlay.observe(gemini: geminiLiveViewModel)
+        liveChatInputPanel.setPreferredScreen(initialScreen)
+        liveChatInputPanel.observe(gemini: geminiLiveViewModel)
+        geminiSecretsFloatingPanel.setPreferredScreen(initialScreen)
+        geminiLiveViewModel.onPresentSecretsPanel = { [weak self] mode in
+            self?.presentSecretsFloatingPanel(mode: mode)
+        }
         geminiLiveViewModel.onExecApprovalAttentionRequested = { [weak self] in
             self?.presentExecApproval()
         }
@@ -111,6 +119,9 @@ final class NotchWindowController {
     func shutdown() {
         hide()
         transcriptOverlay.stopObserving()
+        liveChatInputPanel.stopObserving()
+        geminiSecretsFloatingPanel.shutdown()
+        geminiLiveViewModel.onPresentSecretsPanel = nil
         shelfViewModel.shutdown()
         playbackViewModel.shutdown()
         pomodoroViewModel.shutdown()
@@ -152,6 +163,23 @@ final class NotchWindowController {
 
     func showTalkPanel() {
         showPanel(.talk)
+    }
+
+    /// Floating panels for API keys (status bar / tools) — not in the notch.
+    func presentSecretsFloatingPanel(mode: GeminiSecretsPanelMode) {
+        if mode == .geminiOnly {
+            geminiLiveViewModel.disconnectIfNeeded()
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        geminiSecretsFloatingPanel.present(gemini: geminiLiveViewModel, mode: mode)
+    }
+
+    func showTalkKeyEditorFromStatusMenu() {
+        presentSecretsFloatingPanel(mode: .geminiOnly)
+    }
+
+    func presentAllServiceKeysFromStatusMenu() {
+        presentSecretsFloatingPanel(mode: .allServiceKeys)
     }
 
     func presentExecApproval() {
@@ -370,6 +398,8 @@ final class NotchWindowController {
         window.setFrame(frame, display: true, animate: animated)
         hostingView.frame = CGRect(origin: .zero, size: NotchMetrics.windowSize)
         transcriptOverlay.setPreferredScreen(currentScreen)
+        liveChatInputPanel.setPreferredScreen(currentScreen)
+        geminiSecretsFloatingPanel.setPreferredScreen(currentScreen)
 
         if isVisible {
             window.orderFrontRegardless()

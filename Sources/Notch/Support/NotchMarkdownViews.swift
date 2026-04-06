@@ -8,40 +8,75 @@ struct MarkdownBlock: Identifiable {
     let isCode: Bool
 }
 
+/// How `NotchMarkdownView` participates in horizontal layout (notch transcript vs floating caption bubble).
+enum NotchMarkdownWidthMode: Equatable {
+    /// Use available width from the parent (default notch panel behavior).
+    case fillParent
+    /// Grow with text up to `maxWidth` (floating transcript overlay bubble).
+    case hugContent(maxWidth: CGFloat)
+}
+
 struct NotchMarkdownView: View {
     let text: String
     let isUser: Bool
+    var widthMode: NotchMarkdownWidthMode = .fillParent
 
     var body: some View {
         let blocks = parseMarkdown(text)
         VStack(alignment: isUser ? .trailing : .leading, spacing: 8) {
             ForEach(blocks) { block in
                 if block.isCode {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(block.content)
-                            .font(.system(size: 12, weight: .regular, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.95))
-                            .padding(10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .background(Color.black.opacity(0.4))
-                    .cornerRadius(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
-                    )
+                    codeBlockView(block.content)
                 } else {
                     let content = block.content.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !content.isEmpty || (blocks.count == 1) {
-                        Text(LocalizedStringKey(block.content))
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                            .foregroundStyle(.white)
-                            .multilineTextAlignment(isUser ? .trailing : .leading)
-                            .fixedSize(horizontal: false, vertical: true)
+                        proseText(block.content)
                     }
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func codeBlockView(_ content: String) -> some View {
+        let code = VStack(alignment: .leading, spacing: 0) {
+            Text(content)
+                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.95))
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .background(Color.black.opacity(0.4))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+        )
+
+        switch widthMode {
+        case .fillParent:
+            code
+        case let .hugContent(maxW):
+            code.frame(maxWidth: maxW, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private func proseText(_ raw: String) -> some View {
+        let textView = Text(LocalizedStringKey(raw))
+            .font(.system(size: 13, weight: .medium, design: .rounded))
+            .foregroundStyle(.white.opacity(0.92))
+            .multilineTextAlignment(isUser ? .trailing : .leading)
+
+        switch widthMode {
+        case .fillParent:
+            textView.fixedSize(horizontal: false, vertical: true)
+        case let .hugContent(maxW):
+            // `fixedSize(horizontal: true)` prevents multiline wrap — use max width + vertical growth.
+            textView
+                .frame(maxWidth: maxW, alignment: isUser ? .trailing : .leading)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -96,6 +131,13 @@ struct ProgressiveRevealText: View {
         }
 
         guard target != displayedText else { return }
+
+        // Trimming the tail (same prefix, shorter target): snap instantly — avoids “slow erase”
+        // from clearing then re-typing character-by-character.
+        if displayedText.hasPrefix(target), target.count < displayedText.count {
+            displayedText = target
+            return
+        }
 
         if !target.hasPrefix(displayedText) {
             displayedText = ""

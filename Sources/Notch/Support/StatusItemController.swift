@@ -13,6 +13,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var pomodoroStatusItem: NSStatusItem?
     private var countdownStatusItem: NSStatusItem?
     private var counterStatusItem: NSStatusItem?
+    /// Transient chip when Gemini runs a tool (mirrors `lastToolAction` toast).
+    private var geminiToolStatusItem: NSStatusItem?
     private var timerTick: Timer?
 
     private lazy var visibilityItem = NSMenuItem(
@@ -63,6 +65,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         keyEquivalent: ""
     )
 
+    private lazy var changeGeminiKeyItem = NSMenuItem(
+        title: "Change Gemini API Key…",
+        action: #selector(showTalkKeyEditor),
+        keyEquivalent: ""
+    )
+
+    private lazy var manageServiceKeysItem = NSMenuItem(
+        title: "Manage Service Keys (Gemini, Pexels, Brave)…",
+        action: #selector(showAllServiceKeys),
+        keyEquivalent: ""
+    )
+
     private lazy var resetPomodoroItem = NSMenuItem(
         title: "Reset Focus Timer",
         action: #selector(resetPomodoro),
@@ -95,6 +109,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         shelfItem.target = self
         togglePomodoroItem.target = self
         toggleTalkItem.target = self
+        changeGeminiKeyItem.target = self
+        manageServiceKeysItem.target = self
         resetPomodoroItem.target = self
         launchAtLoginItem.target = self
 
@@ -114,6 +130,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             .separator(),
             talkItem,
             toggleTalkItem,
+            changeGeminiKeyItem,
+            manageServiceKeysItem,
             .separator(),
             pomodoroItem,
             togglePomodoroItem,
@@ -156,6 +174,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         .receive(on: DispatchQueue.main)
         .sink { [weak self] _ in self?.updateCounterStatusItem() }
         .store(in: &cancellables)
+
+        windowController.geminiLiveViewModel.$lastToolAction
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.updateGeminiToolStatusItem() }
+            .store(in: &cancellables)
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
@@ -231,6 +254,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc
     private func toggleTalk() {
         windowController.toggleGeminiLive()
+    }
+
+    @objc
+    private func showTalkKeyEditor() {
+        windowController.showTalkKeyEditorFromStatusMenu()
+    }
+
+    @objc
+    private func showAllServiceKeys() {
+        windowController.presentAllServiceKeysFromStatusMenu()
     }
 
     @objc
@@ -464,6 +497,55 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func counterStatusItemTapped() {
         windowController.showFocusPanel()
         windowController.presentationModel.selectedFocusTool = .counter
+    }
+
+    // MARK: Gemini tool activity (menu bar)
+
+    private func updateGeminiToolStatusItem() {
+        let toast = windowController.geminiLiveViewModel.lastToolAction
+        if let toast {
+            if geminiToolStatusItem == nil {
+                let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+                if let btn = item.button {
+                    btn.target = self
+                    btn.action = #selector(geminiToolStatusItemTapped)
+                    btn.sendAction(on: [.leftMouseUp])
+                }
+                geminiToolStatusItem = item
+            }
+            refreshGeminiToolStatusItem(toast: toast)
+        } else {
+            if let item = geminiToolStatusItem {
+                NSStatusBar.system.removeStatusItem(item)
+                geminiToolStatusItem = nil
+            }
+        }
+    }
+
+    private func refreshGeminiToolStatusItem(toast: ToolActionToast) {
+        guard let btn = geminiToolStatusItem?.button else { return }
+        let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
+        let symbol = NSImage(systemSymbolName: toast.icon, accessibilityDescription: toast.label)?
+            .withSymbolConfiguration(config)
+        if let symbol {
+            symbol.isTemplate = true
+            btn.image = symbol
+        } else {
+            let fallback = NSImage(systemSymbolName: "wrench.and.screwdriver", accessibilityDescription: toast.label)
+            fallback?.isTemplate = true
+            btn.image = fallback
+        }
+        let maxLen = 32
+        let truncated =
+            toast.label.count > maxLen ? String(toast.label.prefix(maxLen)) + "…" : toast.label
+        btn.title = truncated
+        btn.imagePosition = .imageLeading
+        btn.toolTip = toast.label
+    }
+
+    @objc
+    private func geminiToolStatusItemTapped() {
+        windowController.showTalkPanel()
     }
 
     // MARK: Shared tick timer

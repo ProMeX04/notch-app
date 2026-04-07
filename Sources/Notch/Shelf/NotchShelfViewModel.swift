@@ -2,8 +2,11 @@ import AppKit
 import Foundation
 
 struct NotchShelfItem: Identifiable, Equatable {
+    private static let internalDragIdentityType = "dev.notch.shelf.identity"
+
     struct FileReference: Equatable {
         let url: URL
+        let fileIdentity: String
         let bookmarkData: Data
         let isTemporary: Bool
     }
@@ -16,10 +19,12 @@ struct NotchShelfItem: Identifiable, Equatable {
 
     let id: UUID
     let kind: Kind
+    let identityOverride: String?
 
-    init(id: UUID = UUID(), kind: Kind) {
+    init(id: UUID = UUID(), kind: Kind, identityOverride: String? = nil) {
         self.id = id
         self.kind = kind
+        self.identityOverride = identityOverride
     }
 
     var iconName: String {
@@ -94,17 +99,35 @@ struct NotchShelfItem: Identifiable, Equatable {
     }
 
     var dragItemProvider: NSItemProvider {
+        let provider: NSItemProvider
+
         switch kind {
         case let .file(reference):
-            return NSItemProvider(contentsOf: reference.url) ?? NSItemProvider(object: reference.url as NSURL)
+            // Use the URL object directly as it's more efficient for drag operations than contentsOf
+            provider = NSItemProvider(object: reference.url as NSURL)
         case let .link(url):
-            return NSItemProvider(object: url as NSURL)
+            provider = NSItemProvider(object: url as NSURL)
         case let .text(string):
-            return NSItemProvider(object: string as NSString)
+            provider = NSItemProvider(object: string as NSString)
         }
+
+        let identityData = Data(identityKey.utf8)
+        provider.registerDataRepresentation(
+            forTypeIdentifier: Self.internalDragIdentityType,
+            visibility: .ownProcess
+        ) { completion in
+            completion(identityData, nil)
+            return nil
+        }
+
+        return provider
     }
 
     var identityKey: String {
+        if let identityOverride {
+            return identityOverride
+        }
+
         switch kind {
         case let .file(reference):
             return "file:\(reference.url.standardizedFileURL.path)"
@@ -127,6 +150,10 @@ struct NotchShelfItem: Identifiable, Equatable {
             return reference.url
         }
         return nil
+    }
+
+    static var internalDragIdentityTypeIdentifier: String {
+        internalDragIdentityType
     }
 }
 
@@ -161,11 +188,13 @@ final class NotchShelfViewModel: ObservableObject {
         guard !providers.isEmpty else { return false }
 
         dropTask?.cancel()
-        dropTask = Task { @MainActor [weak self] in
+        dropTask = Task { [weak self] in
             guard let self else { return }
             let newItems = await self.dropService.items(from: providers)
             guard !newItems.isEmpty else { return }
-            await self.merge(newItems)
+            await MainActor.run {
+                self.merge(newItems)
+            }
         }
 
         return true
@@ -203,7 +232,7 @@ final class NotchShelfViewModel: ObservableObject {
         }
     }
 
-    private func merge(_ newItems: [NotchShelfItem]) async {
+    private func merge(_ newItems: [NotchShelfItem]) {
         let existingKeys = Set(items.map(\.identityKey))
         var seenKeys = existingKeys
         var mergedItems: [NotchShelfItem] = []

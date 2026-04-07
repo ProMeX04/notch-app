@@ -1,5 +1,20 @@
 import Foundation
 
+func notchShelfFileIdentity(for url: URL) -> String {
+    let normalizedURL = ((url as NSURL).filePathURL ?? url)
+        .resolvingSymlinksInPath()
+        .standardizedFileURL
+    let resourceKeys: Set<URLResourceKey> = [.fileResourceIdentifierKey, .volumeIdentifierKey]
+    let resourceValues = try? normalizedURL.resourceValues(forKeys: resourceKeys)
+
+    if let fileID = resourceValues?.fileResourceIdentifier,
+       let volumeID = resourceValues?.volumeIdentifier {
+        return "fileid:\(String(describing: volumeID))::\(String(describing: fileID))"
+    }
+
+    return "path:\(normalizedURL.path)"
+}
+
 enum NotchShelfPaths {
     static var baseDirectory: URL {
         let fileManager = FileManager.default
@@ -32,6 +47,19 @@ struct Bookmark: Sendable, Equatable, Codable {
     }
 
     init(url: URL) throws {
+        let resourceValues = try? url.resourceValues(forKeys: [.isDirectoryKey])
+        let isDirectory = resourceValues?.isDirectory == true
+
+        if isDirectory,
+           let plainBookmark = try? url.bookmarkData(
+               options: [],
+               includingResourceValuesForKeys: nil,
+               relativeTo: nil
+           ) {
+            self.data = plainBookmark
+            return
+        }
+
         self.data = try url.bookmarkData(
             options: [.withSecurityScope],
             includingResourceValuesForKeys: nil,
@@ -42,18 +70,16 @@ struct Bookmark: Sendable, Equatable, Codable {
     func resolve() -> (url: URL?, refreshedData: Data?) {
         var isStale = false
 
-        guard let url = try? URL(
-            resolvingBookmarkData: data,
-            options: [.withSecurityScope],
-            relativeTo: nil,
-            bookmarkDataIsStale: &isStale
-        ) else {
+        let resolution = resolveURLAndStaleness()
+        guard let url = resolution.url else {
             return (nil, nil)
         }
 
+        isStale = resolution.isStale
+
         if isStale,
            let refreshedData = try? url.bookmarkData(
-               options: [.withSecurityScope],
+               options: refreshOptions(for: url),
                includingResourceValuesForKeys: nil,
                relativeTo: nil
            ) {
@@ -61,6 +87,32 @@ struct Bookmark: Sendable, Equatable, Codable {
         }
 
         return (url, nil)
+    }
+
+    private func resolveURLAndStaleness() -> (url: URL?, isStale: Bool) {
+        var securityScopedStale = false
+        if let url = try? URL(
+            resolvingBookmarkData: data,
+            options: [.withSecurityScope],
+            relativeTo: nil,
+            bookmarkDataIsStale: &securityScopedStale
+        ) {
+            return (url, securityScopedStale)
+        }
+
+        var plainStale = false
+        let url = try? URL(
+            resolvingBookmarkData: data,
+            options: [],
+            relativeTo: nil,
+            bookmarkDataIsStale: &plainStale
+        )
+        return (url, plainStale)
+    }
+
+    private func refreshOptions(for url: URL) -> URL.BookmarkCreationOptions {
+        let resourceValues = try? url.resourceValues(forKeys: [.isDirectoryKey])
+        return resourceValues?.isDirectory == true ? [] : [.withSecurityScope]
     }
 }
 
@@ -121,6 +173,7 @@ final class NotchShelfPersistenceService {
                 kind: .file(
                     .init(
                         url: url.standardizedFileURL,
+                        fileIdentity: notchShelfFileIdentity(for: url),
                         bookmarkData: resolved.refreshedData ?? bookmarkData,
                         isTemporary: isTemporary
                     )

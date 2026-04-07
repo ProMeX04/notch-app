@@ -12,6 +12,8 @@ final class MusicProbeViewModel: ObservableObject {
     @Published private(set) var usingAppIconForArtwork = false
     @Published private(set) var showCompactLiveActivity = false
     @Published private(set) var isPlayerIdle = true
+    
+    @AppStorage("app_language") private var appLanguage: String = "English"
 
     private let controller: NowPlayingController?
     private var cancellables = Set<AnyCancellable>()
@@ -45,7 +47,7 @@ final class MusicProbeViewModel: ObservableObject {
     }
 
     var primaryText: String {
-        state.title.isEmpty ? "Nothing Playing" : state.title
+        state.title.isEmpty ? Localization.get("Nothing Playing", lang: appLanguage) : state.title
     }
 
     var secondaryText: String {

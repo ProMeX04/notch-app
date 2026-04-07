@@ -2,18 +2,9 @@ import Foundation
 
 enum LearningActivitySource: String, Codable, CaseIterable {
     case pomodoro
-    case countdown
-    case stopwatch
 
     var title: String {
-        switch self {
-        case .pomodoro:
-            return "Pomodoro"
-        case .countdown:
-            return "Countdown"
-        case .stopwatch:
-            return "Stopwatch"
-        }
+        "Pomodoro"
     }
 }
 

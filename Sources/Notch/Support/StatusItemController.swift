@@ -9,10 +9,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let launchAtLoginController = LaunchAtLoginController()
     private var cancellables = Set<AnyCancellable>()
 
-    // Live timer menu bar items — one per tool
+    // Live timer menu bar item for the active Pomodoro session.
     private var pomodoroStatusItem: NSStatusItem?
-    private var countdownStatusItem: NSStatusItem?
-    private var counterStatusItem: NSStatusItem?
     /// Transient chip when Gemini runs a tool (mirrors `lastToolAction` toast).
     private var geminiToolStatusItem: NSStatusItem?
     private var timerTick: Timer?
@@ -138,30 +136,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         // Observe pomodoro session state
         let pomo = windowController.pomodoroViewModel
-        let countdown = windowController.countdownViewModel
-
         Publishers.CombineLatest(
             pomo.$isRunning,
             pomo.$hasActiveSession
-        )
-        .receive(on: DispatchQueue.main)
-        .sink { [weak self] _ in self?.refreshAllFocusStatusItems() }
-        .store(in: &cancellables)
-
-        // Observe countdown session state
-        Publishers.CombineLatest(
-            countdown.$isRunning,
-            countdown.$hasActiveSession
-        )
-        .receive(on: DispatchQueue.main)
-        .sink { [weak self] _ in self?.refreshAllFocusStatusItems() }
-        .store(in: &cancellables)
-
-        // Observe stopwatch (counter) session state
-        let counter = windowController.counterViewModel
-        Publishers.CombineLatest(
-            counter.$isRunning,
-            counter.$hasActiveSession
         )
         .receive(on: DispatchQueue.main)
         .sink { [weak self] _ in self?.refreshAllFocusStatusItems() }
@@ -193,21 +170,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         toggleTalkItem.isEnabled = true
 
-        let focusToolTitle = selectedFocusToolTitle
-
-        if selectedFocusToolIsRunning {
-            togglePomodoroItem.title = "Pause \(focusToolTitle)"
+        if windowController.pomodoroViewModel.isRunning {
+            togglePomodoroItem.title = "Pause Pomodoro"
             togglePomodoroItem.isEnabled = true
-        } else if selectedFocusToolHasSession {
-            togglePomodoroItem.title = "Resume \(focusToolTitle)"
+        } else if windowController.pomodoroViewModel.hasActiveSession {
+            togglePomodoroItem.title = "Resume Pomodoro"
             togglePomodoroItem.isEnabled = true
         } else {
-            togglePomodoroItem.title = "Start \(focusToolTitle)"
+            togglePomodoroItem.title = "Start Pomodoro"
             togglePomodoroItem.isEnabled = true
         }
 
-        resetPomodoroItem.title = "Reset \(focusToolTitle)"
-        resetPomodoroItem.isEnabled = selectedFocusToolHasSession
+        resetPomodoroItem.title = "Reset Pomodoro"
+        resetPomodoroItem.isEnabled = windowController.pomodoroViewModel.hasActiveSession
     }
 
     @objc
@@ -242,7 +217,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc
     private func togglePomodoro() {
-        windowController.toggleSelectedFocusTool()
+        windowController.togglePomodoroSession()
     }
 
     @objc
@@ -257,7 +232,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc
     private func resetPomodoro() {
-        windowController.resetSelectedFocusTool()
+        windowController.resetPomodoroFromUI()
     }
 
     @objc
@@ -278,72 +253,39 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         NSApp.terminate(nil)
     }
 
-    private var selectedFocusToolTitle: String {
-        switch windowController.presentationModel.selectedFocusTool {
-        case .pomodoro:
-            return "Pomodoro"
-        case .countdown:
-            return "Countdown"
-        case .counter:
-            return "Stopwatch"
-        }
-    }
+    // MARK: - Live Timer Menu Bar Item
 
-    private var selectedFocusToolIsRunning: Bool {
-        switch windowController.presentationModel.selectedFocusTool {
-        case .pomodoro:
-            return windowController.pomodoroViewModel.isRunning
-        case .countdown:
-            return windowController.countdownViewModel.isRunning
-        case .counter:
-            return windowController.counterViewModel.isRunning
-        }
-    }
-
-    private var selectedFocusToolHasSession: Bool {
-        switch windowController.presentationModel.selectedFocusTool {
-        case .pomodoro:
-            return windowController.pomodoroViewModel.hasActiveSession
-        case .countdown:
-            return windowController.countdownViewModel.hasActiveSession
-        case .counter:
-            return windowController.counterViewModel.hasActiveSession
-        }
-    }
-
-    // MARK: - Live Timer Menu Bar Items
-
-    private func generateTimerImage(symbolName: String, text: String) -> NSImage {
-        let font = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
+    private func generateTimerImage(symbolName: String, text: String, color: NSColor) -> NSImage {
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 14.5, weight: .bold)
         let textAttributes: [NSAttributedString.Key: Any] = [
             .font: font,
-            .foregroundColor: NSColor.systemGreen
+            .foregroundColor: color
         ]
         let textSize = text.size(withAttributes: textAttributes)
         
-        let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
+        let config = NSImage.SymbolConfiguration(pointSize: 13.5, weight: .bold)
         guard let symbolBase = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
             .withSymbolConfiguration(config) else { return NSImage() }
         
         let symbolImage = NSImage(size: symbolBase.size, flipped: false) { rect in
              if symbolBase.size.width > 0 {
                  symbolBase.draw(in: rect)
-                 NSColor.systemGreen.set()
+                 color.set()
                  rect.fill(using: .sourceAtop)
              }
              return true
         }
         
         let symbolSize = symbolImage.size
-        let paddingX: CGFloat = 8
-        let spacing: CGFloat = 4
-        let height: CGFloat = 20
+        let paddingX: CGFloat = 10
+        let spacing: CGFloat = 5
+        let height: CGFloat = 24
         let width = paddingX + symbolSize.width + spacing + textSize.width + paddingX
         
         let size = NSSize(width: width, height: height)
         let image = NSImage(size: size, flipped: false) { rect in
-            let path = NSBezierPath(roundedRect: rect, xRadius: 6.5, yRadius: 6.5)
-            NSColor(white: 0.0, alpha: 0.35).setFill()
+            let path = NSBezierPath(roundedRect: rect, xRadius: 12, yRadius: 12)
+            NSColor(white: 0.05, alpha: 1.0).setFill()
             path.fill()
             
             let symbolRect = NSRect(
@@ -371,8 +313,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func refreshAllFocusStatusItems() {
         updatePomodoroStatusItem()
-        updateCountdownStatusItem()
-        updateCounterStatusItem()
     }
 
     private func updatePomodoroStatusItem() {
@@ -401,7 +341,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard let btn = pomodoroStatusItem?.button else { return }
         let pomo = windowController.pomodoroViewModel
         let symbolName = pomo.phase == .focus ? "timer" : "cup.and.saucer.fill"
-        btn.image = generateTimerImage(symbolName: symbolName, text: pomo.remainingText(at: .now))
+        btn.image = generateTimerImage(symbolName: symbolName, text: pomo.remainingText(at: .now), color: pomo.phase.accentColor)
         btn.title = ""
         btn.imagePosition = .imageOnly
     }
@@ -409,83 +349,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc
     private func pomodoroStatusItemTapped() {
         windowController.showFocusPanel()
-        windowController.presentationModel.selectedFocusTool = .pomodoro
-    }
-
-    // MARK: Countdown status item
-
-    private func updateCountdownStatusItem() {
-        let countdown = windowController.countdownViewModel
-
-        if countdown.hasActiveSession {
-            if countdownStatusItem == nil {
-                let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-                if let btn = item.button {
-                    btn.target = self
-                    btn.action = #selector(countdownStatusItemTapped)
-                    btn.sendAction(on: [.leftMouseUp])
-                }
-                countdownStatusItem = item
-            }
-            countdownStatusItem?.isVisible = true
-            startTickIfNeeded()
-            refreshCountdownLabel()
-        } else {
-            countdownStatusItem?.isVisible = false
-            stopTickIfUnused()
-        }
-    }
-
-    private func refreshCountdownLabel() {
-        guard let btn = countdownStatusItem?.button else { return }
-        let countdown = windowController.countdownViewModel
-        btn.image = generateTimerImage(symbolName: "hourglass", text: countdown.remainingText(at: .now))
-        btn.title = ""
-        btn.imagePosition = .imageOnly
-    }
-
-    @objc
-    private func countdownStatusItemTapped() {
-        windowController.showFocusPanel()
-        windowController.presentationModel.selectedFocusTool = .countdown
-    }
-
-    // MARK: Stopwatch (counter) status item
-
-    private func updateCounterStatusItem() {
-        let counter = windowController.counterViewModel
-
-        if counter.hasActiveSession {
-            if counterStatusItem == nil {
-                let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-                if let btn = item.button {
-                    btn.target = self
-                    btn.action = #selector(counterStatusItemTapped)
-                    btn.sendAction(on: [.leftMouseUp])
-                }
-                counterStatusItem = item
-            }
-            counterStatusItem?.isVisible = true
-            startTickIfNeeded()
-            refreshCounterLabel()
-        } else {
-            counterStatusItem?.isVisible = false
-            stopTickIfUnused()
-        }
-    }
-
-    private func refreshCounterLabel() {
-        guard let btn = counterStatusItem?.button else { return }
-        let counter = windowController.counterViewModel
-        btn.image = generateTimerImage(symbolName: "stopwatch", text: counter.elapsedText(at: .now))
-        btn.title = ""
-        btn.imagePosition = .imageOnly
-    }
-
-    @objc
-    private func counterStatusItemTapped() {
-        windowController.showFocusPanel()
-        windowController.presentationModel.selectedFocusTool = .counter
     }
 
     // MARK: Gemini tool activity (menu bar)
@@ -544,18 +407,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         timerTick = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.refreshPomodoroLabel()
-                self?.refreshCountdownLabel()
-                self?.refreshCounterLabel()
             }
         }
     }
 
     private func stopTickIfUnused() {
-        guard
-            pomodoroStatusItem?.isVisible != true,
-            countdownStatusItem?.isVisible != true,
-            counterStatusItem?.isVisible != true
-        else { return }
+        guard pomodoroStatusItem?.isVisible != true else { return }
         timerTick?.invalidate()
         timerTick = nil
     }

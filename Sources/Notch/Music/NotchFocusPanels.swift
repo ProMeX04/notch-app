@@ -1,8 +1,13 @@
 import SwiftUI
+import Charts
 struct PomodoroPanelView: View {
     @ObservedObject var pomodoro: PomodoroViewModel
     @ObservedObject var learningStats: LearningStatsStore
     @State private var idleEditorPhase: PomodoroPhase = .focus
+    @State private var isShowingSettings: Bool = false
+    @State private var isShowingStats: Bool = false
+    
+    @AppStorage("app_language") private var appLanguage: String = "English"
 
     private var displayedPhase: PomodoroPhase {
         pomodoro.hasActiveSession ? pomodoro.phase : idleEditorPhase
@@ -14,6 +19,8 @@ struct PomodoroPanelView: View {
             return pomodoro.focusDurationSeconds
         case .shortBreak:
             return pomodoro.breakDurationSeconds
+        case .longBreak:
+            return pomodoro.longBreakDurationSeconds
         }
     }
 
@@ -27,10 +34,10 @@ struct PomodoroPanelView: View {
                 FocusClockSlot(yOffset: -2) {
                     PomodoroTimeText(
                         pomodoro: pomodoro,
-                        size: 48,
+                        size: 78,
                         weight: .bold
                     )
-                    .foregroundStyle(.white)
+                    .foregroundStyle(displayedTint)
                 }
             )
         } else {
@@ -38,61 +45,126 @@ struct PomodoroPanelView: View {
                 FocusClockSlot(yOffset: -2) {
                     StaticTimeText(
                         seconds: idleDisplayedSeconds,
-                        size: 48,
+                        size: 78,
                         weight: .bold
                     )
-                    .foregroundStyle(.white)
+                    .foregroundStyle(displayedTint)
                 }
             )
         }
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            FocusClockControl(
-                tint: displayedTint,
-                showsAdjusters: !pomodoro.hasActiveSession,
-                clockAction: nil,
-                onDecrease: { adjustIdleDuration(by: -1) },
-                onIncrease: { adjustIdleDuration(by: 1) }
-            ) {
-                pomodoroClockContent
-            }
+        VStack {
+            if isShowingSettings {
+                PomodoroQuickSettingsView(pomodoro: pomodoro, isPresented: $isShowingSettings, tint: displayedTint)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else if isShowingStats {
+                PomodoroStatsView(learningStats: learningStats, isPresented: $isShowingStats, tint: displayedTint)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else {
+                ZStack {
+                    // Center area
+                    VStack(spacing: 8) {
+                        PomodoroEditModeSwitcher(selection: Binding(
+                            get: { pomodoro.hasActiveSession ? pomodoro.phase : idleEditorPhase },
+                            set: { newPhase in
+                                if pomodoro.hasActiveSession {
+                                    pomodoro.setPhase(newPhase)
+                                } else {
+                                    idleEditorPhase = newPhase
+                                }
+                            }
+                        ))
 
-            Spacer(minLength: 10)
-
-            Group {
-                if pomodoro.hasActiveSession {
-                    PomodoroStreakBadge(days: learningStats.streakDays)
-                } else {
-                    PomodoroEditModeSwitcher(selection: $idleEditorPhase)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .center)
-
-            Spacer(minLength: 8)
-
-            HStack(spacing: 6) {
-                HoverButton(
-                    icon: pomodoro.isRunning ? "pause.fill" : "play.fill",
-                    scale: .large
-                ) {
-                    if !pomodoro.hasActiveSession {
-                        idleEditorPhase = .focus
+                        FocusClockControl(
+                            tint: displayedTint,
+                            showsAdjusters: false,
+                            clockAction: nil,
+                            onDecrease: { },
+                            onIncrease: { }
+                        ) {
+                            pomodoroClockContent
+                        }
                     }
-                    pomodoro.toggleRunning()
-                }
-                if pomodoro.hasActiveSession {
-                    HoverButton(icon: "backward.end.fill", scale: .medium) {
-                        pomodoro.reset()
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .allowsHitTesting(true)
+
+                    // Left overlay
+                    HStack(spacing: 8) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Button {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                                    isShowingStats = true
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "chart.bar.xaxis")
+                                        .font(.system(size: 11, weight: .bold))
+                                    Text(Localization.get("Stats", lang: appLanguage))
+                                        .font(.system(size: 11, weight: .bold))
+                                }
+                                .foregroundStyle(displayedTint)
+                                .padding(.leading, 10)
+                                .frame(width: 95, height: 26, alignment: .leading)
+                                .background(Capsule().fill(displayedTint.opacity(0.15)))
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                                    isShowingSettings = true
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "slider.horizontal.3")
+                                        .font(.system(size: 11, weight: .bold))
+                                    Text(Localization.get("Settings", lang: appLanguage))
+                                        .font(.system(size: 11, weight: .bold))
+                                }
+                                .foregroundStyle(displayedTint)
+                                .padding(.leading, 10)
+                                .frame(width: 95, height: 26, alignment: .leading)
+                                .background(Capsule().fill(displayedTint.opacity(0.15)))
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        Spacer()
                     }
-                    HoverButton(icon: "forward.fill", scale: .medium) {
-                        pomodoro.skipPhase()
+                    .frame(maxWidth: .infinity)
+                    .allowsHitTesting(true)
+
+                    // Right overlay
+                    HStack(spacing: 8) {
+                        Spacer()
+                        VStack(spacing: 8) {
+                            if pomodoro.isRunning {
+                                FocusPanelActionButton(
+                                    title: Localization.get("Skip", lang: appLanguage),
+                                    tint: displayedTint
+                                ) {
+                                    pomodoro.skipPhase()
+                                }
+                            }
+                            
+                            FocusPanelActionButton(
+                                title: Localization.get(pomodoro.isRunning ? "Pause" : "Start", lang: appLanguage),
+                                tint: displayedTint
+                            ) {
+                                pomodoro.toggleRunning()
+                            }
+                        }
                     }
+                    .frame(maxWidth: .infinity)
+                    .allowsHitTesting(true)
                 }
+                .transition(.opacity)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 82, maxHeight: 82, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 100, maxHeight: (isShowingSettings || isShowingStats) ? 140 : 115, alignment: .center)
+        .padding(.horizontal, 20)
         .onChange(of: pomodoro.hasActiveSession) { _, hasActiveSession in
             if !hasActiveSession {
                 idleEditorPhase = .focus
@@ -114,63 +186,12 @@ struct PomodoroPanelView: View {
                 focusMinutes: pomodoro.focusMinutes,
                 breakMinutes: pomodoro.breakMinutes + direction
             )
+        case .longBreak:
+            let currentLongBreakMinutes = pomodoro.longBreakDurationSeconds / 60
+            pomodoro.updateLongBreakDuration(minutes: currentLongBreakMinutes + (direction * 5))
         }
     }
 }
-
-struct CountdownPanelView: View {
-    @ObservedObject var countdown: CountdownViewModel
-    private let accentColor = Color(nsColor: .systemTeal)
-
-    private var stepSeconds: Int {
-        let s = countdown.presetSeconds
-        if s < 5 * 60 { return 60 }
-        if s < 3600  { return 5 * 60 }
-        return 15 * 60
-    }
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            FocusClockControl(
-                tint: accentColor.ensureMinimumBrightness(factor: 0.72),
-                showsAdjusters: !countdown.hasActiveSession,
-                clockAction: nil,
-                onDecrease: { countdown.selectPreset(countdown.presetSeconds - stepSeconds) },
-                onIncrease: { countdown.selectPreset(countdown.presetSeconds + stepSeconds) }
-            ) {
-                FocusClockSlot(yOffset: -2) {
-                    CountdownTimeText(
-                        countdown: countdown,
-                        size: 48,
-                        weight: .bold
-                    )
-                    .foregroundStyle(.white)
-                }
-            }
-
-            Spacer(minLength: 10)
-
-            Spacer(minLength: 0)
-
-            HStack(spacing: 6) {
-                HoverButton(
-                    icon: countdown.isRunning ? "pause.fill" : "play.fill",
-                    scale: .large
-                ) {
-                    countdown.toggleRunning()
-                }
-                if countdown.hasActiveSession {
-                    HoverButton(icon: "backward.end.fill", scale: .medium) {
-                        countdown.reset()
-                    }
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, minHeight: 82, maxHeight: 82, alignment: .leading)
-    }
-}
-
-
 
 struct PomodoroIconView: View {
     @ObservedObject var pomodoro: PomodoroViewModel
@@ -202,34 +223,6 @@ struct PomodoroIconView: View {
                     .foregroundStyle(accentColor)
             }
             .padding(10)
-        }
-        .frame(width: 56, height: 56)
-    }
-}
-
-struct CountdownIconView: View {
-    @ObservedObject var countdown: CountdownViewModel
-    private let accentColor = Color(nsColor: .systemTeal)
-
-    var body: some View {
-        ZStack {
-            if countdown.isRunning {
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(accentColor.opacity(0.3))
-                    .scaleEffect(1.08)
-                    .blur(radius: 16)
-            }
-
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color.white.opacity(0.04))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
-                }
-
-            Image(systemName: "hourglass")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(accentColor.ensureMinimumBrightness(factor: 0.72))
         }
         .frame(width: 56, height: 56)
     }
@@ -277,27 +270,6 @@ struct PomodoroTimeText: View {
                 weight: weight
             )
         }
-    }
-}
-
-struct CountdownTimeText: View {
-    @ObservedObject var countdown: CountdownViewModel
-    let size: CGFloat
-    let weight: Font.Weight
-
-    var body: some View {
-        TimelineView(PeriodicTimelineSchedule(from: .now, by: 1.0)) { context in
-            content(for: context.date)
-        }
-    }
-
-    @ViewBuilder
-    private func content(for date: Date) -> some View {
-        ClockDigitsRow(
-            components: PomodoroTimeComponents(seconds: countdown.remainingSeconds(at: date)),
-            size: size,
-            weight: weight
-        )
     }
 }
 
@@ -380,8 +352,7 @@ struct FocusClockSlot<Content: View>: View {
 
     var body: some View {
         content
-            .frame(width: 152, height: 50, alignment: .leading)
-            .frame(width: 152, height: 62, alignment: .center)
+            .frame(height: 84, alignment: .center)
             .offset(y: yOffset)
     }
 }
@@ -431,7 +402,7 @@ struct FocusClockControl<ClockContent: View>: View {
                 action: onIncrease
             )
         }
-        .frame(width: 204, height: 62, alignment: .leading)
+        .frame(height: 84, alignment: .center)
     }
 }
 
@@ -464,18 +435,23 @@ struct FocusClockAdjustButton: View {
             if isVisible {
                 Button(action: action) {
                     Image(systemName: icon)
-                        .font(.system(size: 9, weight: .bold))
-                        .frame(width: 22, height: 22)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
                         .background(
                             Circle()
-                                .fill(tint.opacity(0.18))
+                                .fill(.white.opacity(0.12))
                         )
+                        .overlay {
+                            Circle()
+                                .stroke(.white.opacity(0.2), lineWidth: 1)
+                        }
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             } else {
                 Color.clear
-                    .frame(width: 22, height: 22)
+                    .frame(width: 32, height: 32)
             }
         }
     }
@@ -486,8 +462,9 @@ struct PomodoroEditModeSwitcher: View {
 
     var body: some View {
         HStack(spacing: 2) {
-            phaseButton(title: "Focus", phase: .focus)
-            phaseButton(title: "Break", phase: .shortBreak)
+            phaseButton(title: "Pomodoro", phase: .focus)
+            phaseButton(title: "Short Break", phase: .shortBreak)
+            phaseButton(title: "Long Break", phase: .longBreak)
         }
         .padding(2)
         .background(
@@ -501,23 +478,23 @@ struct PomodoroEditModeSwitcher: View {
     }
 
     private func phaseButton(title: String, phase: PomodoroPhase) -> some View {
-        Button {
-            withAnimation(.smooth(duration: 0.18)) {
-                selection = phase
+        Text(title)
+            .font(.system(size: 12.5, weight: .semibold))
+            .lineLimit(1)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(
+                Capsule()
+                    .fill(selection == phase ? Color(nsColor: phase.accentColor) : Color.white.opacity(0.001))
+            )
+            .fixedSize(horizontal: true, vertical: false)
+            .foregroundStyle(selection == phase ? .white : .white.opacity(0.55))
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.smooth(duration: 0.18)) {
+                    selection = phase
+                }
             }
-        } label: {
-            Text(title)
-                .font(.system(size: 10, weight: .semibold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                    Capsule()
-                        .fill(selection == phase ? Color.white.opacity(0.1) : Color.white.opacity(0.001))
-                )
-                .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(selection == phase ? .white : .white.opacity(0.55))
     }
 }
 
@@ -608,23 +585,6 @@ struct PomodoroPresetSelectorView: View {
     }
 }
 
-struct CountdownPresetSelectorView: View {
-    @ObservedObject var countdown: CountdownViewModel
-
-    var body: some View {
-        InlineTimeAdjuster(
-            label: "Timer",
-            value: countdown.presetSeconds / 60,
-            tint: .teal,
-            range: 1...10080, // up to 7 days in minutes
-            step: 5
-        ) { newMinutes in
-            countdown.selectPreset(newMinutes * 60)
-        }
-        .frame(width: 124, alignment: .leading)
-    }
-}
-
 struct InlineTimeAdjuster: View {
     let label: String
     let value: Int
@@ -665,11 +625,16 @@ struct InlineTimeAdjuster: View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: 7, weight: .bold))
+                .foregroundStyle(.white)
                 .frame(width: 18, height: 18)
                 .background(
                     Circle()
-                        .fill(tint.opacity(0.18))
+                        .fill(.white.opacity(0.12))
                 )
+                .overlay {
+                    Circle()
+                        .stroke(.white.opacity(0.2), lineWidth: 1)
+                }
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -717,59 +682,19 @@ struct PresetValueControl: View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.white)
                 .frame(width: 22, height: 22)
                 .background(
                     Circle()
-                        .fill(tint.opacity(0.18))
+                        .fill(.white.opacity(0.12))
                 )
+                .overlay {
+                    Circle()
+                        .stroke(.white.opacity(0.2), lineWidth: 1)
+                }
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-}
-
-struct FocusToolSwitcher: View {
-    @ObservedObject var presentationModel: NotchPresentationModel
-
-    var body: some View {
-        HStack(spacing: 2) {
-            focusToolButton(title: "Pomodoro", icon: "timer", tool: .pomodoro)
-            focusToolButton(title: "Countdown", icon: "hourglass", tool: .countdown)
-            focusToolButton(title: "Stopwatch", icon: "stopwatch.fill", tool: .counter)
-        }
-        .padding(2)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.white.opacity(0.04))
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.white.opacity(0.06), lineWidth: 1)
-        }
-    }
-
-    private func focusToolButton(title: String, icon: String, tool: FocusTool) -> some View {
-        return Button {
-            withAnimation(.smooth(duration: 0.2)) {
-                presentationModel.selectedFocusTool = tool
-            }
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 10, weight: .semibold))
-                Text(title)
-                    .font(.system(size: 10, weight: .semibold))
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(presentationModel.selectedFocusTool == tool ? Color.white.opacity(0.1) : Color.white.opacity(0.001))
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 6))
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(presentationModel.selectedFocusTool == tool ? .white : .white.opacity(0.5))
     }
 }
 
@@ -799,172 +724,209 @@ struct PomodoroStreakBadge: View {
     }
 }
 
-struct CounterPanelView: View {
-    @ObservedObject var counter: CounterViewModel
-
-    private let accentColor = Color(nsColor: .systemCyan)
+struct FocusPanelActionButton: View {
+    let title: String
+    let tint: Color
+    let action: () -> Void
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            FocusClockControl(
-                tint: accentColor.ensureMinimumBrightness(factor: 0.72),
-                showsAdjusters: false,
-                clockAction: nil,
-                onDecrease: {},
-                onIncrease: {}
-            ) {
-                FocusClockSlot(yOffset: -2) {
-                    StopwatchTimeText(
-                        counter: counter,
-                        size: 48,
-                        weight: .bold
-                    )
-                    .foregroundStyle(.white)
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(tint == .white ? .black : .white)
+                .frame(width: 95, height: 26)
+                .background(
+                    Capsule()
+                        .fill(tint == .white ? Color.white : tint)
+                        .shadow(color: .black.opacity(0.1), radius: 1, x: 0, y: 1)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct PomodoroQuickSettingsView: View {
+    @ObservedObject var pomodoro: PomodoroViewModel
+    @Binding var isPresented: Bool
+    let tint: Color
+    
+    @AppStorage("app_language") private var appLanguage: String = "English"
+
+    var body: some View {
+        HStack(spacing: 24) {
+            // First Column: 3 settings rows
+            VStack(alignment: .leading, spacing: 10) {
+                settingInput(label: "Focus", value: pomodoro.focusMinutes) { 
+                    pomodoro.updateCurrentDurations(focusMinutes: $0, breakMinutes: pomodoro.breakMinutes) 
+                }
+                settingInput(label: "Short", value: pomodoro.breakMinutes) { 
+                    pomodoro.updateCurrentDurations(focusMinutes: pomodoro.focusMinutes, breakMinutes: $0) 
+                }
+                settingInput(label: "Long", value: pomodoro.longBreakDurationSeconds / 60) { 
+                    pomodoro.updateLongBreakDuration(minutes: $0) 
                 }
             }
-
-            Spacer(minLength: 8)
-
-            HStack(spacing: 6) {
-                HoverButton(
-                    icon: counter.isRunning ? "pause.fill" : "play.fill",
-                    scale: .large
-                ) {
-                    counter.toggleRunning()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            
+            // Second Column: Toggles and Done
+            VStack(alignment: .trailing, spacing: 12) {
+                Toggle(Localization.get("Auto-start Breaks", lang: appLanguage), isOn: $pomodoro.autoStartBreaks)
+                    .font(.system(size: 14, weight: .medium))
+                    .toggleStyle(.switch)
+                    .tint(tint)
+                
+                Toggle(Localization.get("Auto-start Pomo", lang: appLanguage), isOn: $pomodoro.autoStartPomodoros)
+                    .font(.system(size: 14, weight: .medium))
+                    .toggleStyle(.switch)
+                    .tint(tint)
+                
+                Spacer(minLength: 0)
+                
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                        isPresented = false
+                    }
+                } label: {
+                    Text(Localization.get("Done", lang: appLanguage))
+                        .font(.system(size: 14, weight: .semibold))
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 32)
                 }
-                if counter.hasActiveSession {
-                    HoverButton(icon: "backward.end.fill", scale: .medium) {
-                        counter.reset()
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .tint(tint)
+            }
+            .frame(width: 180, alignment: .trailing)
+        }
+    }
+
+    private func settingInput(label: String, value: Int, action: @escaping (Int) -> Void) -> some View {
+        HStack(spacing: 12) {
+            Text(Localization.get(label, lang: appLanguage))
+                .font(.system(size: 14.5, weight: .bold))
+                .foregroundStyle(tint.opacity(0.7))
+                .frame(width: 48, alignment: .leading)
+                
+            HStack(spacing: 10) {
+                Button { action(max(1, value - 1)) } label: { Image(systemName: "minus.circle.fill").font(.system(size: 18)).foregroundStyle(tint.opacity(0.5), tint.opacity(0.1)) }.buttonStyle(.plain)
+                Text("\(value)").font(.system(size: 18, weight: .bold, design: .rounded)).frame(minWidth: 26).foregroundStyle(.white)
+                Button { action(min(180, value + 1)) } label: { Image(systemName: "plus.circle.fill").font(.system(size: 18)).foregroundStyle(tint.opacity(0.5), tint.opacity(0.1)) }.buttonStyle(.plain)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.white.opacity(0.06)))
+        }
+    }
+}
+
+
+// MARK: - Stats View
+
+struct DayStats: Identifiable {
+    let id = UUID()
+    let date: Date
+    let seconds: Int
+    
+    var dayLabel: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE"
+        return formatter.string(from: date)
+    }
+}
+
+struct PomodoroStatsView: View {
+    @ObservedObject var learningStats: LearningStatsStore
+    @Binding var isPresented: Bool
+    let tint: Color
+    
+    @AppStorage("app_language") private var appLanguage: String = "English"
+    @State private var selectedDay: String? = nil
+    
+    private var chartData: [DayStats] {
+        let calendar = Calendar.current
+        var result: [DayStats] = []
+        for i in 0..<7 {
+            let date = calendar.date(byAdding: .day, value: -i, to: calendar.startOfDay(for: .now))!
+            let daySeconds = learningStats.entries.filter { calendar.isDate($0.createdAt, inSameDayAs: date) }.reduce(0) { $0 + $1.seconds }
+            result.append(DayStats(date: date, seconds: daySeconds))
+        }
+        return result.reversed()
+    }
+    
+    private var totalSeconds: Int {
+        chartData.reduce(0) { $0 + $1.seconds }
+    }
+    
+    private var displayedSeconds: Int {
+        if let selectedDay, let data = chartData.first(where: { $0.dayLabel == selectedDay }) {
+            return data.seconds
+        }
+        return totalSeconds
+    }
+    
+    private var displayedLabel: String {
+        if let selectedDay {
+             return "\(Localization.get("Focus on", lang: appLanguage)) \(selectedDay)"
+        }
+        return Localization.get("Last 7 Days", lang: appLanguage)
+    }
+    
+    var body: some View {
+        HStack(spacing: 20) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(displayedLabel)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.4))
+                    .padding(.top, 4)
+                Text(learningStats.formattedDuration(displayedSeconds))
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundStyle(tint)
+                
+                Spacer()
+                
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                        isPresented = false
+                    }
+                } label: {
+                    Text(Localization.get("Done", lang: appLanguage))
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .tint(.blue)
+            }
+            .frame(width: 120, alignment: .leading)
+            
+            Chart(chartData) { day in
+                BarMark(
+                    x: .value("Day", day.dayLabel),
+                    y: .value("Minutes", Double(day.seconds) / 60.0)
+                )
+                .foregroundStyle(tint.gradient)
+                .opacity(selectedDay == nil || selectedDay == day.dayLabel ? 1.0 : 0.4)
+                .cornerRadius(4)
+            }
+            .chartXSelection(value: $selectedDay)
+            .chartYAxis(.hidden)
+            .chartXAxis {
+                AxisMarks(values: chartData.map { $0.dayLabel }) { value in
+                    AxisValueLabel() {
+                        if let label = value.as(String.self) {
+                            Text(Localization.get(label, lang: appLanguage))
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.7))
+                        }
                     }
                 }
             }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 4)
         }
-        .frame(maxWidth: .infinity, minHeight: 82, maxHeight: 82, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.top, 24)
+        .padding(.bottom, 4)
     }
 }
 
-struct CounterIconView: View {
-    @ObservedObject var counter: CounterViewModel
 
-    private let accentColor = Color(nsColor: .systemCyan)
-
-    var body: some View {
-        ZStack {
-            if counter.isRunning {
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(accentColor.opacity(0.3))
-                    .scaleEffect(1.08)
-                    .blur(radius: 16)
-            }
-
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color.white.opacity(0.04))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
-                }
-
-            Image(systemName: "stopwatch.fill")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(accentColor.ensureMinimumBrightness(factor: 0.72))
-        }
-        .frame(width: 56, height: 56)
-    }
-}
-
-struct StopwatchTimeText: View {
-    @ObservedObject var counter: CounterViewModel
-    let size: CGFloat
-    let weight: Font.Weight
-
-    var body: some View {
-        TimelineView(PeriodicTimelineSchedule(from: .now, by: 1.0)) { context in
-            content(for: context.date)
-        }
-    }
-
-    @ViewBuilder
-    private func content(for date: Date) -> some View {
-        let total = counter.elapsedSeconds(at: date)
-        let hours = total / 3600
-        let minutes = (total % 3600) / 60
-        let seconds = total % 60
-
-        HStack(spacing: size <= 14 ? 1 : 3) {
-            if hours > 0 {
-                PomodoroDigitColumn(digit: (hours / 10) % 10, size: size, weight: weight)
-                PomodoroDigitColumn(digit: hours % 10, size: size, weight: weight)
-
-                Text(":")
-                    .font(.system(size: size, weight: weight, design: .rounded))
-                    .offset(y: size <= 14 ? -0.5 : -1)
-            }
-
-            PomodoroDigitColumn(digit: (minutes / 10) % 10, size: size, weight: weight)
-            PomodoroDigitColumn(digit: minutes % 10, size: size, weight: weight)
-
-            Text(":")
-                .font(.system(size: size, weight: weight, design: .rounded))
-                .offset(y: size <= 14 ? -0.5 : -1)
-
-            PomodoroDigitColumn(digit: (seconds / 10) % 10, size: size, weight: weight)
-            PomodoroDigitColumn(digit: seconds % 10, size: size, weight: weight)
-        }
-    }
-}
-
-struct CompactCounterView: View {
-    @ObservedObject var counter: CounterViewModel
-    let closedNotchWidth: CGFloat
-    let closedNotchHeight: CGFloat
-
-    private var sideSize: CGFloat {
-        max(0, closedNotchHeight - 12)
-    }
-
-    private let accentColor = Color(nsColor: .systemCyan)
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(accentColor.gradient)
-
-                Image(systemName: "stopwatch.fill")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.95))
-            }
-            .frame(width: sideSize, height: sideSize)
-
-            Rectangle()
-                .fill(.black)
-                .overlay {
-                    HStack {
-                        Spacer(minLength: 0)
-
-                        StopwatchTimeText(
-                            counter: counter,
-                            size: 12,
-                            weight: .semibold
-                        )
-                        .foregroundStyle(.white)
-
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, 10)
-                }
-                .frame(width: max(0, closedNotchWidth - NotchMetrics.closedCornerRadius.top))
-
-            ZStack {
-                Circle()
-                    .fill(accentColor.opacity(counter.isRunning ? 0.18 : 0.1))
-
-                Image(systemName: counter.isRunning ? "pause.fill" : "play.fill")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(accentColor.ensureMinimumBrightness(factor: 0.72))
-            }
-            .frame(width: sideSize, height: sideSize)
-        }
-        .frame(height: closedNotchHeight, alignment: .center)
-    }
-}

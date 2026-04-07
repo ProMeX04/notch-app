@@ -6,8 +6,6 @@ import SwiftUI
 final class NotchWindowController {
     let playbackViewModel: MusicProbeViewModel
     let pomodoroViewModel: PomodoroViewModel
-    let countdownViewModel: CountdownViewModel
-    let counterViewModel: CounterViewModel
     let geminiLiveViewModel: GeminiLiveViewModel
     let shelfViewModel: NotchShelfViewModel
     let learningStatsStore: LearningStatsStore
@@ -25,8 +23,6 @@ final class NotchWindowController {
     init(
         playbackViewModel: MusicProbeViewModel,
         pomodoroViewModel: PomodoroViewModel,
-        countdownViewModel: CountdownViewModel,
-        counterViewModel: CounterViewModel,
         geminiLiveViewModel: GeminiLiveViewModel,
         shelfViewModel: NotchShelfViewModel,
         learningStatsStore: LearningStatsStore,
@@ -34,8 +30,6 @@ final class NotchWindowController {
     ) {
         self.playbackViewModel = playbackViewModel
         self.pomodoroViewModel = pomodoroViewModel
-        self.countdownViewModel = countdownViewModel
-        self.counterViewModel = counterViewModel
         self.geminiLiveViewModel = geminiLiveViewModel
         self.shelfViewModel = shelfViewModel
         self.learningStatsStore = learningStatsStore
@@ -57,8 +51,6 @@ final class NotchWindowController {
             rootView: MusicNotchView(
                 playback: playbackViewModel,
                 pomodoro: pomodoroViewModel,
-                countdown: countdownViewModel,
-                counter: counterViewModel,
                 gemini: geminiLiveViewModel,
                 shelf: shelfViewModel,
                 learningStats: learningStatsStore,
@@ -125,8 +117,6 @@ final class NotchWindowController {
         shelfViewModel.shutdown()
         playbackViewModel.shutdown()
         pomodoroViewModel.shutdown()
-        countdownViewModel.shutdown()
-        counterViewModel.shutdown()
         geminiLiveViewModel.shutdown()
         cancellables.removeAll()
     }
@@ -137,23 +127,15 @@ final class NotchWindowController {
 
     func showPomodoroPanel() {
         showPanel(.focus)
-        presentationModel.selectedFocusTool = .pomodoro
-    }
-
-    func showCountdownPanel() {
-        showPanel(.focus)
-        presentationModel.selectedFocusTool = .countdown
     }
 
     func togglePomodoro() {
         presentationModel.selectPanel(.focus, reveal: true)
-        presentationModel.selectedFocusTool = .pomodoro
         pomodoroViewModel.toggleRunning()
     }
 
     func resetPomodoro() {
         presentationModel.selectPanel(.focus, reveal: true)
-        presentationModel.selectedFocusTool = .pomodoro
         pomodoroViewModel.reset()
     }
 
@@ -248,76 +230,39 @@ final class NotchWindowController {
         geminiLiveViewModel.clearDisplayedImageOverlay()
     }
 
-    func showFocusTool(_ tool: FocusTool?) {
-        showFocusPanel()
-        if let tool {
-            presentationModel.selectedFocusTool = tool
-        }
+    func configurePomodoro(duration: String?, breakDuration: String?) throws {
+        let focusSeconds = try resolvedPomodoroSeconds(
+            from: duration,
+            fallbackSeconds: pomodoroViewModel.focusDurationSeconds,
+            parameterName: "duration"
+        )
+        let breakSeconds = try resolvedPomodoroSeconds(
+            from: breakDuration,
+            fallbackSeconds: pomodoroViewModel.breakDurationSeconds,
+            parameterName: "break"
+        )
+        pomodoroViewModel.updateCurrentDurations(focusSeconds: focusSeconds, breakSeconds: breakSeconds)
     }
 
-    private func resolvedFocusTool(_ tool: FocusTool?) -> FocusTool {
-        tool ?? presentationModel.selectedFocusTool
+    func startPomodoro(duration: String? = nil, breakDuration: String? = nil) throws {
+        try configurePomodoro(duration: duration, breakDuration: breakDuration)
+        try performPomodoroAction(action: .start)
     }
 
-    func toggleFocusTool(_ tool: FocusTool?) {
-        let targetTool = resolvedFocusTool(tool)
-        presentationModel.selectedFocusTool = targetTool
-        toggleSelectedFocusTool()
+    func pausePomodoro() throws {
+        try performPomodoroAction(action: .pause)
     }
 
-    func configureFocusTool(_ tool: FocusTool?, duration: String?, breakDuration: String?) throws {
-        switch resolvedFocusTool(tool) {
-        case .pomodoro:
-            let focusSeconds = try resolvedPomodoroSeconds(
-                from: duration,
-                fallbackSeconds: pomodoroViewModel.focusDurationSeconds,
-                parameterName: "duration"
-            )
-            let breakSeconds = try resolvedPomodoroSeconds(
-                from: breakDuration,
-                fallbackSeconds: pomodoroViewModel.breakDurationSeconds,
-                parameterName: "break"
-            )
-            pomodoroViewModel.updateCurrentDurations(focusSeconds: focusSeconds, breakSeconds: breakSeconds)
-        case .countdown:
-            if breakDuration != nil {
-                throw NotchFocusCommandError.unsupportedBreakDuration
-            }
-            guard let duration, !duration.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-            guard countdownViewModel.setDuration(from: duration) else {
-                throw NotchFocusCommandError.invalidDuration(duration)
-            }
-        case .counter:
-            if duration != nil || breakDuration != nil {
-                throw NotchFocusCommandError.counterDoesNotUseDurations
-            }
-        }
+    func resumePomodoro() throws {
+        try performPomodoroAction(action: .resume)
     }
 
-    func startFocusTool(_ tool: FocusTool?, duration: String? = nil, breakDuration: String? = nil) throws {
-        try configureFocusTool(tool, duration: duration, breakDuration: breakDuration)
-        try performFocusAction(tool: tool, action: .start)
+    func resetPomodoroSession() throws {
+        try performPomodoroAction(action: .reset)
     }
 
-    func pauseFocusTool(_ tool: FocusTool?) throws {
-        try performFocusAction(tool: tool, action: .pause)
-    }
-
-    func resumeFocusTool(_ tool: FocusTool?) throws {
-        try performFocusAction(tool: tool, action: .resume)
-    }
-
-    func resetFocusTool(_ tool: FocusTool?) throws {
-        try performFocusAction(tool: tool, action: .reset)
-    }
-
-    func skipFocusTool(_ tool: FocusTool?) throws {
-        switch resolvedFocusTool(tool) {
-        case .pomodoro:
-            pomodoroViewModel.skipPhase()
-        case .countdown, .counter:
-            throw NotchFocusCommandError.skipUnsupported(resolvedFocusTool(tool).rawValue)
-        }
+    func skipPomodoroPhase() {
+        pomodoroViewModel.skipPhase()
     }
 
     func playMedia() {
@@ -356,30 +301,14 @@ final class NotchWindowController {
         playbackViewModel.openCurrentApp()
     }
 
-    func toggleSelectedFocusTool() {
+    func togglePomodoroSession() {
         presentationModel.selectPanel(.focus, reveal: true)
-
-        switch presentationModel.selectedFocusTool {
-        case .pomodoro:
-            pomodoroViewModel.toggleRunning()
-        case .countdown:
-            countdownViewModel.toggleRunning()
-        case .counter:
-            counterViewModel.toggleRunning()
-        }
+        pomodoroViewModel.toggleRunning()
     }
 
-    func resetSelectedFocusTool() {
+    func resetPomodoroFromUI() {
         presentationModel.selectPanel(.focus, reveal: true)
-
-        switch presentationModel.selectedFocusTool {
-        case .pomodoro:
-            pomodoroViewModel.reset()
-        case .countdown:
-            countdownViewModel.reset()
-        case .counter:
-            counterViewModel.reset()
-        }
+        pomodoroViewModel.reset()
     }
 
     func updateWindowFrame(animated: Bool) {
@@ -398,33 +327,14 @@ final class NotchWindowController {
         }
     }
 
-    private func performFocusAction(tool: FocusTool?, action: FocusCommandAction) throws {
-        switch resolvedFocusTool(tool) {
-        case .pomodoro:
-            try action.apply(
-                isRunning: pomodoroViewModel.isRunning,
-                hasActiveSession: pomodoroViewModel.hasActiveSession,
-                start: { pomodoroViewModel.start() },
-                pause: { pomodoroViewModel.pause() },
-                reset: { pomodoroViewModel.reset() }
-            )
-        case .countdown:
-            try action.apply(
-                isRunning: countdownViewModel.isRunning,
-                hasActiveSession: countdownViewModel.hasActiveSession,
-                start: { countdownViewModel.start() },
-                pause: { countdownViewModel.pause() },
-                reset: { countdownViewModel.reset() }
-            )
-        case .counter:
-            try action.apply(
-                isRunning: counterViewModel.isRunning,
-                hasActiveSession: counterViewModel.hasActiveSession,
-                start: { counterViewModel.start() },
-                pause: { counterViewModel.pause() },
-                reset: { counterViewModel.reset() }
-            )
-        }
+    private func performPomodoroAction(action: FocusCommandAction) throws {
+        try action.apply(
+            isRunning: pomodoroViewModel.isRunning,
+            hasActiveSession: pomodoroViewModel.hasActiveSession,
+            start: { pomodoroViewModel.start() },
+            pause: { pomodoroViewModel.pause() },
+            reset: { pomodoroViewModel.reset() }
+        )
     }
 
     private func resolvedPomodoroSeconds(from raw: String?, fallbackSeconds: Int, parameterName: String) throws -> Int {
@@ -474,26 +384,14 @@ private enum FocusCommandAction {
 
 private enum NotchFocusCommandError: LocalizedError {
     case resumeWithoutSession
-    case invalidDuration(String)
     case invalidParameter(String, String)
-    case unsupportedBreakDuration
-    case counterDoesNotUseDurations
-    case skipUnsupported(String)
 
     var errorDescription: String? {
         switch self {
         case .resumeWithoutSession:
-            return "Can't resume because the selected focus tool has no active session."
-        case let .invalidDuration(value):
-            return "Couldn't parse duration '\(value)'."
+            return "Can't resume because Pomodoro has no active session."
         case let .invalidParameter(name, value):
             return "Couldn't parse \(name) value '\(value)'."
-        case .unsupportedBreakDuration:
-            return "Break duration is only supported for pomodoro."
-        case .counterDoesNotUseDurations:
-            return "Stopwatch does not use durations."
-        case let .skipUnsupported(tool):
-            return "Skip is not supported for \(tool)."
         }
     }
 }

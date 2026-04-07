@@ -130,27 +130,27 @@ enum NotchCommandRouter {
 
     private static func handleFocus(action: String, queryItems: [String: String], controller: NotchWindowController) throws {
         let toolName = firstNonEmpty(queryItems["tool"], queryItems["name"])
-        let tool = parseFocusTool(toolName)
+        try validatePomodoroTool(toolName)
         let duration = firstNonEmpty(queryItems["duration"], queryItems["value"])
         let breakDuration = firstNonEmpty(queryItems["break"], queryItems["breakduration"])
 
         switch action {
         case "show":
-            controller.showFocusTool(tool)
+            controller.showPomodoroPanel()
         case "set":
-            try controller.configureFocusTool(tool, duration: duration, breakDuration: breakDuration)
+            try controller.configurePomodoro(duration: duration, breakDuration: breakDuration)
         case "start":
-            try controller.startFocusTool(tool, duration: duration, breakDuration: breakDuration)
+            try controller.startPomodoro(duration: duration, breakDuration: breakDuration)
         case "pause":
-            try controller.pauseFocusTool(tool)
+            try controller.pausePomodoro()
         case "resume":
-            try controller.resumeFocusTool(tool)
+            try controller.resumePomodoro()
         case "toggle":
-            controller.toggleFocusTool(tool)
+            controller.togglePomodoroSession()
         case "reset":
-            try controller.resetFocusTool(tool)
+            try controller.resetPomodoroSession()
         case "skip":
-            try controller.skipFocusTool(tool)
+            controller.skipPomodoroPhase()
         default:
             throw NotchCommandError.invalidAction("focus", action)
         }
@@ -249,16 +249,10 @@ enum NotchCommandRouter {
         return nil
     }
 
-    private static func parseFocusTool(_ raw: String?) -> FocusTool? {
-        switch raw {
-        case "pomodoro":
-            return .pomodoro
-        case "countdown":
-            return .countdown
-        case "counter", "stopwatch":
-            return .counter
-        default:
-            return nil
+    private static func validatePomodoroTool(_ raw: String?) throws {
+        guard let raw else { return }
+        guard raw == "pomodoro" else {
+            throw NotchCommandError.invalidValue("tool", raw)
         }
     }
 }

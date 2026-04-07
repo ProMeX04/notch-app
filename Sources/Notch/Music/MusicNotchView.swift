@@ -5,16 +5,12 @@ private enum CompactActivity: String {
     case music
     case talk
     case pomodoro
-    case countdown
-    case counter
     case idle
 }
 
 struct MusicNotchView: View {
     @ObservedObject var playback: MusicProbeViewModel
     @ObservedObject var pomodoro: PomodoroViewModel
-    @ObservedObject var countdown: CountdownViewModel
-    @ObservedObject var counter: CounterViewModel
     @ObservedObject var gemini: GeminiLiveViewModel
     @ObservedObject var shelf: NotchShelfViewModel
     @ObservedObject var learningStats: LearningStatsStore
@@ -44,6 +40,10 @@ struct MusicNotchView: View {
     private var compactActivity: CompactActivity {
         if presentationModel.selectedPanel == .talk, gemini.showCompactIndicator {
             return .talk
+        }
+
+        if pomodoro.showCompactIndicator {
+            return .pomodoro
         }
 
         if playback.showCompactLiveActivity {
@@ -111,12 +111,7 @@ struct MusicNotchView: View {
                 return
             }
 
-            guard didAutoRevealForShelfDrop else {
-                didCommitShelfDrop = false
-                return
-            }
-
-            if !didCommitShelfDrop {
+            if didAutoRevealForShelfDrop && !didCommitShelfDrop {
                 presentationModel.scheduleCollapse(after: .milliseconds(120))
             }
 
@@ -163,18 +158,6 @@ struct MusicNotchView: View {
                     closedNotchWidth: presentationModel.closedNotchSize.width,
                     closedNotchHeight: presentationModel.closedNotchSize.height
                 )
-            } else if compactActivity == .countdown {
-                CompactCountdownView(
-                    countdown: countdown,
-                    closedNotchWidth: presentationModel.closedNotchSize.width,
-                    closedNotchHeight: presentationModel.closedNotchSize.height
-                )
-            } else if compactActivity == .counter {
-                CompactCounterView(
-                    counter: counter,
-                    closedNotchWidth: presentationModel.closedNotchSize.width,
-                    closedNotchHeight: presentationModel.closedNotchSize.height
-                )
             } else {
                 IdleClosedNotchView(
                     closedNotchWidth: presentationModel.closedNotchSize.width,
@@ -186,8 +169,6 @@ struct MusicNotchView: View {
                 ExpandedNotchContent(
                     playback: playback,
                     pomodoro: pomodoro,
-                    countdown: countdown,
-                    counter: counter,
                     gemini: gemini,
                     shelf: shelf,
                     learningStats: learningStats,
@@ -253,13 +234,6 @@ struct MusicNotchView: View {
                 case .talk:
                     presentationModel.selectPanel(.talk)
                 case .pomodoro:
-                    presentationModel.selectedFocusTool = .pomodoro
-                    presentationModel.selectPanel(.focus)
-                case .countdown:
-                    presentationModel.selectedFocusTool = .countdown
-                    presentationModel.selectPanel(.focus)
-                case .counter:
-                    presentationModel.selectedFocusTool = .counter
                     presentationModel.selectPanel(.focus)
                 case .idle:
                     break

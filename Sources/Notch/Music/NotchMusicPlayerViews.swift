@@ -58,6 +58,37 @@ struct ExpandedMusicControlsView: View {
     @State private var sliderValue: Double = 0
     @State private var dragging = false
     @State private var lastDragged: Date = .distantPast
+    
+    @AppStorage("app_language") private var appLanguage: String = "English"
+
+    private var primaryText: String {
+        let title = playback.state.title
+        if title.isEmpty || title == "Nothing Playing" {
+            return Localization.get("Nothing Playing", lang: appLanguage)
+        }
+        return title
+    }
+
+    private var sourceLabel: String {
+        switch playback.state.bundleIdentifier {
+        case "com.apple.Music":
+            return "Apple Music"
+        case "com.spotify.client":
+            return "Spotify"
+        case let bundleID where bundleID.contains("youtube"):
+            return "YouTube Music"
+        default:
+            return Localization.get("System Media", lang: appLanguage)
+        }
+    }
+
+    private var secondaryText: String {
+        let artist = playback.state.artist
+        if !artist.isEmpty && artist != "Notch" {
+            return artist
+        }
+        return sourceLabel
+    }
 
     private var accent: Color {
         Color(nsColor: playback.accentColor).ensureMinimumBrightness(factor: 0.72)
@@ -69,14 +100,14 @@ struct ExpandedMusicControlsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     VStack(alignment: .leading, spacing: 0) {
                         MarqueeText(
-                            .constant(playback.primaryText),
+                            .constant(primaryText),
                             font: .headline,
                             nsFont: .headline,
                             textColor: .white,
                             frameWidth: geometry.size.width
                         )
                         MarqueeText(
-                            .constant(playback.secondaryText),
+                            .constant(secondaryText),
                             font: .headline,
                             nsFont: .headline,
                             textColor: accent.ensureMinimumBrightness(factor: 0.6),

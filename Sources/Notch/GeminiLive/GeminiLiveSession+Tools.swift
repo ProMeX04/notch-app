@@ -63,7 +63,7 @@ extension GeminiLiveSession {
             return
         }
 
-        let model = "gemini-2.5-flash"
+        let model = "gemini-2.5-flash-lite"
         guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent") else {
             let result: [String: Any] = ["success": false, "error": "Couldn't build Gemini search URL."]
             onFunctionExecuted?(name, args, result)

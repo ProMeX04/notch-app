@@ -4,7 +4,8 @@ import SwiftUI
 
 enum PomodoroPhase: String {
     case focus = "Focus"
-    case shortBreak = "Break"
+    case shortBreak = "Short Break"
+    case longBreak = "Long Break"
 
     var symbolName: String {
         switch self {
@@ -12,15 +13,22 @@ enum PomodoroPhase: String {
             return "timer"
         case .shortBreak:
             return "cup.and.saucer.fill"
+        case .longBreak:
+            return "moon.zzz.fill"
         }
     }
 
     var accentColor: NSColor {
         switch self {
         case .focus:
-            return .systemOrange
+            // Brighter, lighter red (more towards salmon/neon)
+            return NSColor(red: 255/255, green: 100/255, blue: 100/255, alpha: 1)
         case .shortBreak:
-            return .systemGreen
+            // Already good according to user
+            return NSColor(red: 60/255, green: 215/255, blue: 105/255, alpha: 1)
+        case .longBreak:
+            // Brighter blue (more towards sky blue/cyan)
+            return NSColor(red: 110/255, green: 190/255, blue: 255/255, alpha: 1)
         }
     }
 }
@@ -30,6 +38,8 @@ struct PomodoroPreset: Identifiable, Codable, Equatable {
     var title: String
     var focusMinutes: Int
     var breakMinutes: Int
+    var longBreakMinutes: Int
+    var sessionsBeforeLongBreak: Int = 4
     var isCustom: Bool
 
     var chipTitle: String {
@@ -41,6 +51,7 @@ struct PomodoroPreset: Identifiable, Codable, Equatable {
         title: "Sprint",
         focusMinutes: 15,
         breakMinutes: 3,
+        longBreakMinutes: 10,
         isCustom: false
     )
 
@@ -49,6 +60,7 @@ struct PomodoroPreset: Identifiable, Codable, Equatable {
         title: "Classic",
         focusMinutes: 25,
         breakMinutes: 5,
+        longBreakMinutes: 15,
         isCustom: false
     )
 
@@ -57,14 +69,15 @@ struct PomodoroPreset: Identifiable, Codable, Equatable {
         title: "Deep",
         focusMinutes: 50,
         breakMinutes: 10,
+        longBreakMinutes: 30,
         isCustom: false
     )
 
     static let builtInPresets = [sprint, classic, deep]
     static let defaultCustomPresets = [
-        PomodoroPreset(id: "custom-1", title: "Custom 1", focusMinutes: 20, breakMinutes: 5, isCustom: true),
-        PomodoroPreset(id: "custom-2", title: "Custom 2", focusMinutes: 45, breakMinutes: 10, isCustom: true),
-        PomodoroPreset(id: "custom-3", title: "Custom 3", focusMinutes: 90, breakMinutes: 15, isCustom: true),
+        PomodoroPreset(id: "custom-1", title: "Custom 1", focusMinutes: 20, breakMinutes: 5, longBreakMinutes: 15, isCustom: true),
+        PomodoroPreset(id: "custom-2", title: "Custom 2", focusMinutes: 45, breakMinutes: 10, longBreakMinutes: 20, isCustom: true),
+        PomodoroPreset(id: "custom-3", title: "Custom 3", focusMinutes: 90, breakMinutes: 15, longBreakMinutes: 30, isCustom: true),
     ]
 }
 
@@ -76,14 +89,17 @@ final class PomodoroViewModel: ObservableObject {
     @Published private(set) var remainingSeconds: Int
     @Published private(set) var isRunning = false
     @Published private(set) var hasActiveSession = false
-    @Published private(set) var completedFocusSessions = 0
-    @Published private(set) var focusDurationOverrideSeconds: Int?
-    @Published private(set) var breakDurationOverrideSeconds: Int?
+    @Published var autoStartBreaks: Bool { didSet { persistSettings() } }
+    @Published var autoStartPomodoros: Bool { didSet { persistSettings() } }
+    @Published private(set) var focusDurationOverrideSeconds: Int? { didSet { persistSettings() } }
+    @Published private(set) var breakDurationOverrideSeconds: Int? { didSet { persistSettings() } }
+    @Published private(set) var longBreakDurationOverrideSeconds: Int? { didSet { persistSettings() } }
 
     private var phaseCompletionTask: Task<Void, Never>?
     private var phaseEndDate: Date?
     private let userDefaults: UserDefaults
     private let learningStatsStore: LearningStatsStore
+    private var completedFocusSessions = 0
     private var recordedFocusSecondsForCurrentPhase = 0
 
     init(
@@ -92,6 +108,10 @@ final class PomodoroViewModel: ObservableObject {
     ) {
         self.userDefaults = userDefaults
         self.learningStatsStore = learningStatsStore
+
+        self.autoStartBreaks = userDefaults.bool(forKey: Self.autoStartBreaksKey)
+        self.autoStartPomodoros = userDefaults.bool(forKey: Self.autoStartPomodorosKey)
+
         let restoredCustomPresets = Self.loadCustomPresets(from: userDefaults)
         customPresets = restoredCustomPresets
 
@@ -125,6 +145,10 @@ final class PomodoroViewModel: ObservableObject {
         breakDurationOverrideSeconds ?? (preset.breakMinutes * 60)
     }
 
+    var longBreakDurationSeconds: Int {
+        longBreakDurationOverrideSeconds ?? (preset.longBreakMinutes * 60)
+    }
+
     var showCompactIndicator: Bool {
         hasActiveSession || isRunning
     }
@@ -146,13 +170,22 @@ final class PomodoroViewModel: ObservableObject {
             return "Paused with \(remainingText()) remaining"
         }
 
-        return "Ready for your next \(DurationParser.displayString(for: focusDurationSeconds)) session"
+        let durationText: String
+        switch phase {
+        case .focus:
+            durationText = DurationParser.displayString(for: focusDurationSeconds)
+        case .shortBreak:
+            durationText = DurationParser.displayString(for: breakDurationSeconds)
+        case .longBreak:
+            durationText = DurationParser.displayString(for: longBreakDurationSeconds)
+        }
+
+        return "Ready for your \(durationText) \(phase.rawValue) session"
     }
 
     var nextPhaseLine: String {
-        let nextPhase = phase == .focus ? "Break" : "Focus"
-        let nextDurationSeconds = phase == .focus ? breakDurationSeconds : focusDurationSeconds
-        return "Up next: \(nextPhase) \(DurationParser.displayString(for: nextDurationSeconds))"
+        let nextPhase = nextPhase(after: phase)
+        return "Up next: \(nextPhase.rawValue) \(DurationParser.displayString(for: duration(for: nextPhase, preset: preset)))"
     }
 
     func remainingSeconds(at date: Date = .now) -> Int {
@@ -172,6 +205,7 @@ final class PomodoroViewModel: ObservableObject {
 
     func toggleRunning() {
         isRunning ? pause() : start()
+        SoundManager.playNotification()
     }
 
     func start() {
@@ -207,6 +241,7 @@ final class PomodoroViewModel: ObservableObject {
         recordedFocusSecondsForCurrentPhase = 0
         focusDurationOverrideSeconds = nil
         breakDurationOverrideSeconds = nil
+        longBreakDurationOverrideSeconds = nil
     }
 
     func skipPhase() {
@@ -216,6 +251,26 @@ final class PomodoroViewModel: ObservableObject {
         phaseCompletionTask = nil
         phaseEndDate = nil
         advancePhase(continueRunning: shouldContinueRunning)
+    }
+
+    func setPhase(_ targetPhase: PomodoroPhase) {
+        guard phase != targetPhase else { return }
+        let shouldContinueRunning = isRunning
+        recordCurrentFocusProgressIfNeeded(referenceDate: .now)
+        phaseCompletionTask?.cancel()
+        phaseCompletionTask = nil
+        phaseEndDate = nil
+        
+        phase = targetPhase
+        remainingSeconds = duration(for: phase, preset: preset)
+        hasActiveSession = true
+        recordedFocusSecondsForCurrentPhase = 0
+        if shouldContinueRunning {
+            isRunning = false
+            start()
+        } else {
+            isRunning = false
+        }
     }
 
     func selectPreset(_ preset: PomodoroPreset) {
@@ -235,6 +290,7 @@ final class PomodoroViewModel: ObservableObject {
         recordedFocusSecondsForCurrentPhase = 0
         focusDurationOverrideSeconds = nil
         breakDurationOverrideSeconds = nil
+        longBreakDurationOverrideSeconds = nil
     }
 
     func updateCustomPreset(slotIndex: Int, focusMinutes: Int, breakMinutes: Int) {
@@ -297,8 +353,20 @@ final class PomodoroViewModel: ObservableObject {
         phase = .focus
         focusDurationOverrideSeconds = clampedFocusSeconds
         breakDurationOverrideSeconds = clampedBreakSeconds
+        longBreakDurationOverrideSeconds = nil
         remainingSeconds = clampedFocusSeconds
         recordedFocusSecondsForCurrentPhase = 0
+    }
+
+    func updateLongBreakDuration(minutes: Int) {
+        let clamped = max(1, min(minutes, 60))
+        let newSeconds = clamped * 60
+        guard longBreakDurationSeconds != newSeconds else { return }
+        longBreakDurationOverrideSeconds = newSeconds
+        // If we're idling on the long-break phase, reflect the new duration immediately
+        if phase == .longBreak && !hasActiveSession {
+            remainingSeconds = newSeconds
+        }
     }
 
     func shutdown() {
@@ -311,7 +379,7 @@ final class PomodoroViewModel: ObservableObject {
         if phase == .focus {
             recordCurrentFocusProgressIfNeeded(referenceDate: .now)
             completedFocusSessions += 1
-            phase = .shortBreak
+            phase = nextBreakPhase
         } else {
             phase = .focus
         }
@@ -321,7 +389,14 @@ final class PomodoroViewModel: ObservableObject {
         hasActiveSession = continueRunning || hasActiveSession
         recordedFocusSecondsForCurrentPhase = 0
 
-        if continueRunning {
+        let shouldAutoStart: Bool
+        if phase == .focus {
+            shouldAutoStart = autoStartBreaks
+        } else {
+            shouldAutoStart = autoStartPomodoros
+        }
+
+        if continueRunning || shouldAutoStart {
             isRunning = false
             start()
         } else {
@@ -343,10 +418,16 @@ final class PomodoroViewModel: ObservableObject {
             let finishedPhase = self.phase
             self.remainingSeconds = 0
             
-            if finishedPhase == .focus {
+            switch finishedPhase {
+            case .focus:
+                SoundManager.playFocusComplete()
                 AppNotificationManager.sendNotification(title: "Focus Session Complete", body: "Time for a break!")
-            } else {
-                AppNotificationManager.sendNotification(title: "Break Complete", body: "Time to get back to work.")
+            case .shortBreak:
+                SoundManager.playBreakComplete()
+                AppNotificationManager.sendNotification(title: "Short Break Complete", body: "Time to get back to work.")
+            case .longBreak:
+                SoundManager.playBreakComplete()
+                AppNotificationManager.sendNotification(title: "Long Break Complete", body: "Ready for another focus session?")
             }
 
             self.advancePhase(continueRunning: true)
@@ -359,6 +440,22 @@ final class PomodoroViewModel: ObservableObject {
             return focusDurationOverrideSeconds ?? (preset.focusMinutes * 60)
         case .shortBreak:
             return breakDurationOverrideSeconds ?? (preset.breakMinutes * 60)
+        case .longBreak:
+            return longBreakDurationOverrideSeconds ?? (preset.longBreakMinutes * 60)
+        }
+    }
+
+    private var nextBreakPhase: PomodoroPhase {
+        completedFocusSessions.isMultiple(of: preset.sessionsBeforeLongBreak) ? .longBreak : .shortBreak
+    }
+
+    private func nextPhase(after phase: PomodoroPhase) -> PomodoroPhase {
+        switch phase {
+        case .focus:
+            let projectedCompletedSessions = completedFocusSessions + 1
+            return projectedCompletedSessions.isMultiple(of: preset.sessionsBeforeLongBreak) ? .longBreak : .shortBreak
+        case .shortBreak, .longBreak:
+            return .focus
         }
     }
 
@@ -408,6 +505,19 @@ final class PomodoroViewModel: ObservableObject {
         return (PomodoroPreset.builtInPresets + customPresets).first { $0.id == presetID }
     }
 
+    private func persistSettings() {
+        userDefaults.set(autoStartBreaks, forKey: Self.autoStartBreaksKey)
+        userDefaults.set(autoStartPomodoros, forKey: Self.autoStartPomodorosKey)
+        userDefaults.set(focusDurationOverrideSeconds, forKey: Self.focusDurationOverrideSecondsKey)
+        userDefaults.set(breakDurationOverrideSeconds, forKey: Self.breakDurationOverrideSecondsKey)
+        userDefaults.set(longBreakDurationOverrideSeconds, forKey: Self.longBreakDurationOverrideSecondsKey)
+    }
+
     private static let customPresetsDefaultsKey = "NotchPomodoroCustomPresets"
     private static let selectedPresetIDDefaultsKey = "NotchPomodoroSelectedPresetID"
+    private static let autoStartBreaksKey = "NotchPomodoroAutoStartBreaks"
+    private static let autoStartPomodorosKey = "NotchPomodoroAutoStartPomodoros"
+    private static let focusDurationOverrideSecondsKey = "NotchPomodoroFocusDurationOverrideSeconds"
+    private static let breakDurationOverrideSecondsKey = "NotchPomodoroBreakDurationOverrideSeconds"
+    private static let longBreakDurationOverrideSecondsKey = "NotchPomodoroLongBreakDurationOverrideSeconds"
 }

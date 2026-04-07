@@ -20,6 +20,12 @@ actor NotchShelfThumbnailService {
             return await pending.value
         }
 
+        // Skip directory thumbnail generation as it can be very slow for large folders
+        // Use hasDirectoryPath as a safe, string-based check to avoid security-scope issues
+        if url.hasDirectoryPath {
+            return nil
+        }
+
         let task = Task<NSImage?, Never> {
             let thumbnail = await generateThumbnail(for: url, size: size)
             if let thumbnail {

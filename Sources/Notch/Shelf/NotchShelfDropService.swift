@@ -88,7 +88,6 @@ struct NotchShelfDropService {
         await temporaryStorage.prepare()
     }
 
-    @MainActor
     func items(from providers: [NSItemProvider]) async -> [NotchShelfItem] {
         await prepare()
 
@@ -113,48 +112,56 @@ struct NotchShelfDropService {
         }
     }
 
-    @MainActor
     private func processProvider(_ provider: NSItemProvider) async -> NotchShelfItem? {
+        let internalIdentity = await provider.extractShelfIdentity()
+
         if let fileURL = await provider.extractFileURL() {
-            return fileItem(for: fileURL, isTemporary: false)
+            return fileItem(for: fileURL, isTemporary: false, identityOverride: internalIdentity)
         }
 
         if let url = await provider.extractURL() {
             return url.isFileURL
-                ? fileItem(for: url, isTemporary: false)
-                : NotchShelfItem(kind: .link(url))
+                ? fileItem(for: url, isTemporary: false, identityOverride: internalIdentity)
+                : NotchShelfItem(kind: .link(url), identityOverride: internalIdentity)
         }
 
         if let fileURL = await provider.extractItem() {
-            return fileItem(for: fileURL, isTemporary: false)
+            return fileItem(for: fileURL, isTemporary: false, identityOverride: internalIdentity)
         }
 
         if let text = await provider.extractText() {
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return nil }
-            return NotchShelfItem(kind: .text(trimmed))
+            return NotchShelfItem(kind: .text(trimmed), identityOverride: internalIdentity)
         }
 
         guard let data = await provider.loadData() else { return nil }
-        return await fallbackItem(from: data, provider: provider)
+        return await fallbackItem(from: data, provider: provider, identityOverride: internalIdentity)
     }
 
-    @MainActor
-    private func fallbackItem(from data: Data, provider: NSItemProvider) async -> NotchShelfItem? {
+    private func fallbackItem(
+        from data: Data,
+        provider: NSItemProvider,
+        identityOverride: String?
+    ) async -> NotchShelfItem? {
         if let string = String(data: data, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines),
            !string.isEmpty {
             if let url = URL(string: string), url.scheme != nil {
                 return url.isFileURL
-                    ? fileItem(for: url, isTemporary: false)
-                    : NotchShelfItem(kind: .link(url))
+                    ? fileItem(for: url, isTemporary: false, identityOverride: identityOverride)
+                    : NotchShelfItem(kind: .link(url), identityOverride: identityOverride)
             }
 
             if string.hasPrefix("/") {
-                return fileItem(for: URL(fileURLWithPath: string), isTemporary: false)
+                return fileItem(
+                    for: URL(fileURLWithPath: string),
+                    isTemporary: false,
+                    identityOverride: identityOverride
+                )
             }
 
-            return NotchShelfItem(kind: .text(string))
+            return NotchShelfItem(kind: .text(string), identityOverride: identityOverride)
         }
 
         guard let tempURL = try? await temporaryStorage.writeFile(
@@ -165,47 +172,64 @@ struct NotchShelfDropService {
             return nil
         }
 
-        return fileItem(for: tempURL, isTemporary: true)
+        return fileItem(for: tempURL, isTemporary: true, identityOverride: identityOverride)
     }
 
-    private func fileItem(for url: URL, isTemporary: Bool) -> NotchShelfItem? {
-        guard let bookmarkData = try? Bookmark(url: url).data else {
+    private func fileItem(
+        for url: URL,
+        isTemporary: Bool,
+        identityOverride: String? = nil
+    ) -> NotchShelfItem? {
+        let normalizedURL = normalizeFileURL(url)
+
+        guard let bookmarkData = try? Bookmark(url: normalizedURL).data else {
             return nil
         }
 
         return NotchShelfItem(
             kind: .file(
                 .init(
-                    url: url.standardizedFileURL,
+                    url: normalizedURL,
+                    fileIdentity: notchShelfFileIdentity(for: normalizedURL),
                     bookmarkData: bookmarkData,
                     isTemporary: isTemporary
                 )
-            )
+            ),
+            identityOverride: identityOverride
         )
+    }
+
+    private func normalizeFileURL(_ url: URL) -> URL {
+        let filePathURL = (url as NSURL).filePathURL ?? url
+        return filePathURL.resolvingSymlinksInPath().standardizedFileURL
     }
 }
 
 private extension NSItemProvider {
-    @MainActor
     func extractItem() async -> URL? {
         guard hasItemConformingToTypeIdentifier(UTType.item.identifier) else { return nil }
         return await loadURL(typeIdentifier: UTType.item.identifier)
     }
 
-    @MainActor
+    func extractShelfIdentity() async -> String? {
+        guard hasItemConformingToTypeIdentifier(NotchShelfItem.internalDragIdentityTypeIdentifier) else {
+            return nil
+        }
+
+        return await loadText(typeIdentifier: NotchShelfItem.internalDragIdentityTypeIdentifier)
+    }
+
     func extractFileURL() async -> URL? {
         guard hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) else { return nil }
         return await loadURL(typeIdentifier: UTType.fileURL.identifier)
     }
 
-    @MainActor
     func extractURL() async -> URL? {
         guard hasItemConformingToTypeIdentifier(UTType.url.identifier) else { return nil }
         guard let url = await loadURL(typeIdentifier: UTType.url.identifier) else { return nil }
         return url.scheme == nil ? nil : url
     }
 
-    @MainActor
     func extractText() async -> String? {
         let identifiers = [UTType.utf8PlainText.identifier, UTType.plainText.identifier]
         for identifier in identifiers where hasItemConformingToTypeIdentifier(identifier) {
@@ -216,7 +240,6 @@ private extension NSItemProvider {
         return nil
     }
 
-    @MainActor
     func loadData() async -> Data? {
         guard hasItemConformingToTypeIdentifier(UTType.data.identifier) else { return nil }
         return await withCheckedContinuation { continuation in
@@ -241,7 +264,6 @@ private extension NSItemProvider {
         }
     }
 
-    @MainActor
     func loadURL(typeIdentifier: String) async -> URL? {
         let parseURL: @Sendable (String) -> URL? = { string in
             if let url = URL(string: string) {
@@ -278,7 +300,6 @@ private extension NSItemProvider {
         }
     }
 
-    @MainActor
     func loadText(typeIdentifier: String) async -> String? {
         await withCheckedContinuation { continuation in
             loadItem(forTypeIdentifier: typeIdentifier, options: nil) { item, _ in

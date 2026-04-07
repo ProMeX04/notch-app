@@ -5,12 +5,7 @@ enum NotchPanel: String {
     case focus
     case talk
     case shelf
-}
-
-enum FocusTool: String {
-    case pomodoro
-    case countdown
-    case counter
+    case settings
 }
 
 @MainActor
@@ -19,7 +14,6 @@ final class NotchPresentationModel: ObservableObject {
     @Published var isPinnedOpen = false
     @Published var closedNotchSize: CGSize = CGSize(width: 184, height: 32)
     @Published var selectedPanel: NotchPanel = .music
-    @Published var selectedFocusTool: FocusTool = .pomodoro
 
     private var collapseTask: Task<Void, Never>?
     private var hoverOpenTask: Task<Void, Never>?

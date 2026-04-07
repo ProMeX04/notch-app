@@ -37,134 +37,66 @@ extension GeminiLiveSession {
             return
         }
 
-        // Use Brave Search API when key is available, otherwise fall back to HTML scraping.
-        if let braveAPIKey = currentConfiguration?.braveSearchAPIKey,
-           !braveAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            executeWebSearchViaBraveAPI(
-                id: id, name: name, args: args,
-                query: trimmed, maxResults: maxResults,
-                apiKey: braveAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-            )
-        } else {
-            executeWebSearchViaHTMLScrape(
-                id: id, name: name, args: args,
-                query: trimmed, maxResults: maxResults
-            )
-        }
+        executeWebSearchViaGeminiGrounding(
+            id: id,
+            name: name,
+            args: args,
+            query: trimmed,
+            maxResults: maxResults
+        )
     }
 
-    /// Official Brave Search API — requires a Brave Search API key.
-    private func executeWebSearchViaBraveAPI(
-        id: String,
-        name: String,
-        args: [String: Any],
-        query: String,
-        maxResults: Int,
-        apiKey: String
-    ) {
-        var components = URLComponents(string: "https://api.search.brave.com/res/v1/web/search")!
-        components.queryItems = [
-            URLQueryItem(name: "q", value: query),
-            URLQueryItem(name: "count", value: "\(min(maxResults, 20))"),
-        ]
-
-        guard let url = components.url else {
-            let result: [String: Any] = ["success": false, "error": "Couldn't build Brave API URL."]
-            onFunctionExecuted?(name, args, result)
-            sendFunctionResponse(id: id, name: name, result: result)
-            return
-        }
-
-        var request = URLRequest(url: url)
-        request.setValue(apiKey, forHTTPHeaderField: "X-Subscription-Token")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.timeoutInterval = 12
-
-        toolHTTPURLSession.dataTask(with: request) { [weak self] data, response, error in
-            guard let self else { return }
-
-            if let error {
-                let result: [String: Any] = ["success": false, "error": error.localizedDescription]
-                self.onFunctionExecuted?(name, args, result)
-                self.sendFunctionResponse(id: id, name: name, result: result)
-                return
-            }
-
-            guard let data else {
-                let result: [String: Any] = ["success": false, "error": "No response from Brave Search API."]
-                self.onFunctionExecuted?(name, args, result)
-                self.sendFunctionResponse(id: id, name: name, result: result)
-                return
-            }
-
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let webSection = json["web"] as? [String: Any],
-                  let rawResults = webSection["results"] as? [[String: Any]] else {
-                // If the API returned an error body, surface it
-                let errorMsg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?
-                    .flatMap { $0["message"] as? String } ?? "Unexpected API response."
-                let result: [String: Any] = ["success": false, "error": errorMsg]
-                self.onFunctionExecuted?(name, args, result)
-                self.sendFunctionResponse(id: id, name: name, result: result)
-                return
-            }
-
-            let lines: [String] = rawResults.prefix(maxResults).compactMap { item in
-                guard let title = item["title"] as? String,
-                      let url = item["url"] as? String else { return nil }
-                let description = item["description"] as? String ?? ""
-                var parts = ["• \(title)"]
-                if !description.isEmpty { parts.append("  \(description)") }
-                parts.append("  \(url)")
-                return parts.joined(separator: "\n")
-            }
-
-            if lines.isEmpty {
-                let result: [String: Any] = ["success": true, "query": query, "results": "No results found."]
-                self.onFunctionExecuted?(name, args, result)
-                self.sendFunctionResponse(id: id, name: name, result: result)
-                return
-            }
-
-            let result: [String: Any] = [
-                "success": true,
-                "query": query,
-                "resultCount": lines.count,
-                "results": lines.joined(separator: "\n\n"),
-            ]
-            self.onFunctionExecuted?(name, args, result)
-            self.sendFunctionResponse(id: id, name: name, result: result)
-        }.resume()
-    }
-
-    /// Fallback: scrape Brave Search HTML when no API key is configured.
-    private func executeWebSearchViaHTMLScrape(
+    private func executeWebSearchViaGeminiGrounding(
         id: String,
         name: String,
         args: [String: Any],
         query: String,
         maxResults: Int
     ) {
-        var components = URLComponents(string: "https://search.brave.com/search")!
-        components.queryItems = [
-            URLQueryItem(name: "q", value: query),
-            URLQueryItem(name: "source", value: "web"),
+        guard
+            let apiKey = currentConfiguration?.apiKey.trimmingCharacters(in: .whitespacesAndNewlines),
+            !apiKey.isEmpty
+        else {
+            let result: [String: Any] = ["success": false, "error": "Gemini API key is missing."]
+            onFunctionExecuted?(name, args, result)
+            sendFunctionResponse(id: id, name: name, result: result)
+            return
+        }
+
+        let model = "gemini-2.5-flash"
+        guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent") else {
+            let result: [String: Any] = ["success": false, "error": "Couldn't build Gemini search URL."]
+            onFunctionExecuted?(name, args, result)
+            sendFunctionResponse(id: id, name: name, result: result)
+            return
+        }
+
+        let payload: [String: Any] = [
+            "contents": [
+                [
+                    "parts": [
+                        ["text": query]
+                    ]
+                ]
+            ],
+            "tools": [
+                ["google_search": [:]]
+            ]
         ]
 
-        guard let url = components.url else {
-            let result: [String: Any] = ["success": false, "error": "Couldn't build search URL."]
+        guard let body = try? JSONSerialization.data(withJSONObject: payload) else {
+            let result: [String: Any] = ["success": false, "error": "Couldn't encode Gemini search payload."]
             onFunctionExecuted?(name, args, result)
             sendFunctionResponse(id: id, name: name, result: result)
             return
         }
 
         var request = URLRequest(url: url)
-        request.setValue(
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            forHTTPHeaderField: "User-Agent"
-        )
-        request.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
-        request.timeoutInterval = 12
+        request.httpMethod = "POST"
+        request.httpBody = body
+        request.timeoutInterval = 15
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
 
         toolHTTPURLSession.dataTask(with: request) { [weak self] data, _, error in
             guard let self else { return }
@@ -176,97 +108,141 @@ extension GeminiLiveSession {
                 return
             }
 
-            guard let data, let html = String(data: data, encoding: .utf8) else {
-                let result: [String: Any] = ["success": false, "error": "No response from search."]
+            guard let data else {
+                let result: [String: Any] = ["success": false, "error": "No response from Gemini search."]
                 self.onFunctionExecuted?(name, args, result)
                 self.sendFunctionResponse(id: id, name: name, result: result)
                 return
             }
 
-            let parsed = Self.parseBraveSearchResults(html, maxResults: min(maxResults, 10))
-
-            if parsed.isEmpty {
-                let result: [String: Any] = ["success": true, "query": query, "results": "No results found for \"\(query)\"."]
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                let result: [String: Any] = ["success": false, "error": "Gemini search returned invalid JSON."]
                 self.onFunctionExecuted?(name, args, result)
                 self.sendFunctionResponse(id: id, name: name, result: result)
                 return
             }
 
-            let lines = parsed.map { item -> String in
-                var parts = ["• \(item.title)"]
-                if !item.snippet.isEmpty { parts.append("  \(item.snippet)") }
-                parts.append("  \(item.url)")
-                return parts.joined(separator: "\n")
+            if let error = json["error"] as? [String: Any] {
+                let message = (error["message"] as? String) ?? (error["status"] as? String) ?? "Unknown Gemini search error."
+                let result: [String: Any] = ["success": false, "error": message]
+                self.onFunctionExecuted?(name, args, result)
+                self.sendFunctionResponse(id: id, name: name, result: result)
+                return
+            }
+
+            let candidate = ((json["candidates"] as? [[String: Any]])?.first) ?? [:]
+            let content = Self.extractGeminiGroundedContent(candidate)
+            let citations = Self.extractGeminiGroundedCitations(candidate, maxResults: maxResults)
+            let claims = Self.extractGeminiGroundedClaims(candidate)
+            let renderedContent = Self.extractGeminiRenderedContent(candidate)
+            let webSearchQueries = Self.extractGeminiSearchQueries(candidate)
+
+            var resultsLines: [String] = []
+            resultsLines.append(content.isEmpty ? "No grounded answer returned." : content)
+            if !citations.isEmpty {
+                resultsLines.append("Sources:")
+                resultsLines.append(
+                    citations.enumerated().map { index, citation in
+                        let title = (citation["title"] as? String) ?? "(no title)"
+                        let targetURL = (citation["url"] as? String) ?? ""
+                        return "[\(index)] \(title)\n\(targetURL)"
+                    }.joined(separator: "\n\n")
+                )
             }
 
             let result: [String: Any] = [
                 "success": true,
+                "provider": "gemini",
+                "model": model,
                 "query": query,
-                "resultCount": parsed.count,
-                "results": lines.joined(separator: "\n\n"),
+                "resultCount": citations.count,
+                "summary": content,
+                "results": resultsLines.joined(separator: "\n\n"),
+                "citations": citations,
+                "claims": claims,
+                "renderedContent": renderedContent,
+                "webSearchQueries": webSearchQueries
             ]
             self.onFunctionExecuted?(name, args, result)
             self.sendFunctionResponse(id: id, name: name, result: result)
         }.resume()
     }
 
-    private struct SearchResultItem {
-        let title: String
-        let url: String
-        let snippet: String
+    private static func extractGeminiGroundedContent(_ candidate: [String: Any]) -> String {
+        let content = candidate["content"] as? [String: Any]
+        let parts = content?["parts"] as? [[String: Any]] ?? []
+        let texts = parts.compactMap { part -> String? in
+            guard let text = part["text"] as? String else { return nil }
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        return texts.joined(separator: "\n")
     }
 
-    /// Parse Brave Search HTML into structured result items.
-    private static func parseBraveSearchResults(_ html: String, maxResults: Int) -> [SearchResultItem] {
-        // Brave marks each organic result block with data-pos="N"
-        let blocks = html.components(separatedBy: "data-pos=\"")
-        var results: [SearchResultItem] = []
+    private static func extractGeminiGroundedCitations(
+        _ candidate: [String: Any],
+        maxResults: Int
+    ) -> [[String: Any]] {
+        let groundingMetadata = candidate["groundingMetadata"] as? [String: Any]
+        let chunks = groundingMetadata?["groundingChunks"] as? [[String: Any]] ?? []
+        var citations: [[String: Any]] = []
 
-        for block in blocks.dropFirst() {
-            guard results.count < maxResults else { break }
+        for chunk in chunks {
+            guard
+                let web = chunk["web"] as? [String: Any],
+                let url = web["uri"] as? String,
+                !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else {
+                continue
+            }
 
-            // Extract the first external https URL (skip brave.com links)
-            let urlPattern = #"href="(https://(?!(?:search\.)?brave\.com)[^"]+)""#
-            guard let urlRange = block.range(of: urlPattern, options: .regularExpression),
-                  let urlCapture = Self.firstCapture(in: String(block[urlRange]), pattern: #"href="([^"]+)""#)
-            else { continue }
+            var citation: [String: Any] = ["url": url]
+            if let title = web["title"] as? String, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                citation["title"] = title
+            }
+            citations.append(citation)
 
-            // Extract title from heading or strong
-            let titleRaw = Self.firstCapture(in: block, pattern: #"<(?:h\d|strong)[^>]*>(.*?)</(?:h\d|strong)>"#)
-                ?? Self.firstCapture(in: block, pattern: #"class="[^"]*title[^"]*"[^>]*>(.*?)</\w"#)
-                ?? ""
-            let title = Self.stripTags(titleRaw).trimmingCharacters(in: .whitespacesAndNewlines)
-            guard title.count > 3 else { continue }
-
-            // Extract snippet
-            let snippetRaw = Self.firstCapture(in: block, pattern: #"class="[^"]*snippet[^"]*"[^>]*>(.*?)</p>"#)
-                ?? Self.firstCapture(in: block, pattern: #"<p[^>]*>(.*?)</p>"#)
-                ?? ""
-            let snippet = Self.stripTags(snippetRaw)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-
-            results.append(SearchResultItem(title: title, url: urlCapture, snippet: String(snippet.prefix(200))))
+            if citations.count >= max(1, min(maxResults, 10)) {
+                break
+            }
         }
 
-        return results
+        return citations
     }
 
-    private static func firstCapture(in text: String, pattern: String) -> String? {
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]),
-              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-              match.numberOfRanges > 1,
-              let range = Range(match.range(at: 1), in: text)
-        else { return nil }
-        return String(text[range])
+    private static func extractGeminiGroundedClaims(_ candidate: [String: Any]) -> [[String: Any]] {
+        let groundingMetadata = candidate["groundingMetadata"] as? [String: Any]
+        let supports = groundingMetadata?["groundingSupports"] as? [[String: Any]] ?? []
+
+        return supports.compactMap { support in
+            guard
+                let segment = support["segment"] as? [String: Any],
+                let text = segment["text"] as? String,
+                !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else {
+                return nil
+            }
+
+            let indices = (support["groundingChunkIndices"] as? [NSNumber])?.map(\.intValue)
+                ?? (support["groundingChunkIndices"] as? [Int])
+                ?? []
+
+            return [
+                "text": text,
+                "groundingChunkIndices": indices
+            ]
+        }
     }
 
-    private static func stripTags(_ html: String) -> String {
-        html.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
-            .replacingOccurrences(of: "&amp;", with: "&")
-            .replacingOccurrences(of: "&lt;", with: "<")
-            .replacingOccurrences(of: "&gt;", with: ">")
-            .replacingOccurrences(of: "&quot;", with: "\"")
-            .replacingOccurrences(of: "&#x27;", with: "'")
+    private static func extractGeminiRenderedContent(_ candidate: [String: Any]) -> String {
+        let groundingMetadata = candidate["groundingMetadata"] as? [String: Any]
+        let searchEntryPoint = groundingMetadata?["searchEntryPoint"] as? [String: Any]
+        return (searchEntryPoint?["renderedContent"] as? String) ?? ""
+    }
+
+    private static func extractGeminiSearchQueries(_ candidate: [String: Any]) -> [String] {
+        let groundingMetadata = candidate["groundingMetadata"] as? [String: Any]
+        return groundingMetadata?["webSearchQueries"] as? [String] ?? []
     }
 
     func executeReadFile(path: String) -> [String: Any] {

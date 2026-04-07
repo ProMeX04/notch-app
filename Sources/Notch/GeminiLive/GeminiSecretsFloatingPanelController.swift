@@ -110,10 +110,6 @@ private struct GeminiSecretsFloatingContentView: View {
                 LTRSecureField(text: $gemini.pexelsAPIKeyText)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Section("Brave Search") {
-                LTRSecureField(text: $gemini.braveSearchAPIKeyText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
             Section {
                 if let err = gemini.lastErrorMessage, !err.isEmpty {
                     Text(err)

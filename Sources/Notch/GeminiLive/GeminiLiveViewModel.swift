@@ -102,7 +102,6 @@ final class GeminiLiveViewModel: ObservableObject {
     private let session: GeminiLiveSession
     private let keyStore: GeminiLiveAPIKeyStore
     private let pexelsKeyStore: GeminiLiveSecretStore
-    private let braveSearchKeyStore: GeminiLiveSecretStore
     private let settingsStore: GeminiLiveSettingsStore
     private let execApprovalStore: GeminiLiveExecApprovalStore
     private let agentAvatarStore: GeminiAgentAvatarStore
@@ -119,7 +118,6 @@ final class GeminiLiveViewModel: ObservableObject {
     var onPresentSecretsPanel: (() -> Void)?
 
     @Published var pexelsAPIKeyText: String = ""
-    @Published var braveSearchAPIKeyText: String = ""
 
     var currentPendingExecApproval: ExecApprovalRequest? {
         pendingExecApprovals.first
@@ -132,11 +130,6 @@ final class GeminiLiveViewModel: ObservableObject {
             processInfo: processInfo,
             developmentFileURL: GeminiLiveStoragePaths.developmentPexelsAPIKeyFile,
             keychainAccount: "PexelsAPIKey"
-        )
-        braveSearchKeyStore = GeminiLiveSecretStore(
-            processInfo: processInfo,
-            developmentFileURL: GeminiLiveStoragePaths.developmentBraveSearchAPIKeyFile,
-            keychainAccount: "BraveSearchAPIKey"
         )
         settingsStore = GeminiLiveSettingsStore()
         execApprovalStore = GeminiLiveExecApprovalStore()
@@ -167,7 +160,6 @@ final class GeminiLiveViewModel: ObservableObject {
         }
 
         _pexelsAPIKeyText = Published(initialValue: configuredPexelsAPIKey ?? "")
-        _braveSearchAPIKeyText = Published(initialValue: configuredBraveSearchAPIKey ?? "")
 
         normalizeSystemPromptSelection()
         // Load all per-preset settings without triggering write-through didSets.
@@ -778,16 +770,14 @@ final class GeminiLiveViewModel: ObservableObject {
         defer { isSavingServiceKeys = false }
 
         let didSavePexels = persistServiceKey(draftValue: pexelsAPIKeyText, store: pexelsKeyStore)
-        let didSaveBrave = persistServiceKey(draftValue: braveSearchAPIKeyText, store: braveSearchKeyStore)
 
-        guard didSavePexels && didSaveBrave else {
+        guard didSavePexels else {
             lastErrorMessage = "Couldn't save one or more service keys."
             statusText = "Saving service keys failed."
             return false
         }
 
         pexelsAPIKeyText = configuredPexelsAPIKey ?? ""
-        braveSearchAPIKeyText = configuredBraveSearchAPIKey ?? ""
         lastErrorMessage = nil
         statusText = "Keys saved."
         return true
@@ -849,7 +839,6 @@ final class GeminiLiveViewModel: ObservableObject {
                     microphoneEnabled: self.isMicrophoneEnabled,
                     thinkingBudget: preset.thinkingEnum.budget,
                     voiceName: preset.voiceEnum.apiName,
-                    braveSearchAPIKey: self.configuredBraveSearchAPIKey,
                     enabledTools: skillSnapshot.effectiveTools,
                     skillSnapshot: skillSnapshot,
                     resumeSession: !clearingTranscripts
@@ -1463,7 +1452,6 @@ final class GeminiLiveViewModel: ObservableObject {
     func clearKeyDrafts() {
         apiKeyText = ""
         pexelsAPIKeyText = ""
-        braveSearchAPIKeyText = ""
     }
 
     func reloadKeyDrafts() {
@@ -1471,7 +1459,6 @@ final class GeminiLiveViewModel: ObservableObject {
         storedAPIKey = currentGeminiKey
         apiKeyText = currentGeminiKey ?? ""
         pexelsAPIKeyText = currentStoredPexelsKey() ?? ""
-        braveSearchAPIKeyText = currentStoredBraveSearchKey() ?? ""
     }
 
     private func persistSettings() {
@@ -1533,20 +1520,12 @@ final class GeminiLiveViewModel: ObservableObject {
         currentStoredPexelsKey()
     }
 
-    private var configuredBraveSearchAPIKey: String? {
-        currentStoredBraveSearchKey()
-    }
-
     private func currentStoredGeminiKey() -> String? {
         normalizedStoredSecret(storedAPIKey ?? keyStore.read())
     }
 
     private func currentStoredPexelsKey() -> String? {
         normalizedStoredSecret(pexelsKeyStore.read())
-    }
-
-    private func currentStoredBraveSearchKey() -> String? {
-        normalizedStoredSecret(braveSearchKeyStore.read())
     }
 
     private func normalizedStoredSecret(_ value: String?) -> String? {

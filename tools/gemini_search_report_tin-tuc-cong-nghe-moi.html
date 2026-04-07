@@ -1,0 +1,719 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gemini Search Report</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: "SF Pro Text", "Segoe UI", sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 28px;
+        background:
+          radial-gradient(circle at top left, rgba(0, 143, 93, 0.16), transparent 32%),
+          radial-gradient(circle at top right, rgba(66, 133, 244, 0.16), transparent 30%),
+          #f4f7f9;
+        color: #16202a;
+      }
+      .page {
+        max-width: 1100px;
+        margin: 0 auto;
+      }
+      .hero {
+        margin-bottom: 18px;
+      }
+      .hero h1 {
+        margin: 0 0 8px;
+        font-size: 28px;
+      }
+      .hero p {
+        margin: 0;
+        line-height: 1.5;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr;
+        gap: 18px;
+      }
+      .card {
+        background: rgba(255, 255, 255, 0.84);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(22, 32, 42, 0.08);
+        border-radius: 18px;
+        padding: 18px;
+        box-shadow: 0 20px 60px rgba(22, 32, 42, 0.10);
+      }
+      .card h2 {
+        margin: 0 0 14px;
+        font-size: 18px;
+      }
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 14px;
+      }
+      .pill {
+        border-radius: 999px;
+        padding: 6px 10px;
+        background: rgba(66, 133, 244, 0.10);
+        border: 1px solid rgba(66, 133, 244, 0.18);
+        font-size: 13px;
+      }
+      .answer {
+        white-space: pre-wrap;
+        line-height: 1.6;
+      }
+      ol, ul {
+        margin: 0;
+        padding-left: 20px;
+      }
+      li {
+        margin-bottom: 10px;
+        line-height: 1.5;
+      }
+      a {
+        color: #0b63ce;
+        word-break: break-all;
+      }
+      .claim-sources {
+        margin-top: 8px;
+      }
+      .chip {
+        display: inline-block;
+        margin-right: 8px;
+        margin-top: 4px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: rgba(15, 105, 225, 0.10);
+        border: 1px solid rgba(15, 105, 225, 0.18);
+        font-size: 12px;
+      }
+      .muted {
+        opacity: 0.7;
+      }
+      .rendered-preview {
+        padding: 14px;
+        border-radius: 14px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.88), rgba(245,247,250,0.92));
+        border: 1px solid rgba(22, 32, 42, 0.08);
+        overflow: auto;
+      }
+      .raw {
+        white-space: pre-wrap;
+        overflow: auto;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        line-height: 1.5;
+        background: rgba(22, 32, 42, 0.04);
+        padding: 14px;
+        border-radius: 12px;
+      }
+      .full {
+        grid-column: 1 / -1;
+      }
+      .empty {
+        opacity: 0.7;
+      }
+      @media (max-width: 860px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          background:
+            radial-gradient(circle at top left, rgba(0, 143, 93, 0.20), transparent 32%),
+            radial-gradient(circle at top right, rgba(66, 133, 244, 0.18), transparent 30%),
+            #0f151b;
+          color: #e8eef5;
+        }
+        .card {
+          background: rgba(18, 25, 33, 0.84);
+          border-color: rgba(232, 238, 245, 0.08);
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.34);
+        }
+        .pill {
+          background: rgba(66, 133, 244, 0.16);
+          border-color: rgba(66, 133, 244, 0.24);
+        }
+        a {
+          color: #83b7ff;
+        }
+        .chip {
+          background: rgba(131, 183, 255, 0.12);
+          border-color: rgba(131, 183, 255, 0.20);
+        }
+        .rendered-preview {
+          background: linear-gradient(180deg, rgba(24, 30, 38, 0.9), rgba(17, 22, 28, 0.92));
+          border-color: rgba(232, 238, 245, 0.08);
+        }
+        .raw {
+          background: rgba(232, 238, 245, 0.05);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div class="hero">
+        <h1>Gemini Search Report</h1>
+        <p><strong>Query:</strong> tin tuc cong nghe moi</p>
+      </div>
+      <div class="grid">
+        <section class="card">
+          <h2>Answer</h2>
+          <div class="meta">
+            <span class="pill">Model: gemini-2.5-flash</span>
+            <span class="pill">Provider: gemini</span>
+            <span class="pill">Took: 11387 ms</span>
+          </div>
+          <div class="answer">Dưới đây là tổng hợp những tin tức công nghệ mới nhất và các xu hướng nổi bật đang định hình thế giới hiện nay:
+
+**1. Trí tuệ nhân tạo (AI) tiếp tục bùng nổ và phát triển đa dạng**
+
+Trí tuệ nhân tạo vẫn là tâm điểm của sự phát triển công nghệ, với nhiều đột phá đáng chú ý:
+
+*   **AI tạo sinh (Generative AI)**: Công nghệ này đang cách mạng hóa nhiều ngành công nghiệp bằng cách cho phép máy móc tạo ra nội dung tương tự con người, từ văn bản đến hình ảnh và video. Các mô hình như ChatGPT (phiên bản GPT-4, GPT-5) và Gemini của Google DeepMind liên tục được cải tiến, mang đến khả năng xử lý đa phương tiện và suy luận logic tốt hơn. OpenAI cũng đã ra mắt công cụ tìm kiếm và trình tạo video ảnh thật mang tên Sora.
+*   **AI tác nhân (Agentic AI)**: Được dự báo là một xu hướng đột phá trong năm 2025, Agentic AI có khả năng hoạt động độc lập, tự đưa ra quyết định và thực hiện các nhiệm vụ phức tạp mà không cần sự can thiệp liên tục của con người. Ứng dụng của nó bao gồm ô tô tự lái, tự động hóa quy trình bằng robot (RPA) và trợ lý ảo thông minh, mở ra kỷ nguyên mới cho tự động hóa và tăng hiệu suất làm việc.
+*   **Điện toán thần kinh và AI biên (Edge AI)**: Điện toán thần kinh là hướng đi mới dựa trên cách bộ não con người hoạt động, cho phép xử lý song song, tăng tốc độ và giảm tiêu thụ năng lượng. Trong khi đó, Edge AI cho phép các thuật toán phức tạp chạy trên các thiết bị di động hoặc ô tô tự lái, với hệ thống điện toán biên và AI thương mại đầu tiên đã hoạt động trên Trạm Vũ trụ Quốc tế (ISS).
+*   **Năng lượng hạt nhân cho cơ sở hạ tầng AI**: Nhu cầu năng lượng ngày càng cao cho AI và các công nghệ tiêu tốn điện năng lớn đang thúc đẩy đầu tư vào công nghệ hạt nhân để đảm bảo nguồn năng lượng sạch và ổn định.
+
+**2. Các xu hướng công nghệ nổi bật khác**
+
+Ngoài AI, nhiều lĩnh vực công nghệ khác cũng đang có những bước tiến đáng kể:
+
+*   **Điện toán lượng tử (Quantum Computing)**: Alphabet đã công bố bộ xử lý lượng tử 105 qubit mang tên Willow, cho thấy những bước tiến quan trọng trong lĩnh vực này, có thể giải quyết các bài toán phức tạp trong thời gian ngắn hơn nhiều so với siêu máy tính truyền thống.
+*   **Internet vệ tinh**: Các chùm vệ tinh truyền tải internet từ không gian xuống Trái Đất ngày càng phổ biến, cung cấp kết nối internet giá rẻ. Amazon dự kiến sẽ triển khai các chùm vệ tinh quỹ đạo thấp vào đầu năm 2025 để cạnh tranh với Starlink, có thể làm giảm giá dịch vụ và thúc đẩy phát triển di động mới.
+*   **Xe tự lái và robot hình người**: Mặc dù vẫn còn nhiều thách thức về kỹ thuật, pháp lý và xã hội, xe tự lái tiếp tục đạt được tiến bộ. Robot hình người cũng có những bước tiến vượt bậc và dự kiến sẽ phổ biến tại các hộ gia đình và nơi làm việc vào năm 2025.
+*   **5G và điện toán biên (Edge Computing)**: Mạng 5G đang cách mạng hóa kết nối với tốc độ truyền dữ liệu nhanh hơn và độ trễ thấp. Kết hợp với Edge Computing, việc xử lý dữ liệu diễn ra gần nguồn hơn, hỗ trợ cho các giải pháp công nghiệp 4.0.
+*   **Thực tế mở rộng (XR - bao gồm AR/VR) và metaverse**: Các công nghệ này đang xóa mờ ranh giới giữa thế giới vật lý và kỹ thuật số, được kỳ vọng sẽ chuyển đổi từ các ứng dụng nhỏ lẻ sang lĩnh vực lớn được áp dụng rộng rãi.
+*   **Web3 và Blockchain**: Web3 đại diện cho tương lai của internet với hệ thống phân quyền và phi tập trung hơn, dựa trên công nghệ blockchain và hợp đồng thông minh. Blockchain tiếp tục là một yếu tố cốt lõi của cách mạng công nghiệp 4.0.
+*   **In sinh học (Bio-printing)**: Sử dụng tế bào sống và vật liệu sinh học để tạo ra các mô và cơ quan ba chiều, công nghệ này dự kiến sẽ có những bước tiến đáng kể, hướng tới y học cá nhân hóa.
+
+**3. Tin tức sản phẩm và thiết bị nổi bật**
+
+*   **iPhone 18 và iPhone 17 Pro/Pro Max**: iPhone 18 tiêu chuẩn có thể trở thành &quot;át chủ bài AI&quot; của Apple. Phi hành gia Artemis II đã gửi về những bức ảnh Trái Đất &quot;đẹp đến nghẹt thở&quot; được chụp bằng iPhone 17 Pro Max. Ngoài ra, MV 360° mới nhất của MCK cũng được quay hoàn toàn bằng iPhone 17 Pro.
+*   **Thiết bị Xiaomi**: Xiaomi đã ra mắt tai nghe mới với giá chỉ 750K, ấn tượng với bass mạnh và pin tới 37 giờ.
+
+Nhìn chung, năm 2024 và 2025 được dự báo sẽ tiếp tục chứng kiến sự phát triển mạnh mẽ của công nghệ, đặc biệt là trong lĩnh vực AI, mang đến nhiều thay đổi và cơ hội cho con người và doanh nghiệp.</div>
+        </section>
+        <section class="card">
+          <h2>Search Queries Used</h2>
+          <ul><li>tin tức công nghệ mới nhất</li>
+<li>tin công nghệ mới 2024</li>
+<li>cập nhật công nghệ 2024</li>
+<li>xu hướng công nghệ hiện nay</li></ul>
+        </section>
+        <section class="card">
+          <h2>Sources</h2>
+          <ol><li><strong>[0] vnexpress.net</strong><br><a href="https://vnexpress.net/6-diem-nhan-cong-nghe-the-gioi-2024-4827572.html" target="_blank" rel="noreferrer">https://vnexpress.net/6-diem-nhan-cong-nghe-the-gioi-2024-4827572.html</a></li>
+<li><strong>[1] baomoi.com</strong><br><a href="https://baomoi.com/10-xu-huong-cong-nghe-noi-bat-tren-the-gioi-nam-2024-r51110942.epi" target="_blank" rel="noreferrer">https://baomoi.com/10-xu-huong-cong-nghe-noi-bat-tren-the-gioi-nam-2024-r51110942.epi</a></li>
+<li><strong>[2] baotintuc.vn</strong><br><a href="https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFhUE4nATqHaN9Q9CbNdPgBUAh8qWNsmW8ZYm-Qm0oqJog_7htlkzFBNx_TG9IPQP7hkZBJ2l3GoAHUBejgzkU_5V_0JWm_k1yvzA9Heckv4JeBqh01Z35jIhwfOCYJja_ovkXjrV0g28V3AuHZc-BFI9NPATnljpO9fitqwINi8o0KEo0gBGNBT_alYTzqvHkgXSaRAxgR4YUQYjNP5Xhw" target="_blank" rel="noreferrer">https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFhUE4nATqHaN9Q9CbNdPgBUAh8qWNsmW8ZYm-Qm0oqJog_7htlkzFBNx_TG9IPQP7hkZBJ2l3GoAHUBejgzkU_5V_0JWm_k1yvzA9Heckv4JeBqh01Z35jIhwfOCYJja_ovkXjrV0g28V3AuHZc-BFI9NPATnljpO9fitqwINi8o0KEo0gBGNBT_alYTzqvHkgXSaRAxgR4YUQYjNP5Xhw</a></li>
+<li><strong>[3] elcom.com.vn</strong><br><a href="https://www.elcom.com.vn/nhung-xu-huong-cong-nghe-noi-bat-nam-2024-1708418806" target="_blank" rel="noreferrer">https://www.elcom.com.vn/nhung-xu-huong-cong-nghe-noi-bat-nam-2024-1708418806</a></li>
+<li><strong>[4] vneconomy.vn</strong><br><a href="https://vneconomy.vn/techconnect/5-dot-pha-cong-nghe-thuc-su-da-giup-nang-cao-cuoc-song-con-nguoi-trong-nam-2024.htm" target="_blank" rel="noreferrer">https://vneconomy.vn/techconnect/5-dot-pha-cong-nghe-thuc-su-da-giup-nang-cao-cuoc-song-con-nguoi-trong-nam-2024.htm</a></li>
+<li><strong>[5] vneconomy.vn</strong><br><a href="https://vneconomy.vn/8-xu-huong-cong-nghe-noi-bat-trong-nam-2025.htm" target="_blank" rel="noreferrer">https://vneconomy.vn/8-xu-huong-cong-nghe-noi-bat-trong-nam-2025.htm</a></li>
+<li><strong>[6] thanhnien.vn</strong><br><a href="https://thanhnien.vn/4-xu-huong-cong-nghe-co-the-dinh-hinh-the-gioi-2025-18524122609374768.htm" target="_blank" rel="noreferrer">https://thanhnien.vn/4-xu-huong-cong-nghe-co-the-dinh-hinh-the-gioi-2025-18524122609374768.htm</a></li>
+<li><strong>[7] daidoanket.vn</strong><br><a href="https://daidoanket.vn/10-xu-huong-cong-nghe-trong-nam-2025-10299025.html" target="_blank" rel="noreferrer">https://daidoanket.vn/10-xu-huong-cong-nghe-trong-nam-2025-10299025.html</a></li>
+<li><strong>[8] ninhbinh.gov.vn</strong><br><a href="https://khoahockythuat.ninhbinh.gov.vn/nghien-cuu-trien-khai/nhung-dot-pha-cong-nghe-quan-trong-nhat-2024-2326.html" target="_blank" rel="noreferrer">https://khoahockythuat.ninhbinh.gov.vn/nghien-cuu-trien-khai/nhung-dot-pha-cong-nghe-quan-trong-nhat-2024-2326.html</a></li>
+<li><strong>[9] topdev.vn</strong><br><a href="https://topdev.vn/blog/xu-huong-cong-nghe-2024/" target="_blank" rel="noreferrer">https://topdev.vn/blog/xu-huong-cong-nghe-2024/</a></li>
+<li><strong>[10] datapot.vn</strong><br><a href="https://datapot.vn/top-10-ky-nang-cong-nghe-nen-biet-trong-2024/" target="_blank" rel="noreferrer">https://datapot.vn/top-10-ky-nang-cong-nghe-nen-biet-trong-2024/</a></li>
+<li><strong>[11] mindx.edu.vn</strong><br><a href="https://mindx.edu.vn/blog/kham-pha-7-xu-huong-cong-nghe-tuong-lai-dang-lam-thay-doi-the-gioi" target="_blank" rel="noreferrer">https://mindx.edu.vn/blog/kham-pha-7-xu-huong-cong-nghe-tuong-lai-dang-lam-thay-doi-the-gioi</a></li>
+<li><strong>[12] baomoi.com</strong><br><a href="https://baomoi.com/10-xu-huong-cong-nghe-dinh-hinh-thap-ky-cua-nam-2025-r51139515.epi" target="_blank" rel="noreferrer">https://baomoi.com/10-xu-huong-cong-nghe-dinh-hinh-thap-ky-cua-nam-2025-r51139515.epi</a></li>
+<li><strong>[13] vietnamnet.vn</strong><br><a href="https://vietnamnet.vn/cong-nghe" target="_blank" rel="noreferrer">https://vietnamnet.vn/cong-nghe</a></li>
+<li><strong>[14] cellphones.com.vn</strong><br><a href="https://cellphones.com.vn/sforum" target="_blank" rel="noreferrer">https://cellphones.com.vn/sforum</a></li></ol>
+        </section>
+        <section class="card">
+          <h2>Claim to Source Mapping</h2>
+          <ol><li><div>Các mô hình như ChatGPT (phiên bản GPT-4, GPT-5) và Gemini của Google DeepMind liên tục được cải tiến, mang đến khả năng xử lý đa phương tiện và suy luận logic tốt hơn</div><div class="claim-sources"><span class="chip">source 0</span> <span class="chip">source 1</span> <span class="chip">source 2</span> <span class="chip">source 3</span> <span class="chip">source 4</span></div></li>
+<li><div>OpenAI cũng đã ra mắt công cụ tìm kiếm và trình tạo video ảnh thật mang tên Sora</div><div class="claim-sources"><span class="chip">source 4</span></div></li>
+<li><div>Ứng dụng của nó bao gồm ô tô tự lái, tự động hóa quy trình bằng robot (RPA) và trợ lý ảo thông minh, mở ra kỷ nguyên mới cho tự động hóa và tăng hiệu suất làm việc</div><div class="claim-sources"><span class="chip">source 5</span> <span class="chip">source 6</span> <span class="chip">source 7</span> <span class="chip">source 2</span> <span class="chip">source 8</span></div></li>
+<li><div>*   **Điện toán thần kinh và AI biên (Edge AI)**: Điện toán thần kinh là hướng đi mới dựa trên cách bộ não con người hoạt động, cho phép xử lý song song, tăng tốc độ và giảm tiêu thụ năng lượng</div><div class="claim-sources"><span class="chip">source 5</span></div></li>
+<li><div>Trong khi đó, Edge AI cho phép các thuật toán phức tạp chạy trên các thiết bị di động hoặc ô tô tự lái, với hệ thống điện toán biên và AI thương mại đầu tiên đã hoạt động trên Trạm Vũ trụ Quốc tế (ISS)</div><div class="claim-sources"><span class="chip">source 8</span></div></li>
+<li><div>*   **Năng lượng hạt nhân cho cơ sở hạ tầng AI**: Nhu cầu năng lượng ngày càng cao cho AI và các công nghệ tiêu tốn điện năng lớn đang thúc đẩy đầu tư vào công nghệ hạt nhân để đảm bảo nguồn năng lượng sạch và ổn định</div><div class="claim-sources"><span class="chip">source 5</span></div></li>
+<li><div>*   **Điện toán lượng tử (Quantum Computing)**: Alphabet đã công bố bộ xử lý lượng tử 105 qubit mang tên Willow, cho thấy những bước tiến quan trọng trong lĩnh vực này, có thể giải quyết các bài toán phức tạp trong thời gian ngắn hơn nhiều so với siêu máy tính truyền thống</div><div class="claim-sources"><span class="chip">source 5</span></div></li>
+<li><div>Amazon dự kiến sẽ triển khai các chùm vệ tinh quỹ đạo thấp vào đầu năm 2025 để cạnh tranh với Starlink, có thể làm giảm giá dịch vụ và thúc đẩy phát triển di động mới</div><div class="claim-sources"><span class="chip">source 6</span> <span class="chip">source 4</span></div></li>
+<li><div>Robot hình người cũng có những bước tiến vượt bậc và dự kiến sẽ phổ biến tại các hộ gia đình và nơi làm việc vào năm 2025</div><div class="claim-sources"><span class="chip">source 6</span></div></li>
+<li><div>Kết hợp với Edge Computing, việc xử lý dữ liệu diễn ra gần nguồn hơn, hỗ trợ cho các giải pháp công nghiệp 4.0</div><div class="claim-sources"><span class="chip">source 9</span> <span class="chip">source 10</span></div></li>
+<li><div>*   **Thực tế mở rộng (XR - bao gồm AR/VR) và metaverse**: Các công nghệ này đang xóa mờ ranh giới giữa thế giới vật lý và kỹ thuật số, được kỳ vọng sẽ chuyển đổi từ các ứng dụng nhỏ lẻ sang lĩnh vực lớn được áp dụng rộng rãi</div><div class="claim-sources"><span class="chip">source 11</span> <span class="chip">source 12</span> <span class="chip">source 3</span> <span class="chip">source 10</span></div></li>
+<li><div>Blockchain tiếp tục là một yếu tố cốt lõi của cách mạng công nghiệp 4.0</div><div class="claim-sources"><span class="chip">source 11</span> <span class="chip">source 7</span> <span class="chip">source 12</span> <span class="chip">source 10</span></div></li>
+<li><div>*   **In sinh học (Bio-printing)**: Sử dụng tế bào sống và vật liệu sinh học để tạo ra các mô và cơ quan ba chiều, công nghệ này dự kiến sẽ có những bước tiến đáng kể, hướng tới y học cá nhân hóa</div><div class="claim-sources"><span class="chip">source 12</span></div></li>
+<li><div>Phi hành gia Artemis II đã gửi về những bức ảnh Trái Đất &quot;đẹp đến nghẹt thở&quot; được chụp bằng iPhone 17 Pro Max</div><div class="claim-sources"><span class="chip">source 13</span></div></li>
+<li><div>Ngoài ra, MV 360° mới nhất của MCK cũng được quay hoàn toàn bằng iPhone 17 Pro</div><div class="claim-sources"><span class="chip">source 14</span></div></li>
+<li><div>*   **Thiết bị Xiaomi**: Xiaomi đã ra mắt tai nghe mới với giá chỉ 750K, ấn tượng với bass mạnh và pin tới 37 giờ</div><div class="claim-sources"><span class="chip">source 14</span></div></li>
+<li><div>Nhìn chung, năm 2024 và 2025 được dự báo sẽ tiếp tục chứng kiến sự phát triển mạnh mẽ của công nghệ, đặc biệt là trong lĩnh vực AI, mang đến nhiều thay đổi và cơ hội cho con người và doanh nghiệp</div><div class="claim-sources"><span class="chip">source 5</span> <span class="chip">source 11</span> <span class="chip">source 2</span> <span class="chip">source 3</span> <span class="chip">source 4</span> <span class="chip">source 9</span></div></li></ol>
+        </section>
+        <section class="card full">
+          <h2>Rendered Search Entry</h2>
+          <div class="rendered-preview"><style>
+.container {
+  align-items: center;
+  border-radius: 8px;
+  display: flex;
+  font-family: Google Sans, Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 20px;
+  padding: 8px 12px;
+}
+.chip {
+  display: inline-block;
+  border: solid 1px;
+  border-radius: 16px;
+  min-width: 14px;
+  padding: 5px 16px;
+  text-align: center;
+  user-select: none;
+  margin: 0 8px;
+  -webkit-tap-highlight-color: transparent;
+}
+.carousel {
+  overflow: auto;
+  scrollbar-width: none;
+  white-space: nowrap;
+  margin-right: -12px;
+}
+.headline {
+  display: flex;
+  margin-right: 4px;
+}
+.gradient-container {
+  position: relative;
+}
+.gradient {
+  position: absolute;
+  transform: translate(3px, -9px);
+  height: 36px;
+  width: 9px;
+}
+@media (prefers-color-scheme: light) {
+  .container {
+    background-color: #fafafa;
+    box-shadow: 0 0 0 1px #0000000f;
+  }
+  .headline-label {
+    color: #1f1f1f;
+  }
+  .chip {
+    background-color: #ffffff;
+    border-color: #d2d2d2;
+    color: #5e5e5e;
+    text-decoration: none;
+  }
+  .chip:hover {
+    background-color: #f2f2f2;
+  }
+  .chip:focus {
+    background-color: #f2f2f2;
+  }
+  .chip:active {
+    background-color: #d8d8d8;
+    border-color: #b6b6b6;
+  }
+  .logo-dark {
+    display: none;
+  }
+  .gradient {
+    background: linear-gradient(90deg, #fafafa 15%, #fafafa00 100%);
+  }
+}
+@media (prefers-color-scheme: dark) {
+  .container {
+    background-color: #1f1f1f;
+    box-shadow: 0 0 0 1px #ffffff26;
+  }
+  .headline-label {
+    color: #fff;
+  }
+  .chip {
+    background-color: #2c2c2c;
+    border-color: #3c4043;
+    color: #fff;
+    text-decoration: none;
+  }
+  .chip:hover {
+    background-color: #353536;
+  }
+  .chip:focus {
+    background-color: #353536;
+  }
+  .chip:active {
+    background-color: #464849;
+    border-color: #53575b;
+  }
+  .logo-light {
+    display: none;
+  }
+  .gradient {
+    background: linear-gradient(90deg, #1f1f1f 15%, #1f1f1f00 100%);
+  }
+}
+</style>
+<div class="container">
+  <div class="headline">
+    <svg class="logo-light" width="18" height="18" viewBox="9 9 35 35" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path fill-rule="evenodd" clip-rule="evenodd" d="M42.8622 27.0064C42.8622 25.7839 42.7525 24.6084 42.5487 23.4799H26.3109V30.1568H35.5897C35.1821 32.3041 33.9596 34.1222 32.1258 35.3448V39.6864H37.7213C40.9814 36.677 42.8622 32.2571 42.8622 27.0064V27.0064Z" fill="#4285F4"/>
+      <path fill-rule="evenodd" clip-rule="evenodd" d="M26.3109 43.8555C30.9659 43.8555 34.8687 42.3195 37.7213 39.6863L32.1258 35.3447C30.5898 36.3792 28.6306 37.0061 26.3109 37.0061C21.8282 37.0061 18.0195 33.9811 16.6559 29.906H10.9194V34.3573C13.7563 39.9841 19.5712 43.8555 26.3109 43.8555V43.8555Z" fill="#34A853"/>
+      <path fill-rule="evenodd" clip-rule="evenodd" d="M16.6559 29.8904C16.3111 28.8559 16.1074 27.7588 16.1074 26.6146C16.1074 25.4704 16.3111 24.3733 16.6559 23.3388V18.8875H10.9194C9.74388 21.2072 9.06992 23.8247 9.06992 26.6146C9.06992 29.4045 9.74388 32.022 10.9194 34.3417L15.3864 30.8621L16.6559 29.8904V29.8904Z" fill="#FBBC05"/>
+      <path fill-rule="evenodd" clip-rule="evenodd" d="M26.3109 16.2386C28.85 16.2386 31.107 17.1164 32.9095 18.8091L37.8466 13.8719C34.853 11.082 30.9659 9.3736 26.3109 9.3736C19.5712 9.3736 13.7563 13.245 10.9194 18.8875L16.6559 23.3388C18.0195 19.2636 21.8282 16.2386 26.3109 16.2386V16.2386Z" fill="#EA4335"/>
+    </svg>
+    <svg class="logo-dark" width="18" height="18" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="24" cy="23" fill="#FFF" r="22"/>
+      <path d="M33.76 34.26c2.75-2.56 4.49-6.37 4.49-11.26 0-.89-.08-1.84-.29-3H24.01v5.99h8.03c-.4 2.02-1.5 3.56-3.07 4.56v.75l3.91 2.97h.88z" fill="#4285F4"/>
+      <path d="M15.58 25.77A8.845 8.845 0 0 0 24 31.86c1.92 0 3.62-.46 4.97-1.31l4.79 3.71C31.14 36.7 27.65 38 24 38c-5.93 0-11.01-3.4-13.45-8.36l.17-1.01 4.06-2.85h.8z" fill="#34A853"/>
+      <path d="M15.59 20.21a8.864 8.864 0 0 0 0 5.58l-5.03 3.86c-.98-2-1.53-4.25-1.53-6.64 0-2.39.55-4.64 1.53-6.64l1-.22 3.81 2.98.22 1.08z" fill="#FBBC05"/>
+      <path d="M24 14.14c2.11 0 4.02.75 5.52 1.98l4.36-4.36C31.22 9.43 27.81 8 24 8c-5.93 0-11.01 3.4-13.45 8.36l5.03 3.85A8.86 8.86 0 0 1 24 14.14z" fill="#EA4335"/>
+    </svg>
+    <div class="gradient-container"><div class="gradient"></div></div>
+  </div>
+  <div class="carousel">
+    <a class="chip" href="https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGflNKjSLWUJ_GzyBrcPDkgl6vmXOzQ5BhW3JphinNiqeon_cUGNRLQHmtD4dwTjUvl1_CObOcETQv3jQWRcZ7gItfxmeHeg-RUC1gGZZfUv7f6M9vEBF7zwMU8t-Q1NZGf80roILPeZH-UNn51sZXKGdRHKxWsHuPFIOUQ7Ngu_axXy_fziIEOsmypt_Whugc8dBWV5YmkqRxmBwDtm32Zjazv8H7C9j1gEtx0NpZbNYC1ZxdRCXgTP-hDNaJ_LCY=">xu hướng công nghệ hiện nay</a>
+    <a class="chip" href="https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHgU_pTBE3rsGGecccTinL_N4IjdR_HuVbdpwwTixMctNff-ign4A_ZfTSwSzphp22nGyhMPCRFRdsA7rnU7uU5pFEkl08ZrnYTeZgau3-aumgtk_iwBVW171Ik_-6aq3gRozql5H9-7B4DCrtgbMerL6m5NyGR16Z9UWo9CjZHyLKN_xI3QppvpTTU3goPtd1QDrG0kfjU77omsqrq0d7l1xX7N9UPZYk5UUqDaYgS445xZSSp7u0=">cập nhật công nghệ 2024</a>
+    <a class="chip" href="https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHIhmCkewSc91-M8FLdPGKxSXmH37caDZi83dpcc2R9-5tgcsM6PGRk1ShamFbVU1KMmlSRMiEVLMd7QJ_ySuU5bR7dZh8O5NrNhnxwsEuOjn-rw8-PRQxwyjP2LfBpchpDC1dMMPscRriHI1x-kgdV0JvZJmtezq-3caO7D5BoSlkxe0qh-4xwlYn8HOqih5W-NEHrTb8zAT0lDdiiWASyvGFUkPRBGzs5Jds1lGkWNkoCiZE_oXz4GF70sCpc-DoeQA==">tin tức công nghệ mới nhất</a>
+    <a class="chip" href="https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGSaJKivrrFfIheyS2AiQmmBdgYcg_Ijkmac0uDFXHwUZYBDHH-hecWZPWBN29UQr33UphqmhuFNx379gL8HR7CHSk_MGiWupm6oHDlR7UYfTZwtto6ZUh96Ofytl7-fFNadlpuly0dYOv-LdKdqG582LJbya6uzd3LC5lrFca1iEux2TqAJt3Mhj6shUsMKZMqBJhU_7GJ1kpT0NUDXUzk6-Z9WrMbKQCT7TU-oA==">tin công nghệ mới 2024</a>
+  </div>
+</div>
+</div>
+        </section>
+        <section class="card full">
+          <h2>Raw JSON</h2>
+          <div class="raw">{
+  &quot;candidates&quot;: [
+    {
+      &quot;content&quot;: {
+        &quot;parts&quot;: [
+          {
+            &quot;text&quot;: &quot;Dưới đây là tổng hợp những tin tức công nghệ mới nhất và các xu hướng nổi bật đang định hình thế giới hiện nay:\n\n**1. Trí tuệ nhân tạo (AI) tiếp tục bùng nổ và phát triển đa dạng**\n\nTrí tuệ nhân tạo vẫn là tâm điểm của sự phát triển công nghệ, với nhiều đột phá đáng chú ý:\n\n*   **AI tạo sinh (Generative AI)**: Công nghệ này đang cách mạng hóa nhiều ngành công nghiệp bằng cách cho phép máy móc tạo ra nội dung tương tự con người, từ văn bản đến hình ảnh và video. Các mô hình như ChatGPT (phiên bản GPT-4, GPT-5) và Gemini của Google DeepMind liên tục được cải tiến, mang đến khả năng xử lý đa phương tiện và suy luận logic tốt hơn. OpenAI cũng đã ra mắt công cụ tìm kiếm và trình tạo video ảnh thật mang tên Sora.\n*   **AI tác nhân (Agentic AI)**: Được dự báo là một xu hướng đột phá trong năm 2025, Agentic AI có khả năng hoạt động độc lập, tự đưa ra quyết định và thực hiện các nhiệm vụ phức tạp mà không cần sự can thiệp liên tục của con người. Ứng dụng của nó bao gồm ô tô tự lái, tự động hóa quy trình bằng robot (RPA) và trợ lý ảo thông minh, mở ra kỷ nguyên mới cho tự động hóa và tăng hiệu suất làm việc.\n*   **Điện toán thần kinh và AI biên (Edge AI)**: Điện toán thần kinh là hướng đi mới dựa trên cách bộ não con người hoạt động, cho phép xử lý song song, tăng tốc độ và giảm tiêu thụ năng lượng. Trong khi đó, Edge AI cho phép các thuật toán phức tạp chạy trên các thiết bị di động hoặc ô tô tự lái, với hệ thống điện toán biên và AI thương mại đầu tiên đã hoạt động trên Trạm Vũ trụ Quốc tế (ISS).\n*   **Năng lượng hạt nhân cho cơ sở hạ tầng AI**: Nhu cầu năng lượng ngày càng cao cho AI và các công nghệ tiêu tốn điện năng lớn đang thúc đẩy đầu tư vào công nghệ hạt nhân để đảm bảo nguồn năng lượng sạch và ổn định.\n\n**2. Các xu hướng công nghệ nổi bật khác**\n\nNgoài AI, nhiều lĩnh vực công nghệ khác cũng đang có những bước tiến đáng kể:\n\n*   **Điện toán lượng tử (Quantum Computing)**: Alphabet đã công bố bộ xử lý lượng tử 105 qubit mang tên Willow, cho thấy những bước tiến quan trọng trong lĩnh vực này, có thể giải quyết các bài toán phức tạp trong thời gian ngắn hơn nhiều so với siêu máy tính truyền thống.\n*   **Internet vệ tinh**: Các chùm vệ tinh truyền tải internet từ không gian xuống Trái Đất ngày càng phổ biến, cung cấp kết nối internet giá rẻ. Amazon dự kiến sẽ triển khai các chùm vệ tinh quỹ đạo thấp vào đầu năm 2025 để cạnh tranh với Starlink, có thể làm giảm giá dịch vụ và thúc đẩy phát triển di động mới.\n*   **Xe tự lái và robot hình người**: Mặc dù vẫn còn nhiều thách thức về kỹ thuật, pháp lý và xã hội, xe tự lái tiếp tục đạt được tiến bộ. Robot hình người cũng có những bước tiến vượt bậc và dự kiến sẽ phổ biến tại các hộ gia đình và nơi làm việc vào năm 2025.\n*   **5G và điện toán biên (Edge Computing)**: Mạng 5G đang cách mạng hóa kết nối với tốc độ truyền dữ liệu nhanh hơn và độ trễ thấp. Kết hợp với Edge Computing, việc xử lý dữ liệu diễn ra gần nguồn hơn, hỗ trợ cho các giải pháp công nghiệp 4.0.\n*   **Thực tế mở rộng (XR - bao gồm AR/VR) và metaverse**: Các công nghệ này đang xóa mờ ranh giới giữa thế giới vật lý và kỹ thuật số, được kỳ vọng sẽ chuyển đổi từ các ứng dụng nhỏ lẻ sang lĩnh vực lớn được áp dụng rộng rãi.\n*   **Web3 và Blockchain**: Web3 đại diện cho tương lai của internet với hệ thống phân quyền và phi tập trung hơn, dựa trên công nghệ blockchain và hợp đồng thông minh. Blockchain tiếp tục là một yếu tố cốt lõi của cách mạng công nghiệp 4.0.\n*   **In sinh học (Bio-printing)**: Sử dụng tế bào sống và vật liệu sinh học để tạo ra các mô và cơ quan ba chiều, công nghệ này dự kiến sẽ có những bước tiến đáng kể, hướng tới y học cá nhân hóa.\n\n**3. Tin tức sản phẩm và thiết bị nổi bật**\n\n*   **iPhone 18 và iPhone 17 Pro/Pro Max**: iPhone 18 tiêu chuẩn có thể trở thành \&quot;át chủ bài AI\&quot; của Apple. Phi hành gia Artemis II đã gửi về những bức ảnh Trái Đất \&quot;đẹp đến nghẹt thở\&quot; được chụp bằng iPhone 17 Pro Max. Ngoài ra, MV 360° mới nhất của MCK cũng được quay hoàn toàn bằng iPhone 17 Pro.\n*   **Thiết bị Xiaomi**: Xiaomi đã ra mắt tai nghe mới với giá chỉ 750K, ấn tượng với bass mạnh và pin tới 37 giờ.\n\nNhìn chung, năm 2024 và 2025 được dự báo sẽ tiếp tục chứng kiến sự phát triển mạnh mẽ của công nghệ, đặc biệt là trong lĩnh vực AI, mang đến nhiều thay đổi và cơ hội cho con người và doanh nghiệp.&quot;
+          }
+        ],
+        &quot;role&quot;: &quot;model&quot;
+      },
+      &quot;finishReason&quot;: &quot;STOP&quot;,
+      &quot;index&quot;: 0,
+      &quot;groundingMetadata&quot;: {
+        &quot;searchEntryPoint&quot;: {
+          &quot;renderedContent&quot;: &quot;&lt;style&gt;\n.container {\n  align-items: center;\n  border-radius: 8px;\n  display: flex;\n  font-family: Google Sans, Roboto, sans-serif;\n  font-size: 14px;\n  line-height: 20px;\n  padding: 8px 12px;\n}\n.chip {\n  display: inline-block;\n  border: solid 1px;\n  border-radius: 16px;\n  min-width: 14px;\n  padding: 5px 16px;\n  text-align: center;\n  user-select: none;\n  margin: 0 8px;\n  -webkit-tap-highlight-color: transparent;\n}\n.carousel {\n  overflow: auto;\n  scrollbar-width: none;\n  white-space: nowrap;\n  margin-right: -12px;\n}\n.headline {\n  display: flex;\n  margin-right: 4px;\n}\n.gradient-container {\n  position: relative;\n}\n.gradient {\n  position: absolute;\n  transform: translate(3px, -9px);\n  height: 36px;\n  width: 9px;\n}\n@media (prefers-color-scheme: light) {\n  .container {\n    background-color: #fafafa;\n    box-shadow: 0 0 0 1px #0000000f;\n  }\n  .headline-label {\n    color: #1f1f1f;\n  }\n  .chip {\n    background-color: #ffffff;\n    border-color: #d2d2d2;\n    color: #5e5e5e;\n    text-decoration: none;\n  }\n  .chip:hover {\n    background-color: #f2f2f2;\n  }\n  .chip:focus {\n    background-color: #f2f2f2;\n  }\n  .chip:active {\n    background-color: #d8d8d8;\n    border-color: #b6b6b6;\n  }\n  .logo-dark {\n    display: none;\n  }\n  .gradient {\n    background: linear-gradient(90deg, #fafafa 15%, #fafafa00 100%);\n  }\n}\n@media (prefers-color-scheme: dark) {\n  .container {\n    background-color: #1f1f1f;\n    box-shadow: 0 0 0 1px #ffffff26;\n  }\n  .headline-label {\n    color: #fff;\n  }\n  .chip {\n    background-color: #2c2c2c;\n    border-color: #3c4043;\n    color: #fff;\n    text-decoration: none;\n  }\n  .chip:hover {\n    background-color: #353536;\n  }\n  .chip:focus {\n    background-color: #353536;\n  }\n  .chip:active {\n    background-color: #464849;\n    border-color: #53575b;\n  }\n  .logo-light {\n    display: none;\n  }\n  .gradient {\n    background: linear-gradient(90deg, #1f1f1f 15%, #1f1f1f00 100%);\n  }\n}\n&lt;/style&gt;\n&lt;div class=\&quot;container\&quot;&gt;\n  &lt;div class=\&quot;headline\&quot;&gt;\n    &lt;svg class=\&quot;logo-light\&quot; width=\&quot;18\&quot; height=\&quot;18\&quot; viewBox=\&quot;9 9 35 35\&quot; fill=\&quot;none\&quot; xmlns=\&quot;http://www.w3.org/2000/svg\&quot;&gt;\n      &lt;path fill-rule=\&quot;evenodd\&quot; clip-rule=\&quot;evenodd\&quot; d=\&quot;M42.8622 27.0064C42.8622 25.7839 42.7525 24.6084 42.5487 23.4799H26.3109V30.1568H35.5897C35.1821 32.3041 33.9596 34.1222 32.1258 35.3448V39.6864H37.7213C40.9814 36.677 42.8622 32.2571 42.8622 27.0064V27.0064Z\&quot; fill=\&quot;#4285F4\&quot;/&gt;\n      &lt;path fill-rule=\&quot;evenodd\&quot; clip-rule=\&quot;evenodd\&quot; d=\&quot;M26.3109 43.8555C30.9659 43.8555 34.8687 42.3195 37.7213 39.6863L32.1258 35.3447C30.5898 36.3792 28.6306 37.0061 26.3109 37.0061C21.8282 37.0061 18.0195 33.9811 16.6559 29.906H10.9194V34.3573C13.7563 39.9841 19.5712 43.8555 26.3109 43.8555V43.8555Z\&quot; fill=\&quot;#34A853\&quot;/&gt;\n      &lt;path fill-rule=\&quot;evenodd\&quot; clip-rule=\&quot;evenodd\&quot; d=\&quot;M16.6559 29.8904C16.3111 28.8559 16.1074 27.7588 16.1074 26.6146C16.1074 25.4704 16.3111 24.3733 16.6559 23.3388V18.8875H10.9194C9.74388 21.2072 9.06992 23.8247 9.06992 26.6146C9.06992 29.4045 9.74388 32.022 10.9194 34.3417L15.3864 30.8621L16.6559 29.8904V29.8904Z\&quot; fill=\&quot;#FBBC05\&quot;/&gt;\n      &lt;path fill-rule=\&quot;evenodd\&quot; clip-rule=\&quot;evenodd\&quot; d=\&quot;M26.3109 16.2386C28.85 16.2386 31.107 17.1164 32.9095 18.8091L37.8466 13.8719C34.853 11.082 30.9659 9.3736 26.3109 9.3736C19.5712 9.3736 13.7563 13.245 10.9194 18.8875L16.6559 23.3388C18.0195 19.2636 21.8282 16.2386 26.3109 16.2386V16.2386Z\&quot; fill=\&quot;#EA4335\&quot;/&gt;\n    &lt;/svg&gt;\n    &lt;svg class=\&quot;logo-dark\&quot; width=\&quot;18\&quot; height=\&quot;18\&quot; viewBox=\&quot;0 0 48 48\&quot; xmlns=\&quot;http://www.w3.org/2000/svg\&quot;&gt;\n      &lt;circle cx=\&quot;24\&quot; cy=\&quot;23\&quot; fill=\&quot;#FFF\&quot; r=\&quot;22\&quot;/&gt;\n      &lt;path d=\&quot;M33.76 34.26c2.75-2.56 4.49-6.37 4.49-11.26 0-.89-.08-1.84-.29-3H24.01v5.99h8.03c-.4 2.02-1.5 3.56-3.07 4.56v.75l3.91 2.97h.88z\&quot; fill=\&quot;#4285F4\&quot;/&gt;\n      &lt;path d=\&quot;M15.58 25.77A8.845 8.845 0 0 0 24 31.86c1.92 0 3.62-.46 4.97-1.31l4.79 3.71C31.14 36.7 27.65 38 24 38c-5.93 0-11.01-3.4-13.45-8.36l.17-1.01 4.06-2.85h.8z\&quot; fill=\&quot;#34A853\&quot;/&gt;\n      &lt;path d=\&quot;M15.59 20.21a8.864 8.864 0 0 0 0 5.58l-5.03 3.86c-.98-2-1.53-4.25-1.53-6.64 0-2.39.55-4.64 1.53-6.64l1-.22 3.81 2.98.22 1.08z\&quot; fill=\&quot;#FBBC05\&quot;/&gt;\n      &lt;path d=\&quot;M24 14.14c2.11 0 4.02.75 5.52 1.98l4.36-4.36C31.22 9.43 27.81 8 24 8c-5.93 0-11.01 3.4-13.45 8.36l5.03 3.85A8.86 8.86 0 0 1 24 14.14z\&quot; fill=\&quot;#EA4335\&quot;/&gt;\n    &lt;/svg&gt;\n    &lt;div class=\&quot;gradient-container\&quot;&gt;&lt;div class=\&quot;gradient\&quot;&gt;&lt;/div&gt;&lt;/div&gt;\n  &lt;/div&gt;\n  &lt;div class=\&quot;carousel\&quot;&gt;\n    &lt;a class=\&quot;chip\&quot; href=\&quot;https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGflNKjSLWUJ_GzyBrcPDkgl6vmXOzQ5BhW3JphinNiqeon_cUGNRLQHmtD4dwTjUvl1_CObOcETQv3jQWRcZ7gItfxmeHeg-RUC1gGZZfUv7f6M9vEBF7zwMU8t-Q1NZGf80roILPeZH-UNn51sZXKGdRHKxWsHuPFIOUQ7Ngu_axXy_fziIEOsmypt_Whugc8dBWV5YmkqRxmBwDtm32Zjazv8H7C9j1gEtx0NpZbNYC1ZxdRCXgTP-hDNaJ_LCY=\&quot;&gt;xu hướng công nghệ hiện nay&lt;/a&gt;\n    &lt;a class=\&quot;chip\&quot; href=\&quot;https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHgU_pTBE3rsGGecccTinL_N4IjdR_HuVbdpwwTixMctNff-ign4A_ZfTSwSzphp22nGyhMPCRFRdsA7rnU7uU5pFEkl08ZrnYTeZgau3-aumgtk_iwBVW171Ik_-6aq3gRozql5H9-7B4DCrtgbMerL6m5NyGR16Z9UWo9CjZHyLKN_xI3QppvpTTU3goPtd1QDrG0kfjU77omsqrq0d7l1xX7N9UPZYk5UUqDaYgS445xZSSp7u0=\&quot;&gt;cập nhật công nghệ 2024&lt;/a&gt;\n    &lt;a class=\&quot;chip\&quot; href=\&quot;https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHIhmCkewSc91-M8FLdPGKxSXmH37caDZi83dpcc2R9-5tgcsM6PGRk1ShamFbVU1KMmlSRMiEVLMd7QJ_ySuU5bR7dZh8O5NrNhnxwsEuOjn-rw8-PRQxwyjP2LfBpchpDC1dMMPscRriHI1x-kgdV0JvZJmtezq-3caO7D5BoSlkxe0qh-4xwlYn8HOqih5W-NEHrTb8zAT0lDdiiWASyvGFUkPRBGzs5Jds1lGkWNkoCiZE_oXz4GF70sCpc-DoeQA==\&quot;&gt;tin tức công nghệ mới nhất&lt;/a&gt;\n    &lt;a class=\&quot;chip\&quot; href=\&quot;https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGSaJKivrrFfIheyS2AiQmmBdgYcg_Ijkmac0uDFXHwUZYBDHH-hecWZPWBN29UQr33UphqmhuFNx379gL8HR7CHSk_MGiWupm6oHDlR7UYfTZwtto6ZUh96Ofytl7-fFNadlpuly0dYOv-LdKdqG582LJbya6uzd3LC5lrFca1iEux2TqAJt3Mhj6shUsMKZMqBJhU_7GJ1kpT0NUDXUzk6-Z9WrMbKQCT7TU-oA==\&quot;&gt;tin công nghệ mới 2024&lt;/a&gt;\n  &lt;/div&gt;\n&lt;/div&gt;\n&quot;
+        },
+        &quot;groundingChunks&quot;: [
+          {
+            &quot;web&quot;: {
+              &quot;uri&quot;: &quot;https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG7kGacS9kqshKsR4BHtnm_wnrNuJQXy-p7ywQvRPZjm6RKJ7U1Ry4-QuZ3mH7ySfGoP7XSQwIBuqok-mxBXdkAUfAZZcKBmT0GujlU5-C1STYG_zywAsG8xUVodhk2C_XI-MX3WL8rGpAo4ClSN2dncYk9dRo2lHUR9XsrWUS12Q==&quot;,
+              &quot;title&quot;: &quot;vnexpress.net&quot;
+            }
+          },
+          {
+            &quot;web&quot;: {
+              &quot;uri&quot;: &quot;https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFxAnGn2DuytQYj3kBVoDIg6enMJ6apk2vzWAgYN6vjB7ZC_CIscn0oPNxWLNOB-EaQBvUYkbI0EXflM6DbjQEBIBBBwDT2DzA6EboCAdqI_u8_Us7124nuGHraV1fPlyrkHi-7wGh1ikRTDzjtvj7gblFtLWnbdXi37hTBlgVyB6EQnYgIRgLmlJBfYTBhgw==&quot;,
+              &quot;title&quot;: &quot;baomoi.com&quot;
+            }
+          },
+          {
+            &quot;web&quot;: {
+              &quot;uri&quot;: &quot;https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFhUE4nATqHaN9Q9CbNdPgBUAh8qWNsmW8ZYm-Qm0oqJog_7htlkzFBNx_TG9IPQP7hkZBJ2l3GoAHUBejgzkU_5V_0JWm_k1yvzA9Heckv4JeBqh01Z35jIhwfOCYJja_ovkXjrV0g28V3AuHZc-BFI9NPATnljpO9fitqwINi8o0KEo0gBGNBT_alYTzqvHkgXSaRAxgR4YUQYjNP5Xhw&quot;,
+              &quot;title&quot;: &quot;baotintuc.vn&quot;
+            }
+          },
+          {
+            &quot;web&quot;: {
+              &quot;uri&quot;: &quot;https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQF7WwRNE2YpZ4UHZFysipMukL_-ohj2U87jVK6m0MdRanoR6tbkAEoPBUII2JIx63TMqW1puUP1QPOKBW2N43tV-_RAMsiGNZbV5ck_6FyTZjzl4KNi8jVr9Cx9WF4MgojlOnQLXKn2rV65hCdBsYZMEyv-V4Wdx0icGRmO7OFy8t--uK8d40A=&quot;,
+              &quot;title&quot;: &quot;elcom.com.vn&quot;
+            }
+          },
+          {
+            &quot;web&quot;: {
+              &quot;uri&quot;: &quot;https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHwgOI7tIfwZzUKhk3NP9BQ74txWk6RnvQbnUulfswT5SIXKWEyMarmLUpVJ3lHClv--oZwD2B7FKywhmg8-KzeBItEo2AbBDEqWItehwfgx883FG_3yFyCkLKv95xfL1l4GKhmaLKlXRM3fk-OF4_sALWBggMuKUHoQfUZF72bJoBDrITGJFc5pQ_LPAxa1HgLLg-5wAbhOQtQBkqMv6Q1OQLFiOT9kTG5BdCybro=&quot;,
+              &quot;title&quot;: &quot;vneconomy.vn&quot;
+            }
+          },
+          {
+            &quot;web&quot;: {
+              &quot;uri&quot;: &quot;https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHPnmnWmE64DP_GdJ--6B8P_dLX85n-ijOOdJfYw-r53t8DrDA4mDYrobTWWfObIHvkLZxUQ_WOM1FpVODpoTOtJhsa2M03QPDIvDDvBk5nzsk-Wua2vW43-Sjm0vPiUW95Iri6RnOvASaGqKOTBhn_3FDTXOLGv4vjNFHB-kk=&quot;,
+              &quot;title&quot;: &quot;vneconomy.vn&quot;
+            }
+          },
+          {
+            &quot;web&quot;: {
+              &quot;uri&quot;: &quot;https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG9Z8G9gly-t6cd9yMzPjsy_GT5bP-Z9yfIcvVHhNxCccvMP-V6BriaTHbi9fe_E-MMCh4Oev61-Y7cFqWIS0uomHmaPIXJ_-AgP4mbL0aqw8FmwFojrmY48YOXJu28qE1HhEQ1J4OL32dt7Kz5k0rHOu0Nl9UGygAczSHXLH1bqMgx_kajOpfNbHCYDuhRHjMPL9BbhM2GUA==&quot;,
+              &quot;title&quot;: &quot;thanhnien.vn&quot;
+            }
+          },
+          {
+            &quot;web&quot;: {
+              &quot;uri&quot;: &quot;https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFesdBjykcIKI5agMWW-_hqsfLOP0WXzbsT_ipDhvqPPbZWFaeCex5n5RP6Z9m_dmg1RSEaVjM_gJpEBugxw9Ma9QRa_Kym-4RyUyOuxcWPoMfvOtqLlm5_fEwmz6wuMZ5V4AeL2juKzi6cQrcIp-LBdskVkN0PMv8oe9Uu7Ofta2fe&quot;,
+              &quot;title&quot;: &quot;daidoanket.vn&quot;
+            }
+          },
+          {
+            &quot;web&quot;: {
+              &quot;uri&quot;: &quot;https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEHHYqS8Ztu2i-VEYxQo8gsqL7xXsHqsUvxfGUlXb7dUQmjm-3Z7Sy4T7XjwkcLLdQg2hVvOH1aH2V4kw-mZWKCnGalb8dnLiBcOvpfBsfb5dctVAlum_OxFsWETxg8GFZq9lV8eDipWaGldMiyXRZysW78N6-4uCEzy3OXZDxRQ7nvB1qCneWqVWW_ulgyJAoEN24lncnLsaJ0PUTWdl_gjDRoRvDAE7HgcB_KeQ==&quot;,
+              &quot;title&quot;: &quot;ninhbinh.gov.vn&quot;
+            }
+          },
+          {
+            &quot;web&quot;: {
+              &quot;uri&quot;: &quot;https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHr6pP5CjT7GKjaqTFESHD3CGfY3w1WZDL_P_QUxf8WkCqk1ULJont3jumH82TyAcjFseIYbs3FmhfYwxIFg4S8YKb6qW1lit79EIvxq0Kq_hQVCXRkTE1WehLJq_JIiS5GG_sYnK_1fP0=&quot;,
+              &quot;title&quot;: &quot;topdev.vn&quot;
+            }
+          },
+          {
+            &quot;web&quot;: {
+              &quot;uri&quot;: &quot;https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG6TrCtfYBPyvM_x_GJRfFrrGnfEqPDSXZXC5GHmwzNgMdkUgIuC2clpiKU8a69QqcyNX00CAZLEljuz8hty9xK7BylHH155hh6-4i--QFByKvmA6RTIpn_3_hbyQAG4yEqT6kvb5l7FiPjYgPO-FTD4sXdlJkqu3a1lg==&quot;,
+              &quot;title&quot;: &quot;datapot.vn&quot;
+            }
+          },
+          {
+            &quot;web&quot;: {
+              &quot;uri&quot;: &quot;https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEm8cuS4YxyntsK41ITSE1oybkMIDn2cNiENB6p-2b_V2GdxgCkPKpNIU7DYRLTXU68Hz0F868JNfrA32EH9N2bXZeyZ8DpoCPLjNfPJ634ePLDQFvKIZzjh1gIPtiBf2IMxwNyHdhXPpFyPTTJq_6RCzY2j0m8UmtYzfyVU0Dt4gmaVwykpC8gTURvczkRb-ijM6N4Gg4=&quot;,
+              &quot;title&quot;: &quot;mindx.edu.vn&quot;
+            }
+          },
+          {
+            &quot;web&quot;: {
+              &quot;uri&quot;: &quot;https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGFJY-4K7B9-Vwc23eGvN_03uxbJRrpHUjzYNUiXX3ZpvisZjSC3j4J1UeUWgdHmTrY8iNmD-PgCR8OChbdcH6jMA9zW0tNNBQVFPGhqP9ffJXWvaYjAK5jEuLD4j9zNb2QTAfH1c4bNgYAPhONLJvA9W77quPMchh9AEODy7gmAdJ3vUkI0fjGn2pevuaprw==&quot;,
+              &quot;title&quot;: &quot;baomoi.com&quot;
+            }
+          },
+          {
+            &quot;web&quot;: {
+              &quot;uri&quot;: &quot;https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEbiwEFzHObVuJiHJw3SysUQLS2B3x3CD6fuhiGnYvtTHJjt_rl14NYcghZSi1wdVfOTnbQsSbrnKCJWMQ4R_ZdzXI9tMVrc2MLttNpUpYhjzINks2diDnZUw==&quot;,
+              &quot;title&quot;: &quot;vietnamnet.vn&quot;
+            }
+          },
+          {
+            &quot;web&quot;: {
+              &quot;uri&quot;: &quot;https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQH4Ig07Mfu86tKieHIKQ5hDWIqZH_c9Hxhfq0ZMvxGgO1hQw2m37Ij3JXiClyXHZLhdnIrfrvpXTj4jot9Ig83sNnCKVG-q4EPG1yE3gexCULum_LVoyzQ2lEg=&quot;,
+              &quot;title&quot;: &quot;cellphones.com.vn&quot;
+            }
+          }
+        ],
+        &quot;groundingSupports&quot;: [
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 608,
+              &quot;endIndex&quot;: 816,
+              &quot;text&quot;: &quot;Các mô hình như ChatGPT (phiên bản GPT-4, GPT-5) và Gemini của Google DeepMind liên tục được cải tiến, mang đến khả năng xử lý đa phương tiện và suy luận logic tốt hơn&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              0,
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 818,
+              &quot;endIndex&quot;: 918,
+              &quot;text&quot;: &quot;OpenAI cũng đã ra mắt công cụ tìm kiếm và trình tạo video ảnh thật mang tên Sora&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              4
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 1227,
+              &quot;endIndex&quot;: 1442,
+              &quot;text&quot;: &quot;Ứng dụng của nó bao gồm ô tô tự lái, tự động hóa quy trình bằng robot (RPA) và trợ lý ảo thông minh, mở ra kỷ nguyên mới cho tự động hóa và tăng hiệu suất làm việc&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              5,
+              6,
+              7,
+              2,
+              8
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 1444,
+              &quot;endIndex&quot;: 1693,
+              &quot;text&quot;: &quot;*   **Điện toán thần kinh và AI biên (Edge AI)**: Điện toán thần kinh là hướng đi mới dựa trên cách bộ não con người hoạt động, cho phép xử lý song song, tăng tốc độ và giảm tiêu thụ năng lượng&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              5
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 1695,
+              &quot;endIndex&quot;: 1962,
+              &quot;text&quot;: &quot;Trong khi đó, Edge AI cho phép các thuật toán phức tạp chạy trên các thiết bị di động hoặc ô tô tự lái, với hệ thống điện toán biên và AI thương mại đầu tiên đã hoạt động trên Trạm Vũ trụ Quốc tế (ISS)&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              8
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 1964,
+              &quot;endIndex&quot;: 2255,
+              &quot;text&quot;: &quot;*   **Năng lượng hạt nhân cho cơ sở hạ tầng AI**: Nhu cầu năng lượng ngày càng cao cho AI và các công nghệ tiêu tốn điện năng lớn đang thúc đẩy đầu tư vào công nghệ hạt nhân để đảm bảo nguồn năng lượng sạch và ổn định&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              5
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 2417,
+              &quot;endIndex&quot;: 2760,
+              &quot;text&quot;: &quot;*   **Điện toán lượng tử (Quantum Computing)**: Alphabet đã công bố bộ xử lý lượng tử 105 qubit mang tên Willow, cho thấy những bước tiến quan trọng trong lĩnh vực này, có thể giải quyết các bài toán phức tạp trong thời gian ngắn hơn nhiều so với siêu máy tính truyền thống&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              5
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 2942,
+              &quot;endIndex&quot;: 3163,
+              &quot;text&quot;: &quot;Amazon dự kiến sẽ triển khai các chùm vệ tinh quỹ đạo thấp vào đầu năm 2025 để cạnh tranh với Starlink, có thể làm giảm giá dịch vụ và thúc đẩy phát triển di động mới&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              6,
+              4
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 3354,
+              &quot;endIndex&quot;: 3518,
+              &quot;text&quot;: &quot;Robot hình người cũng có những bước tiến vượt bậc và dự kiến sẽ phổ biến tại các hộ gia đình và nơi làm việc vào năm 2025&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              6
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 3693,
+              &quot;endIndex&quot;: 3836,
+              &quot;text&quot;: &quot;Kết hợp với Edge Computing, việc xử lý dữ liệu diễn ra gần nguồn hơn, hỗ trợ cho các giải pháp công nghiệp 4.0&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              9,
+              10
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 3838,
+              &quot;endIndex&quot;: 4142,
+              &quot;text&quot;: &quot;*   **Thực tế mở rộng (XR - bao gồm AR/VR) và metaverse**: Các công nghệ này đang xóa mờ ranh giới giữa thế giới vật lý và kỹ thuật số, được kỳ vọng sẽ chuyển đổi từ các ứng dụng nhỏ lẻ sang lĩnh vực lớn được áp dụng rộng rãi&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              11,
+              12,
+              3,
+              10
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 4349,
+              &quot;endIndex&quot;: 4442,
+              &quot;text&quot;: &quot;Blockchain tiếp tục là một yếu tố cốt lõi của cách mạng công nghiệp 4.0&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              11,
+              7,
+              12,
+              10
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 4444,
+              &quot;endIndex&quot;: 4700,
+              &quot;text&quot;: &quot;*   **In sinh học (Bio-printing)**: Sử dụng tế bào sống và vật liệu sinh học để tạo ra các mô và cơ quan ba chiều, công nghệ này dự kiến sẽ có những bước tiến đáng kể, hướng tới y học cá nhân hóa&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              12
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 4888,
+              &quot;endIndex&quot;: 5032,
+              &quot;text&quot;: &quot;Phi hành gia Artemis II đã gửi về những bức ảnh Trái Đất \&quot;đẹp đến nghẹt thở\&quot; được chụp bằng iPhone 17 Pro Max&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              13
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 5034,
+              &quot;endIndex&quot;: 5129,
+              &quot;text&quot;: &quot;Ngoài ra, MV 360° mới nhất của MCK cũng được quay hoàn toàn bằng iPhone 17 Pro&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              14
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 5131,
+              &quot;endIndex&quot;: 5273,
+              &quot;text&quot;: &quot;*   **Thiết bị Xiaomi**: Xiaomi đã ra mắt tai nghe mới với giá chỉ 750K, ấn tượng với bass mạnh và pin tới 37 giờ&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              14
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 5276,
+              &quot;endIndex&quot;: 5532,
+              &quot;text&quot;: &quot;Nhìn chung, năm 2024 và 2025 được dự báo sẽ tiếp tục chứng kiến sự phát triển mạnh mẽ của công nghệ, đặc biệt là trong lĩnh vực AI, mang đến nhiều thay đổi và cơ hội cho con người và doanh nghiệp&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              5,
+              11,
+              2,
+              3,
+              4,
+              9
+            ]
+          }
+        ],
+        &quot;webSearchQueries&quot;: [
+          &quot;tin tức công nghệ mới nhất&quot;,
+          &quot;tin công nghệ mới 2024&quot;,
+          &quot;cập nhật công nghệ 2024&quot;,
+          &quot;xu hướng công nghệ hiện nay&quot;
+        ]
+      }
+    }
+  ],
+  &quot;usageMetadata&quot;: {
+    &quot;promptTokenCount&quot;: 6,
+    &quot;candidatesTokenCount&quot;: 1220,
+    &quot;totalTokenCount&quot;: 1667,
+    &quot;promptTokensDetails&quot;: [
+      {
+        &quot;modality&quot;: &quot;TEXT&quot;,
+        &quot;tokenCount&quot;: 6
+      }
+    ],
+    &quot;toolUsePromptTokenCount&quot;: 123,
+    &quot;toolUsePromptTokensDetails&quot;: [
+      {
+        &quot;modality&quot;: &quot;TEXT&quot;,
+        &quot;tokenCount&quot;: 123
+      }
+    ],
+    &quot;thoughtsTokenCount&quot;: 318
+  },
+  &quot;modelVersion&quot;: &quot;gemini-2.5-flash&quot;,
+  &quot;responseId&quot;: &quot;CCbUadjvC8Wk0-kP5oKPyQE&quot;
+}</div>
+        </section>
+      </div>
+    </div>
+  </body>
+</html>

@@ -117,7 +117,6 @@ final class GeminiLiveSession: @unchecked Sendable {
         microphoneEnabled: Bool,
         thinkingBudget: Int,
         voiceName: String = "Kore",
-        braveSearchAPIKey: String? = nil,
         enabledTools: Set<GeminiTool> = GeminiTool.coreToolSet,
         skillSnapshot: SkillSessionSnapshot? = nil,
         resumeSession: Bool = false
@@ -138,7 +137,6 @@ final class GeminiLiveSession: @unchecked Sendable {
             systemPrompt: systemPrompt,
             thinkingBudget: thinkingBudget,
             voiceName: voiceName,
-            braveSearchAPIKey: braveSearchAPIKey,
             skillSnapshot: skillSnapshot
         )
         currentConfiguration = configuration
@@ -243,7 +241,7 @@ final class GeminiLiveSession: @unchecked Sendable {
         if enabledTools.contains(.webSearch) {
             decls.append([
                 "name": "webSearch",
-                "description": "Search the web and return a concise summary of the top results. Prefer Brave Search when a Brave API key is configured, and fall back to lightweight public search otherwise. Use this when the user asks for up-to-date information or facts you may not know.",
+                "description": "Search the web using Gemini with Google Search grounding. Return a concise grounded answer with sources when the user asks for up-to-date information or facts you may not know.",
                 "parameters": [
                     "type": "OBJECT",
                     "properties": [
@@ -783,6 +781,5 @@ struct LiveSessionConfiguration {
     let systemPrompt: String?
     let thinkingBudget: Int
     let voiceName: String
-    let braveSearchAPIKey: String?
     let skillSnapshot: SkillSessionSnapshot?
 }

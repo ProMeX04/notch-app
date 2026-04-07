@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gemini Search Report</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: "SF Pro Text", "Segoe UI", sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 28px;
+        background:
+          radial-gradient(circle at top left, rgba(0, 143, 93, 0.16), transparent 32%),
+          radial-gradient(circle at top right, rgba(66, 133, 244, 0.16), transparent 30%),
+          #f4f7f9;
+        color: #16202a;
+      }
+      .page {
+        max-width: 1100px;
+        margin: 0 auto;
+      }
+      .hero {
+        margin-bottom: 18px;
+      }
+      .hero h1 {
+        margin: 0 0 8px;
+        font-size: 28px;
+      }
+      .hero p {
+        margin: 0;
+        line-height: 1.5;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr;
+        gap: 18px;
+      }
+      .card {
+        background: rgba(255, 255, 255, 0.84);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(22, 32, 42, 0.08);
+        border-radius: 18px;
+        padding: 18px;
+        box-shadow: 0 20px 60px rgba(22, 32, 42, 0.10);
+      }
+      .card h2 {
+        margin: 0 0 14px;
+        font-size: 18px;
+      }
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 14px;
+      }
+      .pill {
+        border-radius: 999px;
+        padding: 6px 10px;
+        background: rgba(66, 133, 244, 0.10);
+        border: 1px solid rgba(66, 133, 244, 0.18);
+        font-size: 13px;
+      }
+      .answer {
+        white-space: pre-wrap;
+        line-height: 1.6;
+      }
+      ol, ul {
+        margin: 0;
+        padding-left: 20px;
+      }
+      li {
+        margin-bottom: 10px;
+        line-height: 1.5;
+      }
+      a {
+        color: #0b63ce;
+        word-break: break-all;
+      }
+      .claim-sources {
+        margin-top: 8px;
+      }
+      .chip {
+        display: inline-block;
+        margin-right: 8px;
+        margin-top: 4px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: rgba(15, 105, 225, 0.10);
+        border: 1px solid rgba(15, 105, 225, 0.18);
+        font-size: 12px;
+      }
+      .muted {
+        opacity: 0.7;
+      }
+      .rendered-preview {
+        padding: 14px;
+        border-radius: 14px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.88), rgba(245,247,250,0.92));
+        border: 1px solid rgba(22, 32, 42, 0.08);
+        overflow: auto;
+      }
+      .raw {
+        white-space: pre-wrap;
+        overflow: auto;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        line-height: 1.5;
+        background: rgba(22, 32, 42, 0.04);
+        padding: 14px;
+        border-radius: 12px;
+      }
+      .full {
+        grid-column: 1 / -1;
+      }
+      .empty {
+        opacity: 0.7;
+      }
+      @media (max-width: 860px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          background:
+            radial-gradient(circle at top left, rgba(0, 143, 93, 0.20), transparent 32%),
+            radial-gradient(circle at top right, rgba(66, 133, 244, 0.18), transparent 30%),
+            #0f151b;
+          color: #e8eef5;
+        }
+        .card {
+          background: rgba(18, 25, 33, 0.84);
+          border-color: rgba(232, 238, 245, 0.08);
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.34);
+        }
+        .pill {
+          background: rgba(66, 133, 244, 0.16);
+          border-color: rgba(66, 133, 244, 0.24);
+        }
+        a {
+          color: #83b7ff;
+        }
+        .chip {
+          background: rgba(131, 183, 255, 0.12);
+          border-color: rgba(131, 183, 255, 0.20);
+        }
+        .rendered-preview {
+          background: linear-gradient(180deg, rgba(24, 30, 38, 0.9), rgba(17, 22, 28, 0.92));
+          border-color: rgba(232, 238, 245, 0.08);
+        }
+        .raw {
+          background: rgba(232, 238, 245, 0.05);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div class="hero">
+        <h1>Gemini Search Report</h1>
+        <p><strong>Query:</strong> OpenAI latest model release</p>
+      </div>
+      <div class="grid">
+        <section class="card">
+          <h2>Answer</h2>
+          <div class="meta">
+            <span class="pill">Model: gemma-4-31b-it</span>
+            <span class="pill">Provider: gemini</span>
+            <span class="pill">Took: 31685 ms</span>
+          </div>
+          <div class="answer">I will search for the most recent model releases from OpenAI as of April 2026.
+Then, I will identify the names, key features, and release dates of these models.
+Finally, I will answer the user&#x27;s request by providing details about OpenAI&#x27;s latest model release.
+The user is asking for OpenAI&#x27;s latest model release.
+Based on the search results:
+- GPT-5.4 is the most current flagship frontier model, released around March 5, 2026.
+- It has several versions:
+    - **GPT-5.4 Thinking**: Released March 5, 2026. Focused on deep reasoning, professional work, and &quot;computer use&quot; capabilities.
+    - **GPT-5.4 Pro**: Mentioned as the &quot;maximum capability&quot; model.
+    - **GPT-5.4 mini** and **nano**: Released March 17, 2026. Cost-efficient reasoning fallbacks.
+- There is also **GPT-5.3 Instant** (March 3, 2026) for everyday conversations.
+- Other recent releases include:
+    - **GPT-5.3-Codex-Spark** (Feb 12, 2026): Real-time coding.
+    - **GPT-5.3-Codex** (Feb 5, 2026): Agentic coding.
+- There&#x27;s a mention of a codename &quot;**Spud**&quot; (April 5, 2026) as a next-generation frontier model designed for autonomous economic work, though it&#x27;s not officially launched with specs yet.
+- Legacy models like GPT-4o have been retired (fully retired after April 3, 2026).
+
+I have enough information to provide a comprehensive answer. I will structure the response by highlighting the flagship GPT-5.4 family, the specialized coding models, and the upcoming &quot;Spud&quot; model.
+As of April 2026, OpenAI&#x27;s latest major model release is the **GPT-5.4** family, which marks a significant shift toward &quot;agentic&quot; AI—models capable of using computers and executing complex professional workflows autonomously.
+
+### **1. The GPT-5.4 Family (Current Flagship)**
+Released in March 2026, GPT-5.4 is designed for high-stakes professional work and features a massive **1-million-token context window**. It is available in several specialized versions:
+
+*   **GPT-5.4 Thinking:** The reasoning powerhouse. It excels at deep logic, financial modeling, legal drafting, and software engineering. It recently scored 83% on the GDPVal benchmark, matching or exceeding human experts in 44 professional occupations.
+*   **GPT-5.4 Pro:** The maximum-capability version intended for the most complex tasks.
+*   **GPT-5.4 mini &amp; nano:** Released in mid-March, these are highly efficient, cost-effective models that serve as fast reasoning fallbacks.
+*   **Computer-Use Capability:** A standout feature of GPT-5.4 is its **native computer-use capability**, allowing the model to operate a computer interface to carry out workflows across different applications.
+
+### **2. Specialized Coding Models**
+OpenAI has heavily invested in &quot;Codex-native&quot; agents that move beyond simple code generation to full-scale project management:
+*   **GPT-5.3-Codex-Spark (Feb 2026):** A real-time coding model designed for 15x faster generation.
+*   **GPT-5.3-Codex (Feb 2026):** An agentic model that pairs frontier coding performance with general reasoning for long-horizon technical work.
+
+### **3. Other Recent Updates**
+*   **GPT-5.3 Instant:** A streamlined version for smooth, everyday conversations (Released March 3, 2026).
+*   **GPT-Image-1.5:** The latest flagship image generation model, providing 4x faster generation and more precise editing.
+*   **Model Retirements:** OpenAI has fully retired legacy models, including **GPT-4o**, as of April 3, 2026, to consolidate around the GPT-5.x family.
+
+### **Looking Ahead: Project &quot;Spud&quot;**
+Industry reports from early April 2026 indicate that OpenAI is working on a next-generation frontier model codenamed **&quot;Spud.&quot;** According to leaks, &quot;Spud&quot; is designed specifically for autonomous economic activity—moving from a conversational assistant to an AI that can perform real-world work autonomously to drive economic value.</div>
+        </section>
+        <section class="card">
+          <h2>Search Queries Used</h2>
+          <ul><li>OpenAI latest model release April 2026</li>
+<li>OpenAI new models 2025 2026</li></ul>
+        </section>
+        <section class="card">
+          <h2>Sources</h2>
+          <ol><li><strong>[0] mean.ceo</strong><br><a href="https://blog.mean.ceo/new-ai-model-releases-news-april-2026/" target="_blank" rel="noreferrer">https://blog.mean.ceo/new-ai-model-releases-news-april-2026/</a></li>
+<li><strong>[1] openai.com</strong><br><a href="https://openai.com/research/index/release/" target="_blank" rel="noreferrer">https://openai.com/research/index/release/</a></li>
+<li><strong>[2] openai.com</strong><br><a href="https://help.openai.com/en/articles/9624314-model-release-notes" target="_blank" rel="noreferrer">https://help.openai.com/en/articles/9624314-model-release-notes</a></li>
+<li><strong>[3] mindstudio.ai</strong><br><a href="https://www.mindstudio.ai/blog/what-is-openai-spud-model-next-frontier-3" target="_blank" rel="noreferrer">https://www.mindstudio.ai/blog/what-is-openai-spud-model-next-frontier-3</a></li></ol>
+        </section>
+        <section class="card">
+          <h2>Claim to Source Mapping</h2>
+          <ol><li><div>As of April 2026, OpenAI&#x27;s latest major model release is the **GPT-5.4** family, which marks a significant shift toward &quot;agentic&quot; AI—models capable of using computers and executing complex professional workflows autonomously.</div><div class="claim-sources"><span class="chip">source 0</span> <span class="chip">source 1</span></div></li>
+<li><div>The GPT-5.4 Family (Current Flagship)**
+Released in March 2026, GPT-5.4 is designed for high-stakes professional work and features a massive **1-million-token context window**.</div><div class="claim-sources"><span class="chip">source 1</span></div></li>
+<li><div>*   **GPT-5.4 Thinking:** The reasoning powerhouse.</div><div class="claim-sources"><span class="chip">source 1</span></div></li>
+<li><div>It excels at deep logic, financial modeling, legal drafting, and software engineering.</div><div class="claim-sources"><span class="chip">source 1</span></div></li>
+<li><div>It recently scored 83% on the GDPVal benchmark, matching or exceeding human experts in 44 professional occupations.</div><div class="claim-sources"><span class="chip">source 0</span> <span class="chip">source 1</span></div></li>
+<li><div>*   **GPT-5.4 Pro:** The maximum-capability version intended for the most complex tasks.</div><div class="claim-sources"><span class="chip">source 1</span></div></li>
+<li><div>*   **GPT-5.4 mini &amp; nano:** Released in mid-March, these are highly efficient, cost-effective models that serve as fast reasoning fallbacks.</div><div class="claim-sources"><span class="chip">source 1</span></div></li>
+<li><div>*   **Computer-Use Capability:** A standout feature of GPT-5.4 is its **native computer-use capability**, allowing the model to operate a computer interface to carry out workflows across different applications.</div><div class="claim-sources"><span class="chip">source 1</span> <span class="chip">source 0</span></div></li>
+<li><div>*   **GPT-5.3-Codex-Spark (Feb 2026):** A real-time coding model designed for 15x faster generation.</div><div class="claim-sources"><span class="chip">source 1</span></div></li>
+<li><div>*   **GPT-5.3-Codex (Feb 2026):** An agentic model that pairs frontier coding performance with general reasoning for long-horizon technical work.</div><div class="claim-sources"><span class="chip">source 1</span> <span class="chip">source 2</span></div></li>
+<li><div>*   **GPT-5.3 Instant:** A streamlined version for smooth, everyday conversations (Released March 3, 2026).</div><div class="claim-sources"><span class="chip">source 1</span></div></li>
+<li><div>*   **GPT-Image-1.5:** The latest flagship image generation model, providing 4x faster generation and more precise editing.</div><div class="claim-sources"><span class="chip">source 1</span></div></li>
+<li><div>*   **Model Retirements:** OpenAI has fully retired legacy models, including **GPT-4o**, as of April 3, 2026, to consolidate around the GPT-5.x family.</div><div class="claim-sources"><span class="chip">source 0</span> <span class="chip">source 1</span></div></li>
+<li><div>### **Looking Ahead: Project &quot;Spud&quot;**
+Industry reports from early April 2026 indicate that OpenAI is working on a next-generation frontier model codenamed **&quot;Spud.&quot;** According to leaks, &quot;Spud&quot; is designed specifically for autonomous economic activity—moving from a conversational assistant to an AI that can perform real-world work autonomously to drive economic value.</div><div class="claim-sources"><span class="chip">source 3</span> <span class="chip">source 1</span></div></li></ol>
+        </section>
+        <section class="card full">
+          <h2>Rendered Search Entry</h2>
+          <div class="rendered-preview"><style>
+.container {
+  align-items: center;
+  border-radius: 8px;
+  display: flex;
+  font-family: Google Sans, Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 20px;
+  padding: 8px 12px;
+}
+.chip {
+  display: inline-block;
+  border: solid 1px;
+  border-radius: 16px;
+  min-width: 14px;
+  padding: 5px 16px;
+  text-align: center;
+  user-select: none;
+  margin: 0 8px;
+  -webkit-tap-highlight-color: transparent;
+}
+.carousel {
+  overflow: auto;
+  scrollbar-width: none;
+  white-space: nowrap;
+  margin-right: -12px;
+}
+.headline {
+  display: flex;
+  margin-right: 4px;
+}
+.gradient-container {
+  position: relative;
+}
+.gradient {
+  position: absolute;
+  transform: translate(3px, -9px);
+  height: 36px;
+  width: 9px;
+}
+@media (prefers-color-scheme: light) {
+  .container {
+    background-color: #fafafa;
+    box-shadow: 0 0 0 1px #0000000f;
+  }
+  .headline-label {
+    color: #1f1f1f;
+  }
+  .chip {
+    background-color: #ffffff;
+    border-color: #d2d2d2;
+    color: #5e5e5e;
+    text-decoration: none;
+  }
+  .chip:hover {
+    background-color: #f2f2f2;
+  }
+  .chip:focus {
+    background-color: #f2f2f2;
+  }
+  .chip:active {
+    background-color: #d8d8d8;
+    border-color: #b6b6b6;
+  }
+  .logo-dark {
+    display: none;
+  }
+  .gradient {
+    background: linear-gradient(90deg, #fafafa 15%, #fafafa00 100%);
+  }
+}
+@media (prefers-color-scheme: dark) {
+  .container {
+    background-color: #1f1f1f;
+    box-shadow: 0 0 0 1px #ffffff26;
+  }
+  .headline-label {
+    color: #fff;
+  }
+  .chip {
+    background-color: #2c2c2c;
+    border-color: #3c4043;
+    color: #fff;
+    text-decoration: none;
+  }
+  .chip:hover {
+    background-color: #353536;
+  }
+  .chip:focus {
+    background-color: #353536;
+  }
+  .chip:active {
+    background-color: #464849;
+    border-color: #53575b;
+  }
+  .logo-light {
+    display: none;
+  }
+  .gradient {
+    background: linear-gradient(90deg, #1f1f1f 15%, #1f1f1f00 100%);
+  }
+}
+</style>
+<div class="container">
+  <div class="headline">
+    <svg class="logo-light" width="18" height="18" viewBox="9 9 35 35" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path fill-rule="evenodd" clip-rule="evenodd" d="M42.8622 27.0064C42.8622 25.7839 42.7525 24.6084 42.5487 23.4799H26.3109V30.1568H35.5897C35.1821 32.3041 33.9596 34.1222 32.1258 35.3448V39.6864H37.7213C40.9814 36.677 42.8622 32.2571 42.8622 27.0064V27.0064Z" fill="#4285F4"/>
+      <path fill-rule="evenodd" clip-rule="evenodd" d="M26.3109 43.8555C30.9659 43.8555 34.8687 42.3195 37.7213 39.6863L32.1258 35.3447C30.5898 36.3792 28.6306 37.0061 26.3109 37.0061C21.8282 37.0061 18.0195 33.9811 16.6559 29.906H10.9194V34.3573C13.7563 39.9841 19.5712 43.8555 26.3109 43.8555V43.8555Z" fill="#34A853"/>
+      <path fill-rule="evenodd" clip-rule="evenodd" d="M16.6559 29.8904C16.3111 28.8559 16.1074 27.7588 16.1074 26.6146C16.1074 25.4704 16.3111 24.3733 16.6559 23.3388V18.8875H10.9194C9.74388 21.2072 9.06992 23.8247 9.06992 26.6146C9.06992 29.4045 9.74388 32.022 10.9194 34.3417L15.3864 30.8621L16.6559 29.8904V29.8904Z" fill="#FBBC05"/>
+      <path fill-rule="evenodd" clip-rule="evenodd" d="M26.3109 16.2386C28.85 16.2386 31.107 17.1164 32.9095 18.8091L37.8466 13.8719C34.853 11.082 30.9659 9.3736 26.3109 9.3736C19.5712 9.3736 13.7563 13.245 10.9194 18.8875L16.6559 23.3388C18.0195 19.2636 21.8282 16.2386 26.3109 16.2386V16.2386Z" fill="#EA4335"/>
+    </svg>
+    <svg class="logo-dark" width="18" height="18" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="24" cy="23" fill="#FFF" r="22"/>
+      <path d="M33.76 34.26c2.75-2.56 4.49-6.37 4.49-11.26 0-.89-.08-1.84-.29-3H24.01v5.99h8.03c-.4 2.02-1.5 3.56-3.07 4.56v.75l3.91 2.97h.88z" fill="#4285F4"/>
+      <path d="M15.58 25.77A8.845 8.845 0 0 0 24 31.86c1.92 0 3.62-.46 4.97-1.31l4.79 3.71C31.14 36.7 27.65 38 24 38c-5.93 0-11.01-3.4-13.45-8.36l.17-1.01 4.06-2.85h.8z" fill="#34A853"/>
+      <path d="M15.59 20.21a8.864 8.864 0 0 0 0 5.58l-5.03 3.86c-.98-2-1.53-4.25-1.53-6.64 0-2.39.55-4.64 1.53-6.64l1-.22 3.81 2.98.22 1.08z" fill="#FBBC05"/>
+      <path d="M24 14.14c2.11 0 4.02.75 5.52 1.98l4.36-4.36C31.22 9.43 27.81 8 24 8c-5.93 0-11.01 3.4-13.45 8.36l5.03 3.85A8.86 8.86 0 0 1 24 14.14z" fill="#EA4335"/>
+    </svg>
+    <div class="gradient-container"><div class="gradient"></div></div>
+  </div>
+  <div class="carousel">
+    <a class="chip" href="https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGMfXzPN7C4aTLOYsDcpjaLgcIl7lm7sYC3PHHekpk7zHggwVRc0vU5aEKs9VlmdokpidNojiQjMnO55_pSwPWOpTfefRXRE1pj8DvYByHbP919o1N6XIAZt_YmHd_NY4SK8jqAG5liVgPgl3FOVUipFkxQZIRMtDcoI9S6930WmmtAEzhsj6EXLF_13orUD6QNMubkC4_fAaVlyuIKyGF1B5ZHDGuLEs8=">OpenAI latest model release April 2026</a>
+    <a class="chip" href="https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFB0cnOlJd8x7VR_APxM55hY5DoQRBJPefMCduMSPHQFvbDiFFo61f9gPHylG4RoA4-xXzJ3XXTh_4AV9IRm1lc3HRQEkspzmluXXeHstSN_nZGBbeXlzsLWvfvRaKzSozlu8OVHSvF_fvS9qJOlEyKrFB1c6_ML5R21-qt0x10v03tijtxe2TbQ4qlWcGv5qLI2y-jLtu8La4hR_LV">OpenAI new models 2025 2026</a>
+  </div>
+</div>
+</div>
+        </section>
+        <section class="card full">
+          <h2>Raw JSON</h2>
+          <div class="raw">{
+  &quot;candidates&quot;: [
+    {
+      &quot;content&quot;: {
+        &quot;parts&quot;: [
+          {
+            &quot;text&quot;: &quot;I will search for the most recent model releases from OpenAI as of April 2026.\nThen, I will identify the names, key features, and release dates of these models.\nFinally, I will answer the user&#x27;s request by providing details about OpenAI&#x27;s latest model release.&quot;,
+            &quot;thought&quot;: true
+          },
+          {
+            &quot;text&quot;: &quot;The user is asking for OpenAI&#x27;s latest model release.\nBased on the search results:\n- GPT-5.4 is the most current flagship frontier model, released around March 5, 2026.\n- It has several versions:\n    - **GPT-5.4 Thinking**: Released March 5, 2026. Focused on deep reasoning, professional work, and \&quot;computer use\&quot; capabilities.\n    - **GPT-5.4 Pro**: Mentioned as the \&quot;maximum capability\&quot; model.\n    - **GPT-5.4 mini** and **nano**: Released March 17, 2026. Cost-efficient reasoning fallbacks.\n- There is also **GPT-5.3 Instant** (March 3, 2026) for everyday conversations.\n- Other recent releases include:\n    - **GPT-5.3-Codex-Spark** (Feb 12, 2026): Real-time coding.\n    - **GPT-5.3-Codex** (Feb 5, 2026): Agentic coding.\n- There&#x27;s a mention of a codename \&quot;**Spud**\&quot; (April 5, 2026) as a next-generation frontier model designed for autonomous economic work, though it&#x27;s not officially launched with specs yet.\n- Legacy models like GPT-4o have been retired (fully retired after April 3, 2026).\n\nI have enough information to provide a comprehensive answer. I will structure the response by highlighting the flagship GPT-5.4 family, the specialized coding models, and the upcoming \&quot;Spud\&quot; model.&quot;,
+            &quot;thought&quot;: true
+          },
+          {
+            &quot;text&quot;: &quot;As of April 2026, OpenAI&#x27;s latest major model release is the **GPT-5.4** family, which marks a significant shift toward \&quot;agentic\&quot; AI—models capable of using computers and executing complex professional workflows autonomously.\n\n### **1. The GPT-5.4 Family (Current Flagship)**\nReleased in March 2026, GPT-5.4 is designed for high-stakes professional work and features a massive **1-million-token context window**. It is available in several specialized versions:\n\n*   **GPT-5.4 Thinking:** The reasoning powerhouse. It excels at deep logic, financial modeling, legal drafting, and software engineering. It recently scored 83% on the GDPVal benchmark, matching or exceeding human experts in 44 professional occupations.\n*   **GPT-5.4 Pro:** The maximum-capability version intended for the most complex tasks.\n*   **GPT-5.4 mini &amp; nano:** Released in mid-March, these are highly efficient, cost-effective models that serve as fast reasoning fallbacks.\n*   **Computer-Use Capability:** A standout feature of GPT-5.4 is its **native computer-use capability**, allowing the model to operate a computer interface to carry out workflows across different applications.\n\n### **2. Specialized Coding Models**\nOpenAI has heavily invested in \&quot;Codex-native\&quot; agents that move beyond simple code generation to full-scale project management:\n*   **GPT-5.3-Codex-Spark (Feb 2026):** A real-time coding model designed for 15x faster generation.\n*   **GPT-5.3-Codex (Feb 2026):** An agentic model that pairs frontier coding performance with general reasoning for long-horizon technical work.\n\n### **3. Other Recent Updates**\n*   **GPT-5.3 Instant:** A streamlined version for smooth, everyday conversations (Released March 3, 2026).\n*   **GPT-Image-1.5:** The latest flagship image generation model, providing 4x faster generation and more precise editing.\n*   **Model Retirements:** OpenAI has fully retired legacy models, including **GPT-4o**, as of April 3, 2026, to consolidate around the GPT-5.x family.\n\n### **Looking Ahead: Project \&quot;Spud\&quot;**\nIndustry reports from early April 2026 indicate that OpenAI is working on a next-generation frontier model codenamed **\&quot;Spud.\&quot;** According to leaks, \&quot;Spud\&quot; is designed specifically for autonomous economic activity—moving from a conversational assistant to an AI that can perform real-world work autonomously to drive economic value.&quot;
+          }
+        ],
+        &quot;role&quot;: &quot;model&quot;
+      },
+      &quot;finishReason&quot;: &quot;STOP&quot;,
+      &quot;index&quot;: 0,
+      &quot;groundingMetadata&quot;: {
+        &quot;searchEntryPoint&quot;: {
+          &quot;renderedContent&quot;: &quot;&lt;style&gt;\n.container {\n  align-items: center;\n  border-radius: 8px;\n  display: flex;\n  font-family: Google Sans, Roboto, sans-serif;\n  font-size: 14px;\n  line-height: 20px;\n  padding: 8px 12px;\n}\n.chip {\n  display: inline-block;\n  border: solid 1px;\n  border-radius: 16px;\n  min-width: 14px;\n  padding: 5px 16px;\n  text-align: center;\n  user-select: none;\n  margin: 0 8px;\n  -webkit-tap-highlight-color: transparent;\n}\n.carousel {\n  overflow: auto;\n  scrollbar-width: none;\n  white-space: nowrap;\n  margin-right: -12px;\n}\n.headline {\n  display: flex;\n  margin-right: 4px;\n}\n.gradient-container {\n  position: relative;\n}\n.gradient {\n  position: absolute;\n  transform: translate(3px, -9px);\n  height: 36px;\n  width: 9px;\n}\n@media (prefers-color-scheme: light) {\n  .container {\n    background-color: #fafafa;\n    box-shadow: 0 0 0 1px #0000000f;\n  }\n  .headline-label {\n    color: #1f1f1f;\n  }\n  .chip {\n    background-color: #ffffff;\n    border-color: #d2d2d2;\n    color: #5e5e5e;\n    text-decoration: none;\n  }\n  .chip:hover {\n    background-color: #f2f2f2;\n  }\n  .chip:focus {\n    background-color: #f2f2f2;\n  }\n  .chip:active {\n    background-color: #d8d8d8;\n    border-color: #b6b6b6;\n  }\n  .logo-dark {\n    display: none;\n  }\n  .gradient {\n    background: linear-gradient(90deg, #fafafa 15%, #fafafa00 100%);\n  }\n}\n@media (prefers-color-scheme: dark) {\n  .container {\n    background-color: #1f1f1f;\n    box-shadow: 0 0 0 1px #ffffff26;\n  }\n  .headline-label {\n    color: #fff;\n  }\n  .chip {\n    background-color: #2c2c2c;\n    border-color: #3c4043;\n    color: #fff;\n    text-decoration: none;\n  }\n  .chip:hover {\n    background-color: #353536;\n  }\n  .chip:focus {\n    background-color: #353536;\n  }\n  .chip:active {\n    background-color: #464849;\n    border-color: #53575b;\n  }\n  .logo-light {\n    display: none;\n  }\n  .gradient {\n    background: linear-gradient(90deg, #1f1f1f 15%, #1f1f1f00 100%);\n  }\n}\n&lt;/style&gt;\n&lt;div class=\&quot;container\&quot;&gt;\n  &lt;div class=\&quot;headline\&quot;&gt;\n    &lt;svg class=\&quot;logo-light\&quot; width=\&quot;18\&quot; height=\&quot;18\&quot; viewBox=\&quot;9 9 35 35\&quot; fill=\&quot;none\&quot; xmlns=\&quot;http://www.w3.org/2000/svg\&quot;&gt;\n      &lt;path fill-rule=\&quot;evenodd\&quot; clip-rule=\&quot;evenodd\&quot; d=\&quot;M42.8622 27.0064C42.8622 25.7839 42.7525 24.6084 42.5487 23.4799H26.3109V30.1568H35.5897C35.1821 32.3041 33.9596 34.1222 32.1258 35.3448V39.6864H37.7213C40.9814 36.677 42.8622 32.2571 42.8622 27.0064V27.0064Z\&quot; fill=\&quot;#4285F4\&quot;/&gt;\n      &lt;path fill-rule=\&quot;evenodd\&quot; clip-rule=\&quot;evenodd\&quot; d=\&quot;M26.3109 43.8555C30.9659 43.8555 34.8687 42.3195 37.7213 39.6863L32.1258 35.3447C30.5898 36.3792 28.6306 37.0061 26.3109 37.0061C21.8282 37.0061 18.0195 33.9811 16.6559 29.906H10.9194V34.3573C13.7563 39.9841 19.5712 43.8555 26.3109 43.8555V43.8555Z\&quot; fill=\&quot;#34A853\&quot;/&gt;\n      &lt;path fill-rule=\&quot;evenodd\&quot; clip-rule=\&quot;evenodd\&quot; d=\&quot;M16.6559 29.8904C16.3111 28.8559 16.1074 27.7588 16.1074 26.6146C16.1074 25.4704 16.3111 24.3733 16.6559 23.3388V18.8875H10.9194C9.74388 21.2072 9.06992 23.8247 9.06992 26.6146C9.06992 29.4045 9.74388 32.022 10.9194 34.3417L15.3864 30.8621L16.6559 29.8904V29.8904Z\&quot; fill=\&quot;#FBBC05\&quot;/&gt;\n      &lt;path fill-rule=\&quot;evenodd\&quot; clip-rule=\&quot;evenodd\&quot; d=\&quot;M26.3109 16.2386C28.85 16.2386 31.107 17.1164 32.9095 18.8091L37.8466 13.8719C34.853 11.082 30.9659 9.3736 26.3109 9.3736C19.5712 9.3736 13.7563 13.245 10.9194 18.8875L16.6559 23.3388C18.0195 19.2636 21.8282 16.2386 26.3109 16.2386V16.2386Z\&quot; fill=\&quot;#EA4335\&quot;/&gt;\n    &lt;/svg&gt;\n    &lt;svg class=\&quot;logo-dark\&quot; width=\&quot;18\&quot; height=\&quot;18\&quot; viewBox=\&quot;0 0 48 48\&quot; xmlns=\&quot;http://www.w3.org/2000/svg\&quot;&gt;\n      &lt;circle cx=\&quot;24\&quot; cy=\&quot;23\&quot; fill=\&quot;#FFF\&quot; r=\&quot;22\&quot;/&gt;\n      &lt;path d=\&quot;M33.76 34.26c2.75-2.56 4.49-6.37 4.49-11.26 0-.89-.08-1.84-.29-3H24.01v5.99h8.03c-.4 2.02-1.5 3.56-3.07 4.56v.75l3.91 2.97h.88z\&quot; fill=\&quot;#4285F4\&quot;/&gt;\n      &lt;path d=\&quot;M15.58 25.77A8.845 8.845 0 0 0 24 31.86c1.92 0 3.62-.46 4.97-1.31l4.79 3.71C31.14 36.7 27.65 38 24 38c-5.93 0-11.01-3.4-13.45-8.36l.17-1.01 4.06-2.85h.8z\&quot; fill=\&quot;#34A853\&quot;/&gt;\n      &lt;path d=\&quot;M15.59 20.21a8.864 8.864 0 0 0 0 5.58l-5.03 3.86c-.98-2-1.53-4.25-1.53-6.64 0-2.39.55-4.64 1.53-6.64l1-.22 3.81 2.98.22 1.08z\&quot; fill=\&quot;#FBBC05\&quot;/&gt;\n      &lt;path d=\&quot;M24 14.14c2.11 0 4.02.75 5.52 1.98l4.36-4.36C31.22 9.43 27.81 8 24 8c-5.93 0-11.01 3.4-13.45 8.36l5.03 3.85A8.86 8.86 0 0 1 24 14.14z\&quot; fill=\&quot;#EA4335\&quot;/&gt;\n    &lt;/svg&gt;\n    &lt;div class=\&quot;gradient-container\&quot;&gt;&lt;div class=\&quot;gradient\&quot;&gt;&lt;/div&gt;&lt;/div&gt;\n  &lt;/div&gt;\n  &lt;div class=\&quot;carousel\&quot;&gt;\n    &lt;a class=\&quot;chip\&quot; href=\&quot;https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGMfXzPN7C4aTLOYsDcpjaLgcIl7lm7sYC3PHHekpk7zHggwVRc0vU5aEKs9VlmdokpidNojiQjMnO55_pSwPWOpTfefRXRE1pj8DvYByHbP919o1N6XIAZt_YmHd_NY4SK8jqAG5liVgPgl3FOVUipFkxQZIRMtDcoI9S6930WmmtAEzhsj6EXLF_13orUD6QNMubkC4_fAaVlyuIKyGF1B5ZHDGuLEs8=\&quot;&gt;OpenAI latest model release April 2026&lt;/a&gt;\n    &lt;a class=\&quot;chip\&quot; href=\&quot;https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFB0cnOlJd8x7VR_APxM55hY5DoQRBJPefMCduMSPHQFvbDiFFo61f9gPHylG4RoA4-xXzJ3XXTh_4AV9IRm1lc3HRQEkspzmluXXeHstSN_nZGBbeXlzsLWvfvRaKzSozlu8OVHSvF_fvS9qJOlEyKrFB1c6_ML5R21-qt0x10v03tijtxe2TbQ4qlWcGv5qLI2y-jLtu8La4hR_LV\&quot;&gt;OpenAI new models 2025 2026&lt;/a&gt;\n  &lt;/div&gt;\n&lt;/div&gt;\n&quot;
+        },
+        &quot;groundingChunks&quot;: [
+          {
+            &quot;web&quot;: {
+              &quot;uri&quot;: &quot;https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEkVoEK8Ah6S4pxDKgIRdklUnQLMQ08u0_B3uAsdDQ7yWDwxqXlsTruuiHL9Q6HD9bb6Y14JD4pwNsPuDhUIF-IRYWDb6d3NnZmYsFpRDVdhg54i496ljf4mCurMD3oVU3dQtHqdFO_T6xzoHztvcCeb2jMgQOe&quot;,
+              &quot;title&quot;: &quot;mean.ceo&quot;
+            }
+          },
+          {
+            &quot;web&quot;: {
+              &quot;uri&quot;: &quot;https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFYruGWcAfQuBDbUPIlJZ3aFnGwJ82Q9MKXOJY-sswk8YA-e_EAuuAxt3cwus5nCdc8LS7oZV_u34cC5IAj_SDM5YDqXi_LWbJ_HBB2gE4jqwPypS5qyOQeMfjWDHykRsS6gsSj&quot;,
+              &quot;title&quot;: &quot;openai.com&quot;
+            }
+          },
+          {
+            &quot;web&quot;: {
+              &quot;uri&quot;: &quot;https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEHUsNaTa2gu4o65Do6_Lsxk2sGDWTydw_1lwShodkoiAjMCSCNz9L5Yp4UfdaZCGnxSiCoOYzU5auw9RxFGk1hEgys4aLCDS7hTSfoB5FOI-YDM3GTfjkvNWL7O5obe48-Idc7gK4VDMVvK9beeqHVYD-FhN1dE8Uh&quot;,
+              &quot;title&quot;: &quot;openai.com&quot;
+            }
+          },
+          {
+            &quot;web&quot;: {
+              &quot;uri&quot;: &quot;https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQF-7dqUm3QY8Mg6sl-kc3ToP1rLhebSyquUFoup3CN4Xt8I9qWbG5yVnINTYdYNvCW0pMaTgDANT8tMYyx9alAc41gWY_iNekm54eL7jkitKyC0R3JJ5xNdM2MG5WC-E5u0pfwseZSOzT6K3aNclCv4ly7mVLvNAacDyzyo2AEEZbfm&quot;,
+              &quot;title&quot;: &quot;mindstudio.ai&quot;
+            }
+          }
+        ],
+        &quot;groundingSupports&quot;: [
+          {
+            &quot;segment&quot;: {
+              &quot;endIndex&quot;: 227,
+              &quot;text&quot;: &quot;As of April 2026, OpenAI&#x27;s latest major model release is the **GPT-5.4** family, which marks a significant shift toward \&quot;agentic\&quot; AI—models capable of using computers and executing complex professional workflows autonomously.&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              0,
+              1
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 238,
+              &quot;endIndex&quot;: 414,
+              &quot;text&quot;: &quot;The GPT-5.4 Family (Current Flagship)**\nReleased in March 2026, GPT-5.4 is designed for high-stakes professional work and features a massive **1-million-token context window**.&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              1
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 465,
+              &quot;endIndex&quot;: 516,
+              &quot;text&quot;: &quot;*   **GPT-5.4 Thinking:** The reasoning powerhouse.&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              1
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 517,
+              &quot;endIndex&quot;: 603,
+              &quot;text&quot;: &quot;It excels at deep logic, financial modeling, legal drafting, and software engineering.&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              1
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 604,
+              &quot;endIndex&quot;: 719,
+              &quot;text&quot;: &quot;It recently scored 83% on the GDPVal benchmark, matching or exceeding human experts in 44 professional occupations.&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              0,
+              1
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 720,
+              &quot;endIndex&quot;: 808,
+              &quot;text&quot;: &quot;*   **GPT-5.4 Pro:** The maximum-capability version intended for the most complex tasks.&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              1
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 809,
+              &quot;endIndex&quot;: 950,
+              &quot;text&quot;: &quot;*   **GPT-5.4 mini &amp; nano:** Released in mid-March, these are highly efficient, cost-effective models that serve as fast reasoning fallbacks.&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              1
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 951,
+              &quot;endIndex&quot;: 1161,
+              &quot;text&quot;: &quot;*   **Computer-Use Capability:** A standout feature of GPT-5.4 is its **native computer-use capability**, allowing the model to operate a computer interface to carry out workflows across different applications.&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              1,
+              0
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 1327,
+              &quot;endIndex&quot;: 1427,
+              &quot;text&quot;: &quot;*   **GPT-5.3-Codex-Spark (Feb 2026):** A real-time coding model designed for 15x faster generation.&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              1
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 1428,
+              &quot;endIndex&quot;: 1573,
+              &quot;text&quot;: &quot;*   **GPT-5.3-Codex (Feb 2026):** An agentic model that pairs frontier coding performance with general reasoning for long-horizon technical work.&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              1,
+              2
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 1607,
+              &quot;endIndex&quot;: 1714,
+              &quot;text&quot;: &quot;*   **GPT-5.3 Instant:** A streamlined version for smooth, everyday conversations (Released March 3, 2026).&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              1
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 1715,
+              &quot;endIndex&quot;: 1838,
+              &quot;text&quot;: &quot;*   **GPT-Image-1.5:** The latest flagship image generation model, providing 4x faster generation and more precise editing.&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              1
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 1839,
+              &quot;endIndex&quot;: 1990,
+              &quot;text&quot;: &quot;*   **Model Retirements:** OpenAI has fully retired legacy models, including **GPT-4o**, as of April 3, 2026, to consolidate around the GPT-5.x family.&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              0,
+              1
+            ]
+          },
+          {
+            &quot;segment&quot;: {
+              &quot;startIndex&quot;: 1992,
+              &quot;endIndex&quot;: 2364,
+              &quot;text&quot;: &quot;### **Looking Ahead: Project \&quot;Spud\&quot;**\nIndustry reports from early April 2026 indicate that OpenAI is working on a next-generation frontier model codenamed **\&quot;Spud.\&quot;** According to leaks, \&quot;Spud\&quot; is designed specifically for autonomous economic activity—moving from a conversational assistant to an AI that can perform real-world work autonomously to drive economic value.&quot;
+            },
+            &quot;groundingChunkIndices&quot;: [
+              3,
+              1
+            ]
+          }
+        ],
+        &quot;webSearchQueries&quot;: [
+          &quot;OpenAI latest model release April 2026&quot;,
+          &quot;OpenAI new models 2025 2026&quot;
+        ]
+      }
+    }
+  ],
+  &quot;usageMetadata&quot;: {
+    &quot;promptTokenCount&quot;: 66,
+    &quot;candidatesTokenCount&quot;: 580,
+    &quot;totalTokenCount&quot;: 1004,
+    &quot;promptTokensDetails&quot;: [
+      {
+        &quot;modality&quot;: &quot;TEXT&quot;,
+        &quot;tokenCount&quot;: 66
+      }
+    ],
+    &quot;thoughtsTokenCount&quot;: 358
+  },
+  &quot;modelVersion&quot;: &quot;gemma-4-31b-it&quot;,
+  &quot;responseId&quot;: &quot;kSrUabfVN4en2roPtpeBkAo&quot;
+}</div>
+        </section>
+      </div>
+    </div>
+  </body>
+</html>

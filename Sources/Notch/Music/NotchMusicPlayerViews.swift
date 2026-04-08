@@ -1,4 +1,7 @@
 import SwiftUI
+
+private let mediaControlTint = Color(nsColor: .systemYellow).ensureMinimumBrightness(factor: 0.78)
+
 struct ExpandedAlbumArtView: View {
     @ObservedObject var playback: MusicProbeViewModel
     let albumArtNamespace: Namespace.ID
@@ -149,7 +152,7 @@ struct ExpandedMusicControlsView: View {
     private func slotView(for slot: MusicControlSlot) -> some View {
         switch slot {
         case .shuffle:
-            HoverButton(icon: "shuffle", iconColor: playback.isShuffled ? .red : .primary, scale: .medium) {
+            HoverButton(icon: "shuffle", iconColor: playback.isShuffled ? mediaControlTint : mediaControlTint.opacity(0.78), scale: .medium) {
                 playback.toggleShuffle()
             }
         case .previous:
@@ -203,9 +206,9 @@ struct ExpandedMusicControlsView: View {
     private var repeatIconColor: Color {
         switch playback.repeatMode {
         case .off:
-            return .primary
+            return mediaControlTint.opacity(0.78)
         case .all, .one:
-            return .red
+            return mediaControlTint
         }
     }
 }
@@ -316,7 +319,7 @@ struct CustomSlider: View {
 
 struct HoverButton: View {
     let icon: String
-    var iconColor: Color = .primary
+    var iconColor: Color = mediaControlTint
     var scale: Image.Scale = .medium
     var contentTransition: ContentTransition = .symbolEffect
     let action: () -> Void
@@ -368,7 +371,7 @@ struct FavoriteControlButton: View {
     }
 
     private var iconColor: Color {
-        playback.isFavoriteTrack ? .red : .primary
+        playback.isFavoriteTrack ? mediaControlTint : mediaControlTint.opacity(0.78)
     }
 }
 
@@ -392,7 +395,7 @@ struct VolumeControlView: View {
             } label: {
                 Image(systemName: volumeIcon)
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(playback.supportsVolumeControl ? .white : .gray)
+                    .foregroundColor(playback.supportsVolumeControl ? mediaControlTint : .gray)
             }
             .buttonStyle(.plain)
             .disabled(!playback.supportsVolumeControl)

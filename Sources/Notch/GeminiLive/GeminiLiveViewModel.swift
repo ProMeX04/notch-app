@@ -225,53 +225,33 @@ final class GeminiLiveViewModel: ObservableObject {
             }
         }
 
+        session.onFunctionStarted = { [weak self] name, _ in
+            DispatchQueue.main.async {
+                guard let self, let toast = self.startedToolAction(for: name) else { return }
+                self.postToolAction(
+                    label: toast.label,
+                    icon: toast.icon,
+                    showsInOverlay: toast.showsInOverlay,
+                    autoClearAfter: nil
+                )
+            }
+        }
+
         session.onFunctionExecuted = { [weak self] name, args, result in
             let resultSuccess = result["success"] as? Bool
             let resultError = result["error"] as? String
             DispatchQueue.main.async {
                 guard let self else { return }
-                if name == "webSearch" {
-                    if resultSuccess == true {
-                        self.postToolAction(label: "Web search", icon: "magnifyingglass", showsInOverlay: false)
-                    } else if let error = resultError {
-                        self.postToolAction(label: error, icon: "exclamationmark.triangle", showsInOverlay: false)
-                    }
-                } else if name == "read" {
-                    if resultSuccess == true {
-                        self.postToolAction(label: "Read file", icon: "doc.text", showsInOverlay: false)
-                    } else if let error = resultError {
-                        self.postToolAction(label: error, icon: "exclamationmark.triangle", showsInOverlay: false)
-                    }
-                } else if name == "write" {
-                    if resultSuccess == true {
-                        self.postToolAction(label: "Wrote file", icon: "square.and.pencil", showsInOverlay: false)
-                    } else if let error = resultError {
-                        self.postToolAction(label: error, icon: "exclamationmark.triangle", showsInOverlay: false)
-                    }
-                } else if name == "exec" {
-                    if resultSuccess == true {
-                        self.postToolAction(label: "Ran command", icon: "terminal", showsInOverlay: false)
-                    } else if let error = resultError {
-                        self.postToolAction(label: error, icon: "exclamationmark.triangle", showsInOverlay: false)
-                    }
-                } else if name == "find" {
-                    if resultSuccess == true {
-                        self.postToolAction(label: "Found files", icon: "folder", showsInOverlay: false)
-                    } else if let error = resultError {
-                        self.postToolAction(label: error, icon: "exclamationmark.triangle", showsInOverlay: false)
-                    }
-                } else if name == "grep" {
-                    if resultSuccess == true {
-                        self.postToolAction(label: "Searched files", icon: "text.magnifyingglass", showsInOverlay: false)
-                    } else if let error = resultError {
-                        self.postToolAction(label: error, icon: "exclamationmark.triangle", showsInOverlay: false)
-                    }
-                } else if name == "edit" {
-                    if resultSuccess == true {
-                        self.postToolAction(label: "Edited file", icon: "slider.horizontal.below.rectangle", showsInOverlay: false)
-                    } else if let error = resultError {
-                        self.postToolAction(label: error, icon: "exclamationmark.triangle", showsInOverlay: false)
-                    }
+                if let toast = self.completedToolAction(
+                    for: name,
+                    success: resultSuccess == true,
+                    error: resultError
+                ) {
+                    self.postToolAction(
+                        label: toast.label,
+                        icon: toast.icon,
+                        showsInOverlay: toast.showsInOverlay
+                    )
                 }
             }
         }
@@ -286,6 +266,12 @@ final class GeminiLiveViewModel: ObservableObject {
                 if !self.pendingExecApprovals.contains(where: { $0.toolCallID == request.toolCallID }) {
                     self.pendingExecApprovals.append(request)
                 }
+                self.postToolAction(
+                    label: "Command approval needed",
+                    icon: "terminal",
+                    showsInOverlay: false,
+                    autoClearAfter: nil
+                )
                 self.onExecApprovalAttentionRequested?()
             }
         }
@@ -621,11 +607,71 @@ final class GeminiLiveViewModel: ObservableObject {
         return lines.joined(separator: "\n")
     }
 
-    func postToolAction(label: String, icon: String, showsInOverlay: Bool = true) {
+    private func startedToolAction(for name: String) -> ToolActionToast? {
+        switch name {
+        case "webSearch":
+            return ToolActionToast(label: "Searching web…", icon: "magnifyingglass", showsInOverlay: false)
+        case "read":
+            return ToolActionToast(label: "Reading file…", icon: "doc.text", showsInOverlay: false)
+        case "write":
+            return ToolActionToast(label: "Writing file…", icon: "square.and.pencil", showsInOverlay: false)
+        case "ls":
+            return ToolActionToast(label: "Listing files…", icon: "list.bullet", showsInOverlay: false)
+        case "exec":
+            return ToolActionToast(label: "Running command…", icon: "terminal", showsInOverlay: false)
+        case "find":
+            return ToolActionToast(label: "Finding files…", icon: "folder", showsInOverlay: false)
+        case "grep":
+            return ToolActionToast(label: "Searching files…", icon: "text.magnifyingglass", showsInOverlay: false)
+        case "edit":
+            return ToolActionToast(label: "Editing file…", icon: "slider.horizontal.below.rectangle", showsInOverlay: false)
+        default:
+            return nil
+        }
+    }
+
+    private func completedToolAction(for name: String, success: Bool, error: String?) -> ToolActionToast? {
+        if let error, !success {
+            return ToolActionToast(label: error, icon: "exclamationmark.triangle", showsInOverlay: false)
+        }
+
+        guard success else { return nil }
+
+        switch name {
+        case "webSearch":
+            return ToolActionToast(label: "Web search", icon: "magnifyingglass", showsInOverlay: false)
+        case "read":
+            return ToolActionToast(label: "Read file", icon: "doc.text", showsInOverlay: false)
+        case "write":
+            return ToolActionToast(label: "Wrote file", icon: "square.and.pencil", showsInOverlay: false)
+        case "ls":
+            return ToolActionToast(label: "Listed files", icon: "list.bullet", showsInOverlay: false)
+        case "exec":
+            return ToolActionToast(label: "Ran command", icon: "terminal", showsInOverlay: false)
+        case "find":
+            return ToolActionToast(label: "Found files", icon: "folder", showsInOverlay: false)
+        case "grep":
+            return ToolActionToast(label: "Searched files", icon: "text.magnifyingglass", showsInOverlay: false)
+        case "edit":
+            return ToolActionToast(label: "Edited file", icon: "slider.horizontal.below.rectangle", showsInOverlay: false)
+        default:
+            return nil
+        }
+    }
+
+    func postToolAction(
+        label: String,
+        icon: String,
+        showsInOverlay: Bool = true,
+        autoClearAfter: TimeInterval? = 3
+    ) {
         toastClearTask?.cancel()
         lastToolAction = ToolActionToast(label: label, icon: icon, showsInOverlay: showsInOverlay)
+
+        guard let autoClearAfter else { return }
+
         toastClearTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(3))
+            try? await Task.sleep(for: .seconds(autoClearAfter))
             guard !Task.isCancelled else { return }
             withAnimation(.easeOut(duration: 0.4)) {
                 self?.lastToolAction = nil

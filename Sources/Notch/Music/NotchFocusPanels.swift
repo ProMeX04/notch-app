@@ -761,33 +761,52 @@ struct PomodoroQuickSettingsView: View {
             
             // Second Column: Toggles and Done
             VStack(alignment: .trailing, spacing: 12) {
-                Toggle(Localization.get("Auto-start Breaks", lang: appLanguage), isOn: $pomodoro.autoStartBreaks)
-                    .font(.system(size: 14, weight: .medium))
-                    .toggleStyle(.switch)
-                    .tint(tint)
+                settingToggle(label: "Auto-start Breaks", isOn: $pomodoro.autoStartBreaks)
                 
-                Toggle(Localization.get("Auto-start Pomo", lang: appLanguage), isOn: $pomodoro.autoStartPomodoros)
-                    .font(.system(size: 14, weight: .medium))
-                    .toggleStyle(.switch)
-                    .tint(tint)
+                settingToggle(label: "Auto-start Pomo", isOn: $pomodoro.autoStartPomodoros)
                 
                 Spacer(minLength: 0)
                 
-                Button {
+                FocusPanelActionButton(
+                    title: Localization.get("Done", lang: appLanguage),
+                    tint: tint
+                ) {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
                         isPresented = false
                     }
-                } label: {
-                    Text(Localization.get("Done", lang: appLanguage))
-                        .font(.system(size: 14, weight: .semibold))
-                        .padding(.horizontal, 12)
-                        .frame(minHeight: 32)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.regular)
-                .tint(tint)
             }
-            .frame(width: 180, alignment: .trailing)
+            .frame(width: 220, alignment: .trailing)
+        }
+    }
+
+    private func settingToggle(label: String, isOn: Binding<Bool>) -> some View {
+        let isEnabled = isOn.wrappedValue
+
+        return HStack(spacing: 10) {
+            Text(Localization.get(label, lang: appLanguage))
+                .font(.system(size: 12.5, weight: .semibold))
+                .foregroundStyle(isEnabled ? .white : .white.opacity(0.72))
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .toggleStyle(NotchSwitchStyle(tint: tint))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(minHeight: 46)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(isEnabled ? Color.white.opacity(0.08) : Color.white.opacity(0.05))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(isEnabled ? tint.opacity(0.22) : Color.white.opacity(0.06), lineWidth: 1)
         }
     }
 
@@ -954,5 +973,3 @@ struct PomodoroSessionDotsView: View {
         }
     }
 }
-
-

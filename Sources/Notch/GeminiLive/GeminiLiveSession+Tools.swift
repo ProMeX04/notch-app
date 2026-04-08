@@ -28,6 +28,10 @@ extension GeminiLiveSession {
         GeminiLiveToolResponsePayloadBuilder.transportResult(from: result, toolName: name)
     }
 
+    func notifyFunctionStarted(name: String, args: [String: Any]) {
+        onFunctionStarted?(name, args)
+    }
+
     func notifyFunctionExecuted(name: String, args: [String: Any], result: [String: Any]) {
         onFunctionExecuted?(name, args, sanitizedToolResultForCallback(name: name, result: result))
     }

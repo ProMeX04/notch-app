@@ -38,6 +38,7 @@ extension GeminiLiveSession {
             return
         }
         let maxResults = (args["maxResults"] as? NSNumber)?.intValue ?? args["maxResults"] as? Int ?? 5
+        notifyFunctionStarted(name: name, args: args)
         executeWebSearchAsync(id: id, name: name, args: args, query: query, maxResults: maxResults)
     }
 
@@ -58,6 +59,7 @@ extension GeminiLiveSession {
             .path
 
         if onShouldAutoApproveExec?(trimmedCommand, resolvedWorkingDirectory) == true {
+            notifyFunctionStarted(name: name, args: args)
             let result = executeExec(command: trimmedCommand, workingDirectory: resolvedWorkingDirectory, timeoutSeconds: resolvedTimeout)
             notifyFunctionExecuted(name: name, args: args, result: result)
             sendFunctionResponse(id: id, name: name, result: result)
@@ -98,6 +100,7 @@ extension GeminiLiveSession {
 
         let offset = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["offset"])
         let limit = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["limit"])
+        notifyFunctionStarted(name: name, args: args)
         let result = executeReadFile(path: path, offset: offset, limit: limit)
         notifyFunctionExecuted(name: name, args: args, result: result)
         sendFunctionResponse(id: id, name: name, result: result)
@@ -117,6 +120,7 @@ extension GeminiLiveSession {
             return
         }
 
+        notifyFunctionStarted(name: name, args: args)
         let result = executeWriteFile(path: path, content: content)
         notifyFunctionExecuted(name: name, args: args, result: result)
         sendFunctionResponse(id: id, name: name, result: result)
@@ -129,6 +133,7 @@ extension GeminiLiveSession {
 
         let path = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["path"])
         let limit = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["limit"])
+        notifyFunctionStarted(name: name, args: args)
         let result = executeLs(path: path, limit: limit)
         notifyFunctionExecuted(name: name, args: args, result: result)
         sendFunctionResponse(id: id, name: name, result: result)
@@ -149,6 +154,7 @@ extension GeminiLiveSession {
 
         let path = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["path"])
         let limit = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["limit"])
+        notifyFunctionStarted(name: name, args: args)
         let result = executeFind(pattern: pattern, path: path, limit: limit)
         notifyFunctionExecuted(name: name, args: args, result: result)
         sendFunctionResponse(id: id, name: name, result: result)
@@ -173,6 +179,7 @@ extension GeminiLiveSession {
         let literal = GeminiToolArgumentNormalizer.boolValue(in: args, keys: ["literal"]) ?? false
         let context = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["context"]) ?? 0
         let limit = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["limit"]) ?? 100
+        notifyFunctionStarted(name: name, args: args)
         let result = executeGrep(
             pattern: pattern,
             path: path,
@@ -209,6 +216,7 @@ extension GeminiLiveSession {
             return
         }
 
+        notifyFunctionStarted(name: name, args: args)
         let result = executeEditFile(path: path, edits: edits)
         notifyFunctionExecuted(name: name, args: args, result: result)
         sendFunctionResponse(id: id, name: name, result: result)
@@ -216,6 +224,7 @@ extension GeminiLiveSession {
 
     func approveExecCall(toolCallID: String) {
         guard let pending = takePendingExecApproval(toolCallID: toolCallID) else { return }
+        notifyFunctionStarted(name: "exec", args: pending.args)
         let result = executeExec(
             command: pending.command,
             workingDirectory: pending.workingDirectory,

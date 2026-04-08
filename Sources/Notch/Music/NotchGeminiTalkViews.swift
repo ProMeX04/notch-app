@@ -15,6 +15,13 @@ private enum GeminiPanelControlMetrics {
     static let fieldStroke = Color.white.opacity(0.08)
 }
 
+private enum GeminiPanelControlPalette {
+    static let connectBlue = Color(nsColor: .systemBlue)
+    static let liveActive = Color(nsColor: .systemYellow)
+    static let liveInactiveFill = Color.white.opacity(0.08)
+    static let liveInactiveStroke = Color.white.opacity(0.08)
+}
+
 /// One shared row for every pre-connect `Menu` label (Prompt, Tools, Voice, Thinking, …).
 private struct GeminiMenuFieldRow: View {
     enum TrailingGlyph {
@@ -291,7 +298,7 @@ struct GeminiTalkPanelView: View {
             GeminiActionButton(
                 title: Localization.get(gemini.connectionButtonTitle, lang: appLanguage),
                 icon: gemini.connectionButtonIcon,
-                tint: statusColor
+                tint: GeminiPanelControlPalette.connectBlue
             ) {
                 gemini.toggleConnection()
             }
@@ -370,7 +377,7 @@ struct GeminiTalkPanelView: View {
                             GeminiControlToggle(
                                 icon: gemini.transcriptOverlayAutoHide ? "timer" : "pin.fill",
                                 label: Localization.get(gemini.transcriptOverlayAutoHide ? "Hide" : "Pin", lang: appLanguage),
-                                isActive: gemini.transcriptOverlayAutoHide,
+                                isActive: !gemini.transcriptOverlayAutoHide,
                                 action: { gemini.transcriptOverlayAutoHide.toggle() }
                             )
                             .disabled(!gemini.showTranscriptOverlay)
@@ -429,39 +436,43 @@ struct GeminiTalkPanelView: View {
                                     }
                                     .frame(width: 130)
 
-                                    VStack(alignment: .leading, spacing: 10) {
-                                        HStack(spacing: 8) {
-                                            GeminiPillPicker(
-                                                title: "Voice",
-                                                icon: "waveform",
-                                                tint: Color(nsColor: .systemYellow),
-                                                selection: $gemini.selectedVoice
-                                            )
-                                            GeminiPillPicker(
-                                                title: "Thinking",
-                                                icon: "brain.head.profile",
-                                                tint: Color(nsColor: .systemYellow),
-                                                selection: $gemini.thinkingLevel
-                                            )
+                                    LazyVGrid(
+                                        columns: [
+                                            GridItem(.flexible(), spacing: 8),
+                                            GridItem(.flexible(), spacing: 8),
+                                        ],
+                                        alignment: .leading,
+                                        spacing: 8
+                                    ) {
+                                        GeminiPillPicker(
+                                            title: "Voice",
+                                            icon: "waveform",
+                                            tint: Color(nsColor: .systemYellow),
+                                            selection: $gemini.selectedVoice
+                                        )
+
+                                        GeminiPillPicker(
+                                            title: "Thinking",
+                                            icon: "brain.head.profile",
+                                            tint: Color(nsColor: .systemYellow),
+                                            selection: $gemini.thinkingLevel
+                                        )
+
+                                        GeminiPillButton(
+                                            title: Localization.get("Settings", lang: appLanguage),
+                                            icon: "slider.horizontal.3",
+                                            tint: Color(nsColor: .systemYellow)
+                                        ) {
+                                            setupViewMode = .agentSettings
                                         }
 
-                                        HStack(spacing: 8) {
-                                            GeminiPillButton(
-                                                title: Localization.get("Settings", lang: appLanguage),
-                                                icon: "slider.horizontal.3",
-                                                tint: Color(nsColor: .systemYellow)
-                                            ) {
-                                                setupViewMode = .agentSettings
-                                            }
-
-                                            GeminiPillButton(
-                                                title: Localization.get(gemini.connectionButtonTitle, lang: appLanguage),
-                                                icon: gemini.connectionButtonIcon,
-                                                tint: Color(nsColor: .systemYellow),
-                                                isDisabled: gemini.connectionState == .connecting
-                                            ) {
-                                                gemini.toggleConnection()
-                                            }
+                                        GeminiPillButton(
+                                            title: Localization.get(gemini.connectionButtonTitle, lang: appLanguage),
+                                            icon: gemini.connectionButtonIcon,
+                                            tint: GeminiPanelControlPalette.connectBlue,
+                                            isDisabled: gemini.connectionState == .connecting
+                                        ) {
+                                            gemini.toggleConnection()
                                         }
                                     }
                                     .padding(.top, 14)
@@ -560,7 +571,7 @@ struct GeminiTalkPanelView: View {
                                                     
                                                     HStack(spacing: 8) {
                                                         GeminiPillButton(
-                                                            title: Localization.get("Prompt", lang: appLanguage),
+                                                            title: Localization.get("System Prompt", lang: appLanguage),
                                                             icon: "pencil",
                                                             tint: Color(nsColor: .systemYellow)
                                                         ) {
@@ -1093,7 +1104,22 @@ private struct GeminiControlPill: View {
     var isDestructive: Bool = false
 
     private var activeTint: Color {
-        isDestructive ? Color(nsColor: .systemRed) : .white
+        isDestructive ? Color(nsColor: .systemRed) : GeminiPanelControlPalette.liveActive
+    }
+
+    private var foregroundColor: Color {
+        if isDestructive {
+            return .white.opacity(0.96)
+        }
+        return isActive ? .black.opacity(0.84) : .white.opacity(0.78)
+    }
+
+    private var backgroundFill: Color {
+        isActive ? activeTint : GeminiPanelControlPalette.liveInactiveFill
+    }
+
+    private var shadowColor: Color {
+        isActive ? .black.opacity(0.12) : .clear
     }
 
     var body: some View {
@@ -1105,23 +1131,23 @@ private struct GeminiControlPill: View {
             Text(label)
                 .font(GeminiPanelControlMetrics.labelFont)
                 .lineLimit(1)
+                .minimumScaleFactor(0.82)
         }
-        .foregroundStyle(
-            isActive
-                ? activeTint.opacity(isDestructive ? 0.75 : 0.9)
-                : .white.opacity(0.35)
-        )
+        .foregroundStyle(foregroundColor)
         .padding(.horizontal, GeminiPanelControlMetrics.hPad)
         .padding(.vertical, GeminiPanelControlMetrics.vPad)
         .frame(minHeight: GeminiPanelControlMetrics.minHeight)
         .background(
-            RoundedRectangle(cornerRadius: GeminiPanelControlMetrics.corner, style: .continuous)
-                .fill(isActive ? activeTint.opacity(0.12) : Color.white.opacity(0.05))
+            Capsule()
+                .fill(backgroundFill)
+                .shadow(color: shadowColor, radius: 1, x: 0, y: 1)
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: GeminiPanelControlMetrics.corner, style: .continuous)
-                .stroke(isActive ? activeTint.opacity(0.25) : Color.clear, lineWidth: 0.5)
-        )
+        .overlay {
+            if !isActive {
+                Capsule()
+                    .stroke(GeminiPanelControlPalette.liveInactiveStroke, lineWidth: 1)
+            }
+        }
         .contentShape(Rectangle())
     }
 }
@@ -1231,13 +1257,13 @@ struct GeminiOutputVolumeControl: View {
         .padding(.vertical, GeminiPanelControlMetrics.vPad)
         .frame(minHeight: GeminiPanelControlMetrics.minHeight)
         .background(
-            RoundedRectangle(cornerRadius: GeminiPanelControlMetrics.corner, style: .continuous)
-                .fill(Color.white.opacity(0.06))
+            Capsule()
+                .fill(GeminiPanelControlPalette.liveInactiveFill)
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: GeminiPanelControlMetrics.corner, style: .continuous)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
-        )
+        .overlay {
+            Capsule()
+                .stroke(GeminiPanelControlPalette.liveInactiveStroke, lineWidth: 1)
+        }
         .contentShape(Rectangle())
     }
 }
@@ -1382,10 +1408,11 @@ where T.RawValue == String, T.AllCases: RandomAccessCollection {
                 Text("\(Localization.get(title, lang: appLanguage)): \(Localization.get(selection.rawValue, lang: appLanguage))")
                     .font(.system(size: 11, weight: .bold))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.78)
             }
             .foregroundStyle(.black.opacity(0.85))
             .padding(.horizontal, 12)
-            .frame(height: 26)
+            .frame(maxWidth: .infinity, minHeight: 30)
             .background(
                 Capsule()
                     .fill(tint)
@@ -1394,6 +1421,7 @@ where T.RawValue == String, T.AllCases: RandomAccessCollection {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -1412,10 +1440,11 @@ struct GeminiPillButton: View {
                 Text(title)
                     .font(.system(size: 11, weight: .bold))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.78)
             }
             .foregroundStyle(.black.opacity(0.85))
             .padding(.horizontal, 12)
-            .frame(height: 26)
+            .frame(maxWidth: .infinity, minHeight: 30)
             .background(
                 Capsule()
                     .fill(tint)
@@ -1424,6 +1453,7 @@ struct GeminiPillButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.5 : 1.0)
     }

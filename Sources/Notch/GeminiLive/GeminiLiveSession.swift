@@ -22,6 +22,7 @@ final class GeminiLiveSession: @unchecked Sendable {
     var onUserTranscript: (@Sendable (String) -> Void)?
     var onModelTranscript: (@Sendable (String) -> Void)?
     var onTurnComplete: (@Sendable () -> Void)?
+    var onFunctionStarted: (@Sendable (_ name: String, _ args: [String: Any]) -> Void)?
     var onFunctionExecuted: (@Sendable (_ name: String, _ args: [String: Any], _ result: [String: Any]) -> Void)?
     var onShouldAutoApproveExec: (@Sendable (_ command: String, _ workingDirectory: String?) -> Bool)?
     var onExecApprovalRequested: (@Sendable (ExecApprovalRequest) -> Void)?

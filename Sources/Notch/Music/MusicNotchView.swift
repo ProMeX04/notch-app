@@ -42,9 +42,6 @@ struct MusicNotchView: View {
             return .talk
         }
 
-        if pomodoro.showCompactIndicator {
-            return .pomodoro
-        }
 
         if playback.showCompactLiveActivity {
             return .music

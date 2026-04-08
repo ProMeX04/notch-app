@@ -1,23 +1,35 @@
 import Foundation
+import NotchTooling
 
 extension GeminiLiveSession {
+    private var workspaceCodingTools: GeminiWorkspaceCodingTools {
+        GeminiWorkspaceCodingTools(
+            workspaceRoot: GeminiLiveStoragePaths.workspaceRoot,
+            builtInSkillsDirectory: GeminiLiveStoragePaths.builtInSkillsDirectory
+        )
+    }
+
     func sendFunctionResponse(id: String, name: String, result: [String: Any]) {
-        let responsePayload: [String: Any] = [
-            "toolResponse": [
-                "functionResponses": [
-                    [
-                        "id": id,
-                        "name": name,
-                        "response": [
-                            "result": result
-                        ]
-                    ]
-                ]
-            ]
-        ]
+        let responsePayload = GeminiLiveToolResponsePayloadBuilder.buildToolResponsePayload(
+            id: id,
+            name: name,
+            result: result
+        )
+        let transportResult = GeminiLiveToolResponsePayloadBuilder.transportResult(
+            from: result,
+            toolName: name
+        )
 
         sendJSONObject(responsePayload)
-        GeminiLiveToolLogging.debug("tool response sent for \(name): \(result)")
+        GeminiLiveToolLogging.debug("tool response sent for \(name): \(transportResult)")
+    }
+
+    func sanitizedToolResultForCallback(name: String, result: [String: Any]) -> [String: Any] {
+        GeminiLiveToolResponsePayloadBuilder.transportResult(from: result, toolName: name)
+    }
+
+    func notifyFunctionExecuted(name: String, args: [String: Any], result: [String: Any]) {
+        onFunctionExecuted?(name, args, sanitizedToolResultForCallback(name: name, result: result))
     }
 
     // MARK: - Web Search
@@ -32,7 +44,7 @@ extension GeminiLiveSession {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             let result: [String: Any] = ["success": false, "error": "Search query is empty."]
-            onFunctionExecuted?(name, args, result)
+            notifyFunctionExecuted(name: name, args: args, result: result)
             sendFunctionResponse(id: id, name: name, result: result)
             return
         }
@@ -58,7 +70,7 @@ extension GeminiLiveSession {
             !apiKey.isEmpty
         else {
             let result: [String: Any] = ["success": false, "error": "Gemini API key is missing."]
-            onFunctionExecuted?(name, args, result)
+            notifyFunctionExecuted(name: name, args: args, result: result)
             sendFunctionResponse(id: id, name: name, result: result)
             return
         }
@@ -66,7 +78,7 @@ extension GeminiLiveSession {
         let model = "gemini-2.5-flash-lite"
         guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent") else {
             let result: [String: Any] = ["success": false, "error": "Couldn't build Gemini search URL."]
-            onFunctionExecuted?(name, args, result)
+            notifyFunctionExecuted(name: name, args: args, result: result)
             sendFunctionResponse(id: id, name: name, result: result)
             return
         }
@@ -86,7 +98,7 @@ extension GeminiLiveSession {
 
         guard let body = try? JSONSerialization.data(withJSONObject: payload) else {
             let result: [String: Any] = ["success": false, "error": "Couldn't encode Gemini search payload."]
-            onFunctionExecuted?(name, args, result)
+            notifyFunctionExecuted(name: name, args: args, result: result)
             sendFunctionResponse(id: id, name: name, result: result)
             return
         }
@@ -103,21 +115,21 @@ extension GeminiLiveSession {
 
             if let error {
                 let result: [String: Any] = ["success": false, "error": error.localizedDescription]
-                self.onFunctionExecuted?(name, args, result)
+                self.notifyFunctionExecuted(name: name, args: args, result: result)
                 self.sendFunctionResponse(id: id, name: name, result: result)
                 return
             }
 
             guard let data else {
                 let result: [String: Any] = ["success": false, "error": "No response from Gemini search."]
-                self.onFunctionExecuted?(name, args, result)
+                self.notifyFunctionExecuted(name: name, args: args, result: result)
                 self.sendFunctionResponse(id: id, name: name, result: result)
                 return
             }
 
             guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 let result: [String: Any] = ["success": false, "error": "Gemini search returned invalid JSON."]
-                self.onFunctionExecuted?(name, args, result)
+                self.notifyFunctionExecuted(name: name, args: args, result: result)
                 self.sendFunctionResponse(id: id, name: name, result: result)
                 return
             }
@@ -125,7 +137,7 @@ extension GeminiLiveSession {
             if let error = json["error"] as? [String: Any] {
                 let message = (error["message"] as? String) ?? (error["status"] as? String) ?? "Unknown Gemini search error."
                 let result: [String: Any] = ["success": false, "error": message]
-                self.onFunctionExecuted?(name, args, result)
+                self.notifyFunctionExecuted(name: name, args: args, result: result)
                 self.sendFunctionResponse(id: id, name: name, result: result)
                 return
             }
@@ -163,7 +175,7 @@ extension GeminiLiveSession {
                 "renderedContent": renderedContent,
                 "webSearchQueries": webSearchQueries
             ]
-            self.onFunctionExecuted?(name, args, result)
+            self.notifyFunctionExecuted(name: name, args: args, result: result)
             self.sendFunctionResponse(id: id, name: name, result: result)
         }.resume()
     }
@@ -245,249 +257,44 @@ extension GeminiLiveSession {
         return groundingMetadata?["webSearchQueries"] as? [String] ?? []
     }
 
-    func executeReadFile(path: String) -> [String: Any] {
-        guard let fileURL = resolvedReadableToolPath(path) else {
-            return readPathErrorResult(path: path)
-        }
-
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: fileURL.path, isDirectory: &isDirectory) else {
-            return ["success": false, "error": "File does not exist: \(path)"]
-        }
-        guard !isDirectory.boolValue else {
-            return ["success": false, "error": "Path is a directory, not a file: \(path)"]
-        }
-
-        do {
-            var encoding = String.Encoding.utf8
-            let content = try String(contentsOf: fileURL, usedEncoding: &encoding)
-            return [
-                "success": true,
-                "path": GeminiLiveStoragePaths.workspaceRelativePath(for: fileURL),
-                "absolutePath": fileURL.path,
-                "content": truncatedToolOutput(content, limit: 20_000),
-                "encoding": encodingName(encoding)
-            ]
-        } catch {
-            return ["success": false, "error": "Couldn't read file: \(error.localizedDescription)"]
-        }
+    func executeReadFile(path: String, offset: Int? = nil, limit: Int? = nil) -> [String: Any] {
+        workspaceCodingTools.executeReadFile(path: path, offset: offset, limit: limit)
     }
 
     func executeWriteFile(path: String, content: String) -> [String: Any] {
-        guard let fileURL = resolvedWorkspaceToolPath(path) else {
-            return workspacePathErrorResult(path: path)
-        }
-
-        do {
-            try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try content.write(to: fileURL, atomically: true, encoding: .utf8)
-            return [
-                "success": true,
-                "path": GeminiLiveStoragePaths.workspaceRelativePath(for: fileURL),
-                "absolutePath": fileURL.path,
-                "bytes": content.lengthOfBytes(using: .utf8),
-                "message": "File written."
-            ]
-        } catch {
-            return ["success": false, "error": "Couldn't write file: \(error.localizedDescription)"]
-        }
+        workspaceCodingTools.executeWriteFile(path: path, content: content)
     }
 
-    func executeFindFiles(pattern: String, baseDirectory: String?, maxResults: Int?) -> [String: Any] {
-        let trimmedPattern = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedPattern.isEmpty else {
-            return ["success": false, "error": "Pattern is empty."]
-        }
-
-        let baseURL: URL
-        if let baseDirectory, !baseDirectory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            guard let resolvedBase = resolvedWorkspaceToolPath(baseDirectory, directoryHint: true) else {
-                return workspacePathErrorResult(path: baseDirectory)
-            }
-            baseURL = resolvedBase
-        } else {
-            baseURL = GeminiLiveStoragePaths.workspaceRoot
-        }
-
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: baseURL.path, isDirectory: &isDirectory), isDirectory.boolValue else {
-            return ["success": false, "error": "Base directory does not exist: \(baseDirectory ?? ".")"]
-        }
-
-        let limit = min(max(maxResults ?? 20, 1), 100)
-        let normalizedPattern = trimmedPattern.lowercased()
-        var matches: [[String: Any]] = []
-
-        if normalizedPattern == "." || GeminiLiveStoragePaths.workspaceRelativePath(for: baseURL).lowercased().contains(normalizedPattern) {
-            matches.append([
-                "path": GeminiLiveStoragePaths.workspaceRelativePath(for: baseURL),
-                "type": "directory"
-            ])
-        }
-
-        if let enumerator = FileManager.default.enumerator(
-            at: baseURL,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) {
-            for case let itemURL as URL in enumerator {
-                let relativePath = GeminiLiveStoragePaths.workspaceRelativePath(for: itemURL)
-                let candidate = relativePath.lowercased()
-                let name = itemURL.lastPathComponent.lowercased()
-                guard candidate.contains(normalizedPattern) || name.contains(normalizedPattern) else { continue }
-
-                let values = try? itemURL.resourceValues(forKeys: [.isDirectoryKey])
-                matches.append([
-                    "path": relativePath,
-                    "type": values?.isDirectory == true ? "directory" : "file"
-                ])
-                if matches.count >= limit { break }
-            }
-        }
-
-        return [
-            "success": true,
-            "pattern": trimmedPattern,
-            "baseDirectory": GeminiLiveStoragePaths.workspaceRelativePath(for: baseURL),
-            "matches": matches,
-            "count": matches.count
-        ]
+    func executeLs(path: String?, limit: Int?) -> [String: Any] {
+        workspaceCodingTools.executeLs(path: path, limit: limit)
     }
 
-    func executeGrep(pattern: String, path: String?, maxResults: Int?) -> [String: Any] {
-        let trimmedPattern = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedPattern.isEmpty else {
-            return ["success": false, "error": "Pattern is empty."]
-        }
-
-        let targetURL: URL
-        if let path, !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            guard let resolvedTarget = resolvedWorkspaceToolPath(path) else {
-                return workspacePathErrorResult(path: path)
-            }
-            targetURL = resolvedTarget
-        } else {
-            targetURL = GeminiLiveStoragePaths.workspaceRoot
-        }
-
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: targetURL.path, isDirectory: &isDirectory) else {
-            return ["success": false, "error": "Path does not exist: \(path ?? ".")"]
-        }
-
-        let limit = min(max(maxResults ?? 20, 1), 100)
-        let regex = try? NSRegularExpression(pattern: trimmedPattern, options: [.caseInsensitive])
-        let fallbackNeedle = regex == nil ? trimmedPattern.lowercased() : nil
-        var matches: [[String: Any]] = []
-
-        let searchURLs: [URL]
-        if isDirectory.boolValue {
-            let enumerator = FileManager.default.enumerator(
-                at: targetURL,
-                includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey],
-                options: [.skipsHiddenFiles]
-            )
-            searchURLs = (enumerator?.allObjects as? [URL] ?? []).filter { url in
-                let values = try? url.resourceValues(forKeys: [.isDirectoryKey])
-                return values?.isDirectory != true
-            }
-        } else {
-            searchURLs = [targetURL]
-        }
-
-        outerLoop: for fileURL in searchURLs {
-            let relativePath = GeminiLiveStoragePaths.workspaceRelativePath(for: fileURL)
-            guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
-
-            var lineNumber = 0
-            content.enumerateLines { line, stop in
-                lineNumber += 1
-                let hasMatch: Bool
-                if let regex {
-                    let range = NSRange(line.startIndex..<line.endIndex, in: line)
-                    hasMatch = regex.firstMatch(in: line, options: [], range: range) != nil
-                } else if let fallbackNeedle {
-                    hasMatch = line.lowercased().contains(fallbackNeedle)
-                } else {
-                    hasMatch = false
-                }
-
-                guard hasMatch else { return }
-                matches.append([
-                    "path": relativePath,
-                    "line": lineNumber,
-                    "preview": self.truncatedToolOutput(line, limit: 240)
-                ])
-                if matches.count >= limit {
-                    stop = true
-                }
-            }
-
-            if matches.count >= limit {
-                break outerLoop
-            }
-        }
-
-        return [
-            "success": true,
-            "pattern": trimmedPattern,
-            "path": GeminiLiveStoragePaths.workspaceRelativePath(for: targetURL),
-            "matches": matches,
-            "count": matches.count,
-            "mode": regex == nil ? "plain-text" : "regex"
-        ]
+    func executeFind(pattern: String, path: String?, limit: Int?) -> [String: Any] {
+        workspaceCodingTools.executeFind(pattern: pattern, path: path, limit: limit)
     }
 
-    func executeEditFile(path: String, oldText: String, newText: String, replaceAll: Bool) -> [String: Any] {
-        guard let fileURL = resolvedWorkspaceToolPath(path) else {
-            return workspacePathErrorResult(path: path)
-        }
+    func executeGrep(
+        pattern: String,
+        path: String?,
+        glob: String? = nil,
+        ignoreCase: Bool = false,
+        literal: Bool = false,
+        context: Int = 0,
+        limit: Int = 100
+    ) -> [String: Any] {
+        workspaceCodingTools.executeGrep(
+            pattern: pattern,
+            path: path,
+            glob: glob,
+            ignoreCase: ignoreCase,
+            literal: literal,
+            context: context,
+            limit: limit
+        )
+    }
 
-        guard !oldText.isEmpty else {
-            return ["success": false, "error": "oldText is empty."]
-        }
-
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: fileURL.path, isDirectory: &isDirectory) else {
-            return ["success": false, "error": "File does not exist: \(path)"]
-        }
-        guard !isDirectory.boolValue else {
-            return ["success": false, "error": "Path is a directory, not a file: \(path)"]
-        }
-
-        do {
-            let original = try String(contentsOf: fileURL, encoding: .utf8)
-            let matchCount = original.components(separatedBy: oldText).count - 1
-            guard matchCount > 0 else {
-                return ["success": false, "error": "oldText was not found in the file."]
-            }
-            if !replaceAll && matchCount > 1 {
-                return ["success": false, "error": "oldText appears \(matchCount) times. Retry with replaceAll: true or provide a more specific match."]
-            }
-
-            let updated: String
-            let replacements: Int
-            if replaceAll {
-                updated = original.replacingOccurrences(of: oldText, with: newText)
-                replacements = matchCount
-            } else if let range = original.range(of: oldText) {
-                updated = original.replacingCharacters(in: range, with: newText)
-                replacements = 1
-            } else {
-                return ["success": false, "error": "oldText was not found in the file."]
-            }
-
-            try updated.write(to: fileURL, atomically: true, encoding: .utf8)
-            return [
-                "success": true,
-                "path": GeminiLiveStoragePaths.workspaceRelativePath(for: fileURL),
-                "absolutePath": fileURL.path,
-                "replacements": replacements,
-                "message": "File edited."
-            ]
-        } catch {
-            return ["success": false, "error": "Couldn't edit file: \(error.localizedDescription)"]
-        }
+    func executeEditFile(path: String, edits: [GeminiExactTextEdit]) -> [String: Any] {
+        workspaceCodingTools.executeEditFile(path: path, edits: edits)
     }
 
     func executeExec(command: String, workingDirectory: String?, timeoutSeconds: Double?) -> [String: Any] {

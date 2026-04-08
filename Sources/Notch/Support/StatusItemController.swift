@@ -318,7 +318,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func updatePomodoroStatusItem() {
         let pomo = windowController.pomodoroViewModel
 
-        if pomo.hasActiveSession {
+        if pomo.isRunning {
             if pomodoroStatusItem == nil {
                 let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
                 if let btn = item.button {
@@ -376,23 +376,37 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func refreshGeminiToolStatusItem(toast: ToolActionToast) {
         guard let btn = geminiToolStatusItem?.button else { return }
-        let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
-        let symbol = NSImage(systemSymbolName: toast.icon, accessibilityDescription: toast.label)?
-            .withSymbolConfiguration(config)
-        if let symbol {
-            symbol.isTemplate = true
-            btn.image = symbol
-        } else {
-            let fallback = NSImage(systemSymbolName: "wrench.and.screwdriver", accessibilityDescription: toast.label)
-            fallback?.isTemplate = true
-            btn.image = fallback
-        }
-        let maxLen = 32
+        let maxLen = 24
         let truncated =
             toast.label.count > maxLen ? String(toast.label.prefix(maxLen)) + "…" : toast.label
-        btn.title = truncated
-        btn.imagePosition = .imageLeading
+        let symbolName = NSImage(systemSymbolName: toast.icon, accessibilityDescription: toast.label) == nil
+            ? "wrench.and.screwdriver"
+            : toast.icon
+        btn.image = generateTimerImage(
+            symbolName: symbolName,
+            text: truncated,
+            color: geminiToolStatusColor(for: toast)
+        )
+        btn.title = ""
+        btn.imagePosition = .imageOnly
         btn.toolTip = toast.label
+    }
+
+    private func geminiToolStatusColor(for toast: ToolActionToast) -> NSColor {
+        switch toast.icon {
+        case "exclamationmark.triangle":
+            return .systemRed
+        case "terminal":
+            return .systemGreen
+        case "square.and.pencil", "slider.horizontal.below.rectangle":
+            return .systemOrange
+        case "folder", "doc.text":
+            return .systemTeal
+        case "magnifyingglass", "text.magnifyingglass":
+            return .systemBlue
+        default:
+            return .systemBlue
+        }
     }
 
     @objc

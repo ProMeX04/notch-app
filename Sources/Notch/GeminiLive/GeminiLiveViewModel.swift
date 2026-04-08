@@ -363,10 +363,11 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     func selectSystemPrompt(id: String) {
-        guard systemPromptPresets.contains(where: { $0.id == id }) else { return }
+        guard let existingIndex = systemPromptPresets.firstIndex(where: { $0.id == id }) else { return }
         guard selectedSystemPromptID != id else { return }
         selectedSystemPromptID = id
-        let active = selectedSystemPromptPreset
+        systemPromptPresets[existingIndex].lastUsedAt = Date()
+        let active = systemPromptPresets[existingIndex]
         _thinkingLevel = Published(initialValue: active.thinkingEnum)
         _selectedVoice = Published(initialValue: active.voiceEnum)
         _enabledTools = Published(initialValue: active.toolSet)
@@ -388,7 +389,8 @@ final class GeminiLiveViewModel: ObservableObject {
             content: "",
             enabledTools: [],
             voice: GeminiVoice.kore.rawValue,
-            thinkingLevel: GeminiThinkingLevel.off.rawValue
+            thinkingLevel: GeminiThinkingLevel.off.rawValue,
+            lastUsedAt: Date()
         )
         systemPromptPresets.append(preset)
         selectedSystemPromptID = preset.id
@@ -466,6 +468,7 @@ final class GeminiLiveViewModel: ObservableObject {
             let resolvedTitle = trimmedTitle.isEmpty ? systemPromptPresets[existingIndex].title : trimmedTitle
             systemPromptPresets[existingIndex].title = resolvedTitle
             systemPromptPresets[existingIndex].content = trimmedContent
+            systemPromptPresets[existingIndex].lastUsedAt = Date()
             // Tools are managed separately; don't touch them here.
             selectedSystemPromptID = id
         } else {
@@ -477,7 +480,8 @@ final class GeminiLiveViewModel: ObservableObject {
                 content: trimmedContent,
                 enabledTools: [],
                 voice: GeminiVoice.kore.rawValue,
-                thinkingLevel: GeminiThinkingLevel.off.rawValue
+                thinkingLevel: GeminiThinkingLevel.off.rawValue,
+                lastUsedAt: Date()
             )
             systemPromptPresets.append(preset)
             selectedSystemPromptID = preset.id
@@ -596,19 +600,22 @@ final class GeminiLiveViewModel: ObservableObject {
             lines.append("- Use `exec` for local shell commands on this Mac, such as `curl`, `python3`, `jq`, or `git`. Commands default to `~/.notch/workspace`, and new commands may require approval.")
         }
         if effectiveTools.contains(.read) {
-            lines.append("- Use `read` to open files inside `~/.notch/workspace`, including `USER.md` for user profile details and `MEMORY.md` for broader durable notes, and to open built-in skill `SKILL.md` files via the exact `location` values listed in `<available_skills>`.")
+            lines.append("- Use `read` to examine files instead of `cat` or `sed`. It supports text files and common images, and uses `offset`/`limit` for large files.")
         }
         if effectiveTools.contains(.write) {
             lines.append("- Use `write` to create or overwrite text files inside `~/.notch/workspace`. Store stable user identity details in `USER.md` and broader durable notes in `MEMORY.md`.")
         }
+        if effectiveTools.contains(.ls) {
+            lines.append("- Use `ls` to inspect one directory quickly before guessing paths. It includes dotfiles and marks directories with `/`.")
+        }
         if effectiveTools.contains(.find) {
-            lines.append("- Use `find` when you need to locate a file or folder path before reading or editing it.")
+            lines.append("- Use `find` with glob patterns like `*.ts` or `src/**/*.json` when you need to locate files before reading or editing them.")
         }
         if effectiveTools.contains(.grep) {
             lines.append("- Use `grep` to search file contents before guessing where text lives.")
         }
         if effectiveTools.contains(.edit) {
-            lines.append("- Use `edit` for small precise replacements in an existing file instead of rewriting the whole file.")
+            lines.append("- Use `edit` for exact text replacements in one file, including multiple disjoint changes via `edits[]`, instead of rewriting the whole file.")
         }
 
         return lines.joined(separator: "\n")

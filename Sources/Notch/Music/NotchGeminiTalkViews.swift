@@ -87,6 +87,14 @@ enum GeminiPromptEditorMode: Equatable {
 private enum GeminiSetupViewMode: Equatable {
     case home
     case agentSettings
+    case agentSelection
+}
+
+private enum GeminiAgentSettingsTab: String, CaseIterable, Identifiable {
+    case prompt = "Profile"
+    case tools = "Tools"
+    case skills = "Skills"
+    var id: String { rawValue }
 }
 
 struct GeminiTalkPanelView: View {
@@ -95,6 +103,7 @@ struct GeminiTalkPanelView: View {
     
     @AppStorage("app_language") private var appLanguage: String = "English"
     @State private var setupViewMode: GeminiSetupViewMode = .home
+    @State private var settingsTab: GeminiAgentSettingsTab = .prompt
     @State private var promptEditorMode: GeminiPromptEditorMode?
     @State private var promptDraftTitle = ""
     @State private var promptDraftContent = ""
@@ -197,6 +206,8 @@ struct GeminiTalkPanelView: View {
         if case let .edit(id) = promptEditorMode, id == deletedPromptID {
             cancelPromptEditing()
         }
+
+        setupViewMode = .home
     }
 
     private func requestDeleteSelectedPrompt() {
@@ -249,7 +260,7 @@ struct GeminiTalkPanelView: View {
             return
         }
 
-        if setupViewMode == .agentSettings {
+        if setupViewMode == .agentSettings || setupViewMode == .agentSelection {
             headerAccessoryController.clear()
             return
         }
@@ -396,22 +407,8 @@ struct GeminiTalkPanelView: View {
                             case .home:
                                 HStack(alignment: .top, spacing: 28) {
                                     VStack(spacing: 4) {
-                                        Menu {
-                                            ForEach(gemini.systemPromptPresets) { prompt in
-                                                Button {
-                                                    gemini.selectSystemPrompt(id: prompt.id)
-                                                } label: {
-                                                    if prompt.id == gemini.selectedSystemPromptID {
-                                                        Label(prompt.title, systemImage: "checkmark")
-                                                    } else {
-                                                        Text(prompt.title)
-                                                    }
-                                                }
-                                            }
-                                            Divider()
-                                            Button(action: beginCreatingAgent) {
-                                                Label(Localization.get("New Agent", lang: appLanguage), systemImage: "plus")
-                                            }
+                                        Button {
+                                            setupViewMode = .agentSelection
                                         } label: {
                                             GeminiAgentHomeAvatarFigure(
                                                 statusColor: statusColor,
@@ -432,122 +429,175 @@ struct GeminiTalkPanelView: View {
                                     }
                                     .frame(width: 130)
 
-                                    VStack(alignment: .leading, spacing: 12) {
-                                        GeminiActionButton(
-                                            title: Localization.get("Settings", lang: appLanguage),
-                                            icon: "slider.horizontal.3",
-                                            tint: statusColor
-                                        ) {
-                                            setupViewMode = .agentSettings
+                                    VStack(alignment: .leading, spacing: 10) {
+                                        HStack(spacing: 8) {
+                                            GeminiPillPicker(
+                                                title: "Voice",
+                                                icon: "waveform",
+                                                tint: Color(nsColor: .systemYellow),
+                                                selection: $gemini.selectedVoice
+                                            )
+                                            GeminiPillPicker(
+                                                title: "Thinking",
+                                                icon: "brain.head.profile",
+                                                tint: Color(nsColor: .systemYellow),
+                                                selection: $gemini.thinkingLevel
+                                            )
                                         }
-                                        .frame(maxWidth: .infinity)
 
-                                        GeminiActionButton(
-                                            title: Localization.get(gemini.connectionButtonTitle, lang: appLanguage),
-                                            icon: gemini.connectionButtonIcon,
-                                            tint: statusColor
-                                        ) {
-                                            gemini.toggleConnection()
+                                        HStack(spacing: 8) {
+                                            GeminiPillButton(
+                                                title: Localization.get("Settings", lang: appLanguage),
+                                                icon: "slider.horizontal.3",
+                                                tint: Color(nsColor: .systemYellow)
+                                            ) {
+                                                setupViewMode = .agentSettings
+                                            }
+
+                                            GeminiPillButton(
+                                                title: Localization.get(gemini.connectionButtonTitle, lang: appLanguage),
+                                                icon: gemini.connectionButtonIcon,
+                                                tint: Color(nsColor: .systemYellow),
+                                                isDisabled: gemini.connectionState == .connecting
+                                            ) {
+                                                gemini.toggleConnection()
+                                            }
                                         }
-                                        .disabled(gemini.connectionState == .connecting)
-                                        .frame(maxWidth: .infinity)
                                     }
-                                    .padding(.top, 20)
-                                    .frame(maxWidth: 220)
+                                    .padding(.top, 14)
+                                    .frame(maxWidth: 320)
 
                                     Spacer(minLength: 0)
                                 }
                                 .padding(.leading, 12)
                                 .frame(maxWidth: .infinity, alignment: .topLeading)
 
-                            case .agentSettings:
-                                VStack(spacing: 12) {
-                                    HStack(alignment: .top, spacing: 12) {
-                                        VStack(alignment: .leading, spacing: 10) {
-                                            GeminiAgentSummaryCard(
-                                                statusColor: statusColor,
-                                                name: $agentNameDraft,
-                                                avatarSymbolName: selectedAgentAvatarSymbolName,
-                                                avatarImageURL: selectedAgentAvatarImageURL,
-                                                nameFieldFocus: $isAgentNameFieldFocused,
-                                                onSubmitName: saveAgentNameDraft,
-                                                onChooseAvatar: { gemini.chooseSelectedSystemPromptAvatarImage() },
-                                                onClearAvatar: { gemini.clearSelectedSystemPromptAvatarImage() }
-                                            )
+                            case .agentSelection:
+                                GeminiAgentSelectionView(
+                                    prompts: gemini.systemPromptPresets.sorted { a, b in
+                                        let dateA = a.lastUsedAt ?? Date.distantPast
+                                        let dateB = b.lastUsedAt ?? Date.distantPast
+                                        if dateA != dateB {
+                                            return dateA > dateB
                                         }
-                                        .frame(width: 188, alignment: .topLeading)
-
-                                        VStack(alignment: .leading, spacing: 10) {
-                                            HStack(alignment: .top, spacing: 10) {
-                                                VStack(alignment: .leading, spacing: 10) {
-                                                    GeminiDropdownPicker(
-                                                        label: Localization.get("Voice", lang: appLanguage),
-                                                        leadingIcon: "waveform",
-                                                        selection: $gemini.selectedVoice
+                                        return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+                                    },
+                                    selectedID: gemini.selectedSystemPromptID,
+                                    statusColor: statusColor,
+                                    onSelect: { id in
+                                        gemini.selectSystemPrompt(id: id)
+                                        setupViewMode = .home
+                                    },
+                                    onCreate: {
+                                        beginCreatingAgent()
+                                    },
+                                    onDone: {
+                                        setupViewMode = .home
+                                    }
+                                )
+                                .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity), removal: .move(edge: .leading).combined(with: .opacity)))
+                            case .agentSettings:
+                                HStack(alignment: .top, spacing: 16) {
+                                    // Sidebar
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        ForEach(GeminiAgentSettingsTab.allCases) { tab in
+                                            Button {
+                                                settingsTab = tab
+                                            } label: {
+                                                Text(Localization.get(tab.rawValue, lang: appLanguage))
+                                                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                                                    .foregroundStyle(settingsTab == tab ? .black.opacity(0.85) : .white.opacity(0.85))
+                                                    .padding(.horizontal, 12)
+                                                    .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
+                                                    .background(
+                                                        Group {
+                                                            if settingsTab == tab {
+                                                                Capsule()
+                                                                    .fill(Color(nsColor: .systemYellow))
+                                                                    .shadow(color: .black.opacity(0.1), radius: 1, x: 0, y: 1)
+                                                            } else {
+                                                                Capsule().fill(Color.white.opacity(0.1))
+                                                            }
+                                                        }
                                                     )
-                                                    GeminiDropdownPicker(
-                                                        label: Localization.get("Thinking", lang: appLanguage),
-                                                        leadingIcon: "brain.head.profile",
-                                                        selection: $gemini.thinkingLevel
-                                                    )
-                                                }
-                                                .frame(maxWidth: .infinity, alignment: .leading)
-
-                                                VStack(alignment: .leading, spacing: 10) {
-                                                    GeminiToolsPicker(
-                                                        selection: $gemini.enabledTools,
-                                                        isDisabled: !gemini.canManageSkills
-                                                    )
-                                                    GeminiSkillsPicker(
-                                                        installedSkills: gemini.installedSkills,
-                                                        selection: $gemini.enabledSkillNames,
-                                                        isDisabled: !gemini.canManageSkills
-                                                    )
-                                                }
-                                                .frame(maxWidth: .infinity, alignment: .leading)
                                             }
+                                            .buttonStyle(.plain)
+                                        }
 
-                                            HStack(alignment: .top, spacing: 10) {
-                                                GeminiSkillManagementMenu(
-                                                    installedSkills: gemini.userInstalledSkills,
+                                        Button {
+                                            setupViewMode = .home
+                                        } label: {
+                                            Text(Localization.get("Done", lang: appLanguage))
+                                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                                .foregroundStyle(.white)
+                                                .frame(maxWidth: .infinity, minHeight: 28, alignment: .center)
+                                                .background(
+                                                    Capsule()
+                                                        .fill(Color(nsColor: .systemBlue))
+                                                        .shadow(color: .black.opacity(0.1), radius: 1, x: 0, y: 1)
+                                                )
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .frame(width: 140, alignment: .top)
+
+                                    // Content
+                                    ScrollView(showsIndicators: false) {
+                                        VStack(alignment: .leading, spacing: 16) {
+                                            switch settingsTab {
+                                            case .prompt:
+                                                VStack(alignment: .leading, spacing: 16) {
+                                                    GeminiAgentSummaryCard(
+                                                        statusColor: statusColor,
+                                                        name: $agentNameDraft,
+                                                        avatarSymbolName: selectedAgentAvatarSymbolName,
+                                                        avatarImageURL: selectedAgentAvatarImageURL,
+                                                        nameFieldFocus: $isAgentNameFieldFocused,
+                                                        onSubmitName: saveAgentNameDraft,
+                                                        onChooseAvatar: { gemini.chooseSelectedSystemPromptAvatarImage() },
+                                                        onClearAvatar: { gemini.clearSelectedSystemPromptAvatarImage() }
+                                                    )
+                                                    
+                                                    HStack(spacing: 8) {
+                                                        GeminiPillButton(
+                                                            title: Localization.get("Prompt", lang: appLanguage),
+                                                            icon: "pencil",
+                                                            tint: Color(nsColor: .systemYellow)
+                                                        ) {
+                                                            beginEditingSelectedPrompt()
+                                                        }
+
+                                                        GeminiPillButton(
+                                                            title: Localization.get("Delete", lang: appLanguage),
+                                                            icon: "trash",
+                                                            tint: Color(nsColor: .systemRed).opacity(0.8),
+                                                            isDisabled: !gemini.canDeleteSelectedSystemPrompt
+                                                        ) {
+                                                            requestDeleteSelectedPrompt()
+                                                        }
+                                                    }
+                                                }
+
+                                            case .tools:
+                                                GeminiToolsPicker(
+                                                    selection: $gemini.enabledTools,
+                                                    isDisabled: !gemini.canManageSkills
+                                                )
+
+                                            case .skills:
+                                                GeminiSkillsPicker(
+                                                    installedSkills: gemini.installedSkills,
+                                                    userSkillNames: Set(gemini.userInstalledSkills.map(\.metadata.name)),
+                                                    selection: $gemini.enabledSkillNames,
                                                     isDisabled: !gemini.canManageSkills,
                                                     onImport: { gemini.importSkill() },
-                                                    onDelete: { gemini.deleteSkill(named: $0.metadata.name) }
+                                                    onDeleteName: { gemini.deleteSkill(named: $0) }
                                                 )
-                                                .frame(maxWidth: .infinity, alignment: .leading)
-
-                                                GeminiEditAgentButton(onEdit: beginEditingSelectedPrompt)
-                                                    .frame(maxWidth: .infinity, alignment: .leading)
                                             }
-
-                                            HStack(spacing: 10) {
-                                                Button(role: .destructive, action: requestDeleteSelectedPrompt) {
-                                                    GeminiMenuFieldRow(
-                                                        leadingIcon: "trash",
-                                                        title: Localization.get("Delete Agent", lang: appLanguage),
-                                                        trailing: .none,
-                                                        isDestructive: true
-                                                    )
-                                                }
-                                                .buttonStyle(.plain)
-                                                .disabled(!gemini.canDeleteSelectedSystemPrompt)
-
-                                                Button {
-                                                    setupViewMode = .home
-                                                } label: {
-                                                    GeminiMenuFieldRow(
-                                                        leadingIcon: "checkmark.circle",
-                                                        title: Localization.get("Done", lang: appLanguage),
-                                                        trailing: .none
-                                                    )
-                                                }
-                                                .buttonStyle(.plain)
-                                            }
-                                            .frame(maxWidth: .infinity, alignment: .leading)
                                         }
-                                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                                        .padding(.trailing, 4)
                                     }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                                 }
                             }
                         } else {
@@ -892,68 +942,51 @@ struct GeminiAgentSummaryCard: View {
     @AppStorage("app_language") private var appLanguage: String = "English"
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                Button(action: onChooseAvatar) {
-                    ZStack {
-                        Circle()
-                            .fill(statusColor.opacity(0.14))
-
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        statusColor.opacity(0.84),
-                                        Color(nsColor: .systemIndigo).opacity(0.58)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
+        HStack(spacing: 16) {
+            Button(action: onChooseAvatar) {
+                ZStack {
+                    Circle()
+                        .fill(statusColor.opacity(0.14))
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    statusColor.opacity(0.84),
+                                    Color(nsColor: .systemIndigo).opacity(0.58)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
                             )
-                            .padding(4)
-
-                        GeminiAgentAvatarArtwork(
-                            imageURL: avatarImageURL,
-                            symbolName: avatarSymbolName,
-                            symbolFont: .system(size: 15, weight: .medium),
-                            size: 34
                         )
+                        .padding(4)
+                    GeminiAgentAvatarArtwork(
+                        imageURL: avatarImageURL,
+                        symbolName: avatarSymbolName,
+                        symbolFont: .system(size: 20, weight: .medium),
+                        size: 48
+                    )
                 }
-                .frame(width: 42, height: 42)
+                .frame(width: 64, height: 64)
                 .contentShape(Circle())
             }
             .buttonStyle(.plain)
 
-                TextField(Localization.get("Name", lang: appLanguage), text: $name)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(Color.white.opacity(0.05))
-                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                    }
-                    .focused(nameFieldFocus)
-                    .onSubmit(onSubmitName)
-            }
-
-            GeminiSecondaryButton(title: Localization.get("Change Photo", lang: appLanguage), action: onChooseAvatar)
-            GeminiSecondaryButton(title: Localization.get("Clear", lang: appLanguage), action: onClearAvatar)
-                .disabled(avatarImageURL == nil)
+            TextField(Localization.get("Name", lang: appLanguage), text: $name)
+                .textFieldStyle(.plain)
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color.white.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color(nsColor: .systemYellow).opacity(0.2), lineWidth: 1)
+                }
+                .focused(nameFieldFocus)
+                .onSubmit(onSubmitName)
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(0.04))
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-        }
+        .padding(.vertical, 4)
     }
 }
 
@@ -1321,6 +1354,81 @@ where T.RawValue == String, T.AllCases: RandomAccessCollection {
     }
 }
 
+struct GeminiPillPicker<T: RawRepresentable & CaseIterable & Hashable>: View
+where T.RawValue == String, T.AllCases: RandomAccessCollection {
+    let title: String
+    let icon: String // e.g. "waveform"
+    let tint: Color // e.g. Color.yellow
+    @Binding var selection: T
+    @AppStorage("app_language") private var appLanguage: String = "English"
+
+    var body: some View {
+        Menu {
+            ForEach(Array(T.allCases), id: \.self) { item in
+                Button {
+                    selection = item
+                } label: {
+                    if item == selection {
+                        Label(Localization.get(item.rawValue, lang: appLanguage), systemImage: "checkmark")
+                    } else {
+                        Text(Localization.get(item.rawValue, lang: appLanguage))
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .bold))
+                Text("\(Localization.get(title, lang: appLanguage)): \(Localization.get(selection.rawValue, lang: appLanguage))")
+                    .font(.system(size: 11, weight: .bold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(.black.opacity(0.85))
+            .padding(.horizontal, 12)
+            .frame(height: 26)
+            .background(
+                Capsule()
+                    .fill(tint)
+                    .shadow(color: .black.opacity(0.1), radius: 1, x: 0, y: 1)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct GeminiPillButton: View {
+    let title: String
+    let icon: String
+    let tint: Color
+    var isDisabled: Bool = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .bold))
+                Text(title)
+                    .font(.system(size: 11, weight: .bold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(.black.opacity(0.85))
+            .padding(.horizontal, 12)
+            .frame(height: 26)
+            .background(
+                Capsule()
+                    .fill(tint)
+                    .shadow(color: .black.opacity(0.1), radius: 1, x: 0, y: 1)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .opacity(isDisabled ? 0.5 : 1.0)
+    }
+}
+
 struct GeminiToolsPicker: View {
     @Binding var selection: Set<GeminiTool>
     var lockedTools: Set<GeminiTool> = []
@@ -1348,50 +1456,113 @@ struct GeminiToolsPicker: View {
     }
 
     var body: some View {
-        Menu {
-            Button {
-                selection = allSelectableTools
-            } label: {
-                if hasAllToolsSelected {
-                    Label(Localization.get("All tools", lang: appLanguage), systemImage: "checkmark")
-                } else {
-                    Label(Localization.get("All tools", lang: appLanguage), systemImage: "checklist")
-                }
-            }
-
-            Divider()
-
-            ForEach(GeminiTool.coreCases) { tool in
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(Localization.get("Core Tools", lang: appLanguage))
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.4))
+                
+                Spacer()
+                
                 Button {
-                    guard !lockedTools.contains(tool) else { return }
-                    if selection.contains(tool) {
-                        selection.remove(tool)
+                    if hasAllToolsSelected {
+                        selection = []
                     } else {
-                        selection.insert(tool)
+                        selection = allSelectableTools
                     }
                 } label: {
-                    let isSelected = selection.contains(tool) || lockedTools.contains(tool)
-                    if isSelected {
-                        Label(Localization.get(tool.displayName, lang: appLanguage), systemImage: lockedTools.contains(tool) ? "lock.fill" : "checkmark")
-                    } else {
+                    Text(Localization.get(hasAllToolsSelected ? "Disable All" : "Enable All", lang: appLanguage))
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Color(nsColor: .systemYellow))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.bottom, 2)
+
+            LazyVGrid(columns: [
+                GridItem(.flexible(), spacing: 10),
+                GridItem(.flexible(), spacing: 10)
+            ], spacing: 10) {
+                ForEach(GeminiTool.coreCases) { tool in
+                    let isLocked = lockedTools.contains(tool)
+                    let isSelected = selection.contains(tool) || isLocked
+                    
+                    HStack(spacing: 8) {
+                        Image(systemName: tool.icon)
+                            .font(.system(size: 10, weight: .bold))
+                            .frame(width: 14)
+                            .foregroundStyle(isSelected ? Color(nsColor: .systemYellow) : .white.opacity(0.4))
+                        
                         Text(Localization.get(tool.displayName, lang: appLanguage))
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(isSelected ? .white : .white.opacity(0.6))
+                            .lineLimit(1)
+                        
+                        Spacer(minLength: 0)
+                        
+                        Toggle("", isOn: Binding(
+                            get: { isSelected },
+                            set: { newValue in
+                                guard !isLocked else { return }
+                                if newValue {
+                                    selection.insert(tool)
+                                } else {
+                                    selection.remove(tool)
+                                }
+                            }
+                        ))
+                        .toggleStyle(NotchSwitchStyle(tint: Color(nsColor: .systemYellow)))
+                        .disabled(isLocked || isDisabled)
+                    }
+                    .padding(8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(isSelected ? Color.white.opacity(0.06) : Color.white.opacity(0.03))
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(isSelected ? Color(nsColor: .systemYellow).opacity(0.15) : Color.clear, lineWidth: 1)
                     }
                 }
-                .disabled(lockedTools.contains(tool))
             }
-        } label: {
-            GeminiMenuFieldRow(leadingIcon: "slider.horizontal.3", title: summaryText)
         }
-        .buttonStyle(.plain)
-        .disabled(isDisabled)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
+    }
+}
+
+struct NotchSwitchStyle: ToggleStyle {
+    var tint: Color = Color.blue
+
+    func makeBody(configuration: Configuration) -> some View {
+        HStack {
+            configuration.label
+            Spacer()
+            Rectangle()
+                .fill(configuration.isOn ? tint : Color.white.opacity(0.1))
+                .frame(width: 24, height: 14)
+                .overlay(
+                    Circle()
+                        .fill(.white)
+                        .padding(2)
+                        .offset(x: configuration.isOn ? 5 : -5)
+                )
+                .animation(.spring(response: 0.2, dampingFraction: 0.7), value: configuration.isOn)
+                .onTapGesture {
+                    configuration.isOn.toggle()
+                }
+                .cornerRadius(7)
+        }
     }
 }
 
 struct GeminiSkillsPicker: View {
     let installedSkills: [InstalledSkill]
+    var userSkillNames: Set<String> = []
     @Binding var selection: Set<String>
     var isDisabled = false
+    var onImport: (() -> Void)? = nil
+    var onDeleteName: ((String) -> Void)? = nil
+    
     @AppStorage("app_language") private var appLanguage: String = "English"
 
     private var allSkillNames: Set<String> {
@@ -1402,55 +1573,123 @@ struct GeminiSkillsPicker: View {
         !installedSkills.isEmpty && selection.isSuperset(of: allSkillNames)
     }
 
-    private var summaryText: String {
-        if selection.isEmpty {
-            return Localization.get("No skills", lang: appLanguage)
+    private var sortedSkills: [InstalledSkill] {
+        installedSkills.sorted { s1, s2 in
+            let isU1 = userSkillNames.contains(s1.metadata.name)
+            let isU2 = userSkillNames.contains(s2.metadata.name)
+            if isU1 != isU2 {
+                return isU1 // User skills first
+            }
+            return s1.metadata.name < s2.metadata.name
         }
-        if !installedSkills.isEmpty && selection.count == installedSkills.count {
-            return Localization.get("All skills", lang: appLanguage)
-        }
-        return "\(selection.count) \(Localization.get("skills", lang: appLanguage))"
     }
 
     var body: some View {
-        Menu {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text(Localization.get("Skills", lang: appLanguage))
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.4))
+                
+                Spacer()
+
+                if let onImport = onImport {
+                    Button(action: onImport) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus")
+                            Text(Localization.get("New Skill", lang: appLanguage))
+                        }
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Color.white.opacity(0.7))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(Color.white.opacity(0.1)))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isDisabled)
+                }
+                
+                Button {
+                    if hasAllSkillsSelected {
+                        selection = []
+                    } else {
+                        selection = allSkillNames
+                    }
+                } label: {
+                    Text(Localization.get(hasAllSkillsSelected ? "Disable All" : "Enable All", lang: appLanguage))
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Color(nsColor: .systemYellow))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.bottom, 2)
+
             if installedSkills.isEmpty {
                 Text(Localization.get("No skills installed", lang: appLanguage))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.4))
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 10)
             } else {
-                Button {
-                    selection = allSkillNames
-                } label: {
-                    if hasAllSkillsSelected {
-                        Label(Localization.get("All skills", lang: appLanguage), systemImage: "checkmark")
-                    } else {
-                        Label(Localization.get("All skills", lang: appLanguage), systemImage: "checklist")
-                    }
-                }
-
-                Divider()
-
-                ForEach(installedSkills, id: \.metadata.name) { skill in
-                    Button {
-                        if selection.contains(skill.metadata.name) {
-                            selection.remove(skill.metadata.name)
-                        } else {
-                            selection.insert(skill.metadata.name)
+                ForEach(sortedSkills, id: \.metadata.name) { skill in
+                    let isSelected = selection.contains(skill.metadata.name)
+                    let isUserSkill = userSkillNames.contains(skill.metadata.name)
+                    
+                    HStack(spacing: 8) {
+                        Image(systemName: skill.metadata.icon)
+                            .font(.system(size: 10, weight: .bold))
+                            .frame(width: 14)
+                            .foregroundStyle(isSelected ? Color(nsColor: .systemYellow) : .white.opacity(0.4))
+                        
+                        Text(skill.metadata.name)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(isSelected ? .white : .white.opacity(0.6))
+                        
+                        if isUserSkill {
+                            Text("User")
+                                .font(.system(size: 8, weight: .bold))
+                                .padding(.horizontal, 4)
+                                .background(Color.blue.opacity(0.2))
+                                .cornerRadius(4)
                         }
-                    } label: {
-                        if selection.contains(skill.metadata.name) {
-                            Label(skill.metadata.name, systemImage: "checkmark")
-                        } else {
-                            Label(skill.metadata.name, systemImage: skill.metadata.icon)
+
+                        Spacer()
+                        
+                        Toggle("", isOn: Binding(
+                            get: { isSelected },
+                            set: { newValue in
+                                if newValue {
+                                    selection.insert(skill.metadata.name)
+                                } else {
+                                    selection.remove(skill.metadata.name)
+                                }
+                            }
+                        ))
+                        .toggleStyle(NotchSwitchStyle(tint: Color(nsColor: .systemYellow)))
+                        .disabled(isDisabled)
+
+                        if isUserSkill, let onDeleteName = onDeleteName {
+                            Button {
+                                onDeleteName(skill.metadata.name)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.white.opacity(0.25))
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.leading, 4)
                         }
                     }
+                    .padding(.horizontal, 10)
+                    .frame(height: 28)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(isSelected ? Color.white.opacity(0.06) : Color.white.opacity(0.03))
+                    )
                 }
             }
-        } label: {
-            GeminiMenuFieldRow(leadingIcon: "books.vertical", title: summaryText)
         }
-        .buttonStyle(.plain)
-        .disabled(isDisabled)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -1482,7 +1721,25 @@ struct GeminiSkillManagementMenu: View {
                 }
             }
         } label: {
-            GeminiMenuFieldRow(leadingIcon: "square.and.arrow.down", title: Localization.get("Manage skills", lang: appLanguage), trailing: .ellipsis)
+            HStack(spacing: 4) {
+                Image(systemName: "square.and.arrow.down")
+                    .font(.system(size: 11, weight: .bold))
+                Text(Localization.get("Manage skills", lang: appLanguage))
+                    .font(.system(size: 11, weight: .bold))
+                    .lineLimit(1)
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.black.opacity(0.5))
+            }
+            .foregroundStyle(.black.opacity(0.85))
+            .padding(.horizontal, 12)
+            .frame(height: 26)
+            .background(
+                Capsule()
+                    .fill(Color(nsColor: .systemYellow))
+                    .shadow(color: .black.opacity(0.1), radius: 1, x: 0, y: 1)
+            )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
@@ -1531,5 +1788,220 @@ struct GeminiAgentHomeAvatarFigure: View {
         .onAppear {
             isPulsing = true
         }
+    }
+}
+
+struct GeminiAgentSelectionView: View {
+    let prompts: [GeminiSystemPromptPreset]
+    let selectedID: String
+    let statusColor: Color
+    let onSelect: (String) -> Void
+    let onCreate: () -> Void
+    let onDone: () -> Void
+
+    @AppStorage("app_language") private var appLanguage: String = "English"
+    @State private var currentPage: Int = 0
+
+    private let pageSize = 5
+
+    private var totalItems: Int {
+        prompts.count + 1 // +1 for the "New Agent" button
+    }
+
+    private var totalPages: Int {
+        max(1, Int(ceil(Double(totalItems) / Double(pageSize))))
+    }
+
+    private var currentIndices: Range<Int> {
+        let start = currentPage * pageSize
+        let end = min(start + pageSize, totalItems)
+        return start..<end
+    }
+
+    private var isLastPage: Bool { currentPage == totalPages - 1 }
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 84, maximum: 100), spacing: 16)
+    ]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Agent grid — fixed size so it naturally expands parent
+            LazyVGrid(columns: columns, spacing: 24) {
+                ForEach(currentIndices, id: \.self) { index in
+                    if index < prompts.count {
+                        let prompt = prompts[index]
+                        AgentSelectionCard(
+                            prompt: prompt,
+                            isSelected: prompt.id == selectedID,
+                            statusColor: statusColor,
+                            action: { onSelect(prompt.id) }
+                        )
+                    } else {
+                        // "New Agent" button is always the very last item overall
+                        Button(action: onCreate) {
+                            VStack(spacing: 12) {
+                                ZStack {
+                                    Circle()
+                                        .strokeBorder(Color.white.opacity(0.12), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                                        .frame(width: 58, height: 58)
+
+                                    Image(systemName: "plus")
+                                        .font(.system(size: 20, weight: .semibold))
+                                        .foregroundStyle(.white.opacity(0.38))
+                                }
+                                .frame(width: 74, height: 74)
+
+                                Text(Localization.get("New Agent", lang: appLanguage))
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(.white.opacity(0.42))
+                                    .lineLimit(1)
+                                    .tracking(0.2)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(.top, 16)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 8)
+            .animation(.spring(response: 0.35, dampingFraction: 0.75), value: currentPage)
+
+            Spacer(minLength: 0)
+
+            // Pagination controls — only shown when needed
+            if totalPages > 1 {
+                HStack(spacing: 12) {
+                    // Prev button
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                            currentPage = max(0, currentPage - 1)
+                        }
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(currentPage == 0 ? .white.opacity(0.2) : .white.opacity(0.75))
+                            .frame(width: 24, height: 20)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(Color.white.opacity(currentPage == 0 ? 0.04 : 0.10))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(currentPage == 0)
+
+                    // Page dots
+                    HStack(spacing: 5) {
+                        ForEach(0..<totalPages, id: \.self) { idx in
+                            Circle()
+                                .fill(idx == currentPage ? statusColor : Color.white.opacity(0.22))
+                                .frame(width: idx == currentPage ? 6 : 4, height: idx == currentPage ? 6 : 4)
+                                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: currentPage)
+                        }
+                    }
+
+                    // Next button
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                            currentPage = min(totalPages - 1, currentPage + 1)
+                        }
+                    } label: {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(isLastPage ? .white.opacity(0.2) : .white.opacity(0.75))
+                            .frame(width: 24, height: 20)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(Color.white.opacity(isLastPage ? 0.04 : 0.10))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isLastPage)
+                }
+                .padding(.top, 0)
+                .padding(.bottom, 6)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.black.opacity(0.12))
+        )
+        .onChange(of: prompts.count) { _, _ in
+            // Clamp page if agents were deleted
+            currentPage = min(currentPage, max(0, totalPages - 1))
+        }
+    }
+}
+
+struct AgentSelectionCard: View {
+    let prompt: GeminiSystemPromptPreset
+    let isSelected: Bool
+    let statusColor: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 12) {
+                ZStack {
+                    if isSelected {
+                        Circle()
+                            .fill(statusColor.opacity(0.18))
+                            .frame(width: 74, height: 74)
+                            .blur(radius: 10)
+                            .transition(.scale.combined(with: .opacity))
+                    }
+
+                    Circle()
+                        .fill(
+                            isSelected
+                                ? LinearGradient(colors: [statusColor.opacity(0.9), statusColor.opacity(0.7)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                                : LinearGradient(colors: [.white.opacity(0.08), .white.opacity(0.04)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        )
+                        .frame(width: 58, height: 58)
+                        .overlay {
+                            Circle()
+                                .stroke(isSelected ? Color.white.opacity(0.4) : Color.white.opacity(0.1), lineWidth: isSelected ? 2 : 1)
+                        }
+                        .shadow(color: isSelected ? statusColor.opacity(0.3) : .clear, radius: 8, y: 4)
+
+                    GeminiAgentAvatarArtwork(
+                        imageURL: prompt.resolvedAvatarImageURL,
+                        symbolName: prompt.resolvedAvatarSymbolName,
+                        symbolFont: .system(size: 22, weight: .medium),
+                        size: 58
+                    )
+                    
+                    if isSelected {
+                        VStack {
+                            Spacer()
+                            HStack {
+                                Spacer()
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(.white)
+                                    .background(Circle().fill(statusColor).padding(1))
+                                    .offset(x: 4, y: 4)
+                            }
+                        }
+                        .frame(width: 58, height: 58)
+                    }
+                }
+                .frame(width: 74, height: 74)
+                
+                Text(prompt.title.uppercased())
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .foregroundStyle(.white.opacity(isSelected ? 1.0 : 0.85))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(width: 84)
+                    .tracking(1.1)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: isSelected)
     }
 }

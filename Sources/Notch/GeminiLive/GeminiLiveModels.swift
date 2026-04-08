@@ -239,6 +239,7 @@ enum GeminiTool: String, CaseIterable, Identifiable {
     case read = "read"
     case write = "write"
     case exec = "exec"
+    case ls = "ls"
     case find = "find"
     case grep = "grep"
     case edit = "edit"
@@ -250,6 +251,7 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         .read,
         .write,
         .exec,
+        .ls,
         .find,
         .grep,
         .edit,
@@ -262,6 +264,7 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         case .webSearch: return "Search"
         case .read: return "Read"
         case .write: return "Write"
+        case .ls: return "List"
         case .find: return "Find"
         case .grep: return "Grep"
         case .edit: return "Edit"
@@ -274,6 +277,7 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         case .webSearch: return "magnifyingglass"
         case .read: return "doc.text"
         case .write: return "square.and.pencil"
+        case .ls: return "list.bullet"
         case .find: return "folder"
         case .grep: return "text.magnifyingglass"
         case .edit: return "slider.horizontal.below.rectangle"
@@ -312,6 +316,8 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
     var avatarSymbolName: String
     /// Relative filename of a custom avatar image stored in app state.
     var avatarImageFilename: String?
+    /// Tracks when the agent was last selected or created to allow sorting by recency.
+    var lastUsedAt: Date?
 
     init(
         id: String,
@@ -322,7 +328,8 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         voice: String = GeminiVoice.kore.rawValue,
         thinkingLevel: String = GeminiThinkingLevel.off.rawValue,
         avatarSymbolName: String = GeminiSystemPromptPreset.defaultAvatarSymbolName,
-        avatarImageFilename: String? = nil
+        avatarImageFilename: String? = nil,
+        lastUsedAt: Date? = nil
     ) {
         self.id = id
         self.title = title
@@ -333,10 +340,11 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         self.thinkingLevel = thinkingLevel
         self.avatarSymbolName = avatarSymbolName
         self.avatarImageFilename = avatarImageFilename
+        self.lastUsedAt = lastUsedAt
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, title, content, enabledTools, enabledSkillNames, voice, thinkingLevel, avatarSymbolName, avatarImageFilename
+        case id, title, content, enabledTools, enabledSkillNames, voice, thinkingLevel, avatarSymbolName, avatarImageFilename, lastUsedAt
     }
 
     init(from decoder: Decoder) throws {
@@ -350,6 +358,7 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         thinkingLevel = try c.decodeIfPresent(String.self, forKey: .thinkingLevel) ?? GeminiThinkingLevel.off.rawValue
         avatarSymbolName = try c.decodeIfPresent(String.self, forKey: .avatarSymbolName) ?? GeminiSystemPromptPreset.defaultAvatarSymbolName
         avatarImageFilename = try c.decodeIfPresent(String.self, forKey: .avatarImageFilename)
+        lastUsedAt = try c.decodeIfPresent(Date.self, forKey: .lastUsedAt)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -363,6 +372,7 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         try c.encode(thinkingLevel, forKey: .thinkingLevel)
         try c.encode(avatarSymbolName, forKey: .avatarSymbolName)
         try c.encodeIfPresent(avatarImageFilename, forKey: .avatarImageFilename)
+        try c.encodeIfPresent(lastUsedAt, forKey: .lastUsedAt)
     }
 
     var toolSet: Set<GeminiTool> {

@@ -1,4 +1,5 @@
 import Foundation
+import NotchTooling
 
 extension GeminiLiveSession {
     func handleFunctionCall(_ call: [String: Any]) {
@@ -14,6 +15,8 @@ extension GeminiLiveSession {
             handleReadCall(id: id, call: call)
         case "write":
             handleWriteCall(id: id, call: call)
+        case "ls":
+            handleLsCall(id: id, call: call)
         case "exec":
             handleExecCall(id: id, call: call)
         case "find":
@@ -56,7 +59,7 @@ extension GeminiLiveSession {
 
         if onShouldAutoApproveExec?(trimmedCommand, resolvedWorkingDirectory) == true {
             let result = executeExec(command: trimmedCommand, workingDirectory: resolvedWorkingDirectory, timeoutSeconds: resolvedTimeout)
-            onFunctionExecuted?(name, args, result)
+            notifyFunctionExecuted(name: name, args: args, result: result)
             sendFunctionResponse(id: id, name: name, result: result)
             return
         }
@@ -82,74 +85,132 @@ extension GeminiLiveSession {
 
     private func handleReadCall(id: String, call: [String: Any]) {
         let name = "read"
-        guard let args = call["args"] as? [String: Any],
-              let path = args["path"] as? String else {
+        guard let rawArgs = call["args"] as? [String: Any] else {
             sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
             return
         }
 
-        let result = executeReadFile(path: path)
-        onFunctionExecuted?(name, args, result)
+        let args = GeminiToolArgumentNormalizer.normalize(rawArgs)
+        guard let path = GeminiToolArgumentNormalizer.stringValue(in: args, keys: GeminiToolArgumentNormalizer.pathKeys) else {
+            sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
+            return
+        }
+
+        let offset = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["offset"])
+        let limit = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["limit"])
+        let result = executeReadFile(path: path, offset: offset, limit: limit)
+        notifyFunctionExecuted(name: name, args: args, result: result)
         sendFunctionResponse(id: id, name: name, result: result)
     }
 
     private func handleWriteCall(id: String, call: [String: Any]) {
         let name = "write"
-        guard let args = call["args"] as? [String: Any],
-              let path = args["path"] as? String,
-              let content = args["content"] as? String else {
+        guard let rawArgs = call["args"] as? [String: Any] else {
+            sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
+            return
+        }
+
+        let args = GeminiToolArgumentNormalizer.normalize(rawArgs)
+        guard let path = GeminiToolArgumentNormalizer.stringValue(in: args, keys: GeminiToolArgumentNormalizer.pathKeys),
+              let content = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["content"], allowEmpty: true) else {
             sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
             return
         }
 
         let result = executeWriteFile(path: path, content: content)
-        onFunctionExecuted?(name, args, result)
+        notifyFunctionExecuted(name: name, args: args, result: result)
+        sendFunctionResponse(id: id, name: name, result: result)
+    }
+
+    private func handleLsCall(id: String, call: [String: Any]) {
+        let name = "ls"
+        let rawArgs = call["args"] as? [String: Any] ?? [:]
+        let args = GeminiToolArgumentNormalizer.normalize(rawArgs)
+
+        let path = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["path"])
+        let limit = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["limit"])
+        let result = executeLs(path: path, limit: limit)
+        notifyFunctionExecuted(name: name, args: args, result: result)
         sendFunctionResponse(id: id, name: name, result: result)
     }
 
     private func handleFindCall(id: String, call: [String: Any]) {
         let name = "find"
-        guard let args = call["args"] as? [String: Any],
-              let pattern = args["pattern"] as? String else {
+        guard let rawArgs = call["args"] as? [String: Any] else {
             sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
             return
         }
 
-        let baseDirectory = args["baseDirectory"] as? String
-        let maxResults = (args["maxResults"] as? NSNumber)?.intValue ?? args["maxResults"] as? Int
-        let result = executeFindFiles(pattern: pattern, baseDirectory: baseDirectory, maxResults: maxResults)
-        onFunctionExecuted?(name, args, result)
+        let args = GeminiToolArgumentNormalizer.normalize(rawArgs)
+        guard let pattern = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["pattern"]) else {
+            sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
+            return
+        }
+
+        let path = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["path"])
+        let limit = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["limit"])
+        let result = executeFind(pattern: pattern, path: path, limit: limit)
+        notifyFunctionExecuted(name: name, args: args, result: result)
         sendFunctionResponse(id: id, name: name, result: result)
     }
 
     private func handleGrepCall(id: String, call: [String: Any]) {
         let name = "grep"
-        guard let args = call["args"] as? [String: Any],
-              let pattern = args["pattern"] as? String else {
+        guard let rawArgs = call["args"] as? [String: Any] else {
+            sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
+            return
+        }
+
+        let args = GeminiToolArgumentNormalizer.normalize(rawArgs)
+        guard let pattern = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["pattern"]) else {
             sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
             return
         }
 
         let path = args["path"] as? String
-        let maxResults = (args["maxResults"] as? NSNumber)?.intValue ?? args["maxResults"] as? Int
-        let result = executeGrep(pattern: pattern, path: path, maxResults: maxResults)
-        onFunctionExecuted?(name, args, result)
+        let glob = args["glob"] as? String
+        let ignoreCase = GeminiToolArgumentNormalizer.boolValue(in: args, keys: ["ignoreCase"]) ?? false
+        let literal = GeminiToolArgumentNormalizer.boolValue(in: args, keys: ["literal"]) ?? false
+        let context = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["context"]) ?? 0
+        let limit = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["limit"]) ?? 100
+        let result = executeGrep(
+            pattern: pattern,
+            path: path,
+            glob: glob,
+            ignoreCase: ignoreCase,
+            literal: literal,
+            context: context,
+            limit: limit
+        )
+        notifyFunctionExecuted(name: name, args: args, result: result)
         sendFunctionResponse(id: id, name: name, result: result)
     }
 
     private func handleEditCall(id: String, call: [String: Any]) {
         let name = "edit"
-        guard let args = call["args"] as? [String: Any],
-              let path = args["path"] as? String,
-              let oldText = args["oldText"] as? String,
-              let newText = args["newText"] as? String else {
+        guard let rawArgs = call["args"] as? [String: Any] else {
             sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
             return
         }
 
-        let replaceAll = (args["replaceAll"] as? NSNumber)?.boolValue ?? args["replaceAll"] as? Bool ?? false
-        let result = executeEditFile(path: path, oldText: oldText, newText: newText, replaceAll: replaceAll)
-        onFunctionExecuted?(name, args, result)
+        let args = GeminiToolArgumentNormalizer.normalize(rawArgs)
+        guard let path = GeminiToolArgumentNormalizer.stringValue(in: args, keys: GeminiToolArgumentNormalizer.pathKeys) else {
+            sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
+            return
+        }
+
+        let edits = GeminiToolArgumentNormalizer.editReplacements(in: args)
+        guard !edits.isEmpty else {
+            sendFunctionResponse(
+                id: id,
+                name: name,
+                result: ["success": false, "error": "Edit tool input is invalid. edits must contain at least one replacement."]
+            )
+            return
+        }
+
+        let result = executeEditFile(path: path, edits: edits)
+        notifyFunctionExecuted(name: name, args: args, result: result)
         sendFunctionResponse(id: id, name: name, result: result)
     }
 
@@ -160,7 +221,7 @@ extension GeminiLiveSession {
             workingDirectory: pending.workingDirectory,
             timeoutSeconds: pending.timeoutSeconds
         )
-        onFunctionExecuted?("exec", pending.args, result)
+        notifyFunctionExecuted(name: "exec", args: pending.args, result: result)
         sendFunctionResponse(id: toolCallID, name: "exec", result: result)
     }
 
@@ -171,7 +232,7 @@ extension GeminiLiveSession {
             "command": pending.command,
             "error": "Command not approved by user."
         ]
-        onFunctionExecuted?("exec", pending.args, result)
+        notifyFunctionExecuted(name: "exec", args: pending.args, result: result)
         sendFunctionResponse(id: toolCallID, name: "exec", result: result)
     }
 }

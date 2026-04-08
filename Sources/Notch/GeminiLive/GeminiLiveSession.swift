@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 import Foundation
+import NotchTooling
 
 // Internal to this module - used by GeminiLiveSession and its extensions
 enum GeminiLiveCaptureMode {
@@ -285,113 +286,43 @@ final class GeminiLiveSession: @unchecked Sendable {
         if enabledTools.contains(.read) {
             decls.append([
                 "name": "read",
-                "description": "Read a UTF-8 text file. Relative paths are resolved from ~/.notch/workspace. Absolute paths are allowed for files inside ~/.notch/workspace and for built-in skill SKILL.md locations listed in <available_skills>.",
-                "parameters": [
-                    "type": "OBJECT",
-                    "properties": [
-                        "path": [
-                            "type": "STRING",
-                            "description": "Relative path from ~/.notch/workspace, or an absolute path inside ~/.notch/workspace, or a built-in skill location from <available_skills>."
-                        ]
-                    ],
-                    "required": ["path"]
-                ]
+                "description": GeminiWorkspaceCodingTools.openClawReadToolDescription,
+                "parameters": GeminiWorkspaceCodingTools.openClawReadToolParameters
             ])
         }
         if enabledTools.contains(.write) {
             decls.append([
                 "name": "write",
-                "description": "Create or overwrite a UTF-8 text file inside ~/.notch/workspace.",
-                "parameters": [
-                    "type": "OBJECT",
-                    "properties": [
-                        "path": [
-                            "type": "STRING",
-                            "description": "Relative path from ~/.notch/workspace, or an absolute path still inside that workspace."
-                        ],
-                        "content": [
-                            "type": "STRING",
-                            "description": "The full file contents to write."
-                        ]
-                    ],
-                    "required": ["path", "content"]
-                ]
+                "description": GeminiWorkspaceCodingTools.openClawWriteToolDescription,
+                "parameters": GeminiWorkspaceCodingTools.openClawWriteToolParameters
+            ])
+        }
+        if enabledTools.contains(.ls) {
+            decls.append([
+                "name": "ls",
+                "description": GeminiWorkspaceCodingTools.openClawLsToolDescription,
+                "parameters": GeminiWorkspaceCodingTools.openClawLsToolParameters
             ])
         }
         if enabledTools.contains(.find) {
             decls.append([
                 "name": "find",
-                "description": "Find files or folders inside ~/.notch/workspace by name or relative path fragment.",
-                "parameters": [
-                    "type": "OBJECT",
-                    "properties": [
-                        "pattern": [
-                            "type": "STRING",
-                            "description": "Case-insensitive file or path fragment to look for."
-                        ],
-                        "baseDirectory": [
-                            "type": "STRING",
-                            "description": "Optional relative path inside ~/.notch/workspace to start from. Defaults to the workspace root."
-                        ],
-                        "maxResults": [
-                            "type": "NUMBER",
-                            "description": "Optional max number of matches to return. Use 1-100. Defaults to 20."
-                        ]
-                    ],
-                    "required": ["pattern"]
-                ]
+                "description": GeminiWorkspaceCodingTools.openClawFindToolDescription,
+                "parameters": GeminiWorkspaceCodingTools.openClawFindToolParameters
             ])
         }
         if enabledTools.contains(.grep) {
             decls.append([
                 "name": "grep",
-                "description": "Search text content inside files in ~/.notch/workspace. Supports plain text and regular expressions.",
-                "parameters": [
-                    "type": "OBJECT",
-                    "properties": [
-                        "pattern": [
-                            "type": "STRING",
-                            "description": "Plain text or regular expression to search for."
-                        ],
-                        "path": [
-                            "type": "STRING",
-                            "description": "Optional file or directory path inside ~/.notch/workspace to search. Defaults to the workspace root."
-                        ],
-                        "maxResults": [
-                            "type": "NUMBER",
-                            "description": "Optional max number of matches to return. Use 1-100. Defaults to 20."
-                        ]
-                    ],
-                    "required": ["pattern"]
-                ]
+                "description": GeminiWorkspaceCodingTools.openClawGrepToolDescription,
+                "parameters": GeminiWorkspaceCodingTools.openClawGrepToolParameters
             ])
         }
         if enabledTools.contains(.edit) {
             decls.append([
                 "name": "edit",
-                "description": "Make a precise string replacement in an existing UTF-8 text file inside ~/.notch/workspace.",
-                "parameters": [
-                    "type": "OBJECT",
-                    "properties": [
-                        "path": [
-                            "type": "STRING",
-                            "description": "Relative path from ~/.notch/workspace, or an absolute path still inside that workspace."
-                        ],
-                        "oldText": [
-                            "type": "STRING",
-                            "description": "The exact text to replace."
-                        ],
-                        "newText": [
-                            "type": "STRING",
-                            "description": "Replacement text."
-                        ],
-                        "replaceAll": [
-                            "type": "BOOLEAN",
-                            "description": "Replace every occurrence. Defaults to false."
-                        ]
-                    ],
-                    "required": ["path", "oldText", "newText"]
-                ]
+                "description": GeminiWorkspaceCodingTools.openClawEditToolDescription,
+                "parameters": GeminiWorkspaceCodingTools.openClawEditToolParameters
             ])
         }
 

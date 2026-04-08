@@ -81,29 +81,11 @@ struct NotchShelfItem: Identifiable, Equatable {
         }
     }
 
-    var fallbackPreviewImage: NSImage {
-        switch kind {
-        case let .file(reference):
-            return NSWorkspace.shared.icon(forFile: reference.url.path)
-        case .link:
-            return NSImage(
-                systemSymbolName: "link.circle.fill",
-                accessibilityDescription: "Link"
-            ) ?? NSImage()
-        case .text:
-            return NSImage(
-                systemSymbolName: "text.alignleft",
-                accessibilityDescription: "Text"
-            ) ?? NSImage()
-        }
-    }
-
     var dragItemProvider: NSItemProvider {
         let provider: NSItemProvider
 
         switch kind {
         case let .file(reference):
-            // Use the URL object directly as it's more efficient for drag operations than contentsOf
             provider = NSItemProvider(object: reference.url as NSURL)
         case let .link(url):
             provider = NSItemProvider(object: url as NSURL)
@@ -157,6 +139,51 @@ struct NotchShelfItem: Identifiable, Equatable {
     }
 }
 
+// MARK: - Workspace Icon Cache
+
+/// A lightweight, thread-safe cache for `NSWorkspace.icon(forFile:)` results.
+/// This avoids repeated disk I/O on the main thread for the same file path.
+final class WorkspaceIconCache: @unchecked Sendable {
+    static let shared = WorkspaceIconCache()
+
+    private let lock = NSLock()
+    private var cache: [String: NSImage] = [:]
+    private let maxEntries = 120
+
+    func icon(for path: String) -> NSImage {
+        lock.lock()
+        if let cached = cache[path] {
+            lock.unlock()
+            return cached
+        }
+        lock.unlock()
+
+        let image = NSWorkspace.shared.icon(forFile: path)
+
+        lock.lock()
+        if cache.count >= maxEntries {
+            // Evict roughly a quarter on overflow.
+            let toRemove = cache.count / 4
+            var removed = 0
+            for key in cache.keys {
+                guard removed < toRemove else { break }
+                cache.removeValue(forKey: key)
+                removed += 1
+            }
+        }
+        cache[path] = image
+        lock.unlock()
+
+        return image
+    }
+
+    func invalidate(path: String) {
+        lock.lock()
+        cache.removeValue(forKey: path)
+        lock.unlock()
+    }
+}
+
 @MainActor
 final class NotchShelfViewModel: ObservableObject {
     @Published private(set) var items: [NotchShelfItem] = []
@@ -165,6 +192,7 @@ final class NotchShelfViewModel: ObservableObject {
     private let dropService: NotchShelfDropService
     private let persistenceService: NotchShelfPersistenceService
     private var dropTask: Task<Void, Never>?
+    private var persistTask: Task<Void, Never>?
 
     init(
         dropService: NotchShelfDropService = NotchShelfDropService(),
@@ -178,6 +206,7 @@ final class NotchShelfViewModel: ObservableObject {
 
     deinit {
         dropTask?.cancel()
+        persistTask?.cancel()
     }
 
     var hasItems: Bool {
@@ -204,7 +233,7 @@ final class NotchShelfViewModel: ObservableObject {
         items.removeAll { $0.id == item.id }
         cleanupIfNeeded(item)
         clearThumbnailCache(for: item)
-        persist()
+        debouncedPersist()
     }
 
     func clear() {
@@ -212,12 +241,14 @@ final class NotchShelfViewModel: ObservableObject {
         items.removeAll()
         cleanupIfNeeded(removedItems)
         clearThumbnailCache(for: removedItems)
-        persist()
+        debouncedPersist()
     }
 
     func shutdown() {
         dropTask?.cancel()
-        persist()
+        persistTask?.cancel()
+        // Final synchronous persist on shutdown.
+        persistenceService.save(items)
     }
 
     func activate(_ item: NotchShelfItem) {
@@ -250,7 +281,18 @@ final class NotchShelfViewModel: ObservableObject {
 
         guard !mergedItems.isEmpty else { return }
         items.insert(contentsOf: mergedItems.reversed(), at: 0)
-        persist()
+        debouncedPersist()
+    }
+
+    /// Debounce persistence writes to avoid redundant I/O when many items
+    /// are added/removed in quick succession (e.g. multi-file drop).
+    private func debouncedPersist() {
+        persistTask?.cancel()
+        persistTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
+            guard !Task.isCancelled, let self else { return }
+            self.persistenceService.save(self.items)
+        }
     }
 
     private func cleanupIfNeeded(_ item: NotchShelfItem) {
@@ -289,9 +331,5 @@ final class NotchShelfViewModel: ObservableObject {
         Task {
             await NotchShelfThumbnailService.shared.clearCache(for: fileURLs)
         }
-    }
-
-    private func persist() {
-        persistenceService.save(items)
     }
 }

@@ -94,12 +94,13 @@ final class PomodoroViewModel: ObservableObject {
     @Published private(set) var focusDurationOverrideSeconds: Int? { didSet { persistSettings() } }
     @Published private(set) var breakDurationOverrideSeconds: Int? { didSet { persistSettings() } }
     @Published private(set) var longBreakDurationOverrideSeconds: Int? { didSet { persistSettings() } }
+    @Published private(set) var sessionsBeforeLongBreakOverride: Int? { didSet { persistSettings() } }
 
     private var phaseCompletionTask: Task<Void, Never>?
     private var phaseEndDate: Date?
     private let userDefaults: UserDefaults
     private let learningStatsStore: LearningStatsStore
-    private var completedFocusSessions = 0
+    @Published private(set) var completedFocusSessions = 0
     private var recordedFocusSecondsForCurrentPhase = 0
 
     init(
@@ -111,6 +112,9 @@ final class PomodoroViewModel: ObservableObject {
 
         self.autoStartBreaks = userDefaults.bool(forKey: Self.autoStartBreaksKey)
         self.autoStartPomodoros = userDefaults.bool(forKey: Self.autoStartPomodorosKey)
+        
+        let overrideSessions = userDefaults.integer(forKey: Self.sessionsBeforeLongBreakOverrideKey)
+        self.sessionsBeforeLongBreakOverride = overrideSessions > 0 ? overrideSessions : nil
 
         let restoredCustomPresets = Self.loadCustomPresets(from: userDefaults)
         customPresets = restoredCustomPresets
@@ -186,6 +190,33 @@ final class PomodoroViewModel: ObservableObject {
     var nextPhaseLine: String {
         let nextPhase = nextPhase(after: phase)
         return "Up next: \(nextPhase.rawValue) \(DurationParser.displayString(for: duration(for: nextPhase, preset: preset)))"
+    }
+
+    var sessionsBeforeLongBreak: Int {
+        sessionsBeforeLongBreakOverride ?? preset.sessionsBeforeLongBreak
+    }
+
+    var currentFocusSessionIndex: Int {
+        if phase == .longBreak { return sessionsBeforeLongBreak }
+        let index = (completedFocusSessions % sessionsBeforeLongBreak)
+        if phase == .focus {
+            return index + 1
+        } else {
+            // Break phase: if index is 0 after completing a multiple of cycles,
+            // it means we finished the last session of the previous cycle.
+            return index == 0 ? sessionsBeforeLongBreak : index
+        }
+    }
+
+    var completedSessionsInCycle: Int {
+        if phase == .longBreak { return sessionsBeforeLongBreak }
+        let index = completedFocusSessions % sessionsBeforeLongBreak
+        // If we finished a session (it's a break phase) and it happened to be a multiple,
+        // return the full count. Otherwise (including focus phase), return the remainder.
+        if phase != .focus && index == 0 && completedFocusSessions > 0 {
+            return sessionsBeforeLongBreak
+        }
+        return index
     }
 
     func remainingSeconds(at date: Date = .now) -> Int {
@@ -369,6 +400,12 @@ final class PomodoroViewModel: ObservableObject {
         }
     }
 
+    func updateSessionsBeforeLongBreak(count: Int) {
+        let clamped = max(1, min(count, 12))
+        guard sessionsBeforeLongBreakOverride != clamped else { return }
+        sessionsBeforeLongBreakOverride = clamped
+    }
+
     func shutdown() {
         recordCurrentFocusProgressIfNeeded(referenceDate: .now)
         phaseCompletionTask?.cancel()
@@ -446,14 +483,14 @@ final class PomodoroViewModel: ObservableObject {
     }
 
     private var nextBreakPhase: PomodoroPhase {
-        completedFocusSessions.isMultiple(of: preset.sessionsBeforeLongBreak) ? .longBreak : .shortBreak
+        completedFocusSessions.isMultiple(of: sessionsBeforeLongBreak) ? .longBreak : .shortBreak
     }
 
     private func nextPhase(after phase: PomodoroPhase) -> PomodoroPhase {
         switch phase {
         case .focus:
             let projectedCompletedSessions = completedFocusSessions + 1
-            return projectedCompletedSessions.isMultiple(of: preset.sessionsBeforeLongBreak) ? .longBreak : .shortBreak
+            return projectedCompletedSessions.isMultiple(of: sessionsBeforeLongBreak) ? .longBreak : .shortBreak
         case .shortBreak, .longBreak:
             return .focus
         }
@@ -511,6 +548,7 @@ final class PomodoroViewModel: ObservableObject {
         userDefaults.set(focusDurationOverrideSeconds, forKey: Self.focusDurationOverrideSecondsKey)
         userDefaults.set(breakDurationOverrideSeconds, forKey: Self.breakDurationOverrideSecondsKey)
         userDefaults.set(longBreakDurationOverrideSeconds, forKey: Self.longBreakDurationOverrideSecondsKey)
+        userDefaults.set(sessionsBeforeLongBreakOverride ?? 0, forKey: Self.sessionsBeforeLongBreakOverrideKey)
     }
 
     private static let customPresetsDefaultsKey = "NotchPomodoroCustomPresets"
@@ -520,4 +558,5 @@ final class PomodoroViewModel: ObservableObject {
     private static let focusDurationOverrideSecondsKey = "NotchPomodoroFocusDurationOverrideSeconds"
     private static let breakDurationOverrideSecondsKey = "NotchPomodoroBreakDurationOverrideSeconds"
     private static let longBreakDurationOverrideSecondsKey = "NotchPomodoroLongBreakDurationOverrideSeconds"
+    private static let sessionsBeforeLongBreakOverrideKey = "NotchPomodoroSessionsBeforeLongBreakOverride"
 }

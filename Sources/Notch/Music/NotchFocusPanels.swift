@@ -66,16 +66,44 @@ struct PomodoroPanelView: View {
                 ZStack {
                     // Center area
                     VStack(spacing: 8) {
-                        PomodoroEditModeSwitcher(selection: Binding(
-                            get: { pomodoro.hasActiveSession ? pomodoro.phase : idleEditorPhase },
-                            set: { newPhase in
-                                if pomodoro.hasActiveSession {
-                                    pomodoro.setPhase(newPhase)
-                                } else {
-                                    idleEditorPhase = newPhase
+                        Text(Localization.get(displayedPhase.rawValue, lang: appLanguage))
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 6)
+                            .background(
+                                Capsule()
+                                    .fill(displayedTint.opacity(0.12))
+                            )
+                            .foregroundStyle(displayedTint)
+                            .onTapGesture {
+                                withAnimation(.smooth(duration: 0.22)) {
+                                    let phases: [PomodoroPhase] = [.focus, .shortBreak, .longBreak]
+                                    let currentIndex = phases.firstIndex(of: displayedPhase) ?? 0
+                                    let nextPhase = phases[(currentIndex + 1) % phases.count]
+                                    
+                                    if pomodoro.hasActiveSession {
+                                        pomodoro.setPhase(nextPhase)
+                                    } else {
+                                        idleEditorPhase = nextPhase
+                                    }
                                 }
                             }
-                        ))
+
+                        if pomodoro.hasActiveSession {
+                            HStack(spacing: 8) {
+                                PomodoroSessionDotsView(
+                                    current: pomodoro.completedSessionsInCycle,
+                                    total: pomodoro.sessionsBeforeLongBreak,
+                                    isFocus: pomodoro.phase == .focus,
+                                    tint: displayedTint
+                                )
+                                
+                                Text("\(Localization.get("Round", lang: appLanguage)) \(pomodoro.currentFocusSessionIndex)/\(pomodoro.sessionsBeforeLongBreak)")
+                                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                                    .foregroundStyle(displayedTint.opacity(0.85))
+                            }
+                            .padding(.top, -2)
+                        }
 
                         FocusClockControl(
                             tint: displayedTint,
@@ -163,7 +191,7 @@ struct PomodoroPanelView: View {
                 .transition(.opacity)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 100, maxHeight: (isShowingSettings || isShowingStats) ? 140 : 115, alignment: .center)
+        .frame(maxWidth: .infinity, minHeight: 100, maxHeight: (isShowingSettings || isShowingStats) ? 175 : 115, alignment: .center)
         .padding(.horizontal, 20)
         .onChange(of: pomodoro.hasActiveSession) { _, hasActiveSession in
             if !hasActiveSession {
@@ -457,46 +485,6 @@ struct FocusClockAdjustButton: View {
     }
 }
 
-struct PomodoroEditModeSwitcher: View {
-    @Binding var selection: PomodoroPhase
-
-    var body: some View {
-        HStack(spacing: 2) {
-            phaseButton(title: "Pomodoro", phase: .focus)
-            phaseButton(title: "Short Break", phase: .shortBreak)
-            phaseButton(title: "Long Break", phase: .longBreak)
-        }
-        .padding(2)
-        .background(
-            Capsule()
-                .fill(Color.white.opacity(0.04))
-        )
-        .overlay {
-            Capsule()
-                .stroke(Color.white.opacity(0.06), lineWidth: 1)
-        }
-    }
-
-    private func phaseButton(title: String, phase: PomodoroPhase) -> some View {
-        Text(title)
-            .font(.system(size: 12.5, weight: .semibold))
-            .lineLimit(1)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(
-                Capsule()
-                    .fill(selection == phase ? Color(nsColor: phase.accentColor) : Color.white.opacity(0.001))
-            )
-            .fixedSize(horizontal: true, vertical: false)
-            .foregroundStyle(selection == phase ? .white : .white.opacity(0.55))
-            .contentShape(Rectangle())
-            .onTapGesture {
-                withAnimation(.smooth(duration: 0.18)) {
-                    selection = phase
-                }
-            }
-    }
-}
 
 struct FocusClockColumn<ClockContent: View, Accessory: View>: View {
     private let clock: ClockContent
@@ -765,6 +753,9 @@ struct PomodoroQuickSettingsView: View {
                 settingInput(label: "Long", value: pomodoro.longBreakDurationSeconds / 60) { 
                     pomodoro.updateLongBreakDuration(minutes: $0) 
                 }
+                settingInput(label: "Cycle", value: pomodoro.sessionsBeforeLongBreak, range: 1...12) {
+                    pomodoro.updateSessionsBeforeLongBreak(count: $0)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             
@@ -800,17 +791,17 @@ struct PomodoroQuickSettingsView: View {
         }
     }
 
-    private func settingInput(label: String, value: Int, action: @escaping (Int) -> Void) -> some View {
+    private func settingInput(label: String, value: Int, range: ClosedRange<Int> = 1...180, action: @escaping (Int) -> Void) -> some View {
         HStack(spacing: 12) {
             Text(Localization.get(label, lang: appLanguage))
                 .font(.system(size: 14.5, weight: .bold))
                 .foregroundStyle(tint.opacity(0.7))
-                .frame(width: 48, alignment: .leading)
+                .frame(width: 80, alignment: .leading)
                 
             HStack(spacing: 10) {
-                Button { action(max(1, value - 1)) } label: { Image(systemName: "minus.circle.fill").font(.system(size: 18)).foregroundStyle(tint.opacity(0.5), tint.opacity(0.1)) }.buttonStyle(.plain)
+                Button { action(max(range.lowerBound, value - 1)) } label: { Image(systemName: "minus.circle.fill").font(.system(size: 18)).foregroundStyle(tint.opacity(0.5), tint.opacity(0.1)) }.buttonStyle(.plain)
                 Text("\(value)").font(.system(size: 18, weight: .bold, design: .rounded)).frame(minWidth: 26).foregroundStyle(.white)
-                Button { action(min(180, value + 1)) } label: { Image(systemName: "plus.circle.fill").font(.system(size: 18)).foregroundStyle(tint.opacity(0.5), tint.opacity(0.1)) }.buttonStyle(.plain)
+                Button { action(min(range.upperBound, value + 1)) } label: { Image(systemName: "plus.circle.fill").font(.system(size: 18)).foregroundStyle(tint.opacity(0.5), tint.opacity(0.1)) }.buttonStyle(.plain)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
@@ -926,6 +917,41 @@ struct PomodoroStatsView: View {
         .padding(.horizontal, 10)
         .padding(.top, 24)
         .padding(.bottom, 4)
+    }
+}
+
+struct PomodoroSessionDotsView: View {
+    let current: Int
+    let total: Int
+    let isFocus: Bool
+    let tint: Color
+    
+    var body: some View {
+        HStack(spacing: 5) {
+            ForEach(0..<total, id: \.self) { index in
+                Circle()
+                    .fill(fillColor(for: index))
+                    .frame(width: 5, height: 5)
+                    .overlay {
+                        if isFocus && index == current {
+                            Circle()
+                                .stroke(tint.opacity(0.4), lineWidth: 1.5)
+                                .frame(width: 9, height: 9)
+                        }
+                    }
+                    .frame(width: 9, height: 9)
+            }
+        }
+    }
+    
+    private func fillColor(for index: Int) -> Color {
+        if index < current {
+            return tint
+        } else if isFocus && index == current {
+            return tint.opacity(0.3)
+        } else {
+            return Color.white.opacity(0.12)
+        }
     }
 }
 

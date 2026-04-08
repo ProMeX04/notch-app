@@ -88,10 +88,15 @@ struct NotchShelfDropService {
         await temporaryStorage.prepare()
     }
 
+    /// Process dropped providers sequentially.
+    /// NSItemProvider is not Sendable in Swift 6, so concurrent processing
+    /// via TaskGroup is not possible. The real performance wins for drag & drop
+    /// come from icon caching, debounced persistence, and optimized thumbnails.
     func items(from providers: [NSItemProvider]) async -> [NotchShelfItem] {
         await prepare()
 
         var results: [NotchShelfItem] = []
+        results.reserveCapacity(providers.count)
 
         for provider in providers {
             if let item = await processProvider(provider) {

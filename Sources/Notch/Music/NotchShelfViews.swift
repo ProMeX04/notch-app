@@ -89,34 +89,57 @@ struct ShelfItemCardView: View {
         .onDrag {
             item.dragItemProvider
         } preview: {
-            HStack(spacing: 8) {
-                Image(nsImage: previewImage)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 24, height: 24)
-                
-                Text(item.displayName)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.white)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(
-                Capsule()
-                    .fill(Color.black.opacity(0.85))
-            )
-            .overlay {
-                Capsule()
-                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
-            }
+            dragPreview
         }
         .task(id: item.id) {
             await loadThumbnailIfNeeded()
         }
     }
 
+    /// Lightweight drag preview – uses the cached icon (no disk I/O).
+    private var dragPreview: some View {
+        HStack(spacing: 8) {
+            Image(nsImage: cachedFallbackIcon)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 24, height: 24)
+
+            Text(item.displayName)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.white)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            Capsule()
+                .fill(Color.black.opacity(0.85))
+        )
+        .overlay {
+            Capsule()
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+        }
+    }
+
+    /// Returns a cached system icon - avoids `NSWorkspace.shared.icon(forFile:)` on every render.
+    private var cachedFallbackIcon: NSImage {
+        switch item.kind {
+        case let .file(reference):
+            return WorkspaceIconCache.shared.icon(for: reference.url.path)
+        case .link:
+            return NSImage(
+                systemSymbolName: "link.circle.fill",
+                accessibilityDescription: "Link"
+            ) ?? NSImage()
+        case .text:
+            return NSImage(
+                systemSymbolName: "text.alignleft",
+                accessibilityDescription: "Text"
+            ) ?? NSImage()
+        }
+    }
+
     private var previewImage: NSImage {
-        thumbnail ?? item.fallbackPreviewImage
+        thumbnail ?? cachedFallbackIcon
     }
 
     private var previewTile: some View {
@@ -133,14 +156,14 @@ struct ShelfItemCardView: View {
     @MainActor
     private func loadThumbnailIfNeeded() async {
         guard case let .file(reference) = item.kind else {
-            thumbnail = item.fallbackPreviewImage
+            thumbnail = cachedFallbackIcon
             return
         }
 
-        // Start with the fast system icon while we may or may not generate a better one
-        thumbnail = item.fallbackPreviewImage
+        // Start with the fast cached system icon
+        thumbnail = cachedFallbackIcon
 
-        // Then try for a high-quality thumbnail (will skipped for folders and non-media in service)
+        // Then try for a high-quality thumbnail (will be skipped for folders in service)
         if let highQual = await NotchShelfThumbnailService.shared.thumbnail(for: reference.url, size: tileSize) {
             thumbnail = highQual
         }

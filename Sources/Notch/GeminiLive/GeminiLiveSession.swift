@@ -17,11 +17,66 @@ struct PendingExecApprovalCall {
     let timeoutSeconds: Double
 }
 
+struct GeminiLiveUsageMetadata: Sendable {
+    let promptTokenCount: Int
+    let responseTokenCount: Int
+    let totalTokenCount: Int
+
+    static let zero = GeminiLiveUsageMetadata(
+        promptTokenCount: 0,
+        responseTokenCount: 0,
+        totalTokenCount: 0
+    )
+
+    init(promptTokenCount: Int, responseTokenCount: Int, totalTokenCount: Int) {
+        self.promptTokenCount = promptTokenCount
+        self.responseTokenCount = responseTokenCount
+        self.totalTokenCount = totalTokenCount
+    }
+
+    init(dictionary: [String: Any]) {
+        let prompt = Self.intValue(for: ["promptTokenCount"], in: dictionary) ?? 0
+        let response = Self.intValue(
+            for: ["responseTokenCount", "candidatesTokenCount", "outputTokenCount"],
+            in: dictionary
+        ) ?? 0
+        let total = Self.intValue(for: ["totalTokenCount"], in: dictionary) ?? max(prompt + response, prompt)
+
+        self.init(
+            promptTokenCount: prompt,
+            responseTokenCount: response,
+            totalTokenCount: total
+        )
+    }
+
+    var currentContextTokenCount: Int {
+        max(promptTokenCount, totalTokenCount)
+    }
+
+    private static func intValue(for keys: [String], in dictionary: [String: Any]) -> Int? {
+        for key in keys {
+            guard let rawValue = dictionary[key] else { continue }
+            if let number = rawValue as? NSNumber {
+                return number.intValue
+            }
+            if let string = rawValue as? String, let intValue = Int(string) {
+                return intValue
+            }
+        }
+        return nil
+    }
+}
+
 final class GeminiLiveSession: @unchecked Sendable {
+    static let defaultContextWindowTargetTokens = 25_000
+    static let defaultContextWindowTriggerTokens = 50_000
+
     var onStateChange: (@Sendable (GeminiLiveConnectionState, String?) -> Void)?
     var onUserTranscript: (@Sendable (String) -> Void)?
     var onModelTranscript: (@Sendable (String) -> Void)?
     var onTurnComplete: (@Sendable () -> Void)?
+    var onMicrophoneInputLevel: (@Sendable (Double) -> Void)?
+    var onUsageMetadata: (@Sendable (GeminiLiveUsageMetadata) -> Void)?
     var onFunctionStarted: (@Sendable (_ name: String, _ args: [String: Any]) -> Void)?
     var onFunctionExecuted: (@Sendable (_ name: String, _ args: [String: Any], _ result: [String: Any]) -> Void)?
     var onShouldAutoApproveExec: (@Sendable (_ command: String, _ workingDirectory: String?) -> Bool)?
@@ -92,9 +147,10 @@ final class GeminiLiveSession: @unchecked Sendable {
 
     var socketTask: URLSessionWebSocketTask?
     var enabledTools: Set<GeminiTool> = GeminiTool.coreToolSet
-    var microphoneEnabled = true
+    var microphoneEnabled = false
     var outputVolume: Float = 1
     var outputPrepared = false
+    var allowModelAudioPlayback = true
     var userInitiatedDisconnect = false
     var hasCompletedSetup = false
     var setupCompleteTime: Date?
@@ -127,6 +183,7 @@ final class GeminiLiveSession: @unchecked Sendable {
 
         self.enabledTools = enabledTools
         self.microphoneEnabled = microphoneEnabled
+        onUsageMetadata?(.zero)
 
         if !resumeSession {
             latestSessionHandle = nil
@@ -155,6 +212,8 @@ final class GeminiLiveSession: @unchecked Sendable {
     func disconnect(userInitiated: Bool) {
         userInitiatedDisconnect = userInitiated
         cancelPendingReconnect()
+        onMicrophoneInputLevel?(0)
+        onUsageMetadata?(.zero)
 
         if userInitiated {
             currentConfiguration = nil
@@ -228,6 +287,15 @@ final class GeminiLiveSession: @unchecked Sendable {
                 self?.outputPlayer.volume = clamped
             }
         }
+    }
+
+    func interruptModelPlayback() {
+        allowModelAudioPlayback = false
+        resetPlayback()
+    }
+
+    func resumeModelPlayback() {
+        allowModelAudioPlayback = true
     }
 
     func liveURL(apiKey: String) -> URL? {
@@ -469,9 +537,9 @@ final class GeminiLiveSession: @unchecked Sendable {
             "outputAudioTranscription": [:],
             "contextWindowCompression": [
                 "slidingWindow": [
-                    "targetTokens": 25_000,
+                    "targetTokens": Self.defaultContextWindowTargetTokens,
                 ],
-                "triggerTokens": 50_000,
+                "triggerTokens": Self.defaultContextWindowTriggerTokens,
             ] as [String: Any],
             "sessionResumption": latestSessionHandle.map { ["handle": $0] } ?? [:],
             "generationConfig": generationConfig,
@@ -651,6 +719,10 @@ final class GeminiLiveSession: @unchecked Sendable {
             for call in functionCalls {
                 handleFunctionCall(call)
             }
+        }
+
+        if let usageMetadata = object["usageMetadata"] as? [String: Any] {
+            onUsageMetadata?(GeminiLiveUsageMetadata(dictionary: usageMetadata))
         }
 
         guard let serverContent = object["serverContent"] as? [String: Any] else { return }

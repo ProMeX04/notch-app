@@ -10,6 +10,7 @@ enum NotchToolParityTests {
             ("OpenClaw read parity caps auto paging at 50KB by default", testReadCapsAutoPagingAt50KBByDefault),
             ("OpenClaw read parity can aggregate the whole file with a larger budget", testReadAggregatesWholeFileWithLargerBudget),
             ("OpenClaw read parity supports image files with OpenClaw-style text and blocks", testReadSupportsImagesWithOpenClawStyleBlocks),
+            ("OpenClaw host read parity allows paths outside workspace by default", testReadAllowsPathsOutsideWorkspaceByDefault),
             ("Gemini Live tool response sends image parts instead of embedding base64 in JSON result", testGeminiLiveToolResponseUsesInlineDataParts),
             ("Gemini Live callback result strips heavy image payload fields", testGeminiLiveCallbackResultIsSanitized),
             ("OpenClaw edit schema parity keeps exact description and parameter metadata", testEditSchemaMatchesOpenClawMetadata),
@@ -22,12 +23,14 @@ enum NotchToolParityTests {
             ("OpenClaw write schema parity keeps exact description and parameter metadata", testWriteSchemaMatchesOpenClawMetadata),
             ("OpenClaw write parity normalizes path aliases and structured content", testWriteNormalizesPathAliasesAndStructuredContent),
             ("OpenClaw write parity reports JavaScript-style string length in the success message", testWriteReportsOpenClawStringLength),
+            ("OpenClaw host write and edit parity allow paths outside workspace by default", testWriteAndEditAllowPathsOutsideWorkspaceByDefault),
             ("OpenClaw ls schema parity keeps exact description and parameter metadata", testLsSchemaMatchesOpenClawMetadata),
             ("OpenClaw ls parity lists sorted entries with directory suffixes and limit notices", testLsListsSortedEntriesAndLimitNotices),
             ("OpenClaw find schema parity keeps exact description and parameter metadata", testFindSchemaMatchesOpenClawMetadata),
             ("OpenClaw find parity supports glob patterns, scoped paths, and limit notices", testFindSupportsGlobPatternsScopedPathsAndLimitNotices),
             ("OpenClaw grep schema parity keeps exact description and parameter metadata", testGrepSchemaMatchesOpenClawMetadata),
             ("OpenClaw grep parity supports glob, context, limit, and long-line notices", testGrepSupportsGlobContextLimitAndLongLineNotice),
+            ("OpenClaw host ls/find/grep parity allow paths outside workspace by default", testLsFindAndGrepAllowPathsOutsideWorkspaceByDefault),
         ]
 
         var failures: [(String, Error)] = []
@@ -187,6 +190,22 @@ enum NotchToolParityTests {
             try expectEqual(image["mimeType"] as? String, "image/png", "image metadata mime type")
             try expectEqual(image["data"] as? String, pngBase64, "image metadata payload")
             try expectEqual(image["wasResized"] as? Bool, false, "image resize flag")
+        }
+    }
+
+    private static func testReadAllowsPathsOutsideWorkspaceByDefault() throws {
+        try withWorkspace { workspaceRoot in
+            let outsideURL = makeOutsideSiblingURL(workspaceRoot: workspaceRoot, name: "outside-read.txt")
+            defer { try? FileManager.default.removeItem(at: outsideURL) }
+            try "outside read content".write(to: outsideURL, atomically: true, encoding: .utf8)
+
+            let tools = makeTools(workspaceRoot: workspaceRoot)
+            let result = tools.executeReadFile(path: "../\(outsideURL.lastPathComponent)")
+
+            try expectEqual(result["success"] as? Bool, true, "outside read success flag")
+            try expectEqual(result["content"] as? String, "outside read content", "outside read content")
+            try expectEqual(result["path"] as? String, outsideURL.path, "outside read path")
+            try expectEqual(result["absolutePath"] as? String, outsideURL.path, "outside read absolute path")
         }
     }
 
@@ -521,6 +540,32 @@ enum NotchToolParityTests {
         }
     }
 
+    private static func testWriteAndEditAllowPathsOutsideWorkspaceByDefault() throws {
+        try withWorkspace { workspaceRoot in
+            let outsideURL = makeOutsideSiblingURL(workspaceRoot: workspaceRoot, name: "outside-write-edit.txt")
+            defer { try? FileManager.default.removeItem(at: outsideURL) }
+            let escapedPath = "../\(outsideURL.lastPathComponent)"
+            let tools = makeTools(workspaceRoot: workspaceRoot)
+
+            let writeResult = tools.executeWriteFile(path: escapedPath, content: "before")
+            try expectEqual(writeResult["success"] as? Bool, true, "outside write success flag")
+            try expectEqual(writeResult["path"] as? String, outsideURL.path, "outside write path")
+            try expectEqual(writeResult["absolutePath"] as? String, outsideURL.path, "outside write absolute path")
+            try expectEqual(writeResult["message"] as? String, "Successfully wrote 6 bytes to \(escapedPath)", "outside write message")
+            try expectEqual(try String(contentsOf: outsideURL, encoding: .utf8), "before", "outside write file contents")
+
+            let editResult = tools.executeEditFile(
+                path: escapedPath,
+                edits: [GeminiExactTextEdit(oldText: "before", newText: "after")]
+            )
+            try expectEqual(editResult["success"] as? Bool, true, "outside edit success flag")
+            try expectEqual(editResult["path"] as? String, outsideURL.path, "outside edit path")
+            try expectEqual(editResult["absolutePath"] as? String, outsideURL.path, "outside edit absolute path")
+            try expectEqual(editResult["message"] as? String, "Successfully replaced 1 block(s) in \(escapedPath).", "outside edit message")
+            try expectEqual(try String(contentsOf: outsideURL, encoding: .utf8), "after", "outside edit file contents")
+        }
+    }
+
     private static func testLsSchemaMatchesOpenClawMetadata() throws {
         try expectEqual(
             GeminiWorkspaceCodingTools.openClawLsToolDescription,
@@ -772,6 +817,41 @@ enum NotchToolParityTests {
         }
     }
 
+    private static func testLsFindAndGrepAllowPathsOutsideWorkspaceByDefault() throws {
+        try requireRipgrep()
+
+        try withWorkspace { workspaceRoot in
+            let outsideDirectory = makeOutsideSiblingURL(workspaceRoot: workspaceRoot, name: "outside-search", isDirectory: true)
+            defer { try? FileManager.default.removeItem(at: outsideDirectory) }
+            try FileManager.default.createDirectory(at: outsideDirectory, withIntermediateDirectories: true)
+            try "alpha".write(to: outsideDirectory.appendingPathComponent("alpha.txt"), atomically: true, encoding: .utf8)
+            try "needle".write(to: outsideDirectory.appendingPathComponent("beta.txt"), atomically: true, encoding: .utf8)
+            try "gamma".write(to: outsideDirectory.appendingPathComponent(".env"), atomically: true, encoding: .utf8)
+
+            let tools = makeTools(workspaceRoot: workspaceRoot)
+
+            let lsResult = tools.executeLs(path: outsideDirectory.path)
+            try expectEqual(lsResult["success"] as? Bool, true, "outside ls success flag")
+            try expectEqual(lsResult["path"] as? String, outsideDirectory.path, "outside ls path")
+            try expectEqual(lsResult["entries"] as? [String], [".env", "alpha.txt", "beta.txt"], "outside ls entries")
+
+            let findResult = tools.executeFind(pattern: "*.txt", path: outsideDirectory.path)
+            try expectEqual(findResult["success"] as? Bool, true, "outside find success flag")
+            try expectEqual(findResult["path"] as? String, outsideDirectory.path, "outside find path")
+            try expectEqual(findResult["matches"] as? [String], ["alpha.txt", "beta.txt"], "outside find matches")
+
+            let grepResult = tools.executeGrep(
+                pattern: "needle",
+                path: outsideDirectory.path,
+                literal: true
+            )
+            let output = try require(grepResult["output"] as? String, "expected outside grep output")
+            try expectEqual(grepResult["success"] as? Bool, true, "outside grep success flag")
+            try expectEqual(grepResult["path"] as? String, outsideDirectory.path, "outside grep path")
+            try expect(output.contains("beta.txt:1: needle"), "expected outside grep match")
+        }
+    }
+
     private static func makeTools(
         workspaceRoot: URL,
         adaptiveReadBudgetBytes: Int = GeminiWorkspaceCodingTools.defaultAdaptiveReadBudgetBytes
@@ -789,6 +869,17 @@ enum NotchToolParityTests {
         try FileManager.default.createDirectory(at: workspaceRoot, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: workspaceRoot) }
         try body(workspaceRoot)
+    }
+
+    private static func makeOutsideSiblingURL(
+        workspaceRoot: URL,
+        name: String,
+        isDirectory: Bool = false
+    ) -> URL {
+        workspaceRoot.deletingLastPathComponent().appendingPathComponent(
+            "notch-tool-tests-\(UUID().uuidString)-\(name)",
+            isDirectory: isDirectory
+        )
     }
 
     private static func writeFile(_ relativePath: String, contents: String, workspaceRoot: URL) throws {

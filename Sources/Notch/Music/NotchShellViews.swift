@@ -49,7 +49,7 @@ struct NotchHeaderView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 10) {
                 ForEach(accessoryController.leadingActions) { action in
                     Button(action: action.action) {
                         HStack(spacing: 5) {
@@ -72,21 +72,27 @@ struct NotchHeaderView: View {
                     .buttonStyle(.plain)
                     .disabled(action.isDisabled)
                 }
+
+                PanelSwitcher(
+                    presentationModel: presentationModel,
+                    panels: [.music, .focus]
+                )
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, 20)
             .offset(y: 3)
 
             Rectangle()
-                .fill(.black)
+                .fill(.clear)
                 .frame(width: closedNotchWidth, height: displayHeight)
                 .mask {
                     NotchShape()
                 }
 
-            HStack(spacing: 4) {
-                PanelSwitcher(presentationModel: presentationModel)
-            }
+            PanelSwitcher(
+                presentationModel: presentationModel,
+                panels: [.talk, .shelf, .settings]
+            )
             .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(.trailing, 20)
             .offset(y: 3)
@@ -231,7 +237,9 @@ struct CompactTalkView: View {
                 Spacer(minLength: 0)
                 CompactTalkPulseView(
                     tint: accentColor,
-                    isAnimated: gemini.isModelSpeaking
+                    inputLevel: gemini.microphoneInputLevel,
+                    isListening: gemini.connectionState == .connected && gemini.effectiveMicrophoneEnabled,
+                    isModelSpeaking: gemini.isModelSpeaking
                 )
                 Spacer(minLength: 0)
             }
@@ -284,14 +292,49 @@ private struct CompactTalkLiveDot: View {
 
 struct CompactTalkPulseView: View {
     let tint: Color
-    let isAnimated: Bool
+    let inputLevel: Double
+    let isListening: Bool
+    let isModelSpeaking: Bool
 
     var body: some View {
-        if isAnimated {
+        if isListening {
+            LiveLevelBars(tint: tint, level: inputLevel)
+        } else if isModelSpeaking {
             AnimatedPulseBars(tint: tint)
         } else {
             StaticPulseBars(tint: tint)
         }
+    }
+}
+
+struct LiveLevelBars: View {
+    let tint: Color
+    let level: Double
+
+    private var normalizedLevel: CGFloat {
+        CGFloat(min(max(level, 0), 1))
+    }
+
+    private var heights: [CGFloat] {
+        let floor: CGFloat = 4
+        let dynamic = normalizedLevel * 8
+        return [
+            floor + dynamic * 0.72,
+            floor + dynamic,
+            floor + dynamic * 0.82
+        ]
+    }
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(0..<3, id: \.self) { index in
+                Capsule()
+                    .fill(tint.opacity(0.96))
+                    .frame(width: 3, height: heights[index])
+            }
+        }
+        .frame(width: 18, height: 14, alignment: .center)
+        .animation(.easeOut(duration: 0.12), value: normalizedLevel)
     }
 }
 
@@ -368,7 +411,7 @@ struct ExpandedNotchContent: View {
             } else if presentationModel.selectedPanel == .shelf {
                 ShelfPanelView(shelf: shelf)
             } else if presentationModel.selectedPanel == .settings {
-                GlobalSettingsView(gemini: gemini)
+                GlobalSettingsView(gemini: gemini, presentationModel: presentationModel)
             } else {
                 HStack {
                     ExpandedAlbumArtView(
@@ -389,29 +432,16 @@ struct ExpandedNotchContent: View {
 
 struct PanelSwitcher: View {
     @ObservedObject var presentationModel: NotchPresentationModel
+    let panels: [NotchPanel]
 
     var body: some View {
         HStack(spacing: 3) {
-            switcherButton(
-                icon: "playpause",
-                panel: .music
-            )
-            switcherButton(
-                icon: "timer",
-                panel: .focus
-            )
-            switcherButton(
-                icon: "waveform.and.mic",
-                panel: .talk
-            )
-            switcherButton(
-                icon: "tray.full",
-                panel: .shelf
-            )
-            switcherButton(
-                icon: "gearshape",
-                panel: .settings
-            )
+            ForEach(panels, id: \.rawValue) { panel in
+                switcherButton(
+                    icon: switcherIcon(for: panel),
+                    panel: panel
+                )
+            }
         }
         .padding(3)
         .background(
@@ -421,6 +451,21 @@ struct PanelSwitcher: View {
         .overlay {
             Capsule()
                 .stroke(Color.white.opacity(0.06), lineWidth: 1)
+        }
+    }
+
+    private func switcherIcon(for panel: NotchPanel) -> String {
+        switch panel {
+        case .music:
+            return "playpause"
+        case .focus:
+            return "timer"
+        case .talk:
+            return "waveform.and.mic"
+        case .shelf:
+            return "tray.full"
+        case .settings:
+            return "gearshape"
         }
     }
 
@@ -462,7 +507,19 @@ struct PanelSwitcher: View {
 struct Localization {
     private static let dict: [String: [String: String]] = [
         "General Settings": ["English": "General Settings", "Tiếng Việt": "Cài đặt chung"],
+        "General": ["English": "General", "Tiếng Việt": "Chung"],
+        "API Keys": ["English": "API Keys", "Tiếng Việt": "API Key"],
         "Language": ["English": "Language", "Tiếng Việt": "Ngôn ngữ"],
+        "Hover to Open": ["English": "Hover to Open", "Tiếng Việt": "Mở khi rê chuột"],
+        "Hover Open Delay": ["English": "Hover Open Delay", "Tiếng Việt": "Độ trễ mở khi rê chuột"],
+        "Adjust how long the pointer must stay over the notch before it opens.": ["English": "Adjust how long the pointer must stay over the notch before it opens.", "Tiếng Việt": "Chỉnh thời gian con trỏ cần đứng trên notch trước khi nó mở ra."],
+        "Accent Color": ["English": "Accent Color", "Tiếng Việt": "Màu nhấn"],
+        "Choose the shared accent used for Talk controls and settings buttons.": ["English": "Choose the shared accent used for Talk controls and settings buttons.", "Tiếng Việt": "Chọn màu nhấn chung cho các nút trong Talk và phần cài đặt."],
+        "Ocean": ["English": "Ocean", "Tiếng Việt": "Biển xanh"],
+        "Mint": ["English": "Mint", "Tiếng Việt": "Bạc hà"],
+        "Gold": ["English": "Gold", "Tiếng Việt": "Vàng"],
+        "Coral": ["English": "Coral", "Tiếng Việt": "San hô"],
+        "Rose": ["English": "Rose", "Tiếng Việt": "Hồng"],
         "Cycle": ["English": "Cycle", "Tiếng Việt": "Chu kỳ"],
         "Version": ["English": "Version", "Tiếng Việt": "Phiên bản"],
         "Focus": ["English": "Focus", "Tiếng Việt": "Tập trung"],
@@ -507,12 +564,20 @@ struct Localization {
         "Connect": ["English": "Connect", "Tiếng Việt": "Kết nối"],
         "Disconnect": ["English": "Disconnect", "Tiếng Việt": "Ngắt kết nối"],
         "End": ["English": "End", "Tiếng Việt": "Kết thúc"],
+        "Open Mic": ["English": "Open Mic", "Tiếng Việt": "Mic"],
+        "Push to Talk": ["English": "Push to Talk", "Tiếng Việt": "Nhấn để nói"],
+        "Hold": ["English": "Hold", "Tiếng Việt": "Giữ"],
+        "Listening": ["English": "Listening", "Tiếng Việt": "Đang nghe"],
         "Mic": ["English": "Mic", "Tiếng Việt": "Mic"],
         "Muted": ["English": "Muted", "Tiếng Việt": "Tắt tiếng"],
         "Subs": ["English": "Subs", "Tiếng Việt": "Phụ đề"],
+        "Subs Off": ["English": "Subs Off", "Tiếng Việt": "Phụ đề Tắt"],
+        "Subs Auto": ["English": "Subs Auto", "Tiếng Việt": "Phụ đề Tự ẩn"],
+        "Subs Pin": ["English": "Subs Pin", "Tiếng Việt": "Phụ đề Ghim"],
         "Type": ["English": "Type", "Tiếng Việt": "Nhập"],
         "Hide": ["English": "Hide", "Tiếng Việt": "Ẩn"],
         "Pin": ["English": "Pin", "Tiếng Việt": "Ghim"],
+        "Context": ["English": "Context", "Tiếng Việt": "Ngữ cảnh"],
         "Gemini is listening...": ["English": "Gemini is listening...", "Tiếng Việt": "Đang nghe..."],
         "Thinking...": ["English": "Thinking...", "Tiếng Việt": "Đang nghĩ..."],
         "Delete Agent?": ["English": "Delete Agent?", "Tiếng Việt": "Xóa Robot này?"],
@@ -530,7 +595,10 @@ struct Localization {
         "Pexels API Key": ["English": "Pexels API Key", "Tiếng Việt": "Pexels API Key"],
         "Saved": ["English": "Saved", "Tiếng Việt": "Đã lưu"],
         "Allow Once": ["English": "Allow Once", "Tiếng Việt": "Cho phép 1 lần"],
-        "Always Exact": ["English": "Always Exact", "Tiếng Việt": "Duy trì lệnh đúng"],
+        "Once": ["English": "Once", "Tiếng Việt": "1 lần"],
+        "Always Exact": ["English": "Always Exact", "Tiếng Việt": "Luôn lệnh này"],
+        "Exact": ["English": "Exact", "Tiếng Việt": "Lệnh này"],
+        "Always": ["English": "Always", "Tiếng Việt": "Luôn"],
         "Enable All": ["English": "Enable All", "Tiếng Việt": "Bật tất cả"],
         "Disable All": ["English": "Disable All", "Tiếng Việt": "Tắt tất cả"],
         "Manage skills": ["English": "Manage skills", "Tiếng Việt": "Quản lý Skill"],
@@ -569,6 +637,8 @@ struct Localization {
         "Auto-start Pomo": ["English": "Auto-start Pomo", "Tiếng Việt": "Tự động bắt đầu Pomodoro"],
         "tools": ["English": "tools", "Tiếng Việt": "công cụ"],
         "skills": ["English": "skills", "Tiếng Việt": "skill"],
+        "Auto Hide": ["English": "Auto Hide", "Tiếng Việt": "Tự ẩn"],
+        "Quit Notch": ["English": "Quit Notch", "Tiếng Việt": "Thoát Notch"],
     ]
 
     static func get(_ key: String, lang: String) -> String {
@@ -578,43 +648,232 @@ struct Localization {
 
 // MARK: - Global Settings View
 
+private enum GlobalSettingsSection: String, CaseIterable, Identifiable {
+    case general = "General"
+    case apiKeys = "API Keys"
+
+    var id: String { rawValue }
+}
+
 struct GlobalSettingsView: View {
     @ObservedObject var gemini: GeminiLiveViewModel
+    @ObservedObject var presentationModel: NotchPresentationModel
     @AppStorage("app_language") private var appLanguage: String = "English"
-    let tint: Color = .blue
+    @State private var holdShortcut = HoldToTalkShortcutStore.load()
+    @State private var selectedSection: GlobalSettingsSection = .general
+
+    private var tint: Color {
+        presentationModel.accentColor.ensureMinimumBrightness(factor: 0.78)
+    }
     
     var body: some View {
+        HStack(spacing: 18) {
+            settingsSidebar
+            settingsDetail
+        }
+    }
+
+    private var settingsSidebar: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(Localization.get("General Settings", lang: appLanguage))
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.white.opacity(0.5))
+                .padding(.horizontal, 4)
+
+            ForEach(GlobalSettingsSection.allCases) { section in
+                sidebarButton(for: section)
+            }
+
+            Spacer(minLength: 0)
+
+            Text("\(Localization.get("Version", lang: appLanguage)) 1.0.0")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.white.opacity(0.3))
+                .padding(.horizontal, 4)
+        }
+        .frame(width: 132, alignment: .topLeading)
+    }
+
+    private var settingsDetail: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
+                if selectedSection == .general {
+                    generalSettingsSection
+                } else {
+                    apiKeysSection
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var generalSettingsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            settingsSectionCard {
                 HStack(spacing: 8) {
                     languageButton(name: "English")
                     languageButton(name: "Tiếng Việt")
                 }
+                .frame(maxWidth: .infinity)
+            }
 
-                VStack(alignment: .leading, spacing: 12) {
-                    settingsTextField(
-                        title: "Gemini",
-                        placeholder: Localization.get("Gemini API Key", lang: appLanguage),
-                        text: $gemini.apiKeyText
-                    ) {
-                        Task { await gemini.saveAPIKey() }
-                    }
-
-                    settingsTextField(
-                        title: "Pexels",
-                        placeholder: Localization.get("Pexels API Key", lang: appLanguage),
-                        text: $gemini.pexelsAPIKeyText
-                    ) {
-                        Task { await gemini.saveServiceKeys() }
+            settingsSectionCard {
+                HStack(spacing: 16) {
+                    ForEach(NotchAccentColorOption.allCases) { option in
+                        accentColorButton(for: option)
                     }
                 }
-                
-                Spacer()
-                
-                Text("\(Localization.get("Version", lang: appLanguage)) 1.0.0")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.3))
+                .padding(.vertical, 4)
+                .frame(maxWidth: .infinity)
             }
+
+            settingsSectionCard {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text(Localization.get("Hover to Open", lang: appLanguage))
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.9))
+                        Spacer()
+                        Text(hoverDelayLabel)
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .foregroundStyle(tint)
+                    }
+
+                    Slider(
+                        value: Binding(
+                            get: { presentationModel.hoverOpenDelaySeconds },
+                            set: { presentationModel.setHoverOpenDelay(seconds: $0) }
+                        ),
+                        in: 0.05...1.0,
+                        step: 0.05
+                    )
+                    .tint(tint)
+                }
+            }
+
+            settingsSectionCard {
+                HoldToTalkShortcutRecorderView(
+                    shortcut: $holdShortcut,
+                    title: Localization.get("Push to Talk", lang: appLanguage),
+                    helperText: "Current: \(holdShortcut.displayString)",
+                    isNotchStyle: true,
+                    tint: tint
+                )
+            }
+
+            Button {
+                NSApp.terminate(nil)
+            } label: {
+                HStack(spacing: 6) {
+                    Spacer()
+                    Image(systemName: "power")
+                    Text(Localization.get("Quit Notch", lang: appLanguage))
+                    Spacer()
+                }
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Color(nsColor: .systemRed).opacity(0.85))
+                .padding(.vertical, 10)
+                .background(Color.white.opacity(0.05).cornerRadius(10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.08), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 4)
+        }
+    }
+
+    private var apiKeysSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            settingsSectionCard(
+                title: "Gemini",
+                subtitle: Localization.get("Gemini API Key", lang: appLanguage)
+            ) {
+                settingsTextField(
+                    title: "Gemini",
+                    placeholder: Localization.get("Gemini API Key", lang: appLanguage),
+                    text: $gemini.apiKeyText
+                ) {
+                    Task { await gemini.saveAPIKey() }
+                }
+            }
+
+            settingsSectionCard(
+                title: "Pexels",
+                subtitle: Localization.get("Pexels API Key", lang: appLanguage)
+            ) {
+                settingsTextField(
+                    title: "Pexels",
+                    placeholder: Localization.get("Pexels API Key", lang: appLanguage),
+                    text: $gemini.pexelsAPIKeyText
+                ) {
+                    Task { await gemini.saveServiceKeys() }
+                }
+            }
+        }
+    }
+
+    private var hoverDelayLabel: String {
+        String(format: "%.2fs", presentationModel.hoverOpenDelaySeconds)
+    }
+
+    private func sidebarButton(for section: GlobalSettingsSection) -> some View {
+        Button {
+            selectedSection = section
+        } label: {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(selectedSection == section ? tint : .white.opacity(0.16))
+                    .frame(width: 6, height: 6)
+
+                Text(Localization.get(section.rawValue, lang: appLanguage))
+                    .font(.system(size: 12, weight: .semibold))
+
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(selectedSection == section ? .white : .white.opacity(0.68))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(selectedSection == section ? tint.opacity(0.16) : Color.white.opacity(0.05))
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(selectedSection == section ? tint.opacity(0.4) : Color.white.opacity(0.08), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func settingsSectionCard<Content: View>(title: String? = nil, subtitle: String? = nil, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if (title != nil && !title!.isEmpty) || (subtitle != nil && !subtitle!.isEmpty) {
+                VStack(alignment: .leading, spacing: 4) {
+                    if let title, !title.isEmpty {
+                        Text(title)
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.95))
+                    }
+
+                    if let subtitle, !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.48))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+
+            content()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.055))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.white.opacity(0.1), lineWidth: 1)
         }
     }
 
@@ -670,6 +929,27 @@ struct GlobalSettingsView: View {
                     }
                 }
                 .foregroundStyle(appLanguage == name ? tint : .white.opacity(0.6))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func accentColorButton(for option: NotchAccentColorOption) -> some View {
+        let isSelected = presentationModel.selectedAccentColorOption == option
+        let optionColor = option.color.ensureMinimumBrightness(factor: 0.78)
+
+        return Button {
+            presentationModel.setAccentColor(option)
+        } label: {
+            Circle()
+                .fill(optionColor)
+                .frame(width: 24, height: 24)
+                .overlay {
+                    if isSelected {
+                        Circle()
+                            .stroke(Color.white, lineWidth: 2)
+                            .padding(-4)
+                    }
+                }
         }
         .buttonStyle(.plain)
     }

@@ -74,6 +74,10 @@ struct MusicNotchView: View {
         max(22, presentationModel.closedNotchSize.height - 6)
     }
 
+    private var showsDarkInnerNotch: Bool {
+        presentationModel.selectedPanel != .focus && presentationModel.selectedPanel != .music
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
             VStack(spacing: 0) {
@@ -173,9 +177,9 @@ struct MusicNotchView: View {
                     talkHeaderAccessoryController: talkHeaderAccessoryController,
                     albumArtNamespace: albumArtNamespace
                 )
-                .padding(.top, 10)
-                .padding(.horizontal, 31)
-                .padding(.bottom, 12)
+                .padding(.top, presentationModel.selectedPanel == .focus ? 0 : 10)
+                .padding(.horizontal, presentationModel.selectedPanel == .focus ? 0 : 31)
+                .padding(.bottom, presentationModel.selectedPanel == .focus ? 0 : 12)
             }
         }
         .padding(.horizontal, presentationModel.isExpanded ? 0 : NotchMetrics.closedCornerRadius.bottom)
@@ -184,7 +188,39 @@ struct MusicNotchView: View {
             height: currentBodyHeight,
             alignment: .top
         )
-        .background(.black)
+        .background {
+            ZStack {
+                if presentationModel.isExpanded && presentationModel.selectedPanel == .focus {
+                    let tint = Color(nsColor: (pomodoro.hasActiveSession ? pomodoro.phase : .focus).accentColor)
+                    ZStack {
+                        tint
+                        LinearGradient(
+                            colors: [
+                                .white.opacity(0.15),
+                                .clear,
+                                .black.opacity(0.1)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    }
+                } else {
+                    Color.black
+                }
+                // Ambient album art blur — chỉ hiện ở music panel khi có bài phát
+                if presentationModel.isExpanded
+                    && presentationModel.selectedPanel == .music
+                    && playback.isPlaying {
+                    Image(nsImage: playback.albumArt)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .scaleEffect(1.8)
+                        .blur(radius: 35, opaque: true)
+                        .opacity(0.25)
+                        .animation(.easeInOut(duration: 1.2), value: playback.albumArt)
+                }
+            }
+        }
         .clipShape(
             NotchShape(
                 topCornerRadius: topCornerRadius,
@@ -194,8 +230,10 @@ struct MusicNotchView: View {
         .overlay(alignment: .top) {
             Rectangle()
                 .fill(.black)
+                .opacity(showsDarkInnerNotch ? 1 : 0)
                 .frame(height: 1)
                 .padding(.horizontal, topCornerRadius)
+                .animation(.easeInOut(duration: 0.18), value: showsDarkInnerNotch)
         }
         .overlay {
             NotchShape(

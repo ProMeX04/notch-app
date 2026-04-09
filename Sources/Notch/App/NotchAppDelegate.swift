@@ -4,7 +4,8 @@ import UserNotifications
 @MainActor
 final class NotchAppDelegate: NSObject, NSApplicationDelegate {
     private var notchController: NotchWindowController?
-    private var statusItemController: StatusItemController?
+
+    private var holdToTalkHotkeyManager: HoldToTalkHotkeyManager?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -33,7 +34,16 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
         )
 
         self.notchController = notchController
-        self.statusItemController = StatusItemController(windowController: notchController)
+
+
+        let holdToTalkHotkeyManager = HoldToTalkHotkeyManager()
+        holdToTalkHotkeyManager.onPress = { [weak notchController] in
+            notchController?.beginGeminiLiveHoldToTalk()
+        }
+        holdToTalkHotkeyManager.onRelease = { [weak notchController] in
+            notchController?.endGeminiLiveHoldToTalk()
+        }
+        self.holdToTalkHotkeyManager = holdToTalkHotkeyManager
 
         notchController.show()
         configureDebugLaunchBehavior(using: notchController)
@@ -64,6 +74,7 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        holdToTalkHotkeyManager = nil
         notchController?.shutdown()
     }
 

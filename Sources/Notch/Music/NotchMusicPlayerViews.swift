@@ -1,14 +1,12 @@
 import SwiftUI
 
-private let mediaControlTint = Color(nsColor: .systemYellow).ensureMinimumBrightness(factor: 0.78)
-
 struct ExpandedAlbumArtView: View {
     @ObservedObject var playback: MusicProbeViewModel
     let albumArtNamespace: Namespace.ID
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            if playback.isPlaying {
+            if playback.hasTrack {
                 Image(nsImage: playback.albumArt)
                     .resizable()
                     .clipped()
@@ -17,7 +15,7 @@ struct ExpandedAlbumArtView: View {
                     .scaleEffect(x: 1.3, y: 1.4)
                     .rotationEffect(.degrees(92))
                     .blur(radius: 40)
-                    .opacity(0.5)
+                    .opacity(0.45)
             }
 
             Button {
@@ -48,7 +46,7 @@ struct ExpandedAlbumArtView: View {
 
             Rectangle()
                 .fill(Color.black)
-                .opacity(playback.isPlaying ? 0 : 0.8)
+                .opacity(playback.isPlaying ? 0 : 0.4)
                 .blur(radius: 50)
                 .frame(width: 90, height: 90)
         }
@@ -101,28 +99,28 @@ struct ExpandedMusicControlsView: View {
         VStack(alignment: .leading, spacing: 0) {
             GeometryReader { geometry in
                 VStack(alignment: .leading, spacing: 4) {
-                    VStack(alignment: .leading, spacing: 0) {
+                    VStack(alignment: .leading, spacing: 1) {
                         MarqueeText(
                             .constant(primaryText),
-                            font: .headline,
+                            font: .system(size: 14, weight: .bold, design: .rounded),
                             nsFont: .headline,
-                            textColor: .white,
+                            textColor: accent,
                             frameWidth: geometry.size.width
                         )
                         MarqueeText(
                             .constant(secondaryText),
-                            font: .headline,
-                            nsFont: .headline,
-                            textColor: accent.ensureMinimumBrightness(factor: 0.6),
+                            font: .system(size: 12, weight: .medium, design: .rounded),
+                            nsFont: .subheadline,
+                            textColor: accent.opacity(0.7),
                             frameWidth: geometry.size.width
                         )
-                        .fontWeight(.medium)
                     }
 
                     TimelineView(.animation(minimumInterval: playback.state.playbackRate > 0 ? 0.1 : nil)) { timeline in
                         MusicSliderView(
                             sliderValue: $sliderValue,
                             duration: playback.state.duration,
+                            accentColor: accent,
                             labelColor: accent.ensureMinimumBrightness(factor: 0.6),
                             dragging: $dragging,
                             lastDragged: $lastDragged,
@@ -152,19 +150,19 @@ struct ExpandedMusicControlsView: View {
     private func slotView(for slot: MusicControlSlot) -> some View {
         switch slot {
         case .shuffle:
-            HoverButton(icon: "shuffle", iconColor: playback.isShuffled ? mediaControlTint : mediaControlTint.opacity(0.78), scale: .medium) {
+            HoverButton(icon: "shuffle", iconColor: playback.isShuffled ? accent : accent.opacity(0.55), scale: .medium) {
                 playback.toggleShuffle()
             }
         case .previous:
-            HoverButton(icon: "backward.fill", scale: .medium) {
+            HoverButton(icon: "backward.fill", iconColor: accent, scale: .medium) {
                 playback.previousTrack()
             }
         case .playPause:
-            HoverButton(icon: playback.isPlaying ? "pause.fill" : "play.fill", scale: .large) {
+            HoverButton(icon: playback.isPlaying ? "pause.fill" : "play.fill", iconColor: accent, scale: .large) {
                 playback.togglePlay()
             }
         case .next:
-            HoverButton(icon: "forward.fill", scale: .medium) {
+            HoverButton(icon: "forward.fill", iconColor: accent, scale: .medium) {
                 playback.nextTrack()
             }
         case .repeatMode:
@@ -172,19 +170,19 @@ struct ExpandedMusicControlsView: View {
                 playback.toggleRepeat()
             }
         case .favorite:
-            FavoriteControlButton(playback: playback)
+            FavoriteControlButton(playback: playback, accent: accent)
         case .volume:
-            VolumeControlView(playback: playback)
+            VolumeControlView(playback: playback, accent: accent)
         case .goBackward:
-            HoverButton(icon: "gobackward.15", scale: .medium) {
+            HoverButton(icon: "gobackward.15", iconColor: accent, scale: .medium) {
                 playback.skip(seconds: -15)
             }
         case .goForward:
-            HoverButton(icon: "goforward.15", scale: .medium) {
+            HoverButton(icon: "goforward.15", iconColor: accent, scale: .medium) {
                 playback.skip(seconds: 15)
             }
         case .stop:
-            HoverButton(icon: "stop.fill", scale: .medium) {
+            HoverButton(icon: "stop.fill", iconColor: accent, scale: .medium) {
                 playback.stop()
             }
         case .none:
@@ -206,9 +204,9 @@ struct ExpandedMusicControlsView: View {
     private var repeatIconColor: Color {
         switch playback.repeatMode {
         case .off:
-            return mediaControlTint.opacity(0.78)
+            return accent.opacity(0.55)
         case .all, .one:
-            return mediaControlTint
+            return accent
         }
     }
 }
@@ -216,6 +214,7 @@ struct ExpandedMusicControlsView: View {
 struct MusicSliderView: View {
     @Binding var sliderValue: Double
     let duration: Double
+    let accentColor: Color
     let labelColor: Color
     @Binding var dragging: Bool
     @Binding var lastDragged: Date
@@ -227,7 +226,7 @@ struct MusicSliderView: View {
             CustomSlider(
                 value: $sliderValue,
                 range: 0...max(duration, 1),
-                color: .white,
+                color: accentColor,
                 dragging: $dragging,
                 lastDragged: $lastDragged
             ) { newValue in
@@ -240,9 +239,9 @@ struct MusicSliderView: View {
                 Spacer()
                 Text(timeString(from: duration))
             }
-            .fontWeight(.medium)
+            .fontWeight(.semibold)
             .foregroundStyle(labelColor)
-            .font(.caption)
+            .font(.system(size: 10, weight: .semibold, design: .rounded).monospacedDigit())
         }
         .onChange(of: currentDate) { _, newDate in
             guard !dragging, playback.state.lastUpdated.timeIntervalSince(lastDragged) > -1 else { return }
@@ -276,6 +275,8 @@ struct CustomSlider: View {
     let onValueChange: (Double) -> Void
     var onDragChange: ((Double) -> Void)? = nil
 
+    @State private var shimmerOffset: CGFloat = -1.0
+
     var body: some View {
         GeometryReader { geometry in
             let width = geometry.size.width
@@ -283,19 +284,48 @@ struct CustomSlider: View {
             let rangeSpan = range.upperBound - range.lowerBound
             let progress = rangeSpan == .zero ? 0 : (value - range.lowerBound) / rangeSpan
             let filledTrackWidth = min(max(progress, 0), 1) * width
+            let dotSize = CGFloat(dragging ? 13 : 0)
 
             ZStack(alignment: .leading) {
-                Rectangle()
-                    .fill(.gray.opacity(0.3))
+                // Track empty
+                Capsule()
+                    .fill(color.opacity(0.18))
                     .frame(height: height)
 
-                Rectangle()
-                    .fill(color)
+                // Track filled + shimmer
+                Capsule()
+                    .fill(color.opacity(0.9))
                     .frame(width: filledTrackWidth, height: height)
+                    .overlay {
+                        // Shimmer sweep
+                        GeometryReader { fillGeo in
+                            LinearGradient(
+                                colors: [
+                                    .clear,
+                                    .white.opacity(0.35),
+                                    .clear
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                            .frame(width: fillGeo.size.width * 0.4)
+                            .offset(x: shimmerOffset * fillGeo.size.width)
+                            .blendMode(.plusLighter)
+                        }
+                        .clipShape(Capsule())
+                    }
+
+                // Glowing playhead dot
+                if progress > 0.01 {
+                    Circle()
+                        .fill(color)
+                        .frame(width: dotSize, height: dotSize)
+                        .shadow(color: color.opacity(0.8), radius: dragging ? 6 : 3)
+                        .offset(x: filledTrackWidth - dotSize / 2)
+                }
             }
-            .cornerRadius(height / 2)
-            .frame(height: 10)
-            .contentShape(Rectangle())
+            .frame(height: max(height, dotSize))
+            .contentShape(Rectangle().size(CGSize(width: width, height: 20)).offset(y: -5))
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { gesture in
@@ -313,13 +343,18 @@ struct CustomSlider: View {
                     }
             )
             .animation(.spring(response: 0.35, dampingFraction: 0.7), value: dragging)
+            .onAppear {
+                withAnimation(.linear(duration: 2.2).repeatForever(autoreverses: false)) {
+                    shimmerOffset = 1.4
+                }
+            }
         }
     }
 }
 
 struct HoverButton: View {
     let icon: String
-    var iconColor: Color = mediaControlTint
+    var iconColor: Color = .white
     var scale: Image.Scale = .medium
     var contentTransition: ContentTransition = .symbolEffect
     let action: () -> Void
@@ -336,7 +371,7 @@ struct HoverButton: View {
                 .frame(width: size, height: size)
                 .overlay {
                     Capsule()
-                        .fill(isHovering ? Color.gray.opacity(0.2) : .clear)
+                        .fill(isHovering ? iconColor.opacity(0.15) : .clear)
                         .frame(width: size, height: size)
                         .overlay {
                             Image(systemName: icon)
@@ -357,6 +392,7 @@ struct HoverButton: View {
 
 struct FavoriteControlButton: View {
     @ObservedObject var playback: MusicProbeViewModel
+    let accent: Color
 
     var body: some View {
         HoverButton(icon: iconName, iconColor: iconColor, scale: .medium) {
@@ -371,12 +407,14 @@ struct FavoriteControlButton: View {
     }
 
     private var iconColor: Color {
-        playback.isFavoriteTrack ? mediaControlTint : mediaControlTint.opacity(0.78)
+        playback.isFavoriteTrack ? accent : accent.opacity(0.55)
     }
 }
 
 struct VolumeControlView: View {
+    // accent is passed in so the icon tints with the album-art color
     @ObservedObject var playback: MusicProbeViewModel
+    let accent: Color
     @State private var volumeSliderValue = 0.5
     @State private var dragging = false
     @State private var showVolumeSlider = false
@@ -395,7 +433,7 @@ struct VolumeControlView: View {
             } label: {
                 Image(systemName: volumeIcon)
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(playback.supportsVolumeControl ? mediaControlTint : .gray)
+                    .foregroundColor(playback.supportsVolumeControl ? accent : .gray)
             }
             .buttonStyle(.plain)
             .disabled(!playback.supportsVolumeControl)
@@ -405,7 +443,7 @@ struct VolumeControlView: View {
                 CustomSlider(
                     value: $volumeSliderValue,
                     range: 0.0...1.0,
-                    color: .white,
+                    color: accent,
                     dragging: $dragging,
                     lastDragged: .constant(.distantPast),
                     onValueChange: { newValue in

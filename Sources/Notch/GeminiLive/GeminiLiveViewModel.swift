@@ -15,10 +15,20 @@ final class GeminiLiveViewModel: ObservableObject {
         case appWindow
     }
 
+    enum TranscriptOverlayMode {
+        case hidden
+        case autoHide
+        case pinned
+    }
+
     @Published private(set) var connectionState: GeminiLiveConnectionState = .disconnected
     @Published private(set) var isMicrophoneEnabled = true {
         didSet { persistSettings() }
     }
+    @Published private(set) var inputMode: GeminiLiveInputMode = .openMic {
+        didSet { persistSettings() }
+    }
+    @Published private(set) var isHoldToTalkActive = false
     @Published private(set) var statusText = "Paste your Gemini API key to start Gemini Live."
     @Published private(set) var lastErrorMessage: String?
     @Published private(set) var userTranscript = ""
@@ -27,7 +37,12 @@ final class GeminiLiveViewModel: ObservableObject {
 
     @Published private(set) var isScreenSharingEnabled = false
     @Published private(set) var isModelSpeaking = false
+    @Published private(set) var microphoneInputLevel = 0.0
     @Published private(set) var outputVolume = 1.0
+    @Published private(set) var holdToTalkShortcut = HoldToTalkShortcutStore.load()
+    @Published private(set) var currentContextTokenCount = 0
+    @Published private(set) var responseTokenCount = 0
+    @Published private(set) var totalTokenCount = 0
 
     // Per-preset: reading reflects the active preset; writing updates that preset and persists.
     @Published var thinkingLevel: GeminiThinkingLevel = .off {
@@ -90,6 +105,7 @@ final class GeminiLiveViewModel: ObservableObject {
     private var reconnectTask: Task<Void, Never>?
     private var reconnectAttempt = 0
     private let maxReconnectAttempts = 3
+    private var subscriptions = Set<AnyCancellable>()
     private var lastDisconnectWasUserInitiated = false
     private var pendingTurnSeparator = false
     private var screenCaptureTimer: Timer?
@@ -142,6 +158,7 @@ final class GeminiLiveViewModel: ObservableObject {
 
         if let savedSettings = settingsStore.read() {
             isMicrophoneEnabled = savedSettings.isMicrophoneEnabled
+            inputMode = savedSettings.inputMode
             showTranscriptOverlay = savedSettings.showTranscriptOverlay
             transcriptOverlayAutoHide = savedSettings.transcriptOverlayAutoHide
             showLiveChatInput = savedSettings.showLiveChatInput
@@ -176,8 +193,16 @@ final class GeminiLiveViewModel: ObservableObject {
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.connectionState = state
+                if state != .connected {
+                    self.isHoldToTalkActive = false
+                    self.microphoneInputLevel = 0
+                }
                 if let message, !message.isEmpty {
-                    self.statusText = message
+                    if state == .connected, (message == "Gemini Live is ready." || message == "Gemini Live resumed.") {
+                        self.statusText = self.connectedMicStatusText
+                    } else {
+                        self.statusText = message
+                    }
                 } else {
                     self.statusText = self.hasConfiguredAPIKey ? "Ready to connect to Gemini Live." : "Paste your Gemini API key to start Gemini Live."
                 }
@@ -221,6 +246,49 @@ final class GeminiLiveViewModel: ObservableObject {
                 self.isModelSpeaking = false
                 if !self.modelTranscript.isEmpty {
                     self.pendingTurnSeparator = true
+                }
+            }
+        }
+
+        session.onMicrophoneInputLevel = { [weak self] level in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                let clamped = min(max(level, 0), 1)
+                self.microphoneInputLevel = (self.microphoneInputLevel * 0.55) + (clamped * 0.45)
+            }
+        }
+
+        session.onUsageMetadata = { [weak self] usage in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                let hasReportedTokens =
+                    usage.currentContextTokenCount > 0 ||
+                    usage.responseTokenCount > 0 ||
+                    usage.totalTokenCount > 0
+
+                if hasReportedTokens {
+                    let reportedContextTokenCount = max(
+                        usage.currentContextTokenCount,
+                        usage.promptTokenCount,
+                        usage.totalTokenCount
+                    )
+
+                    if reportedContextTokenCount > 0 {
+                        self.currentContextTokenCount = max(self.currentContextTokenCount, reportedContextTokenCount)
+                    }
+                    if usage.responseTokenCount > 0 {
+                        self.responseTokenCount = max(self.responseTokenCount, usage.responseTokenCount)
+                    }
+                    if usage.totalTokenCount > 0 {
+                        self.totalTokenCount = max(self.totalTokenCount, usage.totalTokenCount)
+                    }
+                    return
+                }
+
+                if self.connectionState != .connected {
+                    self.currentContextTokenCount = 0
+                    self.responseTokenCount = 0
+                    self.totalTokenCount = 0
                 }
             }
         }
@@ -299,6 +367,17 @@ final class GeminiLiveViewModel: ObservableObject {
         }
         .assign(to: &$overlayInput)
 
+        NotificationCenter.default.publisher(for: HoldToTalkShortcutStore.didChangeNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.holdToTalkShortcut = HoldToTalkShortcutStore.load()
+                if self.connectionState == .connected && !self.isHoldToTalkActive {
+                    self.statusText = self.holdToTalkReadyText
+                }
+            }
+            .store(in: &subscriptions)
+
         persistSettings()
     }
 
@@ -336,6 +415,20 @@ final class GeminiLiveViewModel: ObservableObject {
         selectedSystemPromptPreset.title
     }
 
+    var tokenUsageProgress: Double {
+        let limit = Double(GeminiLiveSession.defaultContextWindowTriggerTokens)
+        guard limit > 0 else { return 0 }
+        return min(max(Double(currentContextTokenCount) / limit, 0), 1)
+    }
+
+    var tokenUsagePercent: Int {
+        Int((tokenUsageProgress * 100).rounded())
+    }
+
+    var tokenUsageSummaryText: String {
+        "\(formattedTokenCount(currentContextTokenCount)) / \(formattedTokenCount(GeminiLiveSession.defaultContextWindowTriggerTokens)) tokens"
+    }
+
     var selectedSystemPromptAvatarSymbolName: String {
         selectedSystemPromptPreset.resolvedAvatarSymbolName
     }
@@ -365,6 +458,16 @@ final class GeminiLiveViewModel: ObservableObject {
 
     func systemPromptPreset(id: String) -> GeminiSystemPromptPreset? {
         systemPromptPresets.first(where: { $0.id == id })
+    }
+
+    private func formattedTokenCount(_ count: Int) -> String {
+        guard count >= 1_000 else { return "\(count)" }
+        let value = Double(count) / 1_000
+        let rounded = (value * 10).rounded() / 10
+        if rounded.rounded() == rounded {
+            return "\(Int(rounded))k"
+        }
+        return "\(rounded)k"
     }
 
     @discardableResult
@@ -702,15 +805,21 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     var microphoneButtonTitle: String {
-        isMicrophoneEnabled ? "Mute Mic" : "Unmute Mic"
+        if inputMode == .pushToTalk {
+            return isHoldToTalkActive ? "Release to Send" : "Hold to Talk"
+        }
+        return isMicrophoneEnabled ? "Mute Mic" : "Unmute Mic"
     }
 
     var microphoneButtonIcon: String {
-        isMicrophoneEnabled ? "mic.fill" : "mic.slash.fill"
+        if inputMode == .pushToTalk {
+            return isHoldToTalkActive ? "waveform.and.mic" : "mic"
+        }
+        return isMicrophoneEnabled ? "mic.fill" : "mic.slash.fill"
     }
 
     var canToggleMicrophone: Bool {
-        connectionState == .connected || connectionState == .connecting
+        connectionState == .connected
     }
 
     var showCompactIndicator: Bool {
@@ -752,7 +861,27 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     var isCompactIndicatorAnimated: Bool {
-        connectionState == .connected && isMicrophoneEnabled
+        connectionState == .connected && effectiveMicrophoneEnabled
+    }
+
+    var holdToTalkReadyText: String {
+        "Hold \(holdToTalkShortcut.displayString) to talk."
+    }
+
+    var connectedMicStatusText: String {
+        if inputMode == .pushToTalk {
+            return holdToTalkReadyText
+        }
+        return "Microphone is live."
+    }
+
+    var effectiveMicrophoneEnabled: Bool {
+        switch inputMode {
+        case .openMic:
+            return isMicrophoneEnabled
+        case .pushToTalk:
+            return isHoldToTalkActive
+        }
     }
 
     func toggleConnection() {
@@ -889,7 +1018,7 @@ final class GeminiLiveViewModel: ObservableObject {
                     apiKey: configuredAPIKey,
                     model: "gemini-3.1-flash-live-preview",
                     systemPrompt: systemPrompt,
-                    microphoneEnabled: self.isMicrophoneEnabled,
+                    microphoneEnabled: self.effectiveMicrophoneEnabled,
                     thinkingBudget: preset.thinkingEnum.budget,
                     voiceName: preset.voiceEnum.apiName,
                     enabledTools: skillSnapshot.effectiveTools,
@@ -911,6 +1040,7 @@ final class GeminiLiveViewModel: ObservableObject {
         toastClearTask?.cancel()
         toastClearTask = nil
         lastToolAction = nil
+        isHoldToTalkActive = false
         // Transcript có thể rất dài; giữ lại sau khi ngắt kết nối làm RAM không giảm trong Activity Monitor.
         clearTranscripts()
         currentSkillSnapshot = nil
@@ -1179,16 +1309,71 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     func toggleMicrophone() {
-        isMicrophoneEnabled.toggle()
-        session.setMicrophoneEnabled(isMicrophoneEnabled)
-        statusText = isMicrophoneEnabled ? "Microphone is live." : "Microphone muted."
+        switch inputMode {
+        case .openMic:
+            setOpenMicrophoneEnabled(!isMicrophoneEnabled)
+        case .pushToTalk:
+            isHoldToTalkActive ? endHoldToTalk() : beginHoldToTalk()
+        }
     }
 
     func setMicrophoneEnabled(_ enabled: Bool) {
+        switch inputMode {
+        case .openMic:
+            setOpenMicrophoneEnabled(enabled)
+        case .pushToTalk:
+            enabled ? beginHoldToTalk() : endHoldToTalk()
+        }
+    }
+
+    func setInputMode(_ mode: GeminiLiveInputMode) {
+        guard inputMode != mode else { return }
+        inputMode = mode
+
+        if mode == .openMic {
+            isHoldToTalkActive = false
+            isMicrophoneEnabled = true
+        } else {
+            isHoldToTalkActive = false
+            isMicrophoneEnabled = false
+        }
+
+        syncEffectiveMicrophoneState()
+        if connectionState == .connected {
+            statusText = connectedMicStatusText
+        }
+    }
+
+    func setOpenMicrophoneEnabled(_ enabled: Bool) {
         guard isMicrophoneEnabled != enabled else { return }
         isMicrophoneEnabled = enabled
-        session.setMicrophoneEnabled(isMicrophoneEnabled)
-        statusText = isMicrophoneEnabled ? "Microphone is live." : "Microphone muted."
+        guard inputMode == .openMic else { return }
+        syncEffectiveMicrophoneState()
+        if connectionState == .connected {
+            statusText = connectedMicStatusText
+        }
+    }
+
+    func beginHoldToTalk() {
+        guard inputMode == .pushToTalk else { return }
+        guard connectionState == .connected else { return }
+        guard !isHoldToTalkActive else { return }
+        isHoldToTalkActive = true
+        isModelSpeaking = false
+        session.interruptModelPlayback()
+        syncEffectiveMicrophoneState()
+        statusText = "Listening… Release to send."
+    }
+
+    func endHoldToTalk() {
+        guard inputMode == .pushToTalk else { return }
+        guard isHoldToTalkActive else { return }
+        isHoldToTalkActive = false
+        syncEffectiveMicrophoneState()
+        session.resumeModelPlayback()
+        if connectionState == .connected {
+            statusText = holdToTalkReadyText
+        }
     }
 
     func setOutputVolume(_ volume: Double) {
@@ -1203,6 +1388,29 @@ final class GeminiLiveViewModel: ObservableObject {
         guard showTranscriptOverlay != enabled else { return }
         showTranscriptOverlay = enabled
         statusText = showTranscriptOverlay ? "Captions enabled." : "Captions hidden."
+    }
+
+    var transcriptOverlayMode: TranscriptOverlayMode {
+        if !showTranscriptOverlay {
+            return .hidden
+        }
+        return transcriptOverlayAutoHide ? .autoHide : .pinned
+    }
+
+    func cycleTranscriptOverlayMode() {
+        switch transcriptOverlayMode {
+        case .hidden:
+            showTranscriptOverlay = true
+            transcriptOverlayAutoHide = true
+            statusText = "Captions set to auto-hide."
+        case .autoHide:
+            showTranscriptOverlay = true
+            transcriptOverlayAutoHide = false
+            statusText = "Captions pinned."
+        case .pinned:
+            showTranscriptOverlay = false
+            statusText = "Captions hidden."
+        }
     }
 
     /// Sends typed text over the Live socket as `realtimeInput.text` (required for Gemini 3.1 Flash Live during conversation).
@@ -1237,6 +1445,7 @@ final class GeminiLiveViewModel: ObservableObject {
     func shutdown() {
         currentSkillSnapshot = nil
         pendingExecApprovals.removeAll()
+        subscriptions.removeAll()
         screenRegionSelectionController.cancelSelection(notify: false)
         windowShareSelectionController.cancelSelection(notify: false)
         session.disconnect(userInitiated: true)
@@ -1518,6 +1727,7 @@ final class GeminiLiveViewModel: ObservableObject {
         settingsStore.save(
             GeminiLiveSettings(
                 isMicrophoneEnabled: isMicrophoneEnabled,
+                inputMode: inputMode,
                 showTranscriptOverlay: showTranscriptOverlay,
                 transcriptOverlayAutoHide: transcriptOverlayAutoHide,
                 showLiveChatInput: showLiveChatInput,
@@ -1526,6 +1736,11 @@ final class GeminiLiveViewModel: ObservableObject {
                 selectedSystemPromptID: selectedSystemPromptID
             )
         )
+    }
+
+    private func syncEffectiveMicrophoneState() {
+        guard connectionState == .connected || connectionState == .connecting else { return }
+        session.setMicrophoneEnabled(effectiveMicrophoneEnabled)
     }
 
     private func reloadInstalledSkills() {

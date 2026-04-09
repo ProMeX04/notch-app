@@ -43,6 +43,8 @@ extension GeminiLiveSession {
     }
 
     func enqueueOutputAudio(_ data: Data) {
+        guard allowModelAudioPlayback else { return }
+
         if captureMode == .webRTC {
             webRTCAudioIO?.enqueueOutputAudio(data)
             return
@@ -109,6 +111,8 @@ extension GeminiLiveSession {
     }
 
     func stopMicrophone(notifyModel: Bool) {
+        onMicrophoneInputLevel?(0)
+
         if captureMode == .webRTC {
             webRTCAudioIO?.stopCapture()
         }
@@ -119,6 +123,10 @@ extension GeminiLiveSession {
 
         if let standardInputEngine, standardInputEngine.isRunning {
             standardInputEngine.stop()
+        }
+
+        if captureMode != .webRTC {
+            teardownMicrophoneCapture()
         }
 
         if notifyModel {
@@ -172,6 +180,8 @@ extension GeminiLiveSession {
         guard outputBuffer.frameLength > 0 else { return }
         guard let channelData = outputBuffer.int16ChannelData?.pointee else { return }
 
+        publishMicrophoneInputLevel(from: channelData, frameCount: Int(outputBuffer.frameLength))
+
         let pcmData = Data(
             bytes: channelData,
             count: Int(outputBuffer.frameLength) * MemoryLayout<Int16>.size
@@ -221,6 +231,8 @@ extension GeminiLiveSession {
     }
 
     func teardownMicrophoneCapture() {
+        onMicrophoneInputLevel?(0)
+
         if microphoneTapInstalled {
             if captureMode == .voiceProcessing {
                 outputEngine.inputNode.removeTap(onBus: 0)
@@ -231,6 +243,23 @@ extension GeminiLiveSession {
         }
         standardInputEngine = nil
         inputConverter = nil
+    }
+
+    private func publishMicrophoneInputLevel(from channelData: UnsafeMutablePointer<Int16>, frameCount: Int) {
+        guard frameCount > 0 else {
+            onMicrophoneInputLevel?(0)
+            return
+        }
+
+        var sumSquares = 0.0
+        for index in 0..<frameCount {
+            let sample = Double(channelData[index]) / Double(Int16.max)
+            sumSquares += sample * sample
+        }
+
+        let rms = sqrt(sumSquares / Double(frameCount))
+        let normalized = min(max(pow(rms * 4.2, 0.6), 0), 1)
+        onMicrophoneInputLevel?(normalized)
     }
 
     func handleSetupComplete() {

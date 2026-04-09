@@ -2,6 +2,13 @@ import AppKit
 import Foundation
 import Security
 
+enum GeminiLiveInputMode: String, Codable, CaseIterable, Identifiable {
+    case openMic
+    case pushToTalk
+
+    var id: String { rawValue }
+}
+
 final class GeminiLiveAPIKeyStore {
     private enum StorageMode {
         case developmentFile
@@ -130,6 +137,7 @@ final class GeminiLiveSecretStore {
 
 struct GeminiLiveSettings {
     let isMicrophoneEnabled: Bool
+    let inputMode: GeminiLiveInputMode
     let showTranscriptOverlay: Bool
     /// When false, the notch transcript overlay stays visible after the model stops (until disconnect or subs off).
     let transcriptOverlayAutoHide: Bool
@@ -162,6 +170,7 @@ final class GeminiLiveSettingsStore {
 
         return GeminiLiveSettings(
             isMicrophoneEnabled: payload.isMicrophoneEnabled,
+            inputMode: payload.inputMode ?? .openMic,
             showTranscriptOverlay: payload.showTranscriptOverlay,
             transcriptOverlayAutoHide: payload.transcriptOverlayAutoHide ?? true,
             showLiveChatInput: payload.showLiveChatInput ?? true,
@@ -174,6 +183,7 @@ final class GeminiLiveSettingsStore {
     func save(_ settings: GeminiLiveSettings) {
         let payload = Payload(
             isMicrophoneEnabled: settings.isMicrophoneEnabled,
+            inputMode: settings.inputMode,
             showTranscriptOverlay: settings.showTranscriptOverlay,
             transcriptOverlayAutoHide: settings.transcriptOverlayAutoHide,
             showLiveChatInput: settings.showLiveChatInput,
@@ -188,6 +198,7 @@ final class GeminiLiveSettingsStore {
 
     private struct Payload: Codable {
         let isMicrophoneEnabled: Bool
+        let inputMode: GeminiLiveInputMode?
         let showTranscriptOverlay: Bool
         let transcriptOverlayAutoHide: Bool?
         let showLiveChatInput: Bool?
@@ -199,6 +210,7 @@ final class GeminiLiveSettingsStore {
 
         init(
             isMicrophoneEnabled: Bool,
+            inputMode: GeminiLiveInputMode,
             showTranscriptOverlay: Bool,
             transcriptOverlayAutoHide: Bool,
             showLiveChatInput: Bool,
@@ -207,6 +219,7 @@ final class GeminiLiveSettingsStore {
             selectedSystemPromptID: String
         ) {
             self.isMicrophoneEnabled = isMicrophoneEnabled
+            self.inputMode = inputMode
             self.showTranscriptOverlay = showTranscriptOverlay
             self.transcriptOverlayAutoHide = transcriptOverlayAutoHide
             self.showLiveChatInput = showLiveChatInput
@@ -219,6 +232,7 @@ final class GeminiLiveSettingsStore {
         func encode(to encoder: Encoder) throws {
             var container = encoder.container(keyedBy: CodingKeys.self)
             try container.encode(isMicrophoneEnabled, forKey: .isMicrophoneEnabled)
+            try container.encodeIfPresent(inputMode, forKey: .inputMode)
             try container.encode(showTranscriptOverlay, forKey: .showTranscriptOverlay)
             try container.encode(transcriptOverlayAutoHide ?? true, forKey: .transcriptOverlayAutoHide)
             try container.encode(showLiveChatInput ?? true, forKey: .showLiveChatInput)
@@ -230,6 +244,7 @@ final class GeminiLiveSettingsStore {
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             isMicrophoneEnabled = try container.decode(Bool.self, forKey: .isMicrophoneEnabled)
+            inputMode = try container.decodeIfPresent(GeminiLiveInputMode.self, forKey: .inputMode)
             showTranscriptOverlay = try container.decode(Bool.self, forKey: .showTranscriptOverlay)
             transcriptOverlayAutoHide = try container.decodeIfPresent(Bool.self, forKey: .transcriptOverlayAutoHide)
             showLiveChatInput = try container.decodeIfPresent(Bool.self, forKey: .showLiveChatInput)
@@ -241,6 +256,7 @@ final class GeminiLiveSettingsStore {
 
         enum CodingKeys: String, CodingKey {
             case isMicrophoneEnabled
+            case inputMode
             case showTranscriptOverlay
             case transcriptOverlayAutoHide
             case showLiveChatInput

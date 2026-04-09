@@ -1,0 +1,156 @@
+import AppKit
+import Carbon.HIToolbox
+import SwiftUI
+
+struct HoldToTalkShortcutRecorderView: View {
+    @Binding var shortcut: HoldToTalkShortcut
+    var title: String? = nil
+    var helperText: String? = nil
+    var isNotchStyle: Bool = false
+    var tint: Color = .accentColor
+
+    @State private var isRecording = false
+    @State private var validationMessage: String?
+    @State private var eventMonitor: Any?
+
+    var body: some View {
+        Group {
+            if isNotchStyle {
+                notchStyleBody
+            } else {
+                defaultStyleBody
+            }
+        }
+        .onDisappear {
+            stopRecording()
+        }
+    }
+
+    private var notchStyleBody: some View {
+        HStack(spacing: 8) {
+            Text(title ?? "Push to Talk")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.9))
+
+            Spacer()
+
+            Button {
+                isRecording ? stopRecording() : startRecording()
+            } label: {
+                Text(isRecording ? "Recording..." : shortcut.displayString)
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(isRecording ? Color(nsColor: .systemRed) : tint)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.white.opacity(0.06).cornerRadius(6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    )
+            }
+            .buttonStyle(.plain)
+
+            if shortcut.displayString != HoldToTalkShortcutStore.defaultShortcut.displayString {
+                Button {
+                    HoldToTalkShortcutStore.reset()
+                    shortcut = HoldToTalkShortcutStore.load()
+                    validationMessage = nil
+                    stopRecording()
+                } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.4))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var defaultStyleBody: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let title, !title.isEmpty {
+                Text(title)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.32))
+            }
+
+            HStack(spacing: 10) {
+                Button {
+                    isRecording ? stopRecording() : startRecording()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: isRecording ? "circle.fill" : "keyboard")
+                            .foregroundStyle(isRecording ? Color.red : Color.accentColor)
+                        Text(isRecording ? "Press Shortcut…" : shortcut.displayString)
+                            .font(.system(.body, design: .monospaced))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button("Reset") {
+                    HoldToTalkShortcutStore.reset()
+                    shortcut = HoldToTalkShortcutStore.load()
+                    validationMessage = nil
+                    stopRecording()
+                }
+                .buttonStyle(.bordered)
+            }
+
+            if let helperText, !helperText.isEmpty {
+                Text(helperText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Default: \(HoldToTalkShortcutStore.defaultShortcut.displayString)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let validationMessage {
+                Text(validationMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
+    private func startRecording() {
+        validationMessage = nil
+        stopRecording()
+        isRecording = true
+
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { event in
+            handleRecording(event)
+            return nil
+        }
+    }
+
+    private func stopRecording() {
+        if let eventMonitor {
+            NSEvent.removeMonitor(eventMonitor)
+            self.eventMonitor = nil
+        }
+        isRecording = false
+    }
+
+    private func handleRecording(_ event: NSEvent) {
+        if event.keyCode == UInt16(kVK_Escape) {
+            stopRecording()
+            return
+        }
+
+        let modifiers = event.modifierFlags.intersection(HoldToTalkShortcut.allowedModifierFlags)
+        guard !modifiers.isEmpty else {
+            validationMessage = "Shortcut must include Command, Control, Option, or Shift."
+            NSSound.beep()
+            return
+        }
+
+        let recordedShortcut = HoldToTalkShortcut(keyCode: event.keyCode, modifierFlags: modifiers)
+        shortcut = recordedShortcut
+        HoldToTalkShortcutStore.save(recordedShortcut)
+        validationMessage = nil
+        stopRecording()
+    }
+}

@@ -4,6 +4,17 @@ import SwiftUI
 
 // MARK: - SwiftUI View
 
+private struct VisualEffectView: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.blendingMode = .behindWindow
+        view.state = .active
+        view.material = .menu
+        return view
+    }
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
+}
+
 private struct TranscriptOverlayView: View {
     let modelText: String
     let isModelSpeaking: Bool
@@ -27,13 +38,14 @@ private struct TranscriptOverlayView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
                 .background {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Color.black.opacity(0.78))
+                    VisualEffectView()
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .overlay {
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
                         }
                 }
+                .shadow(color: .black.opacity(0.35), radius: 12, x: 0, y: 6)
                 .animation(.spring(response: 0.38, dampingFraction: 0.82), value: modelText)
             }
             if let toolAction {

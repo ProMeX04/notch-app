@@ -183,15 +183,25 @@ final class NotchWindowController {
     }
 
     func muteGeminiLive() {
-        geminiLiveViewModel.setMicrophoneEnabled(false)
+        geminiLiveViewModel.setInputMode(.openMic)
+        geminiLiveViewModel.setOpenMicrophoneEnabled(false)
     }
 
     func unmuteGeminiLive() {
-        geminiLiveViewModel.setMicrophoneEnabled(true)
+        geminiLiveViewModel.setInputMode(.openMic)
+        geminiLiveViewModel.setOpenMicrophoneEnabled(true)
     }
 
     func toggleGeminiLiveMicrophone() {
         geminiLiveViewModel.toggleMicrophone()
+    }
+
+    func beginGeminiLiveHoldToTalk() {
+        geminiLiveViewModel.beginHoldToTalk()
+    }
+
+    func endGeminiLiveHoldToTalk() {
+        geminiLiveViewModel.endHoldToTalk()
     }
 
     func setGeminiLiveCaptionsEnabled(_ enabled: Bool) {

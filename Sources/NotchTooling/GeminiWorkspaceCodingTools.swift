@@ -651,9 +651,9 @@ public struct GeminiWorkspaceCodingTools {
         let trimmed = normalizePathInput(path)
         guard !trimmed.isEmpty else { return nil }
 
-        return resolveGuardedPathCandidate(
+        return resolveHostPathCandidate(
             trimmedPath: trimmed,
-            root: workspaceRoot,
+            baseDirectory: workspaceRoot,
             allowRelative: true,
             directoryHint: directoryHint,
             preferExistingReadVariant: false
@@ -664,23 +664,10 @@ public struct GeminiWorkspaceCodingTools {
         let trimmed = normalizePathInput(path)
         guard !trimmed.isEmpty else { return nil }
 
-        if let workspaceURL = resolveGuardedPathCandidate(
+        return resolveHostPathCandidate(
             trimmedPath: trimmed,
-            root: workspaceRoot,
+            baseDirectory: workspaceRoot,
             allowRelative: true,
-            directoryHint: directoryHint,
-            preferExistingReadVariant: true
-        ) {
-            return workspaceURL
-        }
-
-        guard trimmed.hasPrefix("/") || trimmed.hasPrefix("~") else { return nil }
-        guard let builtInSkillsDirectory else { return nil }
-
-        return resolveGuardedPathCandidate(
-            trimmedPath: trimmed,
-            root: builtInSkillsDirectory,
-            allowRelative: false,
             directoryHint: directoryHint,
             preferExistingReadVariant: true
         )
@@ -1122,14 +1109,14 @@ public struct GeminiWorkspaceCodingTools {
     public func workspacePathErrorResult(path: String) -> [String: Any] {
         [
             "success": false,
-            "error": "Path must stay inside ~/.notch/workspace: \(path)"
+            "error": "Invalid path: \(path)"
         ]
     }
 
     public func readPathErrorResult(path: String) -> [String: Any] {
         [
             "success": false,
-            "error": "Read path must stay inside ~/.notch/workspace or match a built-in skill location: \(path)"
+            "error": "Invalid read path: \(path)"
         ]
     }
 
@@ -1981,9 +1968,9 @@ public struct GeminiWorkspaceCodingTools {
         return regex.firstMatch(in: candidate, range: range) != nil
     }
 
-    private func resolveGuardedPathCandidate(
+    private func resolveHostPathCandidate(
         trimmedPath: String,
-        root: URL,
+        baseDirectory: URL,
         allowRelative: Bool,
         directoryHint: Bool?,
         preferExistingReadVariant: Bool
@@ -1994,28 +1981,22 @@ public struct GeminiWorkspaceCodingTools {
             candidate = URL(fileURLWithPath: expanded, isDirectory: directoryHint ?? false)
         } else {
             guard allowRelative else { return nil }
-            candidate = root.appendingPathComponent(trimmedPath, isDirectory: directoryHint ?? false)
+            candidate = baseDirectory.appendingPathComponent(trimmedPath, isDirectory: directoryHint ?? false)
         }
 
-        let resolvedRoot = root.standardizedFileURL.resolvingSymlinksInPath()
         let resolvedCandidate = candidate.standardizedFileURL.resolvingSymlinksInPath()
-        guard isWithinRoot(resolvedCandidate, root: resolvedRoot) else {
-            return nil
-        }
-
         guard preferExistingReadVariant else {
             return resolvedCandidate
         }
 
-        return preferredReadableVariant(for: resolvedCandidate, root: resolvedRoot)
+        return preferredReadableVariant(for: resolvedCandidate)
     }
 
-    private func preferredReadableVariant(for candidate: URL, root: URL) -> URL {
+    private func preferredReadableVariant(for candidate: URL) -> URL {
         for candidatePath in readPathVariants(for: candidate.path) {
             let variant = URL(fileURLWithPath: candidatePath, isDirectory: candidate.hasDirectoryPath)
                 .standardizedFileURL
                 .resolvingSymlinksInPath()
-            guard isWithinRoot(variant, root: root) else { continue }
             if fileManager.fileExists(atPath: variant.path) {
                 return variant
             }
@@ -2051,12 +2032,6 @@ public struct GeminiWorkspaceCodingTools {
         append(nfdCurlyVariant)
 
         return variants
-    }
-
-    private func isWithinRoot(_ candidate: URL, root: URL) -> Bool {
-        let rootPath = root.path
-        let candidatePath = candidate.path
-        return candidatePath == rootPath || candidatePath.hasPrefix(rootPath + "/")
     }
 
     private func prepareReadableFile(path: String) -> ReadableFileResolution {

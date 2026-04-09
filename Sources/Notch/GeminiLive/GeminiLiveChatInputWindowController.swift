@@ -11,54 +11,31 @@ private final class GeminiLiveChatKeyPanel: NSPanel {
 
 // MARK: - Drag handle (reliable on floating panels)
 
-private final class ChatInputDragStripView: NSView {
-    private var dragStartMouseScreen = NSPoint.zero
-    private var dragStartWindowOrigin = NSPoint.zero
-
-    override func mouseDown(with event: NSEvent) {
-        guard let win = window else { return }
-        dragStartMouseScreen = NSEvent.mouseLocation
-        dragStartWindowOrigin = win.frame.origin
+private struct VisualEffectView: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.blendingMode = .behindWindow
+        view.state = .active
+        view.material = .menu
+        return view
     }
-
-    override func mouseDragged(with event: NSEvent) {
-        guard let win = window else { return }
-        let now = NSEvent.mouseLocation
-        win.setFrameOrigin(
-            NSPoint(
-                x: dragStartWindowOrigin.x + (now.x - dragStartMouseScreen.x),
-                y: dragStartWindowOrigin.y + (now.y - dragStartMouseScreen.y)
-            )
-        )
-    }
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }
-
-private struct ChatInputDragStrip: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        ChatInputDragStripView()
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {}
-}
-
-// MARK: - SwiftUI
 
 private struct GeminiLiveChatInputContentView: View {
     @ObservedObject var gemini: GeminiLiveViewModel
     @State private var draft = ""
 
     var body: some View {
-        HStack(spacing: 10) {
-            ChatInputDragStrip()
-                .frame(width: 18, height: 28)
-                .overlay {
-                    Image(systemName: "line.3.horizontal")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.38))
-                }
-                .help("Drag to move")
+        HStack(spacing: 8) {
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.35))
+                .frame(width: 24, height: 32)
+                .contentShape(Rectangle())
+                .help("Drag any area to move")
 
-            TextField("Message Gemini…", text: $draft)
+            TextField("Message…", text: $draft)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.white.opacity(0.92))
@@ -69,7 +46,7 @@ private struct GeminiLiveChatInputContentView: View {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 22, weight: .semibold))
                     .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.white.opacity(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.28 : 0.92))
+                    .foregroundStyle(.white.opacity(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.2 : 0.95))
             }
             .buttonStyle(.plain)
             .disabled(
@@ -77,19 +54,18 @@ private struct GeminiLiveChatInputContentView: View {
                     || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             )
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        // macOS draws a rectangular NSTextField / button focus ring by default; it clashes with the pill chrome.
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
         .focusEffectDisabled()
         .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.black.opacity(0.78))
+            VisualEffectView()
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.16), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
                 }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 6)
     }
 
     private func commitSend() {
@@ -259,7 +235,7 @@ final class GeminiLiveChatInputWindowController {
         panel.isFloatingPanel = true
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
-        panel.isMovableByWindowBackground = false
+        panel.isMovableByWindowBackground = true
         panel.isMovable = true
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]

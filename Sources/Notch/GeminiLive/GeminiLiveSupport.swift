@@ -301,15 +301,22 @@ final class GeminiLiveExecApprovalStore: @unchecked Sendable {
         persist(updated)
     }
 
+    private var cachedKeys: Set<String>?
+
     private var approvedKeys: Set<String> {
+        if let cachedKeys { return cachedKeys }
         guard let data = try? Data(contentsOf: fileURL),
               let payload = try? JSONDecoder().decode(Payload.self, from: data) else {
+            cachedKeys = []
             return []
         }
-        return Set(payload.approvedKeys)
+        let keys = Set(payload.approvedKeys)
+        cachedKeys = keys
+        return keys
     }
 
     private func persist(_ keys: Set<String>) {
+        cachedKeys = keys
         let payload = Payload(approvedKeys: Array(keys).sorted())
         do {
             try fileManager.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)

@@ -95,10 +95,12 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
 
         if let process, process.isRunning {
             process.terminate()
-            process.waitUntilExit()
 
-            if process.isRunning {
-                kill(process.processIdentifier, SIGKILL)
+            Task.detached { [weak process] in
+                try? await Task.sleep(for: .seconds(2))
+                if let process, process.isRunning {
+                    kill(process.processIdentifier, SIGKILL)
+                }
             }
         }
 

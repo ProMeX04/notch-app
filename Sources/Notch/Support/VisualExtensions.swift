@@ -88,6 +88,9 @@ extension NSImage {
 }
 
 extension Color {
+    // Cache to avoid repeated NSColor bridging + color space conversion in SwiftUI body
+    nonisolated(unsafe) private static let brightnessCache = NSCache<NSString, _BrightnessEntry>()
+
     func ensureMinimumBrightness(factor: CGFloat) -> Color {
         guard factor >= 0 && factor <= 1 else { return self }
         guard let rgbColor = NSColor(self).usingColorSpace(.sRGB) else { return self }
@@ -98,6 +101,11 @@ extension Color {
         var alpha: CGFloat = 0
         rgbColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
 
+        let cacheKey = NSString(string: "\(red),\(green),\(blue),\(alpha),\(factor)")
+        if let cached = Self.brightnessCache.object(forKey: cacheKey) {
+            return cached.color
+        }
+
         let perceivedBrightness = (0.2126 * red + 0.7152 * green + 0.0722 * blue)
         guard perceivedBrightness > 0 else { return self }
 
@@ -106,11 +114,19 @@ extension Color {
         green = min(green * scale, 1.0)
         blue = min(blue * scale, 1.0)
 
-        return Color(
+        let result = Color(
             red: Double(red),
             green: Double(green),
             blue: Double(blue),
             opacity: Double(alpha)
         )
+
+        Self.brightnessCache.setObject(_BrightnessEntry(color: result), forKey: cacheKey)
+        return result
     }
+}
+
+private final class _BrightnessEntry {
+    let color: Color
+    init(color: Color) { self.color = color }
 }

@@ -42,6 +42,9 @@ struct MusicNotchView: View {
             return .talk
         }
 
+        if pomodoro.showCompactIndicator {
+            return .pomodoro
+        }
 
         if playback.showCompactLiveActivity {
             return .music
@@ -177,7 +180,7 @@ struct MusicNotchView: View {
                     talkHeaderAccessoryController: talkHeaderAccessoryController,
                     albumArtNamespace: albumArtNamespace
                 )
-                .padding(.top, presentationModel.selectedPanel == .focus ? 0 : 10)
+                .padding(.top, presentationModel.selectedPanel == .focus ? (presentationModel.isFocusOverlayPresented ? 10 : 0) : 10)
                 .padding(.horizontal, presentationModel.selectedPanel == .focus ? 0 : 31)
                 .padding(.bottom, presentationModel.selectedPanel == .focus ? 0 : 12)
             }
@@ -191,19 +194,7 @@ struct MusicNotchView: View {
         .background {
             ZStack {
                 if presentationModel.isExpanded && presentationModel.selectedPanel == .focus {
-                    let tint = Color(nsColor: (pomodoro.hasActiveSession ? pomodoro.phase : .focus).accentColor)
-                    ZStack {
-                        tint
-                        LinearGradient(
-                            colors: [
-                                .white.opacity(0.15),
-                                .clear,
-                                .black.opacity(0.1)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    }
+                    Color.black
                 } else {
                     Color.black
                 }
@@ -241,15 +232,6 @@ struct MusicNotchView: View {
                 bottomCornerRadius: bottomCornerRadius
             )
             .stroke(Color.white.opacity(presentationModel.isExpanded ? 0.07 : 0.05), lineWidth: 1)
-        }
-        .overlay {
-            if shelf.isDropTargeted {
-                NotchShape(
-                    topCornerRadius: topCornerRadius,
-                    bottomCornerRadius: bottomCornerRadius
-                )
-                .stroke(Color(nsColor: .systemBlue).opacity(0.9), lineWidth: 2)
-            }
         }
         .shadow(
             color: (presentationModel.isExpanded || isHovering) ? .black.opacity(0.7) : .clear,

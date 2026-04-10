@@ -301,7 +301,7 @@ extension GeminiLiveSession {
         workspaceCodingTools.executeEditFile(path: path, edits: edits)
     }
 
-    func executeExec(command: String, workingDirectory: String?, timeoutSeconds: Double?) -> [String: Any] {
+    func executeExec(command: String, workingDirectory: String?, timeoutSeconds: Double?) async -> [String: Any] {
         let trimmedCommand = command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedCommand.isEmpty else {
             return ["success": false, "error": "Command is empty."]
@@ -317,7 +317,7 @@ extension GeminiLiveSession {
             }
         }
 
-        let process = runProcess(
+        let process = await runProcess(
             executablePath: "/bin/zsh",
             arguments: ["-lc", trimmedCommand],
             currentDirectoryURL: cwd,
@@ -374,7 +374,7 @@ extension GeminiLiveSession {
         arguments: [String],
         currentDirectoryURL: URL? = nil,
         timeout: TimeInterval? = nil
-    ) -> ProcessResult {
+    ) async -> ProcessResult {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: executablePath)
         task.arguments = arguments
@@ -397,19 +397,23 @@ extension GeminiLiveSession {
             )
         }
 
-        var didTimeOut = false
-        if let timeout {
-            let deadline = Date().addingTimeInterval(timeout)
-            while task.isRunning && Date() < deadline {
-                RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        let didTimeOut = await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                task.waitUntilExit()
+                return false
             }
-            if task.isRunning {
-                didTimeOut = true
-                task.terminate()
+            if let timeout {
+                group.addTask {
+                    try? await Task.sleep(for: .seconds(timeout))
+                    if task.isRunning {
+                        task.terminate()
+                        return true
+                    }
+                    return false
+                }
             }
+            return await group.next() ?? false
         }
-
-        task.waitUntilExit()
 
         let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
         let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()

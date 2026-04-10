@@ -44,6 +44,21 @@ enum NotchAccentColorOption: String, CaseIterable, Identifiable {
         }
     }
 
+    var brightColor: Color {
+        switch self {
+        case .blue:
+            return Color(nsColor: .systemBlue).ensureMinimumBrightness(factor: 0.78)
+        case .mint:
+            return Color(nsColor: .systemMint).ensureMinimumBrightness(factor: 0.78)
+        case .gold:
+            return Color(nsColor: .systemYellow).ensureMinimumBrightness(factor: 0.78)
+        case .coral:
+            return Color(nsColor: .systemOrange).ensureMinimumBrightness(factor: 0.78)
+        case .rose:
+            return Color(nsColor: .systemPink).ensureMinimumBrightness(factor: 0.78)
+        }
+    }
+
     static func resolve(rawValue: String) -> Self {
         Self(rawValue: rawValue) ?? defaultOption
     }
@@ -60,13 +75,16 @@ enum NotchPanel: String {
 @MainActor
 final class NotchPresentationModel: ObservableObject {
     private static let hoverOpenDelayKey = "dev.notch.hover-open-delay-ms"
+    private static let hideInFullscreenKey = "dev.notch.hide-in-fullscreen"
 
     @Published private(set) var isExpanded = false
     @Published var isPinnedOpen = false
     @Published var closedNotchSize: CGSize = CGSize(width: 184, height: 32)
     @Published var selectedPanel: NotchPanel = .music
+    @Published var isFocusOverlayPresented = false
     @Published private(set) var hoverOpenDelayMilliseconds: Double
     @Published private(set) var accentColorID: String
+    @Published private(set) var hideInFullscreen: Bool
 
     private var collapseTask: Task<Void, Never>?
     private var hoverOpenTask: Task<Void, Never>?
@@ -82,6 +100,8 @@ final class NotchPresentationModel: ObservableObject {
         accentColorID = NotchAccentColorOption.resolve(
             rawValue: defaults.string(forKey: NotchAccentColorOption.storageKey) ?? ""
         ).rawValue
+
+        hideInFullscreen = defaults.bool(forKey: Self.hideInFullscreenKey)
     }
 
     var hoverOpenDelaySeconds: Double {
@@ -122,6 +142,11 @@ final class NotchPresentationModel: ObservableObject {
         UserDefaults.standard.set(option.rawValue, forKey: NotchAccentColorOption.storageKey)
     }
 
+    func setHideInFullscreen(_ hide: Bool) {
+        hideInFullscreen = hide
+        UserDefaults.standard.set(hide, forKey: Self.hideInFullscreenKey)
+    }
+
     func reveal() {
         hoverOpenTask?.cancel()
         collapseTask?.cancel()
@@ -130,6 +155,9 @@ final class NotchPresentationModel: ObservableObject {
 
     func selectPanel(_ panel: NotchPanel, reveal: Bool = false) {
         selectedPanel = panel
+        if panel != .focus {
+            isFocusOverlayPresented = false
+        }
         if reveal {
             self.reveal()
         }

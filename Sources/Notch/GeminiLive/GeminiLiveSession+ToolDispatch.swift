@@ -60,9 +60,12 @@ extension GeminiLiveSession {
 
         if onShouldAutoApproveExec?(trimmedCommand, resolvedWorkingDirectory) == true {
             notifyFunctionStarted(name: name, args: args)
-            let result = executeExec(command: trimmedCommand, workingDirectory: resolvedWorkingDirectory, timeoutSeconds: resolvedTimeout)
-            notifyFunctionExecuted(name: name, args: args, result: result)
-            sendFunctionResponse(id: id, name: name, result: result)
+            let sendableArgs = SendableToolArgs(args: args)
+            Task {
+                let result = await executeExec(command: trimmedCommand, workingDirectory: resolvedWorkingDirectory, timeoutSeconds: resolvedTimeout)
+                notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
+                sendFunctionResponse(id: id, name: name, result: result)
+            }
             return
         }
 
@@ -225,13 +228,16 @@ extension GeminiLiveSession {
     func approveExecCall(toolCallID: String) {
         guard let pending = takePendingExecApproval(toolCallID: toolCallID) else { return }
         notifyFunctionStarted(name: "exec", args: pending.args)
-        let result = executeExec(
-            command: pending.command,
-            workingDirectory: pending.workingDirectory,
-            timeoutSeconds: pending.timeoutSeconds
-        )
-        notifyFunctionExecuted(name: "exec", args: pending.args, result: result)
-        sendFunctionResponse(id: toolCallID, name: "exec", result: result)
+        let sendableArgs = SendableToolArgs(args: pending.args)
+        Task {
+            let result = await executeExec(
+                command: pending.command,
+                workingDirectory: pending.workingDirectory,
+                timeoutSeconds: pending.timeoutSeconds
+            )
+            notifyFunctionExecuted(name: "exec", args: sendableArgs.args, result: result)
+            sendFunctionResponse(id: toolCallID, name: "exec", result: result)
+        }
     }
 
     func denyExecCall(toolCallID: String) {
@@ -244,4 +250,9 @@ extension GeminiLiveSession {
         notifyFunctionExecuted(name: "exec", args: pending.args, result: result)
         sendFunctionResponse(id: toolCallID, name: "exec", result: result)
     }
+
+}
+
+struct SendableToolArgs: @unchecked Sendable {
+    let args: [String: Any]
 }

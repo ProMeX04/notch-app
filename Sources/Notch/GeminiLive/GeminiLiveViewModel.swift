@@ -108,7 +108,7 @@ final class GeminiLiveViewModel: ObservableObject {
     private var subscriptions = Set<AnyCancellable>()
     private var lastDisconnectWasUserInitiated = false
     private var pendingTurnSeparator = false
-    private var screenCaptureTimer: Timer?
+    private var screenCaptureTask: Task<Void, Never>?
     private let screenRegionSelectionController = ScreenRegionSelectionController()
     private let windowShareSelectionController = WindowShareSelectionController()
     private let screenShareHighlightController = ScreenShareHighlightController()
@@ -237,6 +237,11 @@ final class GeminiLiveViewModel: ObservableObject {
                 } else {
                     self.modelTranscript += " " + text
                 }
+
+                // Prevent unbounded string growth in exceptionally long continuous responses
+                if self.modelTranscript.count > 10_000 {
+                    self.modelTranscript = String(self.modelTranscript.suffix(8_000))
+                }
             }
         }
 
@@ -254,7 +259,10 @@ final class GeminiLiveViewModel: ObservableObject {
             DispatchQueue.main.async {
                 guard let self else { return }
                 let clamped = min(max(level, 0), 1)
-                self.microphoneInputLevel = (self.microphoneInputLevel * 0.55) + (clamped * 0.45)
+                let smoothed = (self.microphoneInputLevel * 0.55) + (clamped * 0.45)
+                // Only update if the change is visually meaningful to avoid View invalidate storms
+                guard abs(smoothed - self.microphoneInputLevel) > 0.02 else { return }
+                self.microphoneInputLevel = smoothed
             }
         }
 
@@ -1170,14 +1178,22 @@ final class GeminiLiveViewModel: ObservableObject {
         pauseScreenCapture()
         isScreenSharingEnabled = true
         statusText = statusMessage
+
         let captureSession = session
-        let captureRegion = screenShareRegion
-        let captureFilter = screenShareFilter
         updateScreenShareHighlight()
-        screenCaptureTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { _ in
-            Task { @MainActor in
+
+        screenCaptureTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1.5))
+                guard !Task.isCancelled else { break }
+                guard let self else { break }
+
+                guard let jpeg = await self.captureAndEncodeScreen(
+                    region: self.screenShareRegion, 
+                    contentFilter: self.screenShareFilter
+                ) else { continue }
+
                 self.updateScreenShareHighlight()
-                guard let jpeg = await GeminiLiveViewModel.captureAndEncodeScreen(region: captureRegion, contentFilter: captureFilter) else { return }
                 captureSession.sendScreenFrame(jpeg)
             }
         }
@@ -1199,15 +1215,15 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     private func pauseScreenCapture() {
-        screenCaptureTimer?.invalidate()
-        screenCaptureTimer = nil
+        screenCaptureTask?.cancel()
+        screenCaptureTask = nil
+        isScreenSharingEnabled = false
     }
 
     private func stopScreenCapture() {
         screenRegionSelectionController.cancelSelection(notify: false)
         windowShareSelectionController.cancelSelection(notify: false)
         pauseScreenCapture()
-        isScreenSharingEnabled = false
         screenShareHighlightController.hide()
     }
 
@@ -1231,15 +1247,15 @@ final class GeminiLiveViewModel: ObservableObject {
         }
     }
 
-    private nonisolated static func captureAndEncodeScreen(region: CGRect?, contentFilter: SCContentFilter?) async -> Data? {
-        if let contentFilter {
+    private func captureAndEncodeScreen(region: CGRect?, contentFilter: SCContentFilter?) async -> Data? {
+        if #available(macOS 14.0, *), let contentFilter {
             return await captureAndEncodeSharedContent(contentFilter)
         }
 
-        return captureAndEncodeDisplayRegion(region)
+        return await captureAndEncodeDisplayRegion(region)
     }
 
-    private nonisolated static func captureAndEncodeDisplayRegion(_ region: CGRect?) -> Data? {
+    private func captureAndEncodeDisplayRegion(_ region: CGRect?) async -> Data? {
         let captureRect = region ?? NSScreen.main.map { screen in
             CGRect(
                 x: screen.frame.origin.x,
@@ -1249,41 +1265,28 @@ final class GeminiLiveViewModel: ObservableObject {
             )
         } ?? CGRect.infinite
 
-        let fullImage = CGWindowListCreateImage(
-            captureRect, .optionAll, kCGNullWindowID, [.boundsIgnoreFraming]
-        )
-        guard let fullImage else { return nil }
-        return encodeJPEG(from: fullImage)
+        return await Task.detached(priority: .userInitiated) {
+            guard let fullImage = CGWindowListCreateImage(
+                captureRect, .optionAll, kCGNullWindowID, [.boundsIgnoreFraming]
+            ) else { return nil }
+            return Self.encodeJPEG(from: fullImage)
+        }.value
     }
+
+    private nonisolated static let jpegContext = CIContext(options: [.useSoftwareRenderer: false])
 
     private nonisolated static func encodeJPEG(from fullImage: CGImage) -> Data? {
         let maxWidth: CGFloat = 1280
         let originalWidth = CGFloat(fullImage.width)
-        let originalHeight = CGFloat(fullImage.height)
         let scale = min(1.0, maxWidth / originalWidth)
-        let targetWidth = Int(originalWidth * scale)
-        let targetHeight = Int(originalHeight * scale)
-
+        
+        let ciImage = CIImage(cgImage: fullImage).transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         let colorSpace = CGColorSpaceCreateDeviceRGB()
-        guard let context = CGContext(
-            data: nil,
-            width: targetWidth,
-            height: targetHeight,
-            bitsPerComponent: 8,
-            bytesPerRow: 0,
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue
-        ) else { return nil }
-
-        context.draw(fullImage, in: CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight))
-        guard let scaled = context.makeImage() else { return nil }
-
-        let bitmapRep = NSBitmapImageRep(cgImage: scaled)
-        return bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: 0.6])
+        return jpegContext.jpegRepresentation(of: ciImage, colorSpace: colorSpace, options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.6])
     }
 
     @available(macOS 14.0, *)
-    private nonisolated static func captureAndEncodeSharedContent(_ contentFilter: SCContentFilter) async -> Data? {
+    private func captureAndEncodeSharedContent(_ contentFilter: SCContentFilter) async -> Data? {
         let contentInfo = SCShareableContent.info(for: contentFilter)
         let contentRect = contentInfo.contentRect.standardized
         guard contentRect.width > 0, contentRect.height > 0 else { return nil }
@@ -1305,7 +1308,9 @@ final class GeminiLiveViewModel: ObservableObject {
         }
 
         guard let image else { return nil }
-        return encodeJPEG(from: image)
+        return await Task.detached(priority: .userInitiated) {
+            Self.encodeJPEG(from: image)
+        }.value
     }
 
     func toggleMicrophone() {

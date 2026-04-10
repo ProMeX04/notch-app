@@ -145,9 +145,14 @@ struct ProgressiveRevealText: View {
 
         revealTask = Task { @MainActor in
             while displayedText.count < target.count {
+                // Advance multiple characters per tick to reduce SwiftUI body
+                // evaluations (~4x fewer re-renders while preserving the
+                // typing feel). Pause on punctuation for natural cadence.
+                let remaining = target.count - displayedText.count
+                let chunkSize = min(remaining, 4)
                 let nextIndex = target.index(
                     target.startIndex,
-                    offsetBy: displayedText.count + 1,
+                    offsetBy: displayedText.count + chunkSize,
                     limitedBy: target.endIndex
                 ) ?? target.endIndex
 

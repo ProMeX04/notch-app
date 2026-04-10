@@ -180,21 +180,6 @@ struct CompactPomodoroView: View {
 
             Rectangle()
                 .fill(.black)
-                .overlay {
-                    HStack {
-                        Spacer(minLength: 0)
-
-                        PomodoroTimeText(
-                            pomodoro: pomodoro,
-                            size: 12,
-                            weight: .semibold
-                        )
-                        .foregroundStyle(.white)
-
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, 10)
-                }
                 .frame(width: max(0, closedNotchWidth - NotchMetrics.closedCornerRadius.top))
 
             ZStack {
@@ -401,7 +386,8 @@ struct ExpandedNotchContent: View {
             if presentationModel.selectedPanel == .focus {
                 PomodoroPanelView(
                     pomodoro: pomodoro,
-                    learningStats: learningStats
+                    learningStats: learningStats,
+                    presentationModel: presentationModel
                 )
             } else if presentationModel.selectedPanel == .talk {
                 GeminiTalkPanelView(
@@ -523,6 +509,7 @@ struct Localization {
         "Cycle": ["English": "Cycle", "Tiếng Việt": "Chu kỳ"],
         "Version": ["English": "Version", "Tiếng Việt": "Phiên bản"],
         "Focus": ["English": "Focus", "Tiếng Việt": "Tập trung"],
+        "Focus Sound": ["English": "Focus Sound", "Tiếng Việt": "Âm đổi focus"],
         "Short": ["English": "Short", "Tiếng Việt": "Nghỉ ngắn"],
         "Long": ["English": "Long", "Tiếng Việt": "Nghỉ dài"],
         "Round": ["English": "Round", "Tiếng Việt": "Vòng"],
@@ -533,10 +520,13 @@ struct Localization {
         "Break": ["English": "Break", "Tiếng Việt": "Giải lao"],
         "Pause": ["English": "Pause", "Tiếng Việt": "Tạm dừng"],
         "Start": ["English": "Start", "Tiếng Việt": "Bắt đầu"],
+        "Reset": ["English": "Reset", "Tiếng Việt": "Đặt lại"],
         "Skip": ["English": "Skip", "Tiếng Việt": "Bỏ qua"],
         "Next": ["English": "Next", "Tiếng Việt": "Tiếp theo"],
         "Auto Start Breaks": ["English": "Auto Start Breaks", "Tiếng Việt": "Tự chạy khi nghỉ"],
         "Auto Start Pomo": ["English": "Auto Start Pomo", "Tiếng Việt": "Tự chạy Pomo"],
+        "Auto Breaks": ["English": "Auto Breaks", "Tiếng Việt": "Tự bật nghỉ"],
+        "Auto Pomo": ["English": "Auto Pomo", "Tiếng Việt": "Tự bật Pomo"],
         "Focus Session": ["English": "Focus Session", "Tiếng Việt": "Đang tập trung"],
         "Short Break": ["English": "Short Break", "Tiếng Việt": "Giải lao ngắn"],
         "Long Break": ["English": "Long Break", "Tiếng Việt": "Giải lao dài"],
@@ -639,6 +629,7 @@ struct Localization {
         "skills": ["English": "skills", "Tiếng Việt": "skill"],
         "Auto Hide": ["English": "Auto Hide", "Tiếng Việt": "Tự ẩn"],
         "Quit Notch": ["English": "Quit Notch", "Tiếng Việt": "Thoát Notch"],
+        "Hide in Fullscreen": ["English": "Hide in Fullscreen", "Tiếng Việt": "Ẩn ở chế độ toàn màn hình"],
     ]
 
     static func get(_ key: String, lang: String) -> String {
@@ -749,6 +740,19 @@ struct GlobalSettingsView: View {
                     )
                     .tint(tint)
                 }
+            }
+
+            settingsSectionCard {
+                Toggle(isOn: Binding(
+                    get: { presentationModel.hideInFullscreen },
+                    set: { presentationModel.setHideInFullscreen($0) }
+                )) {
+                    Text(Localization.get("Hide in Fullscreen", lang: appLanguage))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.9))
+                }
+                .toggleStyle(.switch)
+                .tint(tint)
             }
 
             settingsSectionCard {

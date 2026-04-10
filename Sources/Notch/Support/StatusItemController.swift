@@ -319,7 +319,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func updatePomodoroStatusItem() {
         let pomo = windowController.pomodoroViewModel
 
-        if pomo.isRunning {
+        if pomo.hasActiveSession {
             if pomodoroStatusItem == nil {
                 let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
                 if let btn = item.button {
@@ -330,19 +330,37 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 pomodoroStatusItem = item
             }
             pomodoroStatusItem?.isVisible = true
-            startTickIfNeeded()
             refreshPomodoroLabel()
+            if pomo.isRunning {
+                startTickIfNeeded()
+            } else {
+                stopTickIfUnused()
+            }
         } else {
             pomodoroStatusItem?.isVisible = false
             stopTickIfUnused()
         }
     }
 
+    private var lastRenderedTimerText: String?
+    private var lastRenderedTimerImage: NSImage?
+
     private func refreshPomodoroLabel() {
         guard let btn = pomodoroStatusItem?.button else { return }
         let pomo = windowController.pomodoroViewModel
+        let text = pomo.remainingText(at: .now)
         let symbolName = pomo.phase == .focus ? "timer" : "cup.and.saucer.fill"
-        btn.image = generateTimerImage(symbolName: symbolName, text: pomo.remainingText(at: .now), color: pomo.phase.accentColor)
+        
+        if text == lastRenderedTimerText, let cached = lastRenderedTimerImage {
+            btn.image = cached
+            return
+        }
+
+        let image = generateTimerImage(symbolName: symbolName, text: text, color: pomo.phase.accentColor)
+        lastRenderedTimerText = text
+        lastRenderedTimerImage = image
+        
+        btn.image = image
         btn.title = ""
         btn.imagePosition = .imageOnly
     }

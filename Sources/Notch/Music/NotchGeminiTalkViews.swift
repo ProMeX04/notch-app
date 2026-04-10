@@ -21,7 +21,7 @@ private enum GeminiPanelControlPalette {
 }
 
 private func themedNotchAccentColor(from accentColorID: String) -> Color {
-    NotchAccentColorOption.resolve(rawValue: accentColorID).color.ensureMinimumBrightness(factor: 0.78)
+    NotchAccentColorOption.resolve(rawValue: accentColorID).brightColor
 }
 
 /// One shared row for every pre-connect `Menu` label (Prompt, Tools, Voice, Thinking, …).
@@ -128,6 +128,16 @@ struct GeminiTalkPanelView: View {
     @State private var promptDraftContent = ""
     @State private var agentNameDraft = ""
     @FocusState private var isAgentNameFieldFocused: Bool
+    @State private var headerRefreshTask: Task<Void, Never>?
+
+    private func scheduleHeaderRefresh() {
+        headerRefreshTask?.cancel()
+        headerRefreshTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(16))
+            guard !Task.isCancelled else { return }
+            refreshHeaderAccessory()
+        }
+    }
 
     private var statusColor: Color {
         Color(nsColor: gemini.connectionState.accentColor).ensureMinimumBrightness(factor: 0.72)
@@ -656,10 +666,10 @@ struct GeminiTalkPanelView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 116, alignment: .topLeading)
         .onAppear(perform: syncAgentNameDraft)
-        .onAppear(perform: refreshHeaderAccessory)
+        .onAppear(perform: scheduleHeaderRefresh)
         .onChange(of: gemini.selectedSystemPromptID) { _, _ in
             syncAgentNameDraft()
-            refreshHeaderAccessory()
+            scheduleHeaderRefresh()
         }
         .onChange(of: isAgentNameFieldFocused) { _, isFocused in
             if !isFocused {
@@ -667,24 +677,25 @@ struct GeminiTalkPanelView: View {
             }
         }
         .onChange(of: setupViewMode) { _, _ in
-            refreshHeaderAccessory()
+            scheduleHeaderRefresh()
         }
         .onChange(of: promptEditorMode) { _, _ in
-            refreshHeaderAccessory()
+            scheduleHeaderRefresh()
         }
         .onChange(of: gemini.hasSavedAPIKey) { _, _ in
-            refreshHeaderAccessory()
+            scheduleHeaderRefresh()
         }
         .onChange(of: gemini.connectionState) { _, _ in
-            refreshHeaderAccessory()
+            scheduleHeaderRefresh()
         }
         .onChange(of: gemini.isSavingAPIKey) { _, _ in
-            refreshHeaderAccessory()
+            scheduleHeaderRefresh()
         }
         .onChange(of: promptDraftContent) { _, _ in
-            refreshHeaderAccessory()
+            scheduleHeaderRefresh()
         }
         .onDisappear {
+            headerRefreshTask?.cancel()
             headerAccessoryController.clear()
         }
     }
@@ -919,19 +930,56 @@ struct GeminiAgentAvatarArtwork: View {
     let symbolFont: Font
     let size: CGFloat
 
+    @State private var loadedImage: NSImage?
+
+    private static let imageCache: NSCache<NSURL, NSImage> = {
+        let cache = NSCache<NSURL, NSImage>()
+        cache.countLimit = 20
+        return cache
+    }()
+
+    private static func loadImageAsync(from url: URL) async -> NSImage? {
+        let key = url as NSURL
+        if let cached = imageCache.object(forKey: key) {
+            return cached
+        }
+        // Move file read off the main thread
+        let image = await Task.detached {
+            NSImage(contentsOf: url)
+        }.value
+        
+        if let image {
+            imageCache.setObject(image, forKey: key)
+        }
+        return image
+    }
+
     var body: some View {
-        if let imageURL, let image = NSImage(contentsOf: imageURL) {
-            Image(nsImage: image)
-                .resizable()
-                .scaledToFill()
-                .frame(width: size, height: size)
-                .clipShape(Circle())
-                .clipped()
-        } else {
-            Image(systemName: symbolName)
-                .font(symbolFont)
-                .foregroundStyle(.white.opacity(0.9))
-                .frame(width: size, height: size)
+        Group {
+            if let loadedImage {
+                Image(nsImage: loadedImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: size, height: size)
+                    .clipShape(Circle())
+                    .clipped()
+            } else {
+                Image(systemName: symbolName)
+                    .font(symbolFont)
+                    .foregroundStyle(.white.opacity(0.9))
+                    .frame(width: size, height: size)
+            }
+        }
+        .task(id: imageURL) {
+            guard let imageURL else {
+                loadedImage = nil
+                return
+            }
+            if let cached = Self.imageCache.object(forKey: imageURL as NSURL) {
+                loadedImage = cached
+            } else {
+                loadedImage = await Self.loadImageAsync(from: imageURL)
+            }
         }
     }
 }
@@ -953,19 +1001,24 @@ struct GeminiAgentSummaryCard: View {
             Button(action: onChooseAvatar) {
                 ZStack {
                     Circle()
-                        .fill(statusColor.opacity(0.14))
+                        .fill(Color.black.opacity(0.78))
                     Circle()
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    statusColor.opacity(0.84),
-                                    Color(nsColor: .systemIndigo).opacity(0.58)
+                                    Color.white.opacity(0.12),
+                                    Color.white.opacity(0.03)
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
                         )
                         .padding(4)
+                        .overlay {
+                            Circle()
+                                .stroke(statusColor.opacity(0.24), lineWidth: 1)
+                                .padding(4)
+                        }
                     GeminiAgentAvatarArtwork(
                         imageURL: avatarImageURL,
                         symbolName: avatarSymbolName,
@@ -974,6 +1027,7 @@ struct GeminiAgentSummaryCard: View {
                     )
                 }
                 .frame(width: 64, height: 64)
+                .shadow(color: .black.opacity(0.3), radius: 10, y: 4)
                 .contentShape(Circle())
             }
             .buttonStyle(.plain)
@@ -1941,21 +1995,25 @@ struct GeminiAgentHomeAvatarFigure: View {
     var body: some View {
         ZStack {
             Circle()
+                .fill(Color.black.opacity(0.82))
+                .frame(width: 104, height: 104)
+                .shadow(color: .black.opacity(isHovering ? 0.45 : 0.28), radius: isHovering ? 18 : 10, y: isHovering ? 8 : 4)
+            Circle()
                 .fill(
                     LinearGradient(
                         colors: [
-                            statusColor.opacity(0.8),
-                            Color(nsColor: .systemIndigo).opacity(0.6)
+                            Color.white.opacity(0.12),
+                            Color.white.opacity(0.03)
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
-                .frame(width: 104, height: 104)
-                .shadow(color: statusColor.opacity(isHovering ? 0.5 : 0.28), radius: isHovering ? 18 : 10, y: isHovering ? 8 : 4)
+                .frame(width: 96, height: 96)
                 .overlay {
                     Circle()
-                        .stroke(Color.white.opacity(isHovering ? 0.28 : 0.08), lineWidth: isHovering ? 1.5 : 1)
+                        .stroke(statusColor.opacity(isHovering ? 0.34 : 0.18), lineWidth: isHovering ? 1.5 : 1)
+                        .frame(width: 96, height: 96)
                 }
 
             GeminiAgentAvatarArtwork(

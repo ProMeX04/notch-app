@@ -3,12 +3,17 @@ import Charts
 struct PomodoroPanelView: View {
     @ObservedObject var pomodoro: PomodoroViewModel
     @ObservedObject var learningStats: LearningStatsStore
+    @ObservedObject var presentationModel: NotchPresentationModel
     @State private var idleEditorPhase: PomodoroPhase = .focus
     @State private var isShowingSettings: Bool = false
     @State private var isShowingStats: Bool = false
     
     @AppStorage("app_language") private var appLanguage: String = "English"
     @AppStorage(NotchAccentColorOption.storageKey) private var accentColorID: String = NotchAccentColorOption.defaultOption.rawValue
+
+    private var showsOverlayPanel: Bool {
+        isShowingSettings || isShowingStats
+    }
 
     private var displayedPhase: PomodoroPhase {
         pomodoro.hasActiveSession ? pomodoro.phase : idleEditorPhase
@@ -42,7 +47,7 @@ struct PomodoroPanelView: View {
                         size: 78,
                         weight: .bold
                     )
-                    .foregroundStyle(.white)
+                    .foregroundStyle(displayedTint)
                 }
             )
         } else {
@@ -53,7 +58,7 @@ struct PomodoroPanelView: View {
                         size: 78,
                         weight: .bold
                     )
-                    .foregroundStyle(.white)
+                    .foregroundStyle(displayedTint)
                 }
             )
         }
@@ -77,9 +82,9 @@ struct PomodoroPanelView: View {
                             .padding(.vertical, 6)
                             .background(
                                 Capsule()
-                                    .fill(.black.opacity(0.15))
+                                    .fill(.black.opacity(0.35))
                             )
-                            .foregroundStyle(.white)
+                            .foregroundStyle(displayedTint)
                             .onTapGesture {
                                 withAnimation(.smooth(duration: 0.22)) {
                                     let phases: [PomodoroPhase] = [.focus, .shortBreak, .longBreak]
@@ -100,12 +105,12 @@ struct PomodoroPanelView: View {
                                     current: pomodoro.completedSessionsInCycle,
                                     total: pomodoro.sessionsBeforeLongBreak,
                                     isFocus: pomodoro.phase == .focus,
-                                    tint: .white
+                                    tint: displayedTint
                                 )
                                 
                                 Text("\(Localization.get("Round", lang: appLanguage)) \(pomodoro.currentFocusSessionIndex)/\(pomodoro.sessionsBeforeLongBreak)")
                                     .font(.system(size: 10, weight: .bold, design: .rounded))
-                                    .foregroundStyle(.white.opacity(0.92))
+                                    .foregroundStyle(displayedTint)
                             }
                             .padding(.top, -2)
                         }
@@ -129,7 +134,7 @@ struct PomodoroPanelView: View {
                             FocusPanelActionButton(
                                 title: Localization.get("Stats", lang: appLanguage),
                                 icon: "chart.bar.xaxis",
-                                tint: .white
+                                tint: interfaceTint
                             ) {
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
                                     isShowingStats = true
@@ -139,15 +144,24 @@ struct PomodoroPanelView: View {
                             FocusPanelActionButton(
                                 title: Localization.get("Settings", lang: appLanguage),
                                 icon: "slider.horizontal.3",
-                                tint: .white
+                                tint: interfaceTint
                             ) {
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
                                     isShowingSettings = true
                                 }
                             }
+
+                            FocusPanelActionButton(
+                                title: Localization.get("Reset", lang: appLanguage),
+                                icon: "arrow.counterclockwise",
+                                tint: interfaceTint
+                            ) {
+                                pomodoro.reset()
+                            }
                         }
                         Spacer()
                     }
+                    .padding(.horizontal, 12)
                     .frame(maxWidth: .infinity)
                     .allowsHitTesting(true)
 
@@ -166,22 +180,39 @@ struct PomodoroPanelView: View {
                             
                             FocusPanelActionButton(
                                 title: Localization.get(pomodoro.isRunning ? "Pause" : "Start", lang: appLanguage),
-                                tint: .white,
+                                tint: interfaceTint,
                                 variant: .primary
                             ) {
                                 pomodoro.toggleRunning()
                             }
                         }
                     }
+                    .padding(.horizontal, 12)
                     .frame(maxWidth: .infinity)
                     .allowsHitTesting(true)
                 }
+                .offset(y: 8)
                 .transition(.opacity)
             }
         }
         .padding(.horizontal, 20)
-        .frame(maxWidth: .infinity, minHeight: 100, maxHeight: (isShowingSettings || isShowingStats) ? 175 : 125, alignment: .center)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: isShowingSettings ? 160 : 100,
+            maxHeight: isShowingSettings ? 340 : (isShowingStats ? 175 : 125),
+            alignment: .center
+        )
+        .background(showsOverlayPanel ? Color.black : Color.clear)
         .foregroundStyle(.white)
+        .onAppear {
+            presentationModel.isFocusOverlayPresented = showsOverlayPanel
+        }
+        .onChange(of: showsOverlayPanel) { _, isPresented in
+            presentationModel.isFocusOverlayPresented = isPresented
+        }
+        .onDisappear {
+            presentationModel.isFocusOverlayPresented = false
+        }
         .onChange(of: pomodoro.hasActiveSession) { _, hasActiveSession in
             if !hasActiveSession {
                 idleEditorPhase = .focus
@@ -772,114 +803,185 @@ struct PomodoroQuickSettingsView: View {
     let tint: Color
     
     @AppStorage("app_language") private var appLanguage: String = "English"
+    @AppStorage(SoundManager.focusTransitionSoundKey) private var focusTransitionSoundID: String = FocusTransitionSoundOption.defaultOption.rawValue
+
+    private var selectedFocusTransitionSound: FocusTransitionSoundOption {
+        FocusTransitionSoundOption(rawValue: focusTransitionSoundID) ?? .defaultOption
+    }
 
     var body: some View {
-        HStack(spacing: 24) {
-            // First Column: 3 settings rows
-            VStack(alignment: .leading, spacing: 10) {
-                settingInput(label: "Focus", value: pomodoro.focusMinutes) { 
-                    pomodoro.updateCurrentDurations(focusMinutes: $0, breakMinutes: pomodoro.breakMinutes) 
-                }
-                settingInput(label: "Short", value: pomodoro.breakMinutes) { 
-                    pomodoro.updateCurrentDurations(focusMinutes: pomodoro.focusMinutes, breakMinutes: $0) 
-                }
-                settingInput(label: "Long", value: pomodoro.longBreakDurationSeconds / 60) { 
-                    pomodoro.updateLongBreakDuration(minutes: $0) 
-                }
-                settingInput(label: "Cycle", value: pomodoro.sessionsBeforeLongBreak, range: 1...12) {
-                    pomodoro.updateSessionsBeforeLongBreak(count: $0)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(settingsCardBackground(stroke: tint.opacity(0.2)))
-            
-            // Second Column: Toggles and Done
-            VStack(alignment: .trailing, spacing: 12) {
-                settingToggle(label: "Auto-start Breaks", isOn: $pomodoro.autoStartBreaks)
-                
-                settingToggle(label: "Auto-start Pomo", isOn: $pomodoro.autoStartPomodoros)
-                
-                Spacer(minLength: 0)
-                
-                FocusPanelActionButton(
-                    title: Localization.get("Done", lang: appLanguage),
-                    tint: tint,
-                    variant: .primary
-                ) {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                        isPresented = false
+        VStack(spacing: 4) {
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 6) {
+                    settingInput(label: "Focus", value: pomodoro.focusMinutes) {
+                        pomodoro.updateCurrentDurations(focusMinutes: $0, breakMinutes: pomodoro.breakMinutes)
                     }
+                    settingInput(label: "Short", value: pomodoro.breakMinutes) {
+                        pomodoro.updateCurrentDurations(focusMinutes: pomodoro.focusMinutes, breakMinutes: $0)
+                    }
+                    settingInput(label: "Cycle", value: pomodoro.sessionsBeforeLongBreak, range: 1...12) {
+                        pomodoro.updateSessionsBeforeLongBreak(count: $0)
+                    }
+                    settingInput(label: "Long", value: pomodoro.longBreakDurationSeconds / 60) {
+                        pomodoro.updateLongBreakDuration(minutes: $0)
+                    }
+                    settingButton(
+                        label: "Focus Sound",
+                        value: selectedFocusTransitionSound.displayName,
+                        icon: "waveform"
+                    ) {
+                        let nextSound = SoundManager.cycleFocusTransitionSound()
+                        focusTransitionSoundID = nextSound.rawValue
+                        SoundManager.previewFocusTransitionSound(nextSound)
+                    }
+                    settingToggle(label: "Auto Breaks", isOn: $pomodoro.autoStartBreaks)
+                    settingToggle(label: "Auto Pomo", isOn: $pomodoro.autoStartPomodoros)
                 }
             }
-            .frame(width: 220, alignment: .trailing)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(settingsCardBackground(stroke: tint.opacity(0.18)))
+            .frame(maxHeight: 252)
+
+            HStack {
+                Spacer(minLength: 0)
+
+                compactDoneButton
+            }
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(settingsCardBackground())
     }
 
     private func settingToggle(label: String, isOn: Binding<Bool>) -> some View {
         let isEnabled = isOn.wrappedValue
 
-        return HStack(spacing: 10) {
+        return VStack(alignment: .leading, spacing: 8) {
             Text(Localization.get(label, lang: appLanguage))
-                .font(.system(size: 12.5, weight: .semibold))
+                .font(.system(size: 11.5, weight: .semibold))
                 .foregroundStyle(isEnabled ? .white.opacity(0.96) : .white.opacity(0.82))
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+                .allowsTightening(true)
                 .layoutPriority(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            Toggle("", isOn: isOn)
-                .labelsHidden()
-                .toggleStyle(NotchSwitchStyle(tint: tint))
+            HStack {
+                Spacer(minLength: 0)
+
+                Toggle("", isOn: isOn)
+                    .labelsHidden()
+                    .toggleStyle(NotchSwitchStyle(tint: tint))
+            }
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(minHeight: 46)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(isEnabled ? Color.white.opacity(0.1) : Color.white.opacity(0.075))
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(isEnabled ? tint.opacity(0.3) : Color.white.opacity(0.12), lineWidth: 1)
-        }
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, minHeight: 50, alignment: .topLeading)
+        .background(settingCellBackground(stroke: isEnabled ? Color.white.opacity(0.16) : Color.white.opacity(0.1)))
     }
 
     private func settingInput(label: String, value: Int, range: ClosedRange<Int> = 1...180, action: @escaping (Int) -> Void) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             Text(Localization.get(label, lang: appLanguage))
-                .font(.system(size: 14.5, weight: .bold))
+                .font(.system(size: 11.5, weight: .bold))
                 .foregroundStyle(.white.opacity(0.92))
-                .frame(width: 80, alignment: .leading)
-                
-            HStack(spacing: 10) {
-                Button { action(max(range.lowerBound, value - 1)) } label: { Image(systemName: "minus.circle.fill").font(.system(size: 18)).foregroundStyle(.white.opacity(0.92)) }.buttonStyle(.plain)
-                Text("\(value)").font(.system(size: 18, weight: .bold, design: .rounded)).frame(minWidth: 26).foregroundStyle(.white)
-                Button { action(min(range.upperBound, value + 1)) } label: { Image(systemName: "plus.circle.fill").font(.system(size: 18)).foregroundStyle(.white.opacity(0.92)) }.buttonStyle(.plain)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+                .allowsTightening(true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(spacing: 8) {
+                Button { action(max(range.lowerBound, value - 1)) } label: { Image(systemName: "minus.circle.fill").font(.system(size: 16)).foregroundStyle(.white.opacity(0.92)) }.buttonStyle(.plain)
+                Text("\(value)").font(.system(size: 16, weight: .bold, design: .rounded)).frame(minWidth: 24).foregroundStyle(.white)
+                Button { action(min(range.upperBound, value + 1)) } label: { Image(systemName: "plus.circle.fill").font(.system(size: 16)).foregroundStyle(.white.opacity(0.92)) }.buttonStyle(.plain)
             }
+            .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.vertical, 3)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(Color.white.opacity(0.1))
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(tint.opacity(0.24), lineWidth: 1)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
             }
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+        .background(settingCellBackground(stroke: Color.white.opacity(0.1)))
     }
 
-    private func settingsCardBackground(stroke: Color) -> some View {
+    private func settingButton(label: String, value: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Text(Localization.get(label, lang: appLanguage))
+                    .font(.system(size: 11.5, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+                    .allowsTightening(true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                HStack(spacing: 6) {
+                    Image(systemName: icon)
+                        .font(.system(size: 11, weight: .bold))
+                    Text(value)
+                        .font(.system(size: 11.5, weight: .bold))
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                .foregroundStyle(.white.opacity(0.9))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(Color.white.opacity(0.1))
+                )
+                .overlay {
+                    Capsule()
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+            .background(settingCellBackground(stroke: Color.white.opacity(0.1)))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var compactDoneButton: some View {
+        Button {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                isPresented = false
+            }
+        } label: {
+            Text(Localization.get("Done", lang: appLanguage))
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.black.opacity(0.88))
+                .frame(width: 78, height: 24)
+                .background(
+                    Capsule()
+                        .fill(tint)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func settingsCardBackground() -> some View {
         RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(Color.white.opacity(0.055))
+            .fill(Color.black)
             .overlay {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            }
+    }
+
+    private func settingCellBackground(stroke: Color) -> some View {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(Color.white.opacity(0.05))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(stroke, lineWidth: 1)
             }
     }
@@ -932,7 +1034,11 @@ struct PomodoroStatsView: View {
     
     private var displayedLabel: String {
         if let selectedDay {
-             return "\(Localization.get("Focus on", lang: appLanguage)) \(selectedDay)"
+            let localizedDay = Localization.get(selectedDay, lang: appLanguage)
+            if appLanguage == "Tiếng Việt" {
+                return localizedDay
+            }
+            return "\(Localization.get("Focus on", lang: appLanguage)) \(localizedDay)"
         }
         return Localization.get("Last 7 Days", lang: appLanguage)
     }
@@ -963,7 +1069,7 @@ struct PomodoroStatsView: View {
             .frame(width: 120, alignment: .leading)
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(statsCardBackground(stroke: tint.opacity(0.2)))
+            .background(statsCardBackground(stroke: Color.white.opacity(0.08)))
             
             Chart(chartData) { day in
                 BarMark(
@@ -991,7 +1097,7 @@ struct PomodoroStatsView: View {
             .padding(.top, 4)
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(statsCardBackground(stroke: Color.white.opacity(0.1)))
+            .background(statsCardBackground(stroke: Color.white.opacity(0.08)))
         }
         .padding(.horizontal, 10)
         .padding(.top, 24)
@@ -1000,7 +1106,7 @@ struct PomodoroStatsView: View {
 
     private func statsCardBackground(stroke: Color) -> some View {
         RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(Color.white.opacity(0.055))
+            .fill(Color.black)
             .overlay {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(stroke, lineWidth: 1)
@@ -1038,7 +1144,7 @@ struct PomodoroSessionDotsView: View {
         } else if isFocus && index == current {
             return tint.opacity(0.3)
         } else {
-            return Color.white.opacity(0.12)
+            return tint.opacity(0.16)
         }
     }
 }

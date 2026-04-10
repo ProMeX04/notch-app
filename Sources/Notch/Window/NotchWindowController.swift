@@ -62,6 +62,23 @@ final class NotchWindowController {
         hostingView.autoresizingMask = [.width, .height]
         window.contentView = hostingView
 
+        presentationModel.$hideInFullscreen
+            .sink { [weak window] hide in
+                guard let window = window else { return }
+                var behavior: NSWindow.CollectionBehavior = [
+                    .stationary,
+                    .ignoresCycle
+                ]
+                if hide {
+                    behavior.insert(.moveToActiveSpace)
+                } else {
+                    behavior.insert(.canJoinAllSpaces)
+                    behavior.insert(.fullScreenAuxiliary)
+                }
+                window.collectionBehavior = behavior
+            }
+            .store(in: &cancellables)
+
         transcriptOverlay.setPreferredScreen(initialScreen)
         transcriptOverlay.observe(gemini: geminiLiveViewModel)
         liveChatInputPanel.setPreferredScreen(initialScreen)

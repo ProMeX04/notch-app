@@ -99,7 +99,7 @@ final class AudioSpectrum: NSView {
     func setPlaying(_ playing: Bool) {
         isPlaying = playing
 
-        if isPlaying {
+        if isPlaying && !isHiddenOrHasHiddenAncestor {
             startAnimating()
         } else {
             stopAnimating()
@@ -109,7 +109,17 @@ final class AudioSpectrum: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
 
-        if window == nil {
+        if window == nil || isHiddenOrHasHiddenAncestor {
+            stopAnimating()
+        } else if isPlaying {
+            startAnimating()
+        }
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        
+        if superview == nil || isHiddenOrHasHiddenAncestor {
             stopAnimating()
         } else if isPlaying {
             startAnimating()

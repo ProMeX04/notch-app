@@ -22,12 +22,6 @@ final class NotchFloatingPanel: NSPanel {
         backgroundColor = .clear
         isMovable = false
         hidesOnDeactivate = false
-        collectionBehavior = [
-            .fullScreenAuxiliary,
-            .stationary,
-            .canJoinAllSpaces,
-            .ignoresCycle,
-        ]
 
         isReleasedWhenClosed = false
         level = .mainMenu + 3

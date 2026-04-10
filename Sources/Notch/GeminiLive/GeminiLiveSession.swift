@@ -672,99 +672,101 @@ final class GeminiLiveSession: @unchecked Sendable {
     }
 
     func handleMessage(_ message: URLSessionWebSocketTask.Message) {
-        let rawData: Data?
+        autoreleasepool {
+            let rawData: Data?
 
-        switch message {
-        case let .string(text):
-            rawData = text.data(using: .utf8)
-        case let .data(data):
-            rawData = data
-        @unknown default:
-            rawData = nil
-        }
-
-        guard
-            let rawData,
-            let object = try? JSONSerialization.jsonObject(with: rawData) as? [String: Any]
-        else {
-            return
-        }
-
-        if let error = object["error"] as? [String: Any] {
-            let message = (error["message"] as? String) ?? "Gemini Live returned an unknown error."
-            handleFailure(message: message, preserveAudioSession: hasCompletedSetup && captureMode == .webRTC)
-            return
-        }
-
-        if let sessionResumptionUpdate = object["sessionResumptionUpdate"] as? [String: Any] {
-            handleSessionResumptionUpdate(sessionResumptionUpdate)
-        }
-
-        if let goAway = object["goAway"] as? [String: Any] {
-            handleGoAway(goAway)
-        }
-
-        if object.keys.contains("setupComplete") {
-            handleSetupComplete()
-        }
-
-        if let toolCall = object["toolCall"] as? [String: Any],
-           let functionCalls = toolCall["functionCalls"] as? [[String: Any]] {
-            for call in functionCalls {
-                handleFunctionCall(call)
+            switch message {
+            case let .string(text):
+                rawData = text.data(using: .utf8)
+            case let .data(data):
+                rawData = data
+            @unknown default:
+                rawData = nil
             }
-        }
 
-        if let usageMetadata = object["usageMetadata"] as? [String: Any] {
-            onUsageMetadata?(GeminiLiveUsageMetadata(dictionary: usageMetadata))
-        }
+            guard
+                let rawData,
+                let object = try? JSONSerialization.jsonObject(with: rawData) as? [String: Any]
+            else {
+                return
+            }
 
-        guard let serverContent = object["serverContent"] as? [String: Any] else { return }
+            if let error = object["error"] as? [String: Any] {
+                let message = (error["message"] as? String) ?? "Gemini Live returned an unknown error."
+                handleFailure(message: message, preserveAudioSession: hasCompletedSetup && captureMode == .webRTC)
+                return
+            }
 
-        if let interrupted = serverContent["interrupted"] as? Bool, interrupted {
-            resetPlayback()
-        }
+            if let sessionResumptionUpdate = object["sessionResumptionUpdate"] as? [String: Any] {
+                handleSessionResumptionUpdate(sessionResumptionUpdate)
+            }
 
-        if
-            let inputTranscription = serverContent["inputTranscription"] as? [String: Any],
-            let text = inputTranscription["text"] as? String
-        {
-            onUserTranscript?(text)
-        }
+            if let goAway = object["goAway"] as? [String: Any] {
+                handleGoAway(goAway)
+            }
 
-        if
-            let outputTranscription = serverContent["outputTranscription"] as? [String: Any],
-            let text = outputTranscription["text"] as? String
-        {
-            onModelTranscript?(text)
-        }
+            if object.keys.contains("setupComplete") {
+                handleSetupComplete()
+            }
 
-        if let turnComplete = serverContent["turnComplete"] as? Bool, turnComplete {
-            onTurnComplete?()
-        }
-
-        if let generationComplete = serverContent["generationComplete"] as? Bool, generationComplete {
-            // Docs: signals the model finished generating its response.
-            // Audio playback may still be in progress at this point.
-        }
-
-        if
-            let modelTurn = serverContent["modelTurn"] as? [String: Any],
-            let parts = modelTurn["parts"] as? [[String: Any]]
-        {
-            for part in parts {
-                guard
-                    let inlineData = part["inlineData"] as? [String: Any],
-                    let encodedAudio = inlineData["data"] as? String,
-                    let decodedAudio = Data(base64Encoded: encodedAudio),
-                    !decodedAudio.isEmpty
-                else {
-                    continue
+            if let toolCall = object["toolCall"] as? [String: Any],
+               let functionCalls = toolCall["functionCalls"] as? [[String: Any]] {
+                for call in functionCalls {
+                    handleFunctionCall(call)
                 }
-
-                enqueueOutputAudio(decodedAudio)
             }
-        }
+
+            if let usageMetadata = object["usageMetadata"] as? [String: Any] {
+                onUsageMetadata?(GeminiLiveUsageMetadata(dictionary: usageMetadata))
+            }
+
+            guard let serverContent = object["serverContent"] as? [String: Any] else { return }
+
+            if let interrupted = serverContent["interrupted"] as? Bool, interrupted {
+                resetPlayback()
+            }
+
+            if
+                let inputTranscription = serverContent["inputTranscription"] as? [String: Any],
+                let text = inputTranscription["text"] as? String
+            {
+                onUserTranscript?(text)
+            }
+
+            if
+                let outputTranscription = serverContent["outputTranscription"] as? [String: Any],
+                let text = outputTranscription["text"] as? String
+            {
+                onModelTranscript?(text)
+            }
+
+            if let turnComplete = serverContent["turnComplete"] as? Bool, turnComplete {
+                onTurnComplete?()
+            }
+
+            if let generationComplete = serverContent["generationComplete"] as? Bool, generationComplete {
+                // Docs: signals the model finished generating its response.
+                // Audio playback may still be in progress at this point.
+            }
+
+            if
+                let modelTurn = serverContent["modelTurn"] as? [String: Any],
+                let parts = modelTurn["parts"] as? [[String: Any]]
+            {
+                for part in parts {
+                    guard
+                        let inlineData = part["inlineData"] as? [String: Any],
+                        let encodedAudio = inlineData["data"] as? String,
+                        let decodedAudio = Data(base64Encoded: encodedAudio),
+                        !decodedAudio.isEmpty
+                    else {
+                        continue
+                    }
+
+                    enqueueOutputAudio(decodedAudio)
+                }
+            }
+        } // autoreleasepool
     }
 
 }

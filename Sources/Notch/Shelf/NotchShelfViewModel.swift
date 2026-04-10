@@ -134,6 +134,17 @@ struct NotchShelfItem: Identifiable, Equatable {
         return nil
     }
 
+    var pasteboardWriter: NSPasteboardWriting {
+        switch kind {
+        case let .file(reference):
+            return reference.url as NSURL
+        case let .link(url):
+            return url as NSURL
+        case let .text(string):
+            return string as NSString
+        }
+    }
+
     static var internalDragIdentityTypeIdentifier: String {
         internalDragIdentityType
     }
@@ -146,41 +157,29 @@ struct NotchShelfItem: Identifiable, Equatable {
 final class WorkspaceIconCache: @unchecked Sendable {
     static let shared = WorkspaceIconCache()
 
-    private let lock = NSLock()
-    private var cache: [String: NSImage] = [:]
-    private let maxEntries = 120
+    private let cache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 40
+        return cache
+    }()
 
     func icon(for path: String) -> NSImage {
-        lock.lock()
-        if let cached = cache[path] {
-            lock.unlock()
+        let key = path as NSString
+        if let cached = cache.object(forKey: key) {
             return cached
         }
-        lock.unlock()
 
         let image = NSWorkspace.shared.icon(forFile: path)
-
-        lock.lock()
-        if cache.count >= maxEntries {
-            // Evict roughly a quarter on overflow.
-            let toRemove = cache.count / 4
-            var removed = 0
-            for key in cache.keys {
-                guard removed < toRemove else { break }
-                cache.removeValue(forKey: key)
-                removed += 1
-            }
-        }
-        cache[path] = image
-        lock.unlock()
-
+        cache.setObject(image, forKey: key)
         return image
     }
 
     func invalidate(path: String) {
-        lock.lock()
-        cache.removeValue(forKey: path)
-        lock.unlock()
+        cache.removeObject(forKey: path as NSString)
+    }
+
+    func clearAll() {
+        cache.removeAllObjects()
     }
 }
 
@@ -188,6 +187,7 @@ final class WorkspaceIconCache: @unchecked Sendable {
 final class NotchShelfViewModel: ObservableObject {
     @Published private(set) var items: [NotchShelfItem] = []
     @Published var isDropTargeted = false
+    @Published private(set) var selectedItemIDs: Set<UUID> = []
 
     private let dropService: NotchShelfDropService
     private let persistenceService: NotchShelfPersistenceService
@@ -213,6 +213,25 @@ final class NotchShelfViewModel: ObservableObject {
         !items.isEmpty
     }
 
+    var selectedItems: [NotchShelfItem] {
+        items.filter { selectedItemIDs.contains($0.id) }
+    }
+
+    var primarySelectedItem: NotchShelfItem? {
+        selectedItems.first
+    }
+
+    var previewableSelectedFileURLs: [URL] {
+        selectedItems.compactMap { item in
+            guard case let .file(reference) = item.kind else { return nil }
+            return reference.url
+        }
+    }
+
+    var canQuickLookSelection: Bool {
+        !previewableSelectedFileURLs.isEmpty
+    }
+
     func handleDrop(providers: [NSItemProvider]) -> Bool {
         guard !providers.isEmpty else { return false }
 
@@ -231,6 +250,7 @@ final class NotchShelfViewModel: ObservableObject {
 
     func remove(_ item: NotchShelfItem) {
         items.removeAll { $0.id == item.id }
+        selectedItemIDs.remove(item.id)
         cleanupIfNeeded(item)
         clearThumbnailCache(for: item)
         debouncedPersist()
@@ -238,7 +258,10 @@ final class NotchShelfViewModel: ObservableObject {
 
     func clear() {
         let removedItems = items
+        guard !removedItems.isEmpty else { return }
+
         items.removeAll()
+        selectedItemIDs.removeAll()
         cleanupIfNeeded(removedItems)
         clearThumbnailCache(for: removedItems)
         debouncedPersist()
@@ -263,6 +286,111 @@ final class NotchShelfViewModel: ObservableObject {
         }
     }
 
+    func selectOnly(_ item: NotchShelfItem) {
+        selectedItemIDs = [item.id]
+    }
+
+    func toggleSelection(_ item: NotchShelfItem) {
+        if selectedItemIDs.contains(item.id) {
+            selectedItemIDs.remove(item.id)
+        } else {
+            selectedItemIDs.insert(item.id)
+        }
+    }
+
+    func clearSelection() {
+        selectedItemIDs.removeAll()
+    }
+
+    func select(ids: Set<UUID>) {
+        let validIDs = Set(items.map(\.id))
+        selectedItemIDs = ids.intersection(validIDs)
+    }
+
+    func isSelected(_ item: NotchShelfItem) -> Bool {
+        selectedItemIDs.contains(item.id)
+    }
+
+    func dragItems(startingWith item: NotchShelfItem) -> [NotchShelfItem] {
+        if selectedItemIDs.contains(item.id) {
+            let selectedItems = items.filter { selectedItemIDs.contains($0.id) }
+            if !selectedItems.isEmpty {
+                return selectedItems
+            }
+        }
+
+        return [item]
+    }
+
+    func prepareSelectionForDrag(startingWith item: NotchShelfItem) {
+        guard !selectedItemIDs.contains(item.id) else { return }
+        selectOnly(item)
+    }
+
+    func moveItems(with ids: [UUID], to destinationIndex: Int) {
+        guard !ids.isEmpty else { return }
+
+        let draggedIDSet = Set(ids)
+        let draggedItems = items.filter { draggedIDSet.contains($0.id) }
+        guard !draggedItems.isEmpty else { return }
+
+        let draggedIndexes = items.enumerated().compactMap { index, item in
+            draggedIDSet.contains(item.id) ? index : nil
+        }
+        let remainingItems = items.filter { !draggedIDSet.contains($0.id) }
+        let removedBeforeDestination = draggedIndexes.filter { $0 < destinationIndex }.count
+        let adjustedDestination = destinationIndex - removedBeforeDestination
+        let clampedDestination = max(0, min(adjustedDestination, remainingItems.count))
+
+        var reorderedItems = remainingItems
+        reorderedItems.insert(contentsOf: draggedItems, at: clampedDestination)
+
+        guard reorderedItems != items else { return }
+
+        items = reorderedItems
+        selectedItemIDs = draggedIDSet
+        debouncedPersist()
+    }
+
+    func activateSelectedItems() {
+        let actionableItems = selectedItems.filter {
+            switch $0.kind {
+            case .file, .link:
+                return true
+            case .text:
+                return false
+            }
+        }
+
+        if actionableItems.isEmpty, let item = primarySelectedItem {
+            activate(item)
+            return
+        }
+
+        actionableItems.forEach(activate)
+    }
+
+    func revealInFinder(_ item: NotchShelfItem) {
+        guard case let .file(reference) = item.kind else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([reference.url])
+    }
+
+    func copySelectedItemsToPasteboard() {
+        copyItemsToPasteboard(selectedItems)
+    }
+
+    func removeSelectedItems() {
+        let itemsToRemove = selectedItems
+        guard !itemsToRemove.isEmpty else { return }
+
+        let removedIDs = Set(itemsToRemove.map(\.id))
+        items.removeAll { removedIDs.contains($0.id) }
+        selectedItemIDs.removeAll()
+        cleanupIfNeeded(itemsToRemove)
+        clearThumbnailCache(for: itemsToRemove)
+        debouncedPersist()
+    }
+
     private func merge(_ newItems: [NotchShelfItem]) {
         let existingKeys = Set(items.map(\.identityKey))
         var seenKeys = existingKeys
@@ -281,6 +409,9 @@ final class NotchShelfViewModel: ObservableObject {
 
         guard !mergedItems.isEmpty else { return }
         items.insert(contentsOf: mergedItems.reversed(), at: 0)
+        if let firstItem = mergedItems.first {
+            selectedItemIDs = [firstItem.id]
+        }
         debouncedPersist()
     }
 
@@ -330,6 +461,22 @@ final class NotchShelfViewModel: ObservableObject {
 
         Task {
             await NotchShelfThumbnailService.shared.clearCache(for: fileURLs)
+        }
+    }
+
+    private func copyItemsToPasteboard(_ items: [NotchShelfItem]) {
+        guard !items.isEmpty else { return }
+
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        let writers = items.map(\.pasteboardWriter)
+        if pasteboard.writeObjects(writers) {
+            return
+        }
+
+        if items.count == 1,
+           case let .text(string) = items[0].kind {
+            pasteboard.setString(string, forType: .string)
         }
     }
 }

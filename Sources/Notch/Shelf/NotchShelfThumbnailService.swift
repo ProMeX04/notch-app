@@ -6,11 +6,12 @@ actor NotchShelfThumbnailService {
     static let shared = NotchShelfThumbnailService()
 
     private var cache: [String: NSImage] = [:]
+    private var cacheKeys: [String] = []
     private var pendingRequests: [String: Task<NSImage?, Never>] = [:]
     private let generator = QLThumbnailGenerator.shared
 
     /// Maximum number of thumbnails to keep in memory at any time.
-    private let maxCacheEntries = 80
+    private let maxCacheEntries = 25
 
     func thumbnail(for url: URL, size: CGSize) async -> NSImage? {
         let cacheKey = "\(url.standardizedFileURL.path)_\(Int(size.width))x\(Int(size.height))"
@@ -45,6 +46,7 @@ actor NotchShelfThumbnailService {
     func clearCache(for url: URL) {
         let cachePrefix = url.standardizedFileURL.path
         cache = cache.filter { !$0.key.hasPrefix(cachePrefix) }
+        cacheKeys = cacheKeys.filter { !$0.hasPrefix(cachePrefix) }
         pendingRequests = pendingRequests.filter { !$0.key.hasPrefix(cachePrefix) }
     }
 
@@ -54,20 +56,26 @@ actor NotchShelfThumbnailService {
         }
     }
 
+    func clearAllCache() {
+        cache.removeAll()
+        cacheKeys.removeAll()
+        pendingRequests.removeAll()
+    }
+
     /// Evicts the oldest entries when the cache exceeds its limit.
     private func insertCacheEntry(_ key: String, image: NSImage) {
+        if cache[key] == nil {
+            cacheKeys.append(key)
+        }
         cache[key] = image
 
-        if cache.count > maxCacheEntries {
-            // Simple eviction: remove a quarter of entries.
-            // Since Dictionary is unordered this is effectively random, which is fine.
-            let entriesToRemove = cache.count / 4
-            var removed = 0
-            for existingKey in cache.keys {
-                guard removed < entriesToRemove else { break }
-                cache.removeValue(forKey: existingKey)
-                removed += 1
+        if cacheKeys.count > maxCacheEntries {
+            let entriesToRemove = cacheKeys.count / 4
+            let keysToRemove = cacheKeys.prefix(entriesToRemove)
+            for keyToRemove in keysToRemove {
+                cache.removeValue(forKey: keyToRemove)
             }
+            cacheKeys.removeFirst(entriesToRemove)
         }
     }
 

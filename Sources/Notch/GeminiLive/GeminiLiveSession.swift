@@ -154,8 +154,6 @@ final class GeminiLiveSession: @unchecked Sendable {
     var userInitiatedDisconnect = false
     var hasCompletedSetup = false
     var setupCompleteTime: Date?
-    var modelHasSpoken = false
-    var isFirstModelTurn = true
     var isResumingConnection = false
     var currentConfiguration: LiveSessionConfiguration?
     var latestSessionHandle: String?
@@ -411,8 +409,6 @@ final class GeminiLiveSession: @unchecked Sendable {
         userInitiatedDisconnect = false
         hasCompletedSetup = false
         setupCompleteTime = nil
-        modelHasSpoken = false
-        isFirstModelTurn = true
         isResumingConnection = latestSessionHandle != nil
 
         guard let url = liveURL(apiKey: configuration.apiKey) else {
@@ -435,8 +431,6 @@ final class GeminiLiveSession: @unchecked Sendable {
         setupCompleteTime = nil
         cancelAudioCaptureMonitor()
         resetPlayback()
-        modelHasSpoken = false
-        isFirstModelTurn = true
 
         if preserveAudioSession, captureMode == .webRTC {
             guard let socketTask else { return }
@@ -746,9 +740,6 @@ final class GeminiLiveSession: @unchecked Sendable {
         }
 
         if let turnComplete = serverContent["turnComplete"] as? Bool, turnComplete {
-            if modelHasSpoken {
-                isFirstModelTurn = false
-            }
             onTurnComplete?()
         }
 
@@ -761,7 +752,6 @@ final class GeminiLiveSession: @unchecked Sendable {
             let modelTurn = serverContent["modelTurn"] as? [String: Any],
             let parts = modelTurn["parts"] as? [[String: Any]]
         {
-            modelHasSpoken = true
             for part in parts {
                 guard
                     let inlineData = part["inlineData"] as? [String: Any],

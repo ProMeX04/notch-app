@@ -143,11 +143,8 @@ extension GeminiLiveSession {
         guard socketTask != nil else { return }
         guard let setupTime = setupCompleteTime, Date().timeIntervalSince(setupTime) > 0.5 else { return }
         
-        // Mute mic strictly during the model's VERY FIRST playback turn.
-        // This gives Apple's Voice Processing I/O hardware time to converge and calibrate its Echo Cancellation path.
-        if isFirstModelTurn && modelHasSpoken {
-            return
-        }
+        // Keep mic capture active during the model's first playback turn so
+        // barge-in stays responsive; WebRTC AEC warm-up is handled elsewhere.
         
         guard let converter = inputConverter else { return }
 

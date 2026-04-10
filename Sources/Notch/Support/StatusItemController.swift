@@ -133,6 +133,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         ]
 
         statusItem.menu = menu
+        statusItem.isVisible = false
 
         // Observe pomodoro session state
         let pomo = windowController.pomodoroViewModel

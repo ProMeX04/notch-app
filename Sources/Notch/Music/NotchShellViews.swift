@@ -75,7 +75,7 @@ struct NotchHeaderView: View {
 
                 PanelSwitcher(
                     presentationModel: presentationModel,
-                    panels: [.music, .focus]
+                    panels: [.music, .focus, .talk]
                 )
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -91,7 +91,7 @@ struct NotchHeaderView: View {
 
             PanelSwitcher(
                 presentationModel: presentationModel,
-                panels: [.talk, .shelf, .settings]
+                panels: [.shelf, .settings]
             )
             .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(.trailing, 20)
@@ -166,31 +166,51 @@ struct CompactPomodoroView: View {
         Color(nsColor: pomodoro.phase.accentColor)
     }
 
+    private var phaseLabel: String {
+        switch pomodoro.phase {
+        case .focus:
+            return "WORK"
+        case .shortBreak, .longBreak:
+            return "REST"
+        }
+    }
+
+    private var sideExtensionWidth: CGFloat {
+        max(44, sideSize + 16)
+    }
+
+    private var centerNotchWidth: CGFloat {
+        max(0, closedNotchWidth - NotchMetrics.closedCornerRadius.top)
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             ZStack {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(accentColor.gradient)
-
-                Image(systemName: pomodoro.phase.symbolName)
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.95))
+                Text(phaseLabel)
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .tracking(0.3)
+                    .foregroundStyle(accentColor.ensureMinimumBrightness(factor: 0.82))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
             }
-            .frame(width: sideSize, height: sideSize)
+            .frame(width: sideExtensionWidth, height: sideSize)
 
             Rectangle()
                 .fill(.black)
-                .frame(width: max(0, closedNotchWidth - NotchMetrics.closedCornerRadius.top))
+                .frame(width: centerNotchWidth)
 
-            ZStack {
-                Circle()
-                    .fill(accentColor.opacity(pomodoro.isRunning ? 0.18 : 0.1))
-
-                Image(systemName: pomodoro.isRunning ? "pause.fill" : "play.fill")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(accentColor.ensureMinimumBrightness(factor: 0.72))
+            TimelineView(PeriodicTimelineSchedule(from: .now, by: 1.0)) { context in
+                Text(pomodoro.remainingText(at: context.date))
+                    .font(.system(size: 14, weight: .bold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(
+                        pomodoro.isRunning
+                            ? accentColor.ensureMinimumBrightness(factor: 0.82)
+                            : accentColor.ensureMinimumBrightness(factor: 0.72).opacity(0.92)
+                    )
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .frame(width: sideExtensionWidth, height: sideSize)
             }
-            .frame(width: sideSize, height: sideSize)
         }
         .frame(height: closedNotchHeight, alignment: .center)
     }
@@ -395,7 +415,10 @@ struct ExpandedNotchContent: View {
                     headerAccessoryController: talkHeaderAccessoryController
                 )
             } else if presentationModel.selectedPanel == .shelf {
-                ShelfPanelView(shelf: shelf)
+                ShelfPanelView(
+                    shelf: shelf,
+                    presentationModel: presentationModel
+                )
             } else if presentationModel.selectedPanel == .settings {
                 GlobalSettingsView(gemini: gemini, presentationModel: presentationModel)
             } else {
@@ -549,7 +572,7 @@ struct Localization {
         "Delete Agent": ["English": "Delete Agent", "Tiếng Việt": "Xóa Agent"],
         "Voice": ["English": "Voice", "Tiếng Việt": "Giọng nói"],
         "Thinking": ["English": "Thinking", "Tiếng Việt": "Suy nghĩ"],
-        "Agent": ["English": "Agent", "Tiếng Việt": "Robot"],
+        "Agent": ["English": "Agent", "Tiếng Việt": "Trợ lý"],
         "Manage keys": ["English": "Manage keys", "Tiếng Việt": "Quản lý Key"],
         "Connect": ["English": "Connect", "Tiếng Việt": "Kết nối"],
         "Disconnect": ["English": "Disconnect", "Tiếng Việt": "Ngắt kết nối"],
@@ -570,7 +593,7 @@ struct Localization {
         "Context": ["English": "Context", "Tiếng Việt": "Ngữ cảnh"],
         "Gemini is listening...": ["English": "Gemini is listening...", "Tiếng Việt": "Đang nghe..."],
         "Thinking...": ["English": "Thinking...", "Tiếng Việt": "Đang nghĩ..."],
-        "Delete Agent?": ["English": "Delete Agent?", "Tiếng Việt": "Xóa Robot này?"],
+        "Delete Agent?": ["English": "Delete Agent?", "Tiếng Việt": "Xóa trợ lý này?"],
         "Cancel": ["English": "Cancel", "Tiếng Việt": "Hủy"],
         "Delete": ["English": "Delete", "Tiếng Việt": "Xóa"],
         "Back to Home": ["English": "Back to Home", "Tiếng Việt": "Trang chủ"],
@@ -578,7 +601,7 @@ struct Localization {
         "System Media": ["English": "System Media", "Tiếng Việt": "Hệ thống"],
         "Done": ["English": "Done", "Tiếng Việt": "Xong"],
         "Gemini Live needs a Gemini API key.": ["English": "Gemini Live needs a Gemini API key.", "Tiếng Việt": "Gemini Live cần một API Key."],
-        "Keys are not entered in the notch. Use the menu bar or Manage keys below.": ["English": "Keys are not entered in the notch. Use the menu bar or Manage keys below.", "Tiếng Việt": "Key không thể nhập tại Notch. Hãy dùng Menu Bar hoặc nút Quản lý Key bên dưới."],
+        "Keys are not entered in the notch. Use Manage keys below.": ["English": "Keys are not entered in the notch. Use Manage keys below.", "Tiếng Việt": "Key không thể nhập tại Notch. Hãy dùng nút Quản lý Key bên dưới."],
         "Approve Command": ["English": "Approve Command", "Tiếng Việt": "Phê duyệt lệnh"],
         "Deny": ["English": "Deny", "Tiếng Việt": "Từ chối"],
         "Gemini API Key": ["English": "Gemini API Key", "Tiếng Việt": "Gemini API Key"],
@@ -603,7 +626,7 @@ struct Localization {
         "Share Selected Region": ["English": "Share Selected Region", "Tiếng Việt": "Chia sẻ vùng chọn"],
         "Stop Sharing": ["English": "Stop Sharing", "Tiếng Việt": "Dừng chia sẻ"],
         "Name": ["English": "Name", "Tiếng Việt": "Tên"],
-        "Agent name (optional)": ["English": "Agent name (optional)", "Tiếng Việt": "Tên Robot (không bắt buộc)"],
+        "Agent name (optional)": ["English": "Agent name (optional)", "Tiếng Việt": "Tên trợ lý (không bắt buộc)"],
         "Edit System Prompt": ["English": "Edit System Prompt", "Tiếng Việt": "Sửa lời nhắc hệ thống"],
         "No skills": ["English": "No skills", "Tiếng Việt": "Không có Skill"],
         "No tools": ["English": "No tools", "Tiếng Việt": "Không có công cụ"],
@@ -630,6 +653,12 @@ struct Localization {
         "Auto Hide": ["English": "Auto Hide", "Tiếng Việt": "Tự ẩn"],
         "Quit Notch": ["English": "Quit Notch", "Tiếng Việt": "Thoát Notch"],
         "Hide in Fullscreen": ["English": "Hide in Fullscreen", "Tiếng Việt": "Ẩn ở chế độ toàn màn hình"],
+        "User Profile": ["English": "User Profile", "Tiếng Việt": "Hồ sơ cá nhân"],
+        "Memory": ["English": "Memory", "Tiếng Việt": "Bộ nhớ"],
+        "User Profile (USER.md)": ["English": "User Profile (USER.md)", "Tiếng Việt": "Hồ sơ cá nhân (USER.md)"],
+        "Memory (MEMORY.md)": ["English": "Memory (MEMORY.md)", "Tiếng Việt": "Bộ nhớ (MEMORY.md)"],
+        "Save User Profile": ["English": "Save User Profile", "Tiếng Việt": "Lưu hồ sơ"],
+        "Save Memory": ["English": "Save Memory", "Tiếng Việt": "Lưu bộ nhớ"],
     ]
 
     static func get(_ key: String, lang: String) -> String {

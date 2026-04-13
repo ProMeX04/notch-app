@@ -64,6 +64,10 @@ struct MusicNotchView: View {
             return (baseWidth - 20) + (NotchMetrics.closedCornerRadius.bottom * 2)
         }
 
+        if compactActivity == .pomodoro {
+            return baseWidth + 88 + (NotchMetrics.closedCornerRadius.bottom * 2)
+        }
+
         let sideInset = max(0, presentationModel.closedNotchSize.height - 12)
         let compactContentWidth = baseWidth + (sideInset * 2) - NotchMetrics.closedCornerRadius.top
         return compactContentWidth + (NotchMetrics.closedCornerRadius.bottom * 2)

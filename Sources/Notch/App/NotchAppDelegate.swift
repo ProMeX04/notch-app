@@ -4,10 +4,21 @@ import UserNotifications
 @MainActor
 final class NotchAppDelegate: NSObject, NSApplicationDelegate {
     private var notchController: NotchWindowController?
-    private var statusItemController: StatusItemController?
     private var holdToTalkHotkeyManager: HoldToTalkHotkeyManager?
+    private let singleInstanceCoordinator = SingleInstanceCoordinator()
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        guard singleInstanceCoordinator.shouldTerminateForExistingInstance() else { return }
+        NSApp.terminate(nil)
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        singleInstanceCoordinator.registerActivationHandler { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.activatePrimaryWindow()
+            }
+        }
+
         NSApp.setActivationPolicy(.accessory)
 
         AppNotificationManager.setup()
@@ -34,7 +45,6 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
         )
 
         self.notchController = notchController
-        self.statusItemController = StatusItemController(windowController: notchController)
 
         let holdToTalkHotkeyManager = HoldToTalkHotkeyManager()
         holdToTalkHotkeyManager.onPress = { [weak notchController] in
@@ -74,7 +84,7 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        statusItemController = nil
+        singleInstanceCoordinator.unregisterActivationHandler()
         holdToTalkHotkeyManager = nil
         notchController?.shutdown()
     }
@@ -84,6 +94,11 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
         for url in urls {
             NotchCommandRouter.handle(url: url, controller: notchController)
         }
+    }
+
+    private func activatePrimaryWindow() {
+        notchController?.show()
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 

@@ -93,7 +93,7 @@ enum GeminiVoice: String, CaseIterable {
 struct ToolActionToast: Equatable {
     let label: String
     let icon: String
-    /// When false, only drives the menu bar chip — not the floating transcript overlay line.
+    /// When false, does not drive the floating transcript overlay line.
     var showsInOverlay: Bool = true
 }
 

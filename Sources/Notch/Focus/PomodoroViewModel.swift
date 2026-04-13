@@ -81,6 +81,16 @@ struct PomodoroPreset: Identifiable, Codable, Equatable {
     ]
 }
 
+private struct PomodoroRuntimeState: Codable {
+    var phaseRawValue: String
+    var remainingSeconds: Int
+    var isRunning: Bool
+    var hasActiveSession: Bool
+    var phaseEndDate: Date?
+    var completedFocusSessions: Int
+    var recordedFocusSecondsForCurrentPhase: Int
+}
+
 @MainActor
 final class PomodoroViewModel: ObservableObject {
     @Published private(set) var phase: PomodoroPhase = .focus
@@ -110,11 +120,33 @@ final class PomodoroViewModel: ObservableObject {
         self.userDefaults = userDefaults
         self.learningStatsStore = learningStatsStore
 
+        let focusDurationOverrideSeconds = Self.optionalInt(
+            forKey: Self.focusDurationOverrideSecondsKey,
+            from: userDefaults,
+            minimum: 1
+        )
+        let breakDurationOverrideSeconds = Self.optionalInt(
+            forKey: Self.breakDurationOverrideSecondsKey,
+            from: userDefaults,
+            minimum: 1
+        )
+        let longBreakDurationOverrideSeconds = Self.optionalInt(
+            forKey: Self.longBreakDurationOverrideSecondsKey,
+            from: userDefaults,
+            minimum: 1
+        )
+        let sessionsBeforeLongBreakOverride = Self.optionalInt(
+            forKey: Self.sessionsBeforeLongBreakOverrideKey,
+            from: userDefaults,
+            minimum: 1
+        )
+
         self.autoStartBreaks = userDefaults.bool(forKey: Self.autoStartBreaksKey)
         self.autoStartPomodoros = userDefaults.bool(forKey: Self.autoStartPomodorosKey)
-        
-        let overrideSessions = userDefaults.integer(forKey: Self.sessionsBeforeLongBreakOverrideKey)
-        self.sessionsBeforeLongBreakOverride = overrideSessions > 0 ? overrideSessions : nil
+        self.focusDurationOverrideSeconds = focusDurationOverrideSeconds
+        self.breakDurationOverrideSeconds = breakDurationOverrideSeconds
+        self.longBreakDurationOverrideSeconds = longBreakDurationOverrideSeconds
+        self.sessionsBeforeLongBreakOverride = sessionsBeforeLongBreakOverride
 
         let restoredCustomPresets = Self.loadCustomPresets(from: userDefaults)
         customPresets = restoredCustomPresets
@@ -126,7 +158,8 @@ final class PomodoroViewModel: ObservableObject {
         ) ?? .classic
 
         preset = resolvedPreset
-        remainingSeconds = resolvedPreset.focusMinutes * 60
+        remainingSeconds = focusDurationOverrideSeconds ?? (resolvedPreset.focusMinutes * 60)
+        restoreRuntimeStateIfAvailable()
     }
 
     var availablePresets: [PomodoroPreset] {
@@ -246,6 +279,7 @@ final class PomodoroViewModel: ObservableObject {
         isRunning = true
         phaseEndDate = .now.addingTimeInterval(TimeInterval(remainingSeconds))
         startPhaseCompletionTask()
+        persistRuntimeState()
     }
 
     func pause() {
@@ -257,6 +291,7 @@ final class PomodoroViewModel: ObservableObject {
         phaseEndDate = nil
         phaseCompletionTask?.cancel()
         phaseCompletionTask = nil
+        persistRuntimeState()
     }
 
     func reset() {
@@ -270,9 +305,7 @@ final class PomodoroViewModel: ObservableObject {
         phase = .focus
         remainingSeconds = duration(for: .focus, preset: preset)
         recordedFocusSecondsForCurrentPhase = 0
-        focusDurationOverrideSeconds = nil
-        breakDurationOverrideSeconds = nil
-        longBreakDurationOverrideSeconds = nil
+        persistRuntimeState()
     }
 
     func skipPhase() {
@@ -282,6 +315,7 @@ final class PomodoroViewModel: ObservableObject {
         phaseCompletionTask = nil
         phaseEndDate = nil
         advancePhase(continueRunning: shouldContinueRunning)
+        persistRuntimeState()
     }
 
     func setPhase(_ targetPhase: PomodoroPhase) {
@@ -301,6 +335,7 @@ final class PomodoroViewModel: ObservableObject {
             start()
         } else {
             isRunning = false
+            persistRuntimeState()
         }
     }
 
@@ -322,6 +357,7 @@ final class PomodoroViewModel: ObservableObject {
         focusDurationOverrideSeconds = nil
         breakDurationOverrideSeconds = nil
         longBreakDurationOverrideSeconds = nil
+        persistRuntimeState()
     }
 
     func updateCustomPreset(slotIndex: Int, focusMinutes: Int, breakMinutes: Int) {
@@ -387,6 +423,7 @@ final class PomodoroViewModel: ObservableObject {
         longBreakDurationOverrideSeconds = nil
         remainingSeconds = clampedFocusSeconds
         recordedFocusSecondsForCurrentPhase = 0
+        persistRuntimeState()
     }
 
     func updateLongBreakDuration(minutes: Int) {
@@ -398,16 +435,29 @@ final class PomodoroViewModel: ObservableObject {
         if phase == .longBreak && !hasActiveSession {
             remainingSeconds = newSeconds
         }
+        persistRuntimeState()
+    }
+
+    func updateLongBreakDuration(seconds: Int) {
+        let clamped = max(1, min(seconds, 60 * 60))
+        guard longBreakDurationSeconds != clamped else { return }
+        longBreakDurationOverrideSeconds = clamped
+        if phase == .longBreak && !hasActiveSession {
+            remainingSeconds = clamped
+        }
+        persistRuntimeState()
     }
 
     func updateSessionsBeforeLongBreak(count: Int) {
         let clamped = max(1, min(count, 12))
         guard sessionsBeforeLongBreakOverride != clamped else { return }
         sessionsBeforeLongBreakOverride = clamped
+        persistRuntimeState()
     }
 
     func shutdown() {
         recordCurrentFocusProgressIfNeeded(referenceDate: .now)
+        persistRuntimeState()
         phaseCompletionTask?.cancel()
         phaseCompletionTask = nil
     }
@@ -438,6 +488,7 @@ final class PomodoroViewModel: ObservableObject {
             start()
         } else {
             isRunning = false
+            persistRuntimeState()
         }
     }
 
@@ -545,10 +596,101 @@ final class PomodoroViewModel: ObservableObject {
     private func persistSettings() {
         userDefaults.set(autoStartBreaks, forKey: Self.autoStartBreaksKey)
         userDefaults.set(autoStartPomodoros, forKey: Self.autoStartPomodorosKey)
-        userDefaults.set(focusDurationOverrideSeconds, forKey: Self.focusDurationOverrideSecondsKey)
-        userDefaults.set(breakDurationOverrideSeconds, forKey: Self.breakDurationOverrideSecondsKey)
-        userDefaults.set(longBreakDurationOverrideSeconds, forKey: Self.longBreakDurationOverrideSecondsKey)
-        userDefaults.set(sessionsBeforeLongBreakOverride ?? 0, forKey: Self.sessionsBeforeLongBreakOverrideKey)
+        persistOptionalInt(focusDurationOverrideSeconds, forKey: Self.focusDurationOverrideSecondsKey)
+        persistOptionalInt(breakDurationOverrideSeconds, forKey: Self.breakDurationOverrideSecondsKey)
+        persistOptionalInt(longBreakDurationOverrideSeconds, forKey: Self.longBreakDurationOverrideSecondsKey)
+        persistOptionalInt(sessionsBeforeLongBreakOverride, forKey: Self.sessionsBeforeLongBreakOverrideKey)
+    }
+
+    private func persistRuntimeState() {
+        let snapshot = PomodoroRuntimeState(
+            phaseRawValue: phase.rawValue,
+            remainingSeconds: remainingSeconds(at: .now),
+            isRunning: isRunning,
+            hasActiveSession: hasActiveSession,
+            phaseEndDate: phaseEndDate,
+            completedFocusSessions: completedFocusSessions,
+            recordedFocusSecondsForCurrentPhase: recordedFocusSecondsForCurrentPhase
+        )
+
+        guard let encoded = try? JSONEncoder().encode(snapshot) else { return }
+        userDefaults.set(encoded, forKey: Self.runtimeStateDefaultsKey)
+    }
+
+    private func restoreRuntimeStateIfAvailable(now: Date = .now) {
+        guard let data = userDefaults.data(forKey: Self.runtimeStateDefaultsKey),
+              let snapshot = try? JSONDecoder().decode(PomodoroRuntimeState.self, from: data),
+              let restoredPhase = PomodoroPhase(rawValue: snapshot.phaseRawValue) else {
+            return
+        }
+
+        phase = restoredPhase
+        completedFocusSessions = max(snapshot.completedFocusSessions, 0)
+        recordedFocusSecondsForCurrentPhase = max(snapshot.recordedFocusSecondsForCurrentPhase, 0)
+
+        if snapshot.isRunning, let savedPhaseEndDate = snapshot.phaseEndDate {
+            restorePausedStateFromRunningSnapshot(
+                from: snapshot,
+                phase: restoredPhase,
+                phaseEndDate: savedPhaseEndDate,
+                now: now
+            )
+            return
+        }
+
+        isRunning = false
+        phaseEndDate = nil
+        hasActiveSession = snapshot.hasActiveSession
+        remainingSeconds = clampedRemainingSeconds(
+            snapshot.remainingSeconds,
+            for: restoredPhase,
+            activeSession: snapshot.hasActiveSession
+        )
+        persistRuntimeState()
+    }
+
+    private func restorePausedStateFromRunningSnapshot(
+        from snapshot: PomodoroRuntimeState,
+        phase: PomodoroPhase,
+        phaseEndDate: Date,
+        now: Date
+    ) {
+        let remainingAtRestore = max(Int(ceil(phaseEndDate.timeIntervalSince(now))), 0)
+
+        self.phase = phase
+        self.completedFocusSessions = max(snapshot.completedFocusSessions, 0)
+        self.recordedFocusSecondsForCurrentPhase = max(snapshot.recordedFocusSecondsForCurrentPhase, 0)
+        self.hasActiveSession = true
+        self.isRunning = false
+        self.phaseEndDate = nil
+        self.remainingSeconds = clampedRemainingSeconds(
+            remainingAtRestore,
+            for: phase,
+            activeSession: true
+        )
+        persistRuntimeState()
+    }
+
+    private func clampedRemainingSeconds(_ seconds: Int, for phase: PomodoroPhase, activeSession: Bool) -> Int {
+        let phaseDuration = duration(for: phase, preset: preset)
+        if activeSession {
+            return max(0, min(seconds, phaseDuration))
+        }
+        return phaseDuration
+    }
+
+    private func persistOptionalInt(_ value: Int?, forKey key: String) {
+        if let value {
+            userDefaults.set(value, forKey: key)
+        } else {
+            userDefaults.removeObject(forKey: key)
+        }
+    }
+
+    private static func optionalInt(forKey key: String, from userDefaults: UserDefaults, minimum: Int) -> Int? {
+        guard userDefaults.object(forKey: key) != nil else { return nil }
+        let value = userDefaults.integer(forKey: key)
+        return value >= minimum ? value : nil
     }
 
     private static let customPresetsDefaultsKey = "NotchPomodoroCustomPresets"
@@ -559,4 +701,5 @@ final class PomodoroViewModel: ObservableObject {
     private static let breakDurationOverrideSecondsKey = "NotchPomodoroBreakDurationOverrideSeconds"
     private static let longBreakDurationOverrideSecondsKey = "NotchPomodoroLongBreakDurationOverrideSeconds"
     private static let sessionsBeforeLongBreakOverrideKey = "NotchPomodoroSessionsBeforeLongBreakOverride"
+    private static let runtimeStateDefaultsKey = "NotchPomodoroRuntimeState"
 }

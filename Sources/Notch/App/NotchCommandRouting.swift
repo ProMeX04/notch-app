@@ -35,8 +35,6 @@ enum NotchCommandRouter {
                 try handleFocus(action: action, queryItems: queryItems, controller: controller)
             case "media":
                 try handleMedia(action: action, queryItems: queryItems, controller: controller)
-            case "image":
-                try handleImage(action: action, queryItems: queryItems, controller: controller)
             default:
                 throw NotchCommandError.unsupportedCommand(url.absoluteString)
             }
@@ -133,14 +131,15 @@ enum NotchCommandRouter {
         try validatePomodoroTool(toolName)
         let duration = firstNonEmpty(queryItems["duration"], queryItems["value"])
         let breakDuration = firstNonEmpty(queryItems["break"], queryItems["breakduration"])
+        let longBreakDuration = firstNonEmpty(queryItems["long"], queryItems["longbreak"], queryItems["long-break"])
 
         switch action {
         case "show":
             controller.showPomodoroPanel()
         case "set":
-            try controller.configurePomodoro(duration: duration, breakDuration: breakDuration)
+            try controller.configurePomodoro(duration: duration, breakDuration: breakDuration, longBreakDuration: longBreakDuration)
         case "start":
-            try controller.startPomodoro(duration: duration, breakDuration: breakDuration)
+            try controller.startPomodoro(duration: duration, breakDuration: breakDuration, longBreakDuration: longBreakDuration)
         case "pause":
             try controller.pausePomodoro()
         case "resume":
@@ -151,6 +150,36 @@ enum NotchCommandRouter {
             try controller.resetPomodoroSession()
         case "skip":
             controller.skipPomodoroPhase()
+        case "phase":
+            guard let phase = firstNonEmpty(queryItems["phase"], queryItems["value"]) else {
+                throw NotchCommandError.missingParameter("phase")
+            }
+            try controller.setPomodoroPhase(phase)
+        case "preset":
+            guard let preset = firstNonEmpty(queryItems["preset"], queryItems["value"]) else {
+                throw NotchCommandError.missingParameter("preset")
+            }
+            try controller.selectPomodoroPreset(preset)
+        case "long-break", "longbreak":
+            guard let duration = firstNonEmpty(queryItems["duration"], queryItems["value"]) else {
+                throw NotchCommandError.missingParameter("duration")
+            }
+            try controller.setPomodoroLongBreak(duration: duration)
+        case "cycle":
+            guard let count = firstNonEmpty(queryItems["count"], queryItems["value"]) else {
+                throw NotchCommandError.missingParameter("count")
+            }
+            try controller.setPomodoroCycle(count)
+        case "auto-breaks", "autobreaks":
+            guard let mode = try focusToggleMode(from: firstNonEmpty(queryItems["state"], queryItems["value"])) else {
+                throw NotchCommandError.missingParameter("state")
+            }
+            controller.setPomodoroAutoBreaks(mode)
+        case "auto-pomo", "autopomo", "auto-pomodoros":
+            guard let mode = try focusToggleMode(from: firstNonEmpty(queryItems["state"], queryItems["value"])) else {
+                throw NotchCommandError.missingParameter("state")
+            }
+            controller.setPomodoroAutoPomodoros(mode)
         default:
             throw NotchCommandError.invalidAction("focus", action)
         }
@@ -188,37 +217,6 @@ enum NotchCommandRouter {
         }
     }
 
-    private static func handleImage(action: String, queryItems: [String: String], controller: NotchWindowController) throws {
-        switch action {
-        case "show", "search":
-            guard let query = firstNonEmptyRaw(queryItems["query"], queryItems["q"], queryItems["value"]) else {
-                throw NotchCommandError.missingParameter("query")
-            }
-            let caption = firstNonEmptyRaw(queryItems["caption"], queryItems["title"])
-            let orientation = firstNonEmptyRaw(queryItems["orientation"], queryItems["shape"])
-            controller.showImageOverlay(query: query, caption: caption, orientation: orientation)
-        case "url":
-            guard let rawURL = firstNonEmptyRaw(queryItems["url"], queryItems["value"]),
-                  let url = URL(string: rawURL) else {
-                throw NotchCommandError.invalidValue("url", queryItems["url"] ?? queryItems["value"] ?? "")
-            }
-            let query = firstNonEmptyRaw(queryItems["query"], queryItems["q"])
-            let caption = firstNonEmptyRaw(queryItems["caption"], queryItems["title"])
-            controller.showImageOverlay(url: url, query: query, caption: caption)
-        case "file":
-            guard let path = firstNonEmptyRaw(queryItems["path"], queryItems["value"]) else {
-                throw NotchCommandError.missingParameter("path")
-            }
-            let query = firstNonEmptyRaw(queryItems["query"], queryItems["q"])
-            let caption = firstNonEmptyRaw(queryItems["caption"], queryItems["title"])
-            controller.showImageOverlay(url: URL(fileURLWithPath: path), query: query, caption: caption)
-        case "clear":
-            controller.clearImageOverlay()
-        default:
-            throw NotchCommandError.invalidAction("image", action)
-        }
-    }
-
     private static func requiredSeconds(queryItems: [String: String]) throws -> Double {
         guard let raw = firstNonEmpty(queryItems["seconds"], queryItems["secs"], queryItems["value"]),
               let seconds = Double(raw) else {
@@ -253,6 +251,20 @@ enum NotchCommandRouter {
         guard let raw else { return }
         guard raw == "pomodoro" else {
             throw NotchCommandError.invalidValue("tool", raw)
+        }
+    }
+
+    private static func focusToggleMode(from raw: String?) throws -> FocusToggleMode? {
+        guard let raw else { return nil }
+        switch raw {
+        case "on", "true", "enable", "enabled":
+            return .on
+        case "off", "false", "disable", "disabled":
+            return .off
+        case "toggle":
+            return .toggle
+        default:
+            throw NotchCommandError.invalidValue("state", raw)
         }
     }
 }

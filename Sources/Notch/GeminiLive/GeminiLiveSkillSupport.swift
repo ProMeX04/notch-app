@@ -127,10 +127,6 @@ enum GeminiLiveStoragePaths {
         developmentDirectory.appendingPathComponent("gemini-api-key.json")
     }
 
-    static var developmentPexelsAPIKeyFile: URL {
-        developmentDirectory.appendingPathComponent("pexels-api-key.json")
-    }
-
     static var developmentBraveSearchAPIKeyFile: URL {
         developmentDirectory.appendingPathComponent("brave-search-api-key.json")
     }
@@ -554,6 +550,11 @@ final class MemoryStore: @unchecked Sendable {
         }
         try newContent.write(to: fileURL, atomically: true, encoding: .utf8)
     }
+
+    func saveMemory(_ content: String) throws {
+        try fileManager.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try content.write(to: fileURL, atomically: true, encoding: .utf8)
+    }
 }
 
 final class UserStore: @unchecked Sendable {
@@ -565,6 +566,11 @@ final class UserStore: @unchecked Sendable {
 
     func readUserProfile() -> String {
         (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
+    }
+
+    func saveUserProfile(_ content: String) throws {
+        try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try content.write(to: fileURL, atomically: true, encoding: .utf8)
     }
 }
 

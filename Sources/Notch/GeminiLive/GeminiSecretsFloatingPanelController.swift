@@ -88,7 +88,7 @@ private struct GeminiSecretsFloatingContentView: View {
     let onDismiss: () -> Void
 
     private var canSaveAll: Bool {
-        !gemini.isSavingAPIKey && !gemini.isSavingServiceKeys
+        !gemini.isSavingAPIKey
     }
 
     var body: some View {
@@ -104,10 +104,6 @@ private struct GeminiSecretsFloatingContentView: View {
         Form {
             Section("Gemini") {
                 LTRSecureField(text: $gemini.apiKeyText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            Section("Pexels") {
-                LTRSecureField(text: $gemini.pexelsAPIKeyText)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             Section {
@@ -132,7 +128,7 @@ private struct GeminiSecretsFloatingContentView: View {
     private func commitSaveAll() {
         guard canSaveAll else { return }
         Task {
-            if await gemini.saveServiceKeys() {
+            if await gemini.saveAPIKey() {
                 onDismiss()
             }
         }

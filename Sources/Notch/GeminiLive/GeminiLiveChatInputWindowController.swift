@@ -17,6 +17,10 @@ private struct VisualEffectView: NSViewRepresentable {
         view.blendingMode = .behindWindow
         view.state = .active
         view.material = .menu
+        view.wantsLayer = true
+        view.layer?.cornerRadius = 16
+        view.layer?.cornerCurve = .continuous
+        view.layer?.masksToBounds = true
         return view
     }
     func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
@@ -27,14 +31,7 @@ private struct GeminiLiveChatInputContentView: View {
     @State private var draft = ""
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "line.3.horizontal")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.35))
-                .frame(width: 24, height: 32)
-                .contentShape(Rectangle())
-                .help("Drag any area to move")
-
+        HStack(spacing: 10) {
             TextField("Message…", text: $draft)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13, weight: .medium))
@@ -65,7 +62,6 @@ private struct GeminiLiveChatInputContentView: View {
                         .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
                 }
         }
-        .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 6)
     }
 
     private func commitSend() {
@@ -231,7 +227,7 @@ final class GeminiLiveChatInputWindowController {
         panel.level = .floating
         panel.backgroundColor = .clear
         panel.isOpaque = false
-        panel.hasShadow = false
+        panel.hasShadow = true
         panel.isFloatingPanel = true
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true

@@ -2,26 +2,42 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 open_url() {
-    open -g "$1"
+    local url="$1"
+    local app_path="${NOTCH_APP_PATH:-}"
+
+    if [[ -z "$app_path" && -d "$ROOT_DIR/dist/Notch.app" ]]; then
+        app_path="$ROOT_DIR/dist/Notch.app"
+    fi
+
+    if [[ -n "$app_path" && -d "$app_path" ]]; then
+        open -a "$app_path" "$url"
+    else
+        open -g "$url"
+    fi
 }
 
 usage() {
     cat <<'EOF'
 Usage:
-  notchctl panel <music|focus|talk|shelf>
+  notchctl panel <media|focus|talk|shelf>
   notchctl visibility <show|hide|toggle>
   notchctl pin <on|off|toggle>
   notchctl talk <show|connect|disconnect|toggle|mute|unmute|mic-toggle>
   notchctl screen <full|region|window|stop>
   notchctl caption <on|off|toggle>
-  notchctl focus <show|pause|resume|toggle|reset|skip> [pomodoro|countdown|counter|stopwatch]
-  notchctl focus set <pomodoro|countdown|counter|stopwatch> [duration] [break-duration]
-  notchctl focus start <pomodoro|countdown|counter|stopwatch> [duration] [break-duration]
-  notchctl image <show|search> <query> [landscape|portrait|square]
-  notchctl image url <image-url> [caption]
-  notchctl image file <path> [caption]
-  notchctl image clear
+  notchctl focus <show|pause|resume|toggle|reset|skip> [pomodoro]
+  notchctl focus set [pomodoro] [focus-duration] [break-duration] [long-break-duration]
+  notchctl focus start [pomodoro] [focus-duration] [break-duration] [long-break-duration]
+  notchctl focus phase <focus|short-break|long-break>
+  notchctl focus preset <sprint|classic|deep|custom-1|custom-2|custom-3>
+  notchctl focus long-break <duration>
+  notchctl focus cycle <count>
+  notchctl focus auto-breaks <on|off|toggle>
+  notchctl focus auto-pomo <on|off|toggle>
   notchctl media <play|pause|toggle|stop|next|previous|open>
   notchctl media volume <0-100>
   notchctl media skip-forward <seconds>
@@ -33,12 +49,14 @@ Examples:
   notchctl talk mute
   notchctl screen region
   notchctl caption off
-  notchctl focus start pomodoro 25m 5m
-  notchctl focus set countdown 10m
-  notchctl focus reset countdown
+  notchctl focus start pomodoro 25m 5m 15m
+  notchctl focus set pomodoro 50m 10m 20m
+  notchctl focus preset deep
+  notchctl focus phase long-break
+  notchctl focus long-break 20m
+  notchctl focus cycle 6
+  notchctl focus auto-breaks on
   notchctl focus skip pomodoro
-  notchctl image search "red panda wallpaper" landscape
-  notchctl image url "https://images.example.com/picture.jpg"
   notchctl media next
   notchctl media volume 35
   notchctl media skip-forward 30
@@ -46,7 +64,42 @@ EOF
 }
 
 url_encode() {
-    python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"
+    local input="${1:-}"
+    local output=""
+    local char
+    local hex
+    local i
+    local LC_ALL=C
+
+    for (( i = 1; i <= ${#input}; i++ )); do
+        char="${input[i]}"
+        case "$char" in
+            [a-zA-Z0-9.~_-])
+                output+="$char"
+                ;;
+            ' ')
+                output+="%20"
+                ;;
+            *)
+                printf -v hex '%02X' "'$char"
+                output+="%$hex"
+                ;;
+        esac
+    done
+
+    print -r -- "$output"
+}
+
+normalize_focus_tool() {
+    local value="${1:-}"
+    if [[ -z "$value" ]]; then
+        echo ""
+    elif [[ "$value" == "pomodoro" ]]; then
+        echo "pomodoro"
+    else
+        usage
+        exit 1
+    fi
 }
 
 [[ $# -gt 0 ]] || {
@@ -83,62 +136,75 @@ case "$domain" in
         open_url "notch://caption/$1"
         ;;
     focus)
-        [[ $# -ge 1 && $# -le 4 ]] || { usage; exit 1; }
-        action="$1"
-        tool="${2:-}"
-        duration="${3:-}"
-        break_duration="${4:-}"
-        url="notch://focus/$action"
-        if [[ -n "$tool" ]]; then
-            url="${url}?tool=${tool}"
-            if [[ -n "$duration" ]]; then
-                url="${url}&duration=${duration}"
-            fi
-            if [[ -n "$break_duration" ]]; then
-                url="${url}&break=${break_duration}"
-            fi
-        fi
-        open_url "$url"
-        ;;
-    image)
         [[ $# -ge 1 ]] || { usage; exit 1; }
         action="$1"
         shift
+        url="notch://focus/$action"
+
         case "$action" in
-            show|search)
-                [[ $# -ge 1 && $# -le 2 ]] || { usage; exit 1; }
-                query_encoded="$(url_encode "$1")"
-                url="notch://image/show?query=${query_encoded}"
-                if [[ $# -eq 2 ]]; then
-                    url="${url}&orientation=$(url_encode "$2")"
+            show|pause|resume|toggle|reset|skip)
+                [[ $# -le 1 ]] || { usage; exit 1; }
+                tool="$(normalize_focus_tool "${1:-}")"
+                if [[ -n "$tool" ]]; then
+                    url="${url}?tool=${tool}"
                 fi
-                open_url "$url"
                 ;;
-            url)
-                [[ $# -ge 1 && $# -le 2 ]] || { usage; exit 1; }
-                url="notch://image/url?url=$(url_encode "$1")"
-                if [[ $# -eq 2 ]]; then
-                    url="${url}&caption=$(url_encode "$2")"
+            set|start)
+                [[ $# -le 4 ]] || { usage; exit 1; }
+                tool=""
+                if [[ "${1:-}" == "pomodoro" ]]; then
+                    tool="pomodoro"
+                    shift
                 fi
-                open_url "$url"
-                ;;
-            file)
-                [[ $# -ge 1 && $# -le 2 ]] || { usage; exit 1; }
-                url="notch://image/file?path=$(url_encode "$1")"
-                if [[ $# -eq 2 ]]; then
-                    url="${url}&caption=$(url_encode "$2")"
+                duration="${1:-}"
+                break_duration="${2:-}"
+                long_break_duration="${3:-}"
+                query=""
+                if [[ -n "$tool" ]]; then
+                    query="tool=${tool}"
                 fi
-                open_url "$url"
+                if [[ -n "$duration" ]]; then
+                    [[ -n "$query" ]] && query="${query}&"
+                    query="${query}duration=$(url_encode "$duration")"
+                fi
+                if [[ -n "$break_duration" ]]; then
+                    [[ -n "$query" ]] && query="${query}&"
+                    query="${query}break=$(url_encode "$break_duration")"
+                fi
+                if [[ -n "$long_break_duration" ]]; then
+                    [[ -n "$query" ]] && query="${query}&"
+                    query="${query}long=$(url_encode "$long_break_duration")"
+                fi
+                if [[ -n "$query" ]]; then
+                    url="${url}?${query}"
+                fi
                 ;;
-            clear)
-                [[ $# -eq 0 ]] || { usage; exit 1; }
-                open_url "notch://image/clear"
+            phase)
+                [[ $# -eq 1 ]] || { usage; exit 1; }
+                url="${url}?phase=$(url_encode "$1")"
+                ;;
+            preset)
+                [[ $# -eq 1 ]] || { usage; exit 1; }
+                url="${url}?preset=$(url_encode "$1")"
+                ;;
+            long-break)
+                [[ $# -eq 1 ]] || { usage; exit 1; }
+                url="${url}?duration=$(url_encode "$1")"
+                ;;
+            cycle)
+                [[ $# -eq 1 ]] || { usage; exit 1; }
+                url="${url}?count=$(url_encode "$1")"
+                ;;
+            auto-breaks|auto-pomo)
+                [[ $# -eq 1 ]] || { usage; exit 1; }
+                url="${url}?state=$(url_encode "$1")"
                 ;;
             *)
                 usage
                 exit 1
                 ;;
         esac
+        open_url "$url"
         ;;
     media)
         [[ $# -ge 1 ]] || { usage; exit 1; }

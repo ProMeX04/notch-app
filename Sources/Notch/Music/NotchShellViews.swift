@@ -37,6 +37,147 @@ struct CompactSpectrumView: View {
     }
 }
 
+struct PomodoroPhaseProgressIndicator: View {
+    enum Style {
+        case compact
+        case expanded
+
+        var iconSize: CGFloat {
+            switch self {
+            case .compact: return 15
+            case .expanded: return 11
+            }
+        }
+
+        var stripWidth: CGFloat {
+            switch self {
+            case .compact: return 26
+            case .expanded: return 58
+            }
+        }
+
+        var stripHeight: CGFloat {
+            switch self {
+            case .compact: return 6
+            case .expanded: return 8
+            }
+        }
+
+        var segmentCount: Int {
+            switch self {
+            case .compact: return 5
+            case .expanded: return 7
+            }
+        }
+
+        var framePadding: EdgeInsets {
+            switch self {
+            case .compact:
+                return EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+            case .expanded:
+                return EdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 10)
+            }
+        }
+
+        var contentSpacing: CGFloat {
+            switch self {
+            case .compact: return 4
+            case .expanded: return 8
+            }
+        }
+
+        var showsContainer: Bool {
+            switch self {
+            case .compact: return false
+            case .expanded: return true
+            }
+        }
+    }
+
+    let phase: PomodoroPhase
+    let accentColor: Color
+    let progress: Double
+    var style: Style = .expanded
+
+    var body: some View {
+        let clampedProgress = min(max(progress, 0), 1)
+
+        let content = Group {
+            if style == .compact {
+                compactPhaseBadge
+            } else {
+                HStack(spacing: style.contentSpacing) {
+                    Image(systemName: phaseIndicatorSymbol)
+                        .font(.system(size: style.iconSize, weight: .black))
+                        .foregroundStyle(accentColor.opacity(0.9))
+
+                    phaseStrip(progress: clampedProgress)
+                }
+            }
+        }
+
+        content
+            .padding(style.framePadding)
+            .background {
+                if style.showsContainer {
+                    Capsule(style: .continuous)
+                        .fill(.black.opacity(0.35))
+                }
+            }
+            .overlay {
+                if style.showsContainer {
+                    Capsule(style: .continuous)
+                        .stroke(accentColor.opacity(0.14), lineWidth: 1)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityLabel(Text(phase.rawValue))
+    }
+
+    private var phaseIndicatorSymbol: String {
+        phase.symbolName
+    }
+
+    private var compactPhaseBadge: some View {
+        Image(systemName: phaseIndicatorSymbol)
+            .font(.system(size: style.iconSize, weight: .black))
+            .foregroundStyle(accentColor.opacity(0.94))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func phaseStrip(progress: Double) -> some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let height = proxy.size.height
+
+            ZStack(alignment: .leading) {
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+
+                Capsule(style: .continuous)
+                    .fill(accentColor.opacity(0.92))
+                    .frame(width: width * progress)
+
+                HStack(spacing: max(2, height * 0.22)) {
+                    ForEach(0..<style.segmentCount, id: \.self) { index in
+                        Capsule(style: .continuous)
+                            .fill(Color.white.opacity(segmentOpacity(at: index, progress: progress)))
+                    }
+                }
+                .padding(.horizontal, max(2, height * 0.34))
+                .padding(.vertical, max(1, height * 0.18))
+            }
+            .clipShape(Capsule(style: .continuous))
+        }
+        .frame(width: style.stripWidth, height: style.stripHeight)
+    }
+
+    private func segmentOpacity(at index: Int, progress: Double) -> Double {
+        let threshold = Double(index + 1) / Double(style.segmentCount)
+        return progress >= threshold ? 0.22 : 0.08
+    }
+}
+
 struct NotchHeaderView: View {
     let closedNotchWidth: CGFloat
     let closedNotchHeight: CGFloat
@@ -75,7 +216,7 @@ struct NotchHeaderView: View {
 
                 PanelSwitcher(
                     presentationModel: presentationModel,
-                    panels: [.music, .focus, .talk]
+                    panels: [.media, .focus, .talk]
                 )
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -121,7 +262,7 @@ struct NotchHeaderView: View {
 }
 
 struct CompactLiveActivityView: View {
-    @ObservedObject var playback: MusicProbeViewModel
+    @ObservedObject var playback: MediaProbeViewModel
     let closedNotchWidth: CGFloat
     let closedNotchHeight: CGFloat
     let albumArtNamespace: Namespace.ID
@@ -166,51 +307,71 @@ struct CompactPomodoroView: View {
         Color(nsColor: pomodoro.phase.accentColor)
     }
 
-    private var phaseLabel: String {
+    private func progress(at date: Date) -> Double {
+        let totalSeconds: Int
         switch pomodoro.phase {
         case .focus:
-            return "WORK"
-        case .shortBreak, .longBreak:
-            return "REST"
+            totalSeconds = pomodoro.focusDurationSeconds
+        case .shortBreak:
+            totalSeconds = pomodoro.breakDurationSeconds
+        case .longBreak:
+            totalSeconds = pomodoro.longBreakDurationSeconds
         }
+
+        guard totalSeconds > 0 else { return 0 }
+        let remaining = pomodoro.remainingSeconds(at: date)
+        return Double(totalSeconds - remaining) / Double(totalSeconds)
     }
 
-    private var sideExtensionWidth: CGFloat {
-        max(44, sideSize + 16)
+    private var leadingIndicatorWidth: CGFloat {
+        compactSideWidth
     }
 
     private var centerNotchWidth: CGFloat {
         max(0, closedNotchWidth - NotchMetrics.closedCornerRadius.top)
     }
 
+    private var timerWidth: CGFloat {
+        compactSideWidth
+    }
+
+    private var compactSideWidth: CGFloat {
+        max(72, sideSize + 36)
+    }
+
     var body: some View {
         HStack(spacing: 0) {
-            ZStack {
-                Text(phaseLabel)
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .tracking(0.3)
-                    .foregroundStyle(accentColor.ensureMinimumBrightness(factor: 0.82))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
+            HStack(spacing: 6) {
+                Image(systemName: pomodoro.phase.symbolName)
+                    .font(.system(size: 14, weight: .black))
+                
+                Text("\(pomodoro.currentFocusSessionIndex)/\(pomodoro.sessionsBeforeLongBreak)")
+                    .font(.system(size: 13, weight: .black, design: .rounded))
             }
-            .frame(width: sideExtensionWidth, height: sideSize)
+            .padding(.leading, 8)
+            .foregroundStyle(
+                pomodoro.isRunning
+                    ? accentColor.ensureMinimumBrightness(factor: 0.82)
+                    : accentColor.ensureMinimumBrightness(factor: 0.72).opacity(0.92)
+            )
+            .frame(width: leadingIndicatorWidth, height: sideSize, alignment: .leading)
 
             Rectangle()
                 .fill(.black)
                 .frame(width: centerNotchWidth)
 
-            TimelineView(PeriodicTimelineSchedule(from: .now, by: 1.0)) { context in
-                Text(pomodoro.remainingText(at: context.date))
-                    .font(.system(size: 14, weight: .bold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(
-                        pomodoro.isRunning
-                            ? accentColor.ensureMinimumBrightness(factor: 0.82)
-                            : accentColor.ensureMinimumBrightness(factor: 0.72).opacity(0.92)
-                    )
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .frame(width: sideExtensionWidth, height: sideSize)
-            }
+            PomodoroTimeText(
+                pomodoro: pomodoro,
+                size: 14,
+                weight: .bold
+            )
+            .padding(.trailing, 8)
+            .foregroundStyle(
+                pomodoro.isRunning
+                    ? accentColor.ensureMinimumBrightness(factor: 0.82)
+                    : accentColor.ensureMinimumBrightness(factor: 0.72).opacity(0.92)
+            )
+            .frame(width: timerWidth, height: sideSize, alignment: .trailing)
         }
         .frame(height: closedNotchHeight, alignment: .center)
     }
@@ -229,10 +390,32 @@ struct CompactTalkView: View {
         Color(nsColor: gemini.compactAccentColor).ensureMinimumBrightness(factor: 0.74)
     }
 
+    private var leadingToolIcon: String? {
+        gemini.lastToolAction?.icon
+    }
+
+    private var leadingStatusIcon: String? {
+        if let leadingToolIcon {
+            return leadingToolIcon
+        }
+
+        return nil
+    }
+
     var body: some View {
         HStack(spacing: 0) {
-            CompactTalkLiveDot(connectionState: gemini.connectionState)
-                .frame(width: sideSize, height: sideSize)
+            Group {
+                if let leadingStatusIcon {
+                    Image(systemName: leadingStatusIcon)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(accentColor)
+                } else if gemini.isModelThinking {
+                    CompactTalkThinkingSpinner(tint: accentColor)
+                } else {
+                    CompactTalkLiveDot(connectionState: gemini.connectionState)
+                }
+            }
+            .frame(width: sideSize, height: sideSize)
 
             Rectangle()
                 .fill(.black)
@@ -251,6 +434,27 @@ struct CompactTalkView: View {
             .frame(width: sideSize, height: sideSize)
         }
         .frame(height: closedNotchHeight, alignment: .center)
+    }
+}
+
+/// Small “on air” dot for closed notch (no extra chrome — just the dot).
+private struct CompactTalkThinkingSpinner: View {
+    let tint: Color
+
+    @State private var rotationDegrees: Double = 0
+
+    var body: some View {
+        Circle()
+            .trim(from: 0.18, to: 0.82)
+            .stroke(tint, style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
+            .frame(width: 11, height: 11)
+            .rotationEffect(.degrees(rotationDegrees))
+            .onAppear {
+                rotationDegrees = 0
+                withAnimation(.linear(duration: 0.85).repeatForever(autoreverses: false)) {
+                    rotationDegrees = 360
+                }
+            }
     }
 }
 
@@ -392,7 +596,7 @@ struct IdleClosedNotchView: View {
 }
 
 struct ExpandedNotchContent: View {
-    @ObservedObject var playback: MusicProbeViewModel
+    @ObservedObject var playback: MediaProbeViewModel
     @ObservedObject var pomodoro: PomodoroViewModel
     @ObservedObject var gemini: GeminiLiveViewModel
     @ObservedObject var shelf: NotchShelfViewModel
@@ -412,7 +616,8 @@ struct ExpandedNotchContent: View {
             } else if presentationModel.selectedPanel == .talk {
                 GeminiTalkPanelView(
                     gemini: gemini,
-                    headerAccessoryController: talkHeaderAccessoryController
+                    headerAccessoryController: talkHeaderAccessoryController,
+                    presentationModel: presentationModel
                 )
             } else if presentationModel.selectedPanel == .shelf {
                 ShelfPanelView(
@@ -429,7 +634,7 @@ struct ExpandedNotchContent: View {
                     )
                     .padding(.all, 5)
 
-                    ExpandedMusicControlsView(playback: playback)
+                    ExpandedMediaControlsView(playback: playback)
                         .drawingGroup()
                         .compositingGroup()
                 }
@@ -465,7 +670,7 @@ struct PanelSwitcher: View {
 
     private func switcherIcon(for panel: NotchPanel) -> String {
         switch panel {
-        case .music:
+        case .media:
             return "playpause"
         case .focus:
             return "timer"
@@ -497,7 +702,7 @@ struct PanelSwitcher: View {
 
     private func switcherTitle(for panel: NotchPanel) -> String {
         switch panel {
-        case .music:
+        case .media:
             return "Media"
         case .focus:
             return "Focus"
@@ -605,7 +810,6 @@ struct Localization {
         "Approve Command": ["English": "Approve Command", "Tiếng Việt": "Phê duyệt lệnh"],
         "Deny": ["English": "Deny", "Tiếng Việt": "Từ chối"],
         "Gemini API Key": ["English": "Gemini API Key", "Tiếng Việt": "Gemini API Key"],
-        "Pexels API Key": ["English": "Pexels API Key", "Tiếng Việt": "Pexels API Key"],
         "Saved": ["English": "Saved", "Tiếng Việt": "Đã lưu"],
         "Allow Once": ["English": "Allow Once", "Tiếng Việt": "Cho phép 1 lần"],
         "Once": ["English": "Once", "Tiếng Việt": "1 lần"],
@@ -826,19 +1030,6 @@ struct GlobalSettingsView: View {
                     text: $gemini.apiKeyText
                 ) {
                     Task { await gemini.saveAPIKey() }
-                }
-            }
-
-            settingsSectionCard(
-                title: "Pexels",
-                subtitle: Localization.get("Pexels API Key", lang: appLanguage)
-            ) {
-                settingsTextField(
-                    title: "Pexels",
-                    placeholder: Localization.get("Pexels API Key", lang: appLanguage),
-                    text: $gemini.pexelsAPIKeyText
-                ) {
-                    Task { await gemini.saveServiceKeys() }
                 }
             }
         }

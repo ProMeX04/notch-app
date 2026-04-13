@@ -34,9 +34,12 @@ final class GeminiLiveViewModel: ObservableObject {
     @Published private(set) var userTranscript = ""
     @Published private(set) var modelTranscript = ""
     @Published var apiKeyText: String
+    @Published var userProfileContent: String = ""
+    @Published var memoryContent: String = ""
 
     @Published private(set) var isScreenSharingEnabled = false
     @Published private(set) var isModelSpeaking = false
+    @Published private(set) var isModelThinking = false
     @Published private(set) var microphoneInputLevel = 0.0
     @Published private(set) var outputVolume = 1.0
     @Published private(set) var holdToTalkShortcut = HoldToTalkShortcutStore.load()
@@ -93,15 +96,11 @@ final class GeminiLiveViewModel: ObservableObject {
     @Published private(set) var installedSkills: [InstalledSkill] = []
     @Published private(set) var hasSavedAPIKey = false
     @Published private(set) var isSavingAPIKey = false
-    @Published private(set) var isSavingServiceKeys = false
     @Published private(set) var lastToolAction: ToolActionToast?
-    @Published private(set) var displayedImageOverlay: ImageOverlayRequest?
     @Published private(set) var overlayInput = TranscriptOverlayInput.idle
     @Published private(set) var isAutoReconnecting = false
     @Published private(set) var pendingExecApprovals: [ExecApprovalRequest] = []
     private var toastClearTask: Task<Void, Never>?
-    /// Clears `displayedImageOverlay` after a fixed delay so images never stick forever (e.g. when `isModelSpeaking` stays true).
-    private var imageOverlayAutoDismissTask: Task<Void, Never>?
     private var reconnectTask: Task<Void, Never>?
     private var reconnectAttempt = 0
     private let maxReconnectAttempts = 3
@@ -117,7 +116,6 @@ final class GeminiLiveViewModel: ObservableObject {
     private var screenShareFilter: SCContentFilter?
     private let session: GeminiLiveSession
     private let keyStore: GeminiLiveAPIKeyStore
-    private let pexelsKeyStore: GeminiLiveSecretStore
     private let settingsStore: GeminiLiveSettingsStore
     private let execApprovalStore: GeminiLiveExecApprovalStore
     private let agentAvatarStore: GeminiAgentAvatarStore
@@ -130,10 +128,8 @@ final class GeminiLiveViewModel: ObservableObject {
 
     private var storedAPIKey: String?
     var onExecApprovalAttentionRequested: (() -> Void)?
-    /// Present the service keys window (standard `NSWindow`, set by `NotchWindowController`).
+    /// Present the key management window (standard `NSWindow`, set by `NotchWindowController`).
     var onPresentSecretsPanel: (() -> Void)?
-
-    @Published var pexelsAPIKeyText: String = ""
 
     var currentPendingExecApproval: ExecApprovalRequest? {
         pendingExecApprovals.first
@@ -142,11 +138,6 @@ final class GeminiLiveViewModel: ObservableObject {
     init(processInfo: ProcessInfo = .processInfo, session: GeminiLiveSession = GeminiLiveSession()) {
         self.session = session
         keyStore = GeminiLiveAPIKeyStore(processInfo: processInfo)
-        pexelsKeyStore = GeminiLiveSecretStore(
-            processInfo: processInfo,
-            developmentFileURL: GeminiLiveStoragePaths.developmentPexelsAPIKeyFile,
-            keychainAccount: "PexelsAPIKey"
-        )
         settingsStore = GeminiLiveSettingsStore()
         execApprovalStore = GeminiLiveExecApprovalStore()
         agentAvatarStore = GeminiAgentAvatarStore()
@@ -167,6 +158,9 @@ final class GeminiLiveViewModel: ObservableObject {
             selectedSystemPromptID = savedSettings.selectedSystemPromptID
         }
 
+        userProfileContent = userStore.readUserProfile()
+        memoryContent = memoryStore.readMainMemory()
+
         if let storedKey = keyStore.read(), !storedKey.isEmpty {
             storedAPIKey = storedKey
             apiKeyText = storedKey
@@ -175,8 +169,6 @@ final class GeminiLiveViewModel: ObservableObject {
         } else {
             apiKeyText = ""
         }
-
-        _pexelsAPIKeyText = Published(initialValue: configuredPexelsAPIKey ?? "")
 
         normalizeSystemPromptSelection()
         // Load all per-preset settings without triggering write-through didSets.
@@ -196,6 +188,7 @@ final class GeminiLiveViewModel: ObservableObject {
                 if state != .connected {
                     self.isHoldToTalkActive = false
                     self.microphoneInputLevel = 0
+                    self.isModelThinking = false
                 }
                 if let message, !message.isEmpty {
                     if state == .connected, (message == "Gemini Live is ready." || message == "Gemini Live resumed.") {
@@ -225,9 +218,16 @@ final class GeminiLiveViewModel: ObservableObject {
             }
         }
 
+        session.onModelThinkingStateChange = { [weak self] isThinking in
+            DispatchQueue.main.async {
+                self?.isModelThinking = isThinking
+            }
+        }
+
         session.onModelTranscript = { [weak self] text in
             DispatchQueue.main.async {
                 guard let self else { return }
+                self.isModelThinking = false
                 self.isModelSpeaking = true
                 if self.modelTranscript.isEmpty {
                     self.modelTranscript = text
@@ -248,6 +248,7 @@ final class GeminiLiveViewModel: ObservableObject {
         session.onTurnComplete = { [weak self] in
             DispatchQueue.main.async {
                 guard let self else { return }
+                self.isModelThinking = false
                 self.isModelSpeaking = false
                 if !self.modelTranscript.isEmpty {
                     self.pendingTurnSeparator = true
@@ -304,6 +305,7 @@ final class GeminiLiveViewModel: ObservableObject {
         session.onFunctionStarted = { [weak self] name, _ in
             DispatchQueue.main.async {
                 guard let self, let toast = self.startedToolAction(for: name) else { return }
+                self.isModelThinking = false
                 self.postToolAction(
                     label: toast.label,
                     icon: toast.icon,
@@ -316,18 +318,24 @@ final class GeminiLiveViewModel: ObservableObject {
         session.onFunctionExecuted = { [weak self] name, args, result in
             let resultSuccess = result["success"] as? Bool
             let resultError = result["error"] as? String
+            let resultMessage = result["message"] as? String
             DispatchQueue.main.async {
                 guard let self else { return }
                 if let toast = self.completedToolAction(
                     for: name,
                     success: resultSuccess == true,
-                    error: resultError
+                    error: resultError,
+                    message: resultMessage
                 ) {
                     self.postToolAction(
                         label: toast.label,
                         icon: toast.icon,
                         showsInOverlay: toast.showsInOverlay
                     )
+                } else {
+                    self.toastClearTask?.cancel()
+                    self.toastClearTask = nil
+                    self.lastToolAction = nil
                 }
             }
         }
@@ -356,19 +364,18 @@ final class GeminiLiveViewModel: ObservableObject {
         Publishers.CombineLatest(
             Publishers.CombineLatest3($userTranscript, $modelTranscript, $isModelSpeaking),
             Publishers.CombineLatest(
-                Publishers.CombineLatest($lastToolAction, $displayedImageOverlay),
+                $lastToolAction,
                 Publishers.CombineLatest($showTranscriptOverlay, $connectionState)
             )
         )
         .map { transcripts, rest in
-            let (toolAction, image) = rest.0
+            let toolAction = rest.0
             let (subsOn, state) = rest.1
             return TranscriptOverlayInput(
                 userText: transcripts.0,
                 modelText: transcripts.1,
                 isModelSpeaking: transcripts.2,
                 toolAction: toolAction.flatMap { $0.showsInOverlay ? $0 : nil },
-                imageRequest: image,
                 subsEnabled: subsOn,
                 isConnected: state == .connected || state == .connecting
             )
@@ -423,20 +430,6 @@ final class GeminiLiveViewModel: ObservableObject {
         selectedSystemPromptPreset.title
     }
 
-    var tokenUsageProgress: Double {
-        let limit = Double(GeminiLiveSession.defaultContextWindowTriggerTokens)
-        guard limit > 0 else { return 0 }
-        return min(max(Double(currentContextTokenCount) / limit, 0), 1)
-    }
-
-    var tokenUsagePercent: Int {
-        Int((tokenUsageProgress * 100).rounded())
-    }
-
-    var tokenUsageSummaryText: String {
-        "\(formattedTokenCount(currentContextTokenCount)) / \(formattedTokenCount(GeminiLiveSession.defaultContextWindowTriggerTokens)) tokens"
-    }
-
     var selectedSystemPromptAvatarSymbolName: String {
         selectedSystemPromptPreset.resolvedAvatarSymbolName
     }
@@ -466,16 +459,6 @@ final class GeminiLiveViewModel: ObservableObject {
 
     func systemPromptPreset(id: String) -> GeminiSystemPromptPreset? {
         systemPromptPresets.first(where: { $0.id == id })
-    }
-
-    private func formattedTokenCount(_ count: Int) -> String {
-        guard count >= 1_000 else { return "\(count)" }
-        let value = Double(count) / 1_000
-        let rounded = (value * 10).rounded() / 10
-        if rounded.rounded() == rounded {
-            return "\(Int(rounded))k"
-        }
-        return "\(rounded)k"
     }
 
     @discardableResult
@@ -633,7 +616,6 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     private func buildSystemPrompt(
-        currentTime: String,
         activeSkills: [InstalledSkill],
         effectiveTools: Set<GeminiTool>,
         userContent: String,
@@ -663,16 +645,29 @@ final class GeminiLiveViewModel: ObservableObject {
 
         return """
         \(resolvedPromptBody)
-
-        Current context:
-        - Time: \(currentTime) (Hanoi timezone, UTC+7)
-        - Location: Hanoi, Vietnam
-
         \(optionalToolRulesSection)
         \(optionalUserSection)
         \(optionalMemorySection)
         \(optionalSkillSection)
         """
+    }
+
+    func saveUserProfile(_ content: String) {
+        do {
+            try userStore.saveUserProfile(content)
+            userProfileContent = content
+        } catch {
+            lastErrorMessage = "Failed to save user profile."
+        }
+    }
+
+    func saveMemory(_ content: String) {
+        do {
+            try memoryStore.saveMemory(content)
+            memoryContent = content
+        } catch {
+            lastErrorMessage = "Failed to save memory."
+        }
     }
 
     private func buildInjectedPromptSection(title: String, tag: String, content: String) -> String {
@@ -741,12 +736,11 @@ final class GeminiLiveViewModel: ObservableObject {
         }
     }
 
-    private func completedToolAction(for name: String, success: Bool, error: String?) -> ToolActionToast? {
-        if let error, !success {
-            return ToolActionToast(label: error, icon: "exclamationmark.triangle", showsInOverlay: false)
+    private func completedToolAction(for name: String, success: Bool, error: String?, message: String?) -> ToolActionToast? {
+        if !success {
+            let label = error ?? message ?? failedToolActionLabel(for: name)
+            return ToolActionToast(label: label, icon: "exclamationmark.triangle", showsInOverlay: false)
         }
-
-        guard success else { return nil }
 
         switch name {
         case "webSearch":
@@ -767,6 +761,29 @@ final class GeminiLiveViewModel: ObservableObject {
             return ToolActionToast(label: "Edited file", icon: "slider.horizontal.below.rectangle", showsInOverlay: false)
         default:
             return nil
+        }
+    }
+
+    private func failedToolActionLabel(for name: String) -> String {
+        switch name {
+        case "exec":
+            return "Command failed."
+        case "read":
+            return "Read failed."
+        case "write":
+            return "Write failed."
+        case "ls":
+            return "List failed."
+        case "find":
+            return "Find failed."
+        case "grep":
+            return "Search failed."
+        case "edit":
+            return "Edit failed."
+        case "webSearch":
+            return "Web search failed."
+        default:
+            return "Tool failed."
         }
     }
 
@@ -944,35 +961,6 @@ final class GeminiLiveViewModel: ObservableObject {
         }
     }
 
-    func saveServiceKeys() async -> Bool {
-        let trimmedGeminiKey = apiKeyText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let needsGeminiSave = !trimmedGeminiKey.isEmpty && trimmedGeminiKey != (configuredAPIKey ?? "")
-
-        if needsGeminiSave {
-            guard await saveAPIKey() else { return false }
-        } else if configuredAPIKey == nil {
-            lastErrorMessage = "Gemini API key is missing."
-            statusText = "Paste a Gemini API key, then save again."
-            return false
-        }
-
-        isSavingServiceKeys = true
-        defer { isSavingServiceKeys = false }
-
-        let didSavePexels = persistServiceKey(draftValue: pexelsAPIKeyText, store: pexelsKeyStore)
-
-        guard didSavePexels else {
-            lastErrorMessage = "Couldn't save one or more service keys."
-            statusText = "Saving service keys failed."
-            return false
-        }
-
-        pexelsAPIKeyText = configuredPexelsAPIKey ?? ""
-        lastErrorMessage = nil
-        statusText = "Keys saved."
-        return true
-    }
-
     func connect(clearingTranscripts: Bool = true) {
         guard let configuredAPIKey else {
             connectionState = .failed
@@ -998,13 +986,6 @@ final class GeminiLiveViewModel: ObservableObject {
                 }
 
                 self.statusText = "Connecting to Gemini Live..."
-                let now = Date()
-                let formatter = DateFormatter()
-                formatter.locale = Locale(identifier: "vi_VN")
-                formatter.dateFormat = "EEEE, dd/MM/yyyy HH:mm"
-                formatter.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")
-                let currentTime = formatter.string(from: now)
-
                 let skillSnapshot: SkillSessionSnapshot
                 if clearingTranscripts || self.currentSkillSnapshot == nil {
                     skillSnapshot = self.makeSkillSessionSnapshot()
@@ -1014,11 +995,10 @@ final class GeminiLiveViewModel: ObservableObject {
                 }
 
                 let systemPrompt = self.buildSystemPrompt(
-                    currentTime: currentTime,
                     activeSkills: skillSnapshot.activeSkills,
                     effectiveTools: skillSnapshot.effectiveTools,
-                    userContent: userStore.readUserProfile(),
-                    memoryContent: memoryStore.readMainMemory()
+                    userContent: self.userProfileContent,
+                    memoryContent: self.memoryContent
                 )
 
                 let preset = self.selectedSystemPromptPreset
@@ -1041,13 +1021,11 @@ final class GeminiLiveViewModel: ObservableObject {
         lastDisconnectWasUserInitiated = true
         cancelReconnect()
         stopScreenCapture()
-        imageOverlayAutoDismissTask?.cancel()
-        imageOverlayAutoDismissTask = nil
-        displayedImageOverlay = nil
         pendingExecApprovals.removeAll()
         toastClearTask?.cancel()
         toastClearTask = nil
         lastToolAction = nil
+        isModelThinking = false
         isHoldToTalkActive = false
         // Transcript có thể rất dài; giữ lại sau khi ngắt kết nối làm RAM không giảm trong Activity Monitor.
         clearTranscripts()
@@ -1426,6 +1404,7 @@ final class GeminiLiveViewModel: ObservableObject {
         guard connectionState == .connected else { return false }
         session.sendClientTextTurn(trimmed)
         userTranscript = trimmed
+        isModelThinking = true
         return true
     }
 
@@ -1433,6 +1412,7 @@ final class GeminiLiveViewModel: ObservableObject {
         userTranscript = ""
         modelTranscript = ""
         pendingTurnSeparator = false
+        isModelThinking = false
         isModelSpeaking = false
         lastErrorMessage = nil
     }
@@ -1450,6 +1430,7 @@ final class GeminiLiveViewModel: ObservableObject {
     func shutdown() {
         currentSkillSnapshot = nil
         pendingExecApprovals.removeAll()
+        isModelThinking = false
         subscriptions.removeAll()
         screenRegionSelectionController.cancelSelection(notify: false)
         windowShareSelectionController.cancelSelection(notify: false)
@@ -1476,146 +1457,6 @@ final class GeminiLiveViewModel: ObservableObject {
                 return "Sharing selected content."
             }
         }
-    }
-
-    func clearDisplayedImageOverlay() {
-        imageOverlayAutoDismissTask?.cancel()
-        imageOverlayAutoDismissTask = nil
-        displayedImageOverlay = nil
-    }
-
-    private func scheduleImageOverlayAutoDismissIfNeeded() {
-        imageOverlayAutoDismissTask?.cancel()
-        guard let overlay = displayedImageOverlay else { return }
-        let captureID = overlay.id
-        imageOverlayAutoDismissTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(10))
-            guard !Task.isCancelled else { return }
-            guard let self else { return }
-            guard self.displayedImageOverlay?.id == captureID else { return }
-            self.imageOverlayAutoDismissTask = nil
-            self.displayedImageOverlay = nil
-        }
-    }
-
-    func showDisplayedImageOverlay(query: String, caption: String?, orientation: String?) {
-        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedQuery.isEmpty else {
-            postToolAction(label: "Image query is empty", icon: "exclamationmark.triangle")
-            return
-        }
-
-        guard let apiKey = configuredPexelsAPIKey else {
-            postToolAction(label: "[Pexels] API key is missing.", icon: "exclamationmark.triangle")
-            onPresentSecretsPanel?()
-            return
-        }
-
-        guard var components = URLComponents(string: "https://api.pexels.com/v1/search") else {
-            postToolAction(label: "[Pexels] Couldn't create request.", icon: "exclamationmark.triangle")
-            return
-        }
-
-        components.queryItems = [
-            URLQueryItem(name: "query", value: trimmedQuery),
-            URLQueryItem(name: "per_page", value: "1"),
-            URLQueryItem(name: "page", value: "1"),
-            URLQueryItem(name: "orientation", value: normalizedPexelsOrientationValue(orientation)),
-        ]
-
-        guard let url = components.url else {
-            postToolAction(label: "[Pexels] Couldn't encode query.", icon: "exclamationmark.triangle")
-            return
-        }
-
-        let trimmedCaption = caption?.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        Task { [weak self] in
-            var request = URLRequest(url: url)
-            request.setValue(apiKey, forHTTPHeaderField: "Authorization")
-            request.timeoutInterval = 15
-
-            do {
-                let (data, response) = try await URLSession(configuration: .ephemeral).data(for: request)
-                guard let httpResponse = response as? HTTPURLResponse else {
-                    await MainActor.run {
-                        self?.postToolAction(label: "[Pexels] Invalid response.", icon: "exclamationmark.triangle")
-                    }
-                    return
-                }
-
-                guard (200 ... 299).contains(httpResponse.statusCode) else {
-                    let message = Self.decodePexelsOverlayError(from: data) ?? "Returned HTTP \(httpResponse.statusCode)."
-                    await MainActor.run {
-                        self?.postToolAction(label: "[Pexels] \(message)", icon: "exclamationmark.triangle")
-                    }
-                    return
-                }
-
-                let payload = try JSONDecoder().decode(OverlayPexelsSearchResponse.self, from: data)
-                guard let photo = payload.photos.first,
-                      let imageURL = photo.src.large2x ?? photo.src.large ?? photo.src.medium else {
-                    await MainActor.run {
-                        self?.postToolAction(label: "[Pexels] No matching images.", icon: "exclamationmark.triangle")
-                    }
-                    return
-                }
-
-                let resolvedCaption = (trimmedCaption?.isEmpty == false ? trimmedCaption : nil)
-                    ?? trimmedQuery.prefix(1).uppercased() + trimmedQuery.dropFirst()
-
-                let overlay = ImageOverlayRequest(
-                    query: trimmedQuery,
-                    imageURL: imageURL,
-                    sourceURL: photo.url,
-                    caption: resolvedCaption,
-                    photographer: photo.photographer
-                )
-
-                await MainActor.run {
-                    self?.displayedImageOverlay = overlay
-                    self?.scheduleImageOverlayAutoDismissIfNeeded()
-                }
-            } catch {
-                await MainActor.run {
-                    self?.postToolAction(
-                        label: "[Pexels] Request failed: \(error.localizedDescription)",
-                        icon: "exclamationmark.triangle"
-                    )
-                }
-            }
-        }
-    }
-
-    func showDisplayedImageOverlay(url: URL, query: String?, caption: String?) {
-        let trimmedCaption = caption?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedQuery = query?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolvedQuery = (trimmedQuery?.isEmpty == false ? trimmedQuery : nil) ?? "image"
-        let resolvedCaption = (trimmedCaption?.isEmpty == false ? trimmedCaption : nil) ?? "Image"
-
-        displayedImageOverlay = ImageOverlayRequest(
-            query: resolvedQuery,
-            imageURL: url,
-            sourceURL: url.isFileURL ? nil : url,
-            caption: resolvedCaption,
-            photographer: nil
-        )
-        scheduleImageOverlayAutoDismissIfNeeded()
-    }
-
-    private static func decodePexelsOverlayError(from data: Data) -> String? {
-        if let envelope = try? JSONDecoder().decode(OverlayPexelsErrorResponse.self, from: data),
-           !envelope.error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return envelope.error
-        }
-
-        if let raw = String(data: data, encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-           !raw.isEmpty {
-            return raw
-        }
-
-        return nil
     }
 
     func approveCurrentExecApprovalOnce() {
@@ -1718,14 +1559,12 @@ final class GeminiLiveViewModel: ObservableObject {
 
     func clearKeyDrafts() {
         apiKeyText = ""
-        pexelsAPIKeyText = ""
     }
 
     func reloadKeyDrafts() {
         let currentGeminiKey = currentStoredGeminiKey()
         storedAPIKey = currentGeminiKey
         apiKeyText = currentGeminiKey ?? ""
-        pexelsAPIKeyText = currentStoredPexelsKey() ?? ""
     }
 
     private func persistSettings() {
@@ -1789,45 +1628,14 @@ final class GeminiLiveViewModel: ObservableObject {
         currentStoredGeminiKey()
     }
 
-    private var configuredPexelsAPIKey: String? {
-        currentStoredPexelsKey()
-    }
-
     private func currentStoredGeminiKey() -> String? {
         normalizedStoredSecret(storedAPIKey ?? keyStore.read())
-    }
-
-    private func currentStoredPexelsKey() -> String? {
-        normalizedStoredSecret(pexelsKeyStore.read())
     }
 
     private func normalizedStoredSecret(_ value: String?) -> String? {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
-    }
-
-    private func persistServiceKey(draftValue: String, store: GeminiLiveSecretStore) -> Bool {
-        let trimmed = draftValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
-            return true
-        }
-        return store.save(trimmed)
-    }
-
-    var hasConfiguredPexelsKey: Bool {
-        configuredPexelsAPIKey != nil
-    }
-
-    private func normalizedPexelsOrientationValue(_ value: String?) -> String {
-        switch value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-        case "portrait":
-            return "portrait"
-        case "square":
-            return "square"
-        default:
-            return "landscape"
-        }
     }
 
     private func validateAPIKey(_ apiKey: String) async throws {
@@ -1900,24 +1708,4 @@ final class GeminiLiveViewModel: ObservableObject {
             completion(false)
         }
     }
-}
-
-private struct OverlayPexelsSearchResponse: Decodable {
-    let photos: [OverlayPexelsPhoto]
-}
-
-private struct OverlayPexelsPhoto: Decodable {
-    let url: URL?
-    let photographer: String?
-    let src: OverlayPexelsPhotoSource
-}
-
-private struct OverlayPexelsPhotoSource: Decodable {
-    let medium: URL?
-    let large: URL?
-    let large2x: URL?
-}
-
-private struct OverlayPexelsErrorResponse: Decodable {
-    let error: String
 }

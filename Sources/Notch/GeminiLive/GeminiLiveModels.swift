@@ -201,15 +201,6 @@ private func shellStyleTokens(from raw: String, maxTokens: Int) -> [String] {
     }
 }
 
-struct ImageOverlayRequest: Identifiable, Equatable {
-    let id = UUID()
-    let query: String
-    let imageURL: URL
-    let sourceURL: URL?
-    let caption: String
-    let photographer: String?
-}
-
 /// Single snapshot of everything the transcript overlay needs.
 /// Derived inside GeminiLiveViewModel so the controller subscribes to one publisher.
 struct TranscriptOverlayInput: Equatable {
@@ -217,7 +208,6 @@ struct TranscriptOverlayInput: Equatable {
     var modelText: String = ""
     var isModelSpeaking: Bool = false
     var toolAction: ToolActionToast? = nil
-    var imageRequest: ImageOverlayRequest? = nil
     var subsEnabled: Bool = true
     var isConnected: Bool = false
 
@@ -225,12 +215,12 @@ struct TranscriptOverlayInput: Equatable {
 
     var hasVisibleContent: Bool {
         (subsEnabled && (!modelText.isEmpty || isModelSpeaking))
-            || toolAction != nil || imageRequest != nil
+            || toolAction != nil
     }
 
-    var shouldShow: Bool { imageRequest != nil || (isConnected && hasVisibleContent) }
+    var shouldShow: Bool { isConnected && hasVisibleContent }
 
-    /// Used to suppress panel re-opening when only extras (image/toast) clear.
+    /// Used to suppress panel re-opening when only transient extras clear.
     var transcriptKey: String { modelText }
 }
 

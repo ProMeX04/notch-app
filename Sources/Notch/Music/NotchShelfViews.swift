@@ -4,11 +4,15 @@ import SwiftUI
 
 struct ShelfPanelView: View {
     @ObservedObject var shelf: NotchShelfViewModel
+    @ObservedObject var presentationModel: NotchPresentationModel
 
     var body: some View {
         VStack(spacing: 10) {
             if shelf.hasItems {
-                ShelfBrowserView(shelf: shelf)
+                ShelfBrowserView(
+                    shelf: shelf,
+                    presentationModel: presentationModel
+                )
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             } else {
                 RoundedRectangle(cornerRadius: 16)
@@ -38,10 +42,18 @@ struct ShelfPanelView: View {
 }
 
 private struct ShelfBrowserView: NSViewRepresentable {
+    private static let itemsPerRow: CGFloat = 5
+    private static let itemSpacing: CGFloat = 10
+    private static let sectionInsets = NSEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
+
     @ObservedObject var shelf: NotchShelfViewModel
+    @ObservedObject var presentationModel: NotchPresentationModel
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(shelf: shelf)
+        Coordinator(
+            shelf: shelf,
+            presentationModel: presentationModel
+        )
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -57,9 +69,9 @@ private struct ShelfBrowserView: NSViewRepresentable {
         let layout = NSCollectionViewFlowLayout()
         layout.scrollDirection = .vertical
         layout.itemSize = ShelfCollectionItem.preferredSize
-        layout.minimumInteritemSpacing = 10
-        layout.minimumLineSpacing = 10
-        layout.sectionInset = NSEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
+        layout.minimumInteritemSpacing = Self.itemSpacing
+        layout.minimumLineSpacing = Self.itemSpacing
+        layout.sectionInset = Self.sectionInsets
 
         let collectionView = ShelfCollectionView()
         collectionView.collectionViewLayout = layout
@@ -95,8 +107,9 @@ private struct ShelfBrowserView: NSViewRepresentable {
     }
 
     @MainActor
-    final class Coordinator: NSObject, NSCollectionViewDataSource, NSCollectionViewDelegate {
+    final class Coordinator: NSObject, NSCollectionViewDataSource, NSCollectionViewDelegateFlowLayout {
         var shelf: NotchShelfViewModel
+        let presentationModel: NotchPresentationModel
         weak var collectionView: ShelfCollectionView?
         private var isSyncingSelection = false
         private var lastSnapshot: [UUID] = []
@@ -105,6 +118,12 @@ private struct ShelfBrowserView: NSViewRepresentable {
         private func requireQuickLookController() -> ShelfQuickLookPanelController {
             if let existing = _quickLookController { return existing }
             let newController = ShelfQuickLookPanelController()
+            newController.onVisibilityChange = { [weak self] isVisible in
+                self?.presentationModel.setAutoCollapseSuppressed(
+                    isVisible,
+                    reason: .shelfQuickLook
+                )
+            }
             newController.onClose = { [weak self] in
                 self?.restoreShelfFocus()
             }
@@ -112,8 +131,9 @@ private struct ShelfBrowserView: NSViewRepresentable {
             return newController
         }
 
-        init(shelf: NotchShelfViewModel) {
+        init(shelf: NotchShelfViewModel, presentationModel: NotchPresentationModel) {
             self.shelf = shelf
+            self.presentationModel = presentationModel
             super.init()
         }
 
@@ -297,6 +317,26 @@ private struct ShelfBrowserView: NSViewRepresentable {
             return item
         }
 
+        func collectionView(
+            _ collectionView: NSCollectionView,
+            layout collectionViewLayout: NSCollectionViewLayout,
+            sizeForItemAt indexPath: IndexPath
+        ) -> NSSize {
+            let contentWidth = max(
+                0,
+                collectionView.bounds.width
+                    - ShelfBrowserView.sectionInsets.left
+                    - ShelfBrowserView.sectionInsets.right
+            )
+            let totalSpacing = ShelfBrowserView.itemSpacing * (ShelfBrowserView.itemsPerRow - 1)
+            let itemWidth = floor((contentWidth - totalSpacing) / ShelfBrowserView.itemsPerRow)
+
+            return NSSize(
+                width: max(72, itemWidth),
+                height: ShelfCollectionItem.preferredSize.height
+            )
+        }
+
         func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
             syncSelectionFromCollectionView()
         }
@@ -429,6 +469,7 @@ private struct ShelfBrowserView: NSViewRepresentable {
         }
 
         func cleanupWhenShelfDisappears() {
+            presentationModel.setAutoCollapseSuppressed(false, reason: .shelfQuickLook)
             _quickLookController?.close(restoreFocus: false)
             
             // Aggressively flush memory caches when shelf is hidden
@@ -662,16 +703,18 @@ private final class ShelfQuickLookPanel: NSPanel {
 }
 
 @MainActor
-private final class ShelfQuickLookPanelController {
+private final class ShelfQuickLookPanelController: NSObject, NSWindowDelegate {
     private let panel: ShelfQuickLookPanel
     private let previewView: QLPreviewView
     var onClose: (() -> Void)?
+    var onVisibilityChange: ((Bool) -> Void)?
+    private var shouldRestoreFocusOnClose = true
 
     var isVisible: Bool {
         panel.isVisible
     }
 
-    init() {
+    override init() {
         panel = ShelfQuickLookPanel(
             contentRect: NSRect(x: 0, y: 0, width: 820, height: 560),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -688,6 +731,9 @@ private final class ShelfQuickLookPanelController {
         previewView.shouldCloseWithWindow = true
         previewView.autostarts = true
 
+        super.init()
+        panel.delegate = self
+
         let containerView = NSView(frame: panel.contentView?.bounds ?? .zero)
         containerView.autoresizingMask = [.width, .height]
         containerView.addSubview(previewView)
@@ -701,8 +747,13 @@ private final class ShelfQuickLookPanelController {
     func show(url: URL) {
         update(url: url)
         panel.title = url.lastPathComponent
+        let wasVisible = panel.isVisible
+        shouldRestoreFocusOnClose = true
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
+        if !wasVisible {
+            onVisibilityChange?(true)
+        }
     }
 
     func update(url: URL) {
@@ -717,8 +768,22 @@ private final class ShelfQuickLookPanelController {
 
     func close(restoreFocus: Bool = true) {
         guard panel.isVisible else { return }
+        shouldRestoreFocusOnClose = restoreFocus
         panel.orderOut(nil)
-        if restoreFocus {
+        handleDidHide()
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        close()
+        return false
+    }
+
+    private func handleDidHide() {
+        onVisibilityChange?(false)
+
+        let shouldRestoreFocus = shouldRestoreFocusOnClose
+        shouldRestoreFocusOnClose = true
+        if shouldRestoreFocus {
             onClose?()
         }
     }

@@ -17,7 +17,6 @@ Rules:
 - Prefer explicit commands like `mute`, `unmute`, `caption on`, `caption off`, `screen full`, and `screen stop`.
 - Use `toggle` only when the user explicitly asks for a toggle or the target state is unclear.
 - Use `screen region` or `screen window` only when the user is prepared to interact with the picker.
-- Do not use this skill for image overlay display; that belongs to `image`.
 
 Command cookbook:
 

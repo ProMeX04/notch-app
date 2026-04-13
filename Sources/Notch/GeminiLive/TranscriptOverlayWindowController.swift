@@ -10,6 +10,10 @@ private struct VisualEffectView: NSViewRepresentable {
         view.blendingMode = .behindWindow
         view.state = .active
         view.material = .menu
+        view.wantsLayer = true
+        view.layer?.cornerRadius = 16
+        view.layer?.cornerCurve = .continuous
+        view.layer?.masksToBounds = true
         return view
     }
     func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
@@ -19,13 +23,9 @@ private struct TranscriptOverlayView: View {
     let modelText: String
     let isModelSpeaking: Bool
     let toolAction: ToolActionToast?
-    let imageRequest: ImageOverlayRequest?
 
     var body: some View {
         VStack(alignment: .center, spacing: 10) {
-            if let imageRequest {
-                CompactImageAboveCaption(request: imageRequest)
-            }
             if !modelText.isEmpty || isModelSpeaking {
                 HStack(alignment: .bottom, spacing: 8) {
                     if !modelText.isEmpty {
@@ -45,7 +45,6 @@ private struct TranscriptOverlayView: View {
                                 .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
                         }
                 }
-                .shadow(color: .black.opacity(0.35), radius: 12, x: 0, y: 6)
                 .animation(.spring(response: 0.38, dampingFraction: 0.82), value: modelText)
             }
             if let toolAction {
@@ -96,34 +95,6 @@ private struct ToolStatusLine: View {
     }
 }
 
-/// Image preview above caption text.
-private struct CompactImageAboveCaption: View {
-    let request: ImageOverlayRequest
-    private let width: CGFloat = 306
-    private let height: CGFloat = 174
-
-    var body: some View {
-        HStack {
-            Spacer(minLength: 0)
-            AsyncImage(url: request.imageURL, transaction: Transaction(animation: nil)) { phase in
-                switch phase {
-                case let .success(image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                case .failure, .empty:
-                    Color.clear
-                @unknown default:
-                    Color.clear
-                }
-            }
-            .frame(width: width, height: height)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            Spacer(minLength: 0)
-        }
-    }
-}
-
 // MARK: - Window Controller
 
 @MainActor
@@ -137,7 +108,7 @@ final class TranscriptOverlayWindowController {
     private weak var gemini: GeminiLiveViewModel?
 
     /// Captured when auto-hide fires. Suppresses re-opening the panel when
-    /// only extras (image/toast) clear while transcript text hasn't changed.
+    /// only transient extras clear while transcript text hasn't changed.
     private var suppressedTranscriptKey: String? = nil
 
     private let panelWidth: CGFloat = 520
@@ -148,9 +119,7 @@ final class TranscriptOverlayWindowController {
     /// close to the fade-only path when `shouldShow` flips false so hide timing feels consistent.
     private enum HideTiming {
         static let debounceAfterLastUpdate: TimeInterval = 0.12
-        static let idleBeforeFade: TimeInterval = 0.22
-        /// Extra idle after the base delay when a Pexels/inline image is shown (still auto-hide, not forever).
-        static let idleExtraWhenImage: TimeInterval = 2.8
+        static let idleBeforeFade: TimeInterval = 1.5
         static let fadeOutDuration: TimeInterval = 0.28
         static let fadeInDuration: TimeInterval = 0.22
     }
@@ -205,11 +174,11 @@ final class TranscriptOverlayWindowController {
     // MARK: - Private
 
     private func apply(_ input: TranscriptOverlayInput) {
-        // Suppress re-opening when only extras (image/toast) cleared and transcript unchanged.
+        // Suppress re-opening when only transient extras cleared and transcript unchanged.
         if panel == nil,
            let suppressed = suppressedTranscriptKey,
            input.transcriptKey == suppressed,
-           input.toolAction == nil, input.imageRequest == nil {
+           input.toolAction == nil {
             return
         }
         suppressedTranscriptKey = nil
@@ -235,8 +204,7 @@ final class TranscriptOverlayWindowController {
         let newView = TranscriptOverlayView(
             modelText: input.subsEnabled ? input.modelText : "",
             isModelSpeaking: input.isModelSpeaking && input.subsEnabled,
-            toolAction: input.toolAction,
-            imageRequest: input.imageRequest
+            toolAction: input.toolAction
         )
 
         // If panel already exists, just update content
@@ -262,7 +230,7 @@ final class TranscriptOverlayWindowController {
         panel.level = .floating
         panel.backgroundColor = .clear
         panel.isOpaque = false
-        panel.hasShadow = false
+        panel.hasShadow = true
         panel.ignoresMouseEvents = true
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         panel.alphaValue = 0
@@ -304,14 +272,12 @@ final class TranscriptOverlayWindowController {
                     panel.orderOut(nil)
                     self?.panel = nil
                     self?.hostingView = nil
-                    self?.gemini?.clearDisplayedImageOverlay()
                 }
             })
         } else {
             panel.orderOut(nil)
             self.panel = nil
             self.hostingView = nil
-            gemini?.clearDisplayedImageOverlay()
         }
     }
 
@@ -337,9 +303,7 @@ final class TranscriptOverlayWindowController {
         hideTask = Task { @MainActor [weak self] in
             guard let self else { return }
             guard self.gemini?.transcriptOverlayAutoHide != false else { return }
-            let hasImage = self.gemini?.overlayInput.imageRequest != nil
-            let idle = HideTiming.idleBeforeFade + (hasImage ? HideTiming.idleExtraWhenImage : 0)
-            let ms = Int(idle * 1000)
+            let ms = Int(HideTiming.idleBeforeFade * 1000)
             try? await Task.sleep(for: .milliseconds(ms))
             guard !Task.isCancelled else { return }
             self.suppressedTranscriptKey = self.gemini?.overlayInput.transcriptKey

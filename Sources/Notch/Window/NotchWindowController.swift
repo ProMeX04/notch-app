@@ -4,24 +4,25 @@ import SwiftUI
 
 @MainActor
 final class NotchWindowController {
-    let playbackViewModel: MusicProbeViewModel
+    let playbackViewModel: MediaProbeViewModel
     let pomodoroViewModel: PomodoroViewModel
     let geminiLiveViewModel: GeminiLiveViewModel
     let shelfViewModel: NotchShelfViewModel
     let learningStatsStore: LearningStatsStore
     let presentationModel: NotchPresentationModel
 
-    private let hostingView: NSHostingView<MusicNotchView>
+    private let hostingView: NSHostingView<MediaNotchView>
     private let window: NotchFloatingPanel
     private var cancellables = Set<AnyCancellable>()
     private let transcriptOverlay = TranscriptOverlayWindowController()
     private let liveChatInputPanel = GeminiLiveChatInputWindowController()
     private let geminiSecretsFloatingPanel = GeminiSecretsFloatingPanelController()
+    private let geminiExecApprovalPanel = GeminiExecApprovalPanelController()
 
     private(set) var isVisible = true
 
     init(
-        playbackViewModel: MusicProbeViewModel,
+        playbackViewModel: MediaProbeViewModel,
         pomodoroViewModel: PomodoroViewModel,
         geminiLiveViewModel: GeminiLiveViewModel,
         shelfViewModel: NotchShelfViewModel,
@@ -48,7 +49,7 @@ final class NotchWindowController {
 
         self.window = window
         self.hostingView = NSHostingView(
-            rootView: MusicNotchView(
+            rootView: MediaNotchView(
                 playback: playbackViewModel,
                 pomodoro: pomodoroViewModel,
                 gemini: geminiLiveViewModel,
@@ -84,6 +85,8 @@ final class NotchWindowController {
         liveChatInputPanel.setPreferredScreen(initialScreen)
         liveChatInputPanel.observe(gemini: geminiLiveViewModel)
         geminiSecretsFloatingPanel.setPreferredScreen(initialScreen)
+        geminiExecApprovalPanel.setPreferredScreen(initialScreen)
+        geminiExecApprovalPanel.observe(gemini: geminiLiveViewModel)
         geminiLiveViewModel.onPresentSecretsPanel = { [weak self] in
             self?.presentSecretsFloatingPanel()
         }
@@ -130,7 +133,9 @@ final class NotchWindowController {
         transcriptOverlay.stopObserving()
         liveChatInputPanel.stopObserving()
         geminiSecretsFloatingPanel.shutdown()
+        geminiExecApprovalPanel.stopObserving()
         geminiLiveViewModel.onPresentSecretsPanel = nil
+        geminiLiveViewModel.onExecApprovalAttentionRequested = nil
         shelfViewModel.shutdown()
         playbackViewModel.shutdown()
         pomodoroViewModel.shutdown()
@@ -138,8 +143,8 @@ final class NotchWindowController {
         cancellables.removeAll()
     }
 
-    func showMusicPanel() {
-        showPanel(.music)
+    func showMediaPanel() {
+        showPanel(.media)
     }
 
     func showPomodoroPanel() {
@@ -164,7 +169,7 @@ final class NotchWindowController {
         showPanel(.talk)
     }
 
-    /// Floating panels for API keys (status bar / tools) — not in the notch.
+    /// Floating panel for API keys — not in the notch.
     func presentSecretsFloatingPanel() {
         NSApp.activate(ignoringOtherApps: true)
         geminiSecretsFloatingPanel.present(gemini: geminiLiveViewModel)
@@ -175,10 +180,7 @@ final class NotchWindowController {
     }
 
     func presentExecApproval() {
-        show()
-        presentationModel.selectPanel(.talk, reveal: true)
-        NSApp.activate(ignoringOtherApps: true)
-        window.orderFrontRegardless()
+        geminiExecApprovalPanel.present(gemini: geminiLiveViewModel)
     }
 
     func showShelfPanel() {
@@ -245,19 +247,7 @@ final class NotchWindowController {
         geminiLiveViewModel.stopScreenSharing()
     }
 
-    func showImageOverlay(query: String, caption: String?, orientation: String?) {
-        geminiLiveViewModel.showDisplayedImageOverlay(query: query, caption: caption, orientation: orientation)
-    }
-
-    func showImageOverlay(url: URL, query: String?, caption: String?) {
-        geminiLiveViewModel.showDisplayedImageOverlay(url: url, query: query, caption: caption)
-    }
-
-    func clearImageOverlay() {
-        geminiLiveViewModel.clearDisplayedImageOverlay()
-    }
-
-    func configurePomodoro(duration: String?, breakDuration: String?) throws {
+    func configurePomodoro(duration: String?, breakDuration: String?, longBreakDuration: String? = nil) throws {
         let focusSeconds = try resolvedPomodoroSeconds(
             from: duration,
             fallbackSeconds: pomodoroViewModel.focusDurationSeconds,
@@ -268,11 +258,17 @@ final class NotchWindowController {
             fallbackSeconds: pomodoroViewModel.breakDurationSeconds,
             parameterName: "break"
         )
+        let longBreakSeconds = try resolvedPomodoroSeconds(
+            from: longBreakDuration,
+            fallbackSeconds: pomodoroViewModel.longBreakDurationSeconds,
+            parameterName: "long-break"
+        )
         pomodoroViewModel.updateCurrentDurations(focusSeconds: focusSeconds, breakSeconds: breakSeconds)
+        pomodoroViewModel.updateLongBreakDuration(seconds: longBreakSeconds)
     }
 
-    func startPomodoro(duration: String? = nil, breakDuration: String? = nil) throws {
-        try configurePomodoro(duration: duration, breakDuration: breakDuration)
+    func startPomodoro(duration: String? = nil, breakDuration: String? = nil, longBreakDuration: String? = nil) throws {
+        try configurePomodoro(duration: duration, breakDuration: breakDuration, longBreakDuration: longBreakDuration)
         try performPomodoroAction(action: .start)
     }
 
@@ -290,6 +286,60 @@ final class NotchWindowController {
 
     func skipPomodoroPhase() {
         pomodoroViewModel.skipPhase()
+    }
+
+    func setPomodoroPhase(_ rawPhase: String) throws {
+        let targetPhase = try resolvedPomodoroPhase(from: rawPhase)
+        presentationModel.selectPanel(.focus, reveal: true)
+        pomodoroViewModel.setPhase(targetPhase)
+    }
+
+    func selectPomodoroPreset(_ rawPreset: String) throws {
+        let preset = try resolvedPomodoroPreset(from: rawPreset)
+        presentationModel.selectPanel(.focus, reveal: true)
+        pomodoroViewModel.selectPreset(preset)
+    }
+
+    func setPomodoroLongBreak(duration: String) throws {
+        let seconds = try resolvedPomodoroSeconds(
+            from: duration,
+            fallbackSeconds: pomodoroViewModel.longBreakDurationSeconds,
+            parameterName: "duration"
+        )
+        presentationModel.selectPanel(.focus, reveal: true)
+        pomodoroViewModel.updateLongBreakDuration(seconds: seconds)
+    }
+
+    func setPomodoroCycle(_ rawCount: String) throws {
+        guard let count = Int(rawCount.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            throw NotchFocusCommandError.invalidParameter("count", rawCount)
+        }
+        presentationModel.selectPanel(.focus, reveal: true)
+        pomodoroViewModel.updateSessionsBeforeLongBreak(count: count)
+    }
+
+    func setPomodoroAutoBreaks(_ mode: FocusToggleMode) {
+        presentationModel.selectPanel(.focus, reveal: true)
+        switch mode {
+        case .on:
+            pomodoroViewModel.autoStartBreaks = true
+        case .off:
+            pomodoroViewModel.autoStartBreaks = false
+        case .toggle:
+            pomodoroViewModel.autoStartBreaks.toggle()
+        }
+    }
+
+    func setPomodoroAutoPomodoros(_ mode: FocusToggleMode) {
+        presentationModel.selectPanel(.focus, reveal: true)
+        switch mode {
+        case .on:
+            pomodoroViewModel.autoStartPomodoros = true
+        case .off:
+            pomodoroViewModel.autoStartPomodoros = false
+        case .toggle:
+            pomodoroViewModel.autoStartPomodoros.toggle()
+        }
     }
 
     func playMedia() {
@@ -373,6 +423,40 @@ final class NotchWindowController {
         }
         return seconds
     }
+
+    private func resolvedPomodoroPhase(from raw: String) throws -> PomodoroPhase {
+        switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "focus":
+            return .focus
+        case "short-break", "shortbreak", "short_break", "break":
+            return .shortBreak
+        case "long-break", "longbreak", "long_break":
+            return .longBreak
+        default:
+            throw NotchFocusCommandError.invalidParameter("phase", raw)
+        }
+    }
+
+    private func resolvedPomodoroPreset(from raw: String) throws -> PomodoroPreset {
+        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let preset = pomodoroViewModel.availablePresets.first {
+            $0.id.lowercased() == normalized ||
+            $0.title.lowercased() == normalized ||
+            $0.title.lowercased().replacingOccurrences(of: " ", with: "-") == normalized
+        }
+
+        guard let preset else {
+            throw NotchFocusCommandError.invalidParameter("preset", raw)
+        }
+
+        return preset
+    }
+}
+
+enum FocusToggleMode {
+    case on
+    case off
+    case toggle
 }
 
 private enum FocusCommandAction {

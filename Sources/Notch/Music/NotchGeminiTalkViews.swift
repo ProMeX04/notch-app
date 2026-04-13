@@ -100,6 +100,8 @@ private func formattedAgentDisplayName(_ raw: String) -> String {
 enum GeminiPromptEditorMode: Equatable {
     case create
     case edit(String)
+    case user
+    case memory
 }
 
 private enum GeminiSetupViewMode: Equatable {
@@ -118,6 +120,7 @@ private enum GeminiAgentSettingsTab: String, CaseIterable, Identifiable {
 struct GeminiTalkPanelView: View {
     @ObservedObject var gemini: GeminiLiveViewModel
     @ObservedObject var headerAccessoryController: NotchHeaderAccessoryController
+    @ObservedObject var presentationModel: NotchPresentationModel
     
     @AppStorage("app_language") private var appLanguage: String = "English"
     @AppStorage(NotchAccentColorOption.storageKey) private var accentColorID: String = NotchAccentColorOption.defaultOption.rawValue
@@ -261,10 +264,7 @@ struct GeminiTalkPanelView: View {
     }
 
     private var isEditingExistingPrompt: Bool {
-        if case .edit = promptEditorMode {
-            return true
-        }
-        return false
+        promptEditorMode != nil && promptEditorMode != .create
     }
 
     private func beginCreatingAgent() {
@@ -297,16 +297,37 @@ struct GeminiTalkPanelView: View {
         promptDraftContent = ""
     }
 
-    private func savePromptDraft() {
-        let promptID: String?
-        if case let .edit(id) = promptEditorMode {
-            promptID = id
-        } else {
-            promptID = nil
-        }
+    private func beginEditingUserProfile() {
+        promptEditorMode = .user
+        promptDraftTitle = Localization.get("User Profile (USER.md)", lang: appLanguage)
+        promptDraftContent = gemini.userProfileContent
+    }
 
-        guard gemini.saveSystemPrompt(id: promptID, title: promptDraftTitle, content: promptDraftContent) else {
-            return
+    private func beginEditingMemory() {
+        promptEditorMode = .memory
+        promptDraftTitle = Localization.get("Memory (MEMORY.md)", lang: appLanguage)
+        promptDraftContent = gemini.memoryContent
+    }
+
+    private func savePromptDraft() {
+        guard let mode = promptEditorMode else { return }
+
+        switch mode {
+        case .user:
+            gemini.saveUserProfile(promptDraftContent)
+        case .memory:
+            gemini.saveMemory(promptDraftContent)
+        case .create, .edit:
+            let promptID: String?
+            if case let .edit(id) = mode {
+                promptID = id
+            } else {
+                promptID = nil
+            }
+
+            guard gemini.saveSystemPrompt(id: promptID, title: promptDraftTitle, content: promptDraftContent) else {
+                return
+            }
         }
 
         cancelPromptEditing()
@@ -347,24 +368,7 @@ struct GeminiTalkPanelView: View {
 
     private func refreshHeaderAccessory() {
         if isPromptEditorPresented {
-            headerAccessoryController.leadingActions = [
-                NotchHeaderAction(
-                    id: "talk-back",
-                    title: Localization.get("Back", lang: appLanguage),
-                    icon: "chevron.left",
-                    style: .secondary,
-                    isDisabled: false,
-                    action: cancelPromptEditing
-                ),
-                NotchHeaderAction(
-                    id: "talk-save-prompt",
-                    title: Localization.get(isEditingExistingPrompt ? "Save" : "Add", lang: appLanguage),
-                    icon: isEditingExistingPrompt ? "square.and.arrow.down" : "plus",
-                    style: .primary,
-                    isDisabled: false,
-                    action: savePromptDraft
-                )
-            ]
+            headerAccessoryController.clear()
             return
         }
 
@@ -381,13 +385,13 @@ struct GeminiTalkPanelView: View {
         headerAccessoryController.clear()
     }
 
-    /// No API keys are configured in the notch — use the floating panels (menu bar or prompts below).
+    /// No API keys are configured in the notch — use the floating panel or prompts below.
     private var noGeminiKeySetupView: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(Localization.get("Gemini Live needs a Gemini API key.", lang: appLanguage))
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.88))
-            Text(Localization.get("Keys are not entered in the notch. Use the menu bar or Manage keys below.", lang: appLanguage))
+            Text(Localization.get("Keys are not entered in the notch. Use Manage keys below.", lang: appLanguage))
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.white.opacity(0.52))
                 .fixedSize(horizontal: false, vertical: true)
@@ -419,23 +423,13 @@ struct GeminiTalkPanelView: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            if let approval = gemini.currentPendingExecApproval {
-                GeminiExecApprovalCard(
-                    request: approval,
-                    queueCount: gemini.pendingExecApprovals.count,
-                    onApproveOnce: { gemini.approveCurrentExecApprovalOnce() },
-                    onApproveExact: { gemini.approveCurrentExecApprovalExact() },
-                    onApproveFamily: { gemini.approveCurrentExecApprovalFamily() },
-                    onDeny: { gemini.denyCurrentExecApproval() }
-                )
-            }
-
             Group {
                 if isPromptEditorPresented {
                     GeminiPromptEditorCard(
                         title: $promptDraftTitle,
                         content: $promptDraftContent,
-                        isEditing: isEditingExistingPrompt
+                        isEditing: isEditingExistingPrompt,
+                        onDone: savePromptDraft
                     )
                 } else if gemini.connectionState == .connected {
                     VStack(alignment: .leading, spacing: 8) {
@@ -476,10 +470,22 @@ struct GeminiTalkPanelView: View {
                             }
                         }
 
-                        HStack(alignment: .center, spacing: 6) {
-                            GeminiInputModeMenu(gemini: gemini)
-                            GeminiScreenShareMenu(gemini: gemini)
-                            GeminiTranscriptModeToggle(gemini: gemini)
+                        if let toolAction = gemini.lastToolAction {
+                            HStack(spacing: 7) {
+                                Image(systemName: toolAction.icon)
+                                    .font(.system(size: 11, weight: .semibold))
+                                Text(toolAction.label)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .lineLimit(1)
+                            }
+                            .foregroundStyle(.white.opacity(0.7))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+
+                            HStack(alignment: .center, spacing: 6) {
+                            GeminiInputModeMenu(gemini: gemini, presentationModel: presentationModel)
+                            GeminiScreenShareMenu(gemini: gemini, presentationModel: presentationModel)
+                            GeminiTranscriptModeToggle(gemini: gemini, presentationModel: presentationModel)
                             GeminiControlToggle(
                                 icon: gemini.showLiveChatInput ? "keyboard.fill" : "keyboard",
                                 label: Localization.get("Type", lang: appLanguage),
@@ -492,7 +498,6 @@ struct GeminiTalkPanelView: View {
                                     set: { gemini.setOutputVolume($0) }
                                 )
                             )
-                            GeminiTokenUsageRing(gemini: gemini)
 
                             Spacer()
 
@@ -538,108 +543,7 @@ struct GeminiTalkPanelView: View {
                                 )
                                 .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity), removal: .move(edge: .leading).combined(with: .opacity)))
                             case .agentSettings:
-                                HStack(alignment: .top, spacing: 16) {
-                                    // Sidebar
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        ForEach(GeminiAgentSettingsTab.allCases) { tab in
-                                            Button {
-                                                settingsTab = tab
-                                            } label: {
-                                                Text(Localization.get(tab.rawValue, lang: appLanguage))
-                                                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                                                    .foregroundStyle(settingsTab == tab ? .black.opacity(0.85) : .white.opacity(0.85))
-                                                    .padding(.horizontal, 12)
-                                                    .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
-                                                    .background(
-                                                        Group {
-                                                            if settingsTab == tab {
-                                                                Capsule()
-                                                                    .fill(themeAccent)
-                                                                    .shadow(color: .black.opacity(0.1), radius: 1, x: 0, y: 1)
-                                                            } else {
-                                                                Capsule().fill(Color.white.opacity(0.1))
-                                                            }
-                                                        }
-                                                    )
-                                            }
-                                            .buttonStyle(.plain)
-                                        }
-
-                                        Button {
-                                            setupViewMode = .home
-                                        } label: {
-                                            Text(Localization.get("Done", lang: appLanguage))
-                                                .font(.system(size: 13, weight: .bold, design: .rounded))
-                                                .foregroundStyle(.white)
-                                                .frame(maxWidth: .infinity, minHeight: 28, alignment: .center)
-                                                .background(
-                                                    Capsule()
-                                                        .fill(themeAccent)
-                                                        .shadow(color: .black.opacity(0.1), radius: 1, x: 0, y: 1)
-                                                )
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                    .frame(width: 140, alignment: .top)
-
-                                    // Content
-                                    ScrollView(showsIndicators: false) {
-                                        VStack(alignment: .leading, spacing: 16) {
-                                            switch settingsTab {
-                                            case .prompt:
-                                                VStack(alignment: .leading, spacing: 16) {
-                                                    GeminiAgentSummaryCard(
-                                                        statusColor: statusColor,
-                                                        name: $agentNameDraft,
-                                                        avatarSymbolName: selectedAgentAvatarSymbolName,
-                                                        avatarImageURL: selectedAgentAvatarImageURL,
-                                                        nameFieldFocus: $isAgentNameFieldFocused,
-                                                        onSubmitName: saveAgentNameDraft,
-                                                        onChooseAvatar: { gemini.chooseSelectedSystemPromptAvatarImage() },
-                                                        onClearAvatar: { gemini.clearSelectedSystemPromptAvatarImage() }
-                                                    )
-                                                    
-                                                    HStack(spacing: 8) {
-                                                        GeminiPillButton(
-                                                            title: Localization.get("System Prompt", lang: appLanguage),
-                                                            icon: "pencil",
-                                                            tint: themeAccent
-                                                        ) {
-                                                            beginEditingSelectedPrompt()
-                                                        }
-
-                                                        GeminiPillButton(
-                                                            title: Localization.get("Delete", lang: appLanguage),
-                                                            icon: "trash",
-                                                            tint: Color(nsColor: .systemRed).opacity(0.8),
-                                                            isDisabled: !gemini.canDeleteSelectedSystemPrompt
-                                                        ) {
-                                                            requestDeleteSelectedPrompt()
-                                                        }
-                                                    }
-                                                }
-
-                                            case .tools:
-                                                GeminiToolsPicker(
-                                                    selection: $gemini.enabledTools,
-                                                    isDisabled: !gemini.canManageSkills
-                                                )
-
-                                            case .skills:
-                                                GeminiSkillsPicker(
-                                                    installedSkills: gemini.installedSkills,
-                                                    userSkillNames: Set(gemini.userInstalledSkills.map(\.metadata.name)),
-                                                    selection: $gemini.enabledSkillNames,
-                                                    isDisabled: !gemini.canManageSkills,
-                                                    onImport: { gemini.importSkill() },
-                                                    onDeleteName: { gemini.deleteSkill(named: $0) }
-                                                )
-                                            }
-                                        }
-                                        .padding(.trailing, 4)
-                                    }
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                                }
+                                agentSettingsView
                             }
                         } else {
                             noGeminiKeySetupView
@@ -659,10 +563,10 @@ struct GeminiTalkPanelView: View {
                                 .multilineTextAlignment(.center)
                         }
                     }
-                    .padding(.bottom, 10)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
             }
+            .padding(.bottom, 10)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, minHeight: 116, alignment: .topLeading)
         .onAppear(perform: syncAgentNameDraft)
@@ -698,6 +602,159 @@ struct GeminiTalkPanelView: View {
             headerRefreshTask?.cancel()
             headerAccessoryController.clear()
         }
+    }
+
+    @ViewBuilder
+    private var agentSettingsView: some View {
+        let vm = gemini
+        HStack(alignment: .top, spacing: 16) {
+            // Sidebar
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(GeminiAgentSettingsTab.allCases) { tab in
+                    Button {
+                        settingsTab = tab
+                    } label: {
+                        Text(Localization.get(tab.rawValue, lang: appLanguage))
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .foregroundStyle(settingsTab == tab ? .black.opacity(0.85) : .white.opacity(0.85))
+                            .padding(.horizontal, 12)
+                            .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
+                            .background(
+                                Group {
+                                    if settingsTab == tab {
+                                        Capsule()
+                                            .fill(themeAccent)
+                                            .shadow(color: .black.opacity(0.1), radius: 1, x: 0, y: 1)
+                                    } else {
+                                        Capsule().fill(Color.white.opacity(0.1))
+                                    }
+                                }
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Button {
+                    setupViewMode = .home
+                } label: {
+                    Text(Localization.get("Done", lang: appLanguage))
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, minHeight: 28, alignment: .center)
+                        .background(
+                            Capsule()
+                                .fill(themeAccent)
+                                .shadow(color: .black.opacity(0.1), radius: 1, x: 0, y: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(width: 140, alignment: .top)
+
+            // Content
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 8) {
+                    switch settingsTab {
+                    case .prompt:
+                        VStack(alignment: .leading, spacing: 8) {
+                            GeminiAgentSummaryCard(
+                                statusColor: statusColor,
+                                name: $agentNameDraft,
+                                avatarSymbolName: selectedAgentAvatarSymbolName,
+                                avatarImageURL: selectedAgentAvatarImageURL,
+                                nameFieldFocus: $isAgentNameFieldFocused,
+                                onSubmitName: saveAgentNameDraft,
+                                onChooseAvatar: { vm.chooseSelectedSystemPromptAvatarImage() },
+                                onClearAvatar: { vm.clearSelectedSystemPromptAvatarImage() }
+                            )
+                            
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(spacing: 8) {
+                                    GeminiPillButton(
+                                        title: Localization.get("System Prompt", lang: appLanguage),
+                                        icon: "pencil",
+                                        tint: themeAccent
+                                    ) {
+                                        beginEditingSelectedPrompt()
+                                    }
+
+                                    GeminiPillButton(
+                                        title: Localization.get("User Profile", lang: appLanguage),
+                                        icon: "person.text.rectangle",
+                                        tint: themeAccent
+                                    ) {
+                                        beginEditingUserProfile()
+                                    }
+                                }
+
+                                HStack(spacing: 8) {
+                                    GeminiPillButton(
+                                        title: Localization.get("Memory", lang: appLanguage),
+                                        icon: "brain",
+                                        tint: themeAccent
+                                    ) {
+                                        beginEditingMemory()
+                                    }
+
+                                    GeminiPillButton(
+                                        title: Localization.get("Delete", lang: appLanguage),
+                                        icon: "trash",
+                                        tint: Color(nsColor: .systemRed).opacity(0.8),
+                                        isDisabled: !vm.canDeleteSelectedSystemPrompt
+                                    ) {
+                                        requestDeleteSelectedPrompt()
+                                    }
+                                }
+                            }
+                        }
+
+                    case .tools:
+                        GeminiToolsPicker(
+                            selection: $gemini.enabledTools,
+                            isDisabled: !vm.canManageSkills
+                        )
+
+                    case .skills:
+                        GeminiSkillsPicker(
+                            installedSkills: vm.installedSkills,
+                            userSkillNames: Set(vm.userInstalledSkills.map(\.metadata.name)),
+                            selection: $gemini.enabledSkillNames,
+                            isDisabled: !vm.canManageSkills,
+                            onImport: { vm.importSkill() },
+                            onDeleteName: { vm.deleteSkill(named: $0) }
+                        )
+                    }
+                }
+                .padding(.trailing, 4)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var agentSelectionView: some View {
+        GeminiAgentSelectionView(
+            prompts: gemini.systemPromptPresets.sorted { a, b in
+                let dateA = a.lastUsedAt ?? Date.distantPast
+                let dateB = b.lastUsedAt ?? Date.distantPast
+                if dateA != dateB {
+                    return dateA > dateB
+                }
+                return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+            },
+            selectedID: gemini.selectedSystemPromptID,
+            statusColor: statusColor,
+            onSelect: { id in
+                gemini.selectSystemPrompt(id: id)
+                setupViewMode = .home
+            },
+            onCreate: {
+                beginCreatingAgent()
+            },
+            onDone: {
+                setupViewMode = .home
+            }
+        )
+        .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity), removal: .move(edge: .leading).combined(with: .opacity)))
     }
 }
 
@@ -1022,11 +1079,11 @@ struct GeminiAgentSummaryCard: View {
                     GeminiAgentAvatarArtwork(
                         imageURL: avatarImageURL,
                         symbolName: avatarSymbolName,
-                        symbolFont: .system(size: 20, weight: .medium),
-                        size: 48
+                        symbolFont: .system(size: 16, weight: .medium),
+                        size: 36
                     )
                 }
-                .frame(width: 64, height: 64)
+                .frame(width: 50, height: 50)
                 .shadow(color: .black.opacity(0.3), radius: 10, y: 4)
                 .contentShape(Circle())
             }
@@ -1034,10 +1091,10 @@ struct GeminiAgentSummaryCard: View {
 
             TextField(Localization.get("Name", lang: appLanguage), text: $name)
                 .textFieldStyle(.plain)
-                .font(.system(size: 18, weight: .bold))
+                .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(.white.opacity(0.95))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
                 .background(Color.white.opacity(0.08))
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay {
@@ -1071,20 +1128,29 @@ struct GeminiPromptEditorCard: View {
     @Binding var title: String
     @Binding var content: String
     let isEditing: Bool
+    var showTitle: Bool = true
+    let onDone: () -> Void
+    
+    @AppStorage("app_language") private var appLanguage: String = "English"
+    @AppStorage(NotchAccentColorOption.storageKey) private var accentColorID: String = NotchAccentColorOption.defaultOption.rawValue
+
+    private var themeAccent: Color {
+        themedNotchAccentColor(from: accentColorID)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             if !isEditing {
-                TextField("Agent name (optional)", text: $title)
+                TextField(Localization.get("Agent name (optional)", lang: appLanguage), text: $title)
                     .textFieldStyle(.plain)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.95))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
                     .background(Color.white.opacity(0.08))
-                    .cornerRadius(9)
+                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 9)
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
                             .stroke(Color.white.opacity(0.12), lineWidth: 1)
                     )
             }
@@ -1103,11 +1169,83 @@ struct GeminiPromptEditorCard: View {
                     .padding(.vertical, 4)
                     .scrollContentBackground(.hidden)
                     .background(Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .frame(minHeight: 72)
+
+            Button(action: onDone) {
+                Text(Localization.get("Done", lang: appLanguage))
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(.black.opacity(0.85))
+                    .frame(maxWidth: .infinity, minHeight: 28)
+                    .background(
+                        Capsule()
+                            .fill(themeAccent)
+                            .shadow(color: .black.opacity(0.1), radius: 1, x: 0, y: 1)
+                    )
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 2)
         }
         .padding(.horizontal, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct GeminiFileEditorCard: View {
+    let title: String
+    let buttonTitle: String
+    @Binding var text: String
+    let onSave: () -> Void
+
+    @AppStorage(NotchAccentColorOption.storageKey) private var accentColorID: String = NotchAccentColorOption.defaultOption.rawValue
+
+    private var themeAccent: Color {
+        themedNotchAccentColor(from: accentColorID)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.white.opacity(0.9))
+            
+            GeminiFileTextEditor(text: $text)
+            
+            GeminiPillButton(
+                title: buttonTitle,
+                icon: "square.and.arrow.down",
+                tint: themeAccent
+            ) {
+                onSave()
+            }
+        }
+    }
+}
+
+struct GeminiFileTextEditor: View {
+    @Binding var text: String
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.white.opacity(0.08))
+
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+
+            TextEditor(text: $text)
+                .font(.system(size: 11, weight: .regular))
+                .foregroundStyle(.white.opacity(0.9))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .scrollContentBackground(.hidden)
+                .background(Color.clear)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .frame(minHeight: 180)
     }
 }
 
@@ -1220,64 +1358,11 @@ struct GeminiControlToggle: View {
     }
 }
 
-private struct GeminiTokenUsageRing: View {
-    @ObservedObject var gemini: GeminiLiveViewModel
-    @AppStorage("app_language") private var appLanguage: String = "English"
-
-    private var progress: Double {
-        gemini.tokenUsageProgress
-    }
-
-    private var ringTint: Color {
-        switch progress {
-        case 0.85...:
-            return Color(nsColor: .systemRed)
-        case 0.65...:
-            return Color(nsColor: .systemOrange)
-        default:
-            return Color(nsColor: .systemYellow)
-        }
-    }
-
-    private var helperText: String {
-        let contextLabel = Localization.get("Context", lang: appLanguage)
-        return "\(contextLabel): \(gemini.tokenUsageSummaryText)"
-    }
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .stroke(Color.white.opacity(0.12), style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
-
-            Circle()
-                .trim(from: 0, to: progress)
-                .stroke(ringTint, style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-
-            Text("\(gemini.tokenUsagePercent)%")
-                .font(.system(size: 7.5, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .foregroundStyle(.white.opacity(0.9))
-                .lineLimit(1)
-                .minimumScaleFactor(0.68)
-                .padding(.horizontal, 3)
-        }
-        .frame(width: 30, height: 30)
-        .background(
-            Circle()
-                .fill(Color.white.opacity(0.04))
-        )
-        .overlay {
-            Circle()
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-        }
-        .help(helperText)
-        .accessibilityLabel(helperText)
-    }
-}
 
 struct GeminiTranscriptModeToggle: View {
     @ObservedObject var gemini: GeminiLiveViewModel
+    @ObservedObject var presentationModel: NotchPresentationModel
+    @State private var isPickerOpen = false
     @AppStorage("app_language") private var appLanguage: String = "English"
 
     private var mode: GeminiLiveViewModel.TranscriptOverlayMode {
@@ -1289,14 +1374,7 @@ struct GeminiTranscriptModeToggle: View {
     }
 
     private var label: String {
-        switch mode {
-        case .hidden:
-            return Localization.get("Off", lang: appLanguage)
-        case .autoHide:
-            return Localization.get("Auto Hide", lang: appLanguage)
-        case .pinned:
-            return Localization.get("Pin", lang: appLanguage)
-        }
+        Localization.get("Subs", lang: appLanguage)
     }
 
     private var isActive: Bool {
@@ -1305,9 +1383,49 @@ struct GeminiTranscriptModeToggle: View {
 
     var body: some View {
         Button {
-            gemini.cycleTranscriptOverlayMode()
+            isPickerOpen.toggle()
         } label: {
             GeminiControlPill(icon: icon, label: label, isActive: isActive)
+        }
+        .buttonStyle(.plain)
+        .fixedSize(horizontal: true, vertical: false)
+        .popover(isPresented: $isPickerOpen, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 0) {
+                transcriptRow(Localization.get("Auto Hide", lang: appLanguage)) {
+                    gemini.showTranscriptOverlay = true
+                    gemini.transcriptOverlayAutoHide = true
+                    isPickerOpen = false
+                }
+                transcriptRow(Localization.get("Pin", lang: appLanguage)) {
+                    gemini.showTranscriptOverlay = true
+                    gemini.transcriptOverlayAutoHide = false
+                    isPickerOpen = false
+                }
+                Divider()
+                    .padding(.vertical, 4)
+                transcriptRow(Localization.get("Off", lang: appLanguage), foreground: Color(nsColor: .systemRed)) {
+                    gemini.setTranscriptOverlayEnabled(false)
+                    isPickerOpen = false
+                }
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 6)
+            .frame(minWidth: 180)
+        }
+        .onChange(of: isPickerOpen) { _, isOpen in
+            presentationModel.setAutoCollapseSuppressed(isOpen, reason: .talkPopover)
+        }
+    }
+
+    private func transcriptRow(_ title: String, foreground: Color = .primary, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 13))
+                .foregroundStyle(foreground)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -1315,6 +1433,8 @@ struct GeminiTranscriptModeToggle: View {
 
 struct GeminiInputModeMenu: View {
     @ObservedObject var gemini: GeminiLiveViewModel
+    @ObservedObject var presentationModel: NotchPresentationModel
+    @State private var isPickerOpen = false
     @AppStorage("app_language") private var appLanguage: String = "English"
 
     private var icon: String {
@@ -1329,7 +1449,7 @@ struct GeminiInputModeMenu: View {
     private var title: String {
         switch gemini.inputMode {
         case .openMic:
-            return Localization.get("Open Mic", lang: appLanguage)
+            return Localization.get("Mic", lang: appLanguage)
         case .pushToTalk:
             if gemini.connectionState == .connected || gemini.connectionState == .connecting {
                 return gemini.holdToTalkShortcut.displayString
@@ -1338,21 +1458,60 @@ struct GeminiInputModeMenu: View {
         }
     }
 
-    var body: some View {
-        Menu {
-            Button {
-                gemini.setInputMode(.openMic)
-            } label: {
-                Label(Localization.get("Open Mic", lang: appLanguage), systemImage: gemini.inputMode == .openMic ? "checkmark" : "mic.fill")
-            }
+    private var isActive: Bool {
+        switch gemini.inputMode {
+        case .openMic:
+            return gemini.isMicrophoneEnabled
+        case .pushToTalk:
+            return true
+        }
+    }
 
-            Button {
-                gemini.setInputMode(.pushToTalk)
-            } label: {
-                Label(Localization.get("Push to Talk", lang: appLanguage), systemImage: gemini.inputMode == .pushToTalk ? "checkmark" : "hand.tap.fill")
-            }
+    var body: some View {
+        Button {
+            isPickerOpen.toggle()
         } label: {
-            GeminiControlPill(icon: icon, label: title, isActive: true)
+            GeminiControlPill(icon: icon, label: title, isActive: isActive)
+        }
+        .buttonStyle(.plain)
+        .fixedSize(horizontal: true, vertical: false)
+        .popover(isPresented: $isPickerOpen, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 0) {
+                inputModeRow(Localization.get("Open Mic", lang: appLanguage)) {
+                    gemini.setInputMode(.openMic)
+                    gemini.setOpenMicrophoneEnabled(true)
+                    isPickerOpen = false
+                }
+                inputModeRow(Localization.get("Push to Talk", lang: appLanguage)) {
+                    gemini.setInputMode(.pushToTalk)
+                    isPickerOpen = false
+                }
+                Divider()
+                    .padding(.vertical, 4)
+                inputModeRow(Localization.get("Mute Mic", lang: appLanguage), foreground: Color(nsColor: .systemRed)) {
+                    gemini.setInputMode(.openMic)
+                    gemini.setOpenMicrophoneEnabled(false)
+                    isPickerOpen = false
+                }
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 6)
+            .frame(minWidth: 180)
+        }
+        .onChange(of: isPickerOpen) { _, isOpen in
+            presentationModel.setAutoCollapseSuppressed(isOpen, reason: .talkPopover)
+        }
+    }
+
+    private func inputModeRow(_ title: String, foreground: Color = .primary, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 13))
+                .foregroundStyle(foreground)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -1360,6 +1519,7 @@ struct GeminiInputModeMenu: View {
 
 struct GeminiScreenShareMenu: View {
     @ObservedObject var gemini: GeminiLiveViewModel
+    @ObservedObject var presentationModel: NotchPresentationModel
     @State private var isPickerOpen = false
     @AppStorage("app_language") private var appLanguage: String = "English"
 
@@ -1399,6 +1559,9 @@ struct GeminiScreenShareMenu: View {
             .padding(.horizontal, 4)
             .padding(.vertical, 6)
             .frame(minWidth: 200)
+        }
+        .onChange(of: isPickerOpen) { _, isOpen in
+            presentationModel.setAutoCollapseSuppressed(isOpen, reason: .talkPopover)
         }
     }
 
@@ -1636,8 +1799,9 @@ struct GeminiPillButton: View {
                     .minimumScaleFactor(0.78)
             }
             .foregroundStyle(.black.opacity(0.85))
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, minHeight: 30)
+            .padding(.horizontal, 10)
+            .padding(.vertical, GeminiPanelControlMetrics.vPad)
+            .frame(maxWidth: .infinity, minHeight: GeminiPanelControlMetrics.minHeight)
             .background(
                 Capsule()
                     .fill(tint)

@@ -2,14 +2,19 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 private enum CompactActivity: String {
-    case music
+    case media
     case talk
     case pomodoro
     case idle
 }
 
-struct MusicNotchView: View {
-    @ObservedObject var playback: MusicProbeViewModel
+private struct CompactActivityCandidate {
+    let activity: CompactActivity
+    let priority: Int
+}
+
+struct MediaNotchView: View {
+    @ObservedObject var playback: MediaProbeViewModel
     @ObservedObject var pomodoro: PomodoroViewModel
     @ObservedObject var gemini: GeminiLiveViewModel
     @ObservedObject var shelf: NotchShelfViewModel
@@ -38,19 +43,33 @@ struct MusicNotchView: View {
     }
 
     private var compactActivity: CompactActivity {
-        if presentationModel.selectedPanel == .talk, gemini.showCompactIndicator {
-            return .talk
+        compactActivityCandidates
+            .max(by: { $0.priority < $1.priority })?
+            .activity ?? .idle
+    }
+
+    private var compactActivityCandidates: [CompactActivityCandidate] {
+        var candidates: [CompactActivityCandidate] = []
+
+        if pomodoro.isRunning {
+            candidates.append(.init(activity: .pomodoro, priority: 400))
+        } else if pomodoro.hasActiveSession {
+            let pausedPomodoroPriority = presentationModel.selectedPanel == .focus ? 350 : 100
+            candidates.append(.init(activity: .pomodoro, priority: pausedPomodoroPriority))
         }
 
-        if pomodoro.showCompactIndicator {
-            return .pomodoro
+        if gemini.showCompactIndicator {
+            let talkPriority = presentationModel.selectedPanel == .talk ? 320 : 300
+            candidates.append(.init(activity: .talk, priority: talkPriority))
         }
 
         if playback.showCompactLiveActivity {
-            return .music
+            let musicPriority = presentationModel.selectedPanel == .media ? 220 : 200
+            candidates.append(.init(activity: .media, priority: musicPriority))
         }
 
-        return .idle
+        candidates.append(.init(activity: .idle, priority: 0))
+        return candidates
     }
 
     private var currentBodyWidth: CGFloat {
@@ -65,7 +84,7 @@ struct MusicNotchView: View {
         }
 
         if compactActivity == .pomodoro {
-            return baseWidth + 88 + (NotchMetrics.closedCornerRadius.bottom * 2)
+            return baseWidth + 122 + (NotchMetrics.closedCornerRadius.bottom * 2)
         }
 
         let sideInset = max(0, presentationModel.closedNotchSize.height - 12)
@@ -82,7 +101,7 @@ struct MusicNotchView: View {
     }
 
     private var showsDarkInnerNotch: Bool {
-        presentationModel.selectedPanel != .focus && presentationModel.selectedPanel != .music
+        presentationModel.selectedPanel != .focus && presentationModel.selectedPanel != .media
     }
 
     var body: some View {
@@ -147,7 +166,7 @@ struct MusicNotchView: View {
                     accessoryController: talkHeaderAccessoryController
                 )
                 .frame(height: expandedHeaderHeight)
-            } else if compactActivity == .music {
+            } else if compactActivity == .media {
                 CompactLiveActivityView(
                     playback: playback,
                     closedNotchWidth: presentationModel.closedNotchSize.width,
@@ -204,7 +223,7 @@ struct MusicNotchView: View {
                 }
                 // Ambient album art blur — chỉ hiện ở music panel khi có bài phát
                 if presentationModel.isExpanded
-                    && presentationModel.selectedPanel == .music
+                    && presentationModel.selectedPanel == .media
                     && playback.isPlaying {
                     Image(nsImage: playback.albumArt)
                         .resizable()
@@ -250,8 +269,8 @@ struct MusicNotchView: View {
         .onTapGesture {
             if !presentationModel.isExpanded {
                 switch compactActivity {
-                case .music:
-                    presentationModel.selectPanel(.music)
+                case .media:
+                    presentationModel.selectPanel(.media)
                 case .talk:
                     presentationModel.selectPanel(.talk)
                 case .pomodoro:

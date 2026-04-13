@@ -380,14 +380,51 @@ extension GeminiLiveSession {
         task.arguments = arguments
         task.currentDirectoryURL = currentDirectoryURL
 
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        task.standardOutput = stdoutPipe
-        task.standardError = stderrPipe
+        let fileManager = FileManager.default
+        let tempDirectoryURL = fileManager.temporaryDirectory
+            .appendingPathComponent("notch-exec-\(UUID().uuidString)", isDirectory: true)
+        let stdoutURL = tempDirectoryURL.appendingPathComponent("stdout.log")
+        let stderrURL = tempDirectoryURL.appendingPathComponent("stderr.log")
+
+        do {
+            try fileManager.createDirectory(at: tempDirectoryURL, withIntermediateDirectories: true)
+            fileManager.createFile(atPath: stdoutURL.path, contents: nil)
+            fileManager.createFile(atPath: stderrURL.path, contents: nil)
+        } catch {
+            return ProcessResult(
+                terminationStatus: nil,
+                stdoutText: "",
+                stderrText: "",
+                runError: "Couldn't prepare command output capture: \(error.localizedDescription)",
+                timedOut: false
+            )
+        }
+
+        let stdoutHandle: FileHandle
+        let stderrHandle: FileHandle
+        do {
+            stdoutHandle = try FileHandle(forWritingTo: stdoutURL)
+            stderrHandle = try FileHandle(forWritingTo: stderrURL)
+        } catch {
+            try? fileManager.removeItem(at: tempDirectoryURL)
+            return ProcessResult(
+                terminationStatus: nil,
+                stdoutText: "",
+                stderrText: "",
+                runError: "Couldn't open command output capture: \(error.localizedDescription)",
+                timedOut: false
+            )
+        }
+
+        task.standardOutput = stdoutHandle
+        task.standardError = stderrHandle
 
         do {
             try task.run()
         } catch {
+            try? stdoutHandle.close()
+            try? stderrHandle.close()
+            try? fileManager.removeItem(at: tempDirectoryURL)
             return ProcessResult(
                 terminationStatus: nil,
                 stdoutText: "",
@@ -412,11 +449,17 @@ extension GeminiLiveSession {
                     return false
                 }
             }
-            return await group.next() ?? false
+            let result = await group.next() ?? false
+            group.cancelAll()
+            return result
         }
 
-        let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-        let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+        try? stdoutHandle.close()
+        try? stderrHandle.close()
+
+        let stdoutData = (try? Data(contentsOf: stdoutURL)) ?? Data()
+        let stderrData = (try? Data(contentsOf: stderrURL)) ?? Data()
+        try? fileManager.removeItem(at: tempDirectoryURL)
 
         return ProcessResult(
             terminationStatus: task.terminationStatus,

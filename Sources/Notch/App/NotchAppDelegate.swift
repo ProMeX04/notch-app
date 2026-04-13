@@ -30,7 +30,7 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
         UNUserNotificationCenter.current().delegate = self
 
         let learningStatsStore = LearningStatsStore()
-        let playbackViewModel = MusicProbeViewModel()
+        let playbackViewModel = MediaProbeViewModel()
         let pomodoroViewModel = PomodoroViewModel(learningStatsStore: learningStatsStore)
         let geminiLiveViewModel = GeminiLiveViewModel()
         let shelfViewModel = NotchShelfViewModel()

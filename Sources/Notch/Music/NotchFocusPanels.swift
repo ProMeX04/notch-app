@@ -90,7 +90,7 @@ struct PomodoroPanelView: View {
                                     let phases: [PomodoroPhase] = [.focus, .shortBreak, .longBreak]
                                     let currentIndex = phases.firstIndex(of: displayedPhase) ?? 0
                                     let nextPhase = phases[(currentIndex + 1) % phases.count]
-                                    
+
                                     if pomodoro.hasActiveSession {
                                         pomodoro.setPhase(nextPhase)
                                     } else {
@@ -773,16 +773,18 @@ struct FocusPanelActionButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 4) {
+            HStack(spacing: 6) {
                 if let icon {
                     Image(systemName: icon)
                         .font(.system(size: 10, weight: .bold))
+                        .frame(width: 12, alignment: .center)
                 }
                 Text(title)
                     .font(.system(size: 11, weight: .bold))
             }
+            .padding(.leading, 10)
             .foregroundStyle(foregroundColor)
-            .frame(width: 95, height: 26)
+            .frame(width: 95, height: 26, alignment: .leading)
             .background(
                 Capsule()
                     .fill(backgroundFill)
@@ -813,18 +815,27 @@ struct PomodoroQuickSettingsView: View {
         VStack(spacing: 4) {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 6) {
-                    settingInput(label: "Focus", value: pomodoro.focusMinutes) {
-                        pomodoro.updateCurrentDurations(focusMinutes: $0, breakMinutes: pomodoro.breakMinutes)
+                    LazyVGrid(columns: [
+                        GridItem(.flexible(), spacing: 6),
+                        GridItem(.flexible(), spacing: 6),
+                        GridItem(.flexible(), spacing: 6)
+                    ], spacing: 6) {
+                        settingInput(label: "Focus", value: pomodoro.focusMinutes) {
+                            pomodoro.updateCurrentDurations(focusMinutes: $0, breakMinutes: pomodoro.breakMinutes)
+                        }
+                        settingInput(label: "Short", value: pomodoro.breakMinutes) {
+                            pomodoro.updateCurrentDurations(focusMinutes: pomodoro.focusMinutes, breakMinutes: $0)
+                        }
+                        settingInput(label: "Cycle", value: pomodoro.sessionsBeforeLongBreak, range: 1...12) {
+                            pomodoro.updateSessionsBeforeLongBreak(count: $0)
+                        }
+                        settingInput(label: "Long", value: pomodoro.longBreakDurationSeconds / 60) {
+                            pomodoro.updateLongBreakDuration(minutes: $0)
+                        }
+                        settingToggle(label: "Auto Breaks", isOn: $pomodoro.autoStartBreaks)
+                        settingToggle(label: "Auto Pomo", isOn: $pomodoro.autoStartPomodoros)
                     }
-                    settingInput(label: "Short", value: pomodoro.breakMinutes) {
-                        pomodoro.updateCurrentDurations(focusMinutes: pomodoro.focusMinutes, breakMinutes: $0)
-                    }
-                    settingInput(label: "Cycle", value: pomodoro.sessionsBeforeLongBreak, range: 1...12) {
-                        pomodoro.updateSessionsBeforeLongBreak(count: $0)
-                    }
-                    settingInput(label: "Long", value: pomodoro.longBreakDurationSeconds / 60) {
-                        pomodoro.updateLongBreakDuration(minutes: $0)
-                    }
+
                     settingButton(
                         label: "Focus Sound",
                         value: selectedFocusTransitionSound.displayName,
@@ -834,11 +845,10 @@ struct PomodoroQuickSettingsView: View {
                         focusTransitionSoundID = nextSound.rawValue
                         SoundManager.previewFocusTransitionSound(nextSound)
                     }
-                    settingToggle(label: "Auto Breaks", isOn: $pomodoro.autoStartBreaks)
-                    settingToggle(label: "Auto Pomo", isOn: $pomodoro.autoStartPomodoros)
                 }
+                .padding(.top, 4)
             }
-            .frame(maxHeight: 252)
+            .frame(maxHeight: 232)
 
             HStack {
                 Spacer(minLength: 0)
@@ -854,97 +864,75 @@ struct PomodoroQuickSettingsView: View {
     private func settingToggle(label: String, isOn: Binding<Bool>) -> some View {
         let isEnabled = isOn.wrappedValue
 
-        return VStack(alignment: .leading, spacing: 8) {
+        return HStack(spacing: 4) {
             Text(Localization.get(label, lang: appLanguage))
-                .font(.system(size: 11.5, weight: .semibold))
+                .font(.system(size: 9.8, weight: .semibold))
                 .foregroundStyle(isEnabled ? .white.opacity(0.96) : .white.opacity(0.82))
                 .lineLimit(1)
-                .minimumScaleFactor(0.78)
+                .minimumScaleFactor(0.75)
                 .allowsTightening(true)
-                .layoutPriority(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            HStack {
-                Spacer(minLength: 0)
-
-                Toggle("", isOn: isOn)
-                    .labelsHidden()
-                    .toggleStyle(NotchSwitchStyle(tint: tint))
-            }
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .toggleStyle(NotchSwitchStyle(tint: tint))
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, minHeight: 50, alignment: .topLeading)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, minHeight: 32, alignment: .center)
         .background(settingCellBackground(stroke: isEnabled ? Color.white.opacity(0.16) : Color.white.opacity(0.1)))
     }
 
     private func settingInput(label: String, value: Int, range: ClosedRange<Int> = 1...180, action: @escaping (Int) -> Void) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 2) {
             Text(Localization.get(label, lang: appLanguage))
-                .font(.system(size: 11.5, weight: .bold))
-                .foregroundStyle(.white.opacity(0.92))
+                .font(.system(size: 9.8, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.85))
                 .lineLimit(1)
-                .minimumScaleFactor(0.82)
+                .minimumScaleFactor(0.7)
                 .allowsTightening(true)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            HStack(spacing: 8) {
-                Button { action(max(range.lowerBound, value - 1)) } label: { Image(systemName: "minus.circle.fill").font(.system(size: 16)).foregroundStyle(.white.opacity(0.92)) }.buttonStyle(.plain)
-                Text("\(value)").font(.system(size: 16, weight: .bold, design: .rounded)).frame(minWidth: 24).foregroundStyle(.white)
-                Button { action(min(range.upperBound, value + 1)) } label: { Image(systemName: "plus.circle.fill").font(.system(size: 16)).foregroundStyle(.white.opacity(0.92)) }.buttonStyle(.plain)
-            }
-            .fixedSize(horizontal: true, vertical: false)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.white.opacity(0.1))
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
-            }
+            TextField("", value: Binding(
+                get: { value },
+                set: { newValue in
+                    let clamped = max(range.lowerBound, min(newValue, range.upperBound))
+                    action(clamped)
+                }
+            ), format: .number)
+            .textFieldStyle(.plain)
+            .multilineTextAlignment(.trailing)
+            .font(.system(size: 11, weight: .bold, design: .rounded))
+            .foregroundStyle(tint)
+            .frame(width: 32)
+            .offset(y: 0.5)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 2)
+        .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
         .background(settingCellBackground(stroke: Color.white.opacity(0.1)))
     }
 
     private func settingButton(label: String, value: String, icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 Text(Localization.get(label, lang: appLanguage))
-                    .font(.system(size: 11.5, weight: .bold))
+                    .font(.system(size: 10.5, weight: .bold))
                     .foregroundStyle(.white.opacity(0.92))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
-                    .allowsTightening(true)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 HStack(spacing: 6) {
-                    Image(systemName: icon)
-                        .font(.system(size: 11, weight: .bold))
-                    Text(value)
-                        .font(.system(size: 11.5, weight: .bold))
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 10, weight: .bold))
+                    Image(systemName: icon).font(.system(size: 9, weight: .bold))
+                    Text(value).font(.system(size: 10, weight: .bold))
                 }
                 .foregroundStyle(.white.opacity(0.9))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
-                    Capsule()
-                        .fill(Color.white.opacity(0.1))
-                )
-                .overlay {
-                    Capsule()
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Color.white.opacity(0.1)))
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+            .padding(.vertical, 2)
+            .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
             .background(settingCellBackground(stroke: Color.white.opacity(0.1)))
         }
         .buttonStyle(.plain)

@@ -4,9 +4,9 @@ import Foundation
 import SwiftUI
 
 @MainActor
-final class MusicProbeViewModel: ObservableObject {
+final class MediaProbeViewModel: ObservableObject {
     @Published private(set) var state: PlaybackState = .init(bundleIdentifier: "")
-    @Published private(set) var albumArt: NSImage = MusicProbeViewModel.fallbackArtwork
+    @Published private(set) var albumArt: NSImage = MediaProbeViewModel.fallbackArtwork
     @Published private(set) var accentColor: NSColor = .white
     @Published private(set) var appIcon: NSImage?
     @Published private(set) var usingAppIconForArtwork = false

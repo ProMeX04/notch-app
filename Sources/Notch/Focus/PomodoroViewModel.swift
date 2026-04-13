@@ -14,7 +14,7 @@ enum PomodoroPhase: String {
         case .shortBreak:
             return "cup.and.saucer.fill"
         case .longBreak:
-            return "moon.zzz.fill"
+            return "figure.walk"
         }
     }
 

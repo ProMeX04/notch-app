@@ -69,12 +69,13 @@ struct GeminiLiveUsageMetadata: Sendable {
 
 final class GeminiLiveSession: @unchecked Sendable {
     static let defaultContextWindowTargetTokens = 25_000
-    static let defaultContextWindowTriggerTokens = 50_000
+    static let defaultContextWindowTriggerTokens = 65_000
 
     var onStateChange: (@Sendable (GeminiLiveConnectionState, String?) -> Void)?
     var onUserTranscript: (@Sendable (String) -> Void)?
     var onModelTranscript: (@Sendable (String) -> Void)?
     var onTurnComplete: (@Sendable () -> Void)?
+    var onModelThinkingStateChange: (@Sendable (Bool) -> Void)?
     var onMicrophoneInputLevel: (@Sendable (Double) -> Void)?
     var onUsageMetadata: (@Sendable (GeminiLiveUsageMetadata) -> Void)?
     var onFunctionStarted: (@Sendable (_ name: String, _ args: [String: Any]) -> Void)?
@@ -109,7 +110,7 @@ final class GeminiLiveSession: @unchecked Sendable {
     }
 
     let urlSession = URLSession(configuration: .default)
-    /// Shared ephemeral session for Brave search and other tool HTTP (not Pexels-specific).
+    /// Shared ephemeral session for Brave search and other tool HTTP.
     let toolHTTPURLSession = URLSession(configuration: .ephemeral)
     let sendQueue = DispatchQueue(label: "dev.notch.gemini.send")
     let audioProcessingQueue = DispatchQueue(label: "dev.notch.gemini.capture")
@@ -731,22 +732,28 @@ final class GeminiLiveSession: @unchecked Sendable {
                 let text = inputTranscription["text"] as? String
             {
                 onUserTranscript?(text)
+                if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    onModelThinkingStateChange?(true)
+                }
             }
 
             if
                 let outputTranscription = serverContent["outputTranscription"] as? [String: Any],
                 let text = outputTranscription["text"] as? String
             {
+                onModelThinkingStateChange?(false)
                 onModelTranscript?(text)
             }
 
             if let turnComplete = serverContent["turnComplete"] as? Bool, turnComplete {
+                onModelThinkingStateChange?(false)
                 onTurnComplete?()
             }
 
             if let generationComplete = serverContent["generationComplete"] as? Bool, generationComplete {
                 // Docs: signals the model finished generating its response.
                 // Audio playback may still be in progress at this point.
+                onModelThinkingStateChange?(false)
             }
 
             if

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ExpandedAlbumArtView: View {
-    @ObservedObject var playback: MusicProbeViewModel
+    @ObservedObject var playback: MediaProbeViewModel
     let albumArtNamespace: Namespace.ID
 
     var body: some View {
@@ -54,8 +54,8 @@ struct ExpandedAlbumArtView: View {
     }
 }
 
-struct ExpandedMusicControlsView: View {
-    @ObservedObject var playback: MusicProbeViewModel
+struct ExpandedMediaControlsView: View {
+    @ObservedObject var playback: MediaProbeViewModel
     @State private var sliderValue: Double = 0
     @State private var dragging = false
     @State private var lastDragged: Date = .distantPast
@@ -117,7 +117,7 @@ struct ExpandedMusicControlsView: View {
                     }
 
                     TimelineView(.animation(minimumInterval: playback.state.playbackRate > 0 ? 0.1 : nil)) { timeline in
-                        MusicSliderView(
+                        MediaSliderView(
                             sliderValue: $sliderValue,
                             duration: playback.state.duration,
                             accentColor: accent,
@@ -137,7 +137,7 @@ struct ExpandedMusicControlsView: View {
             .padding(.leading, 5)
 
             HStack(spacing: 4) {
-                ForEach(MusicControlSlot.allControls) { slot in
+                ForEach(MediaControlSlot.allControls) { slot in
                     slotView(for: slot)
                 }
             }
@@ -147,7 +147,7 @@ struct ExpandedMusicControlsView: View {
     }
 
     @ViewBuilder
-    private func slotView(for slot: MusicControlSlot) -> some View {
+    private func slotView(for slot: MediaControlSlot) -> some View {
         switch slot {
         case .shuffle:
             HoverButton(icon: "shuffle", iconColor: playback.isShuffled ? accent : accent.opacity(0.55), scale: .medium) {
@@ -211,7 +211,7 @@ struct ExpandedMusicControlsView: View {
     }
 }
 
-struct MusicSliderView: View {
+struct MediaSliderView: View {
     @Binding var sliderValue: Double
     let duration: Double
     let accentColor: Color
@@ -219,7 +219,7 @@ struct MusicSliderView: View {
     @Binding var dragging: Bool
     @Binding var lastDragged: Date
     let currentDate: Date
-    let playback: MusicProbeViewModel
+    let playback: MediaProbeViewModel
 
     var body: some View {
         VStack {
@@ -391,7 +391,7 @@ struct HoverButton: View {
 }
 
 struct FavoriteControlButton: View {
-    @ObservedObject var playback: MusicProbeViewModel
+    @ObservedObject var playback: MediaProbeViewModel
     let accent: Color
 
     var body: some View {
@@ -413,7 +413,7 @@ struct FavoriteControlButton: View {
 
 struct VolumeControlView: View {
     // accent is passed in so the icon tints with the album-art color
-    @ObservedObject var playback: MusicProbeViewModel
+    @ObservedObject var playback: MediaProbeViewModel
     let accent: Color
     @State private var volumeSliderValue = 0.5
     @State private var dragging = false
@@ -496,7 +496,7 @@ struct VolumeControlView: View {
     }
 }
 
-enum MusicControlSlot: String, CaseIterable, Identifiable {
+enum MediaControlSlot: String, CaseIterable, Identifiable {
     case shuffle
     case previous
     case playPause
@@ -512,7 +512,7 @@ enum MusicControlSlot: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     /// Một hàng: không tăng chiều cao panel (stop/volume/favorite bỏ — không ổn định trên mọi app).
-    static let allControls: [MusicControlSlot] = [
+    static let allControls: [MediaControlSlot] = [
         .shuffle,
         .goBackward,
         .previous,

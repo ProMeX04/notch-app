@@ -536,21 +536,6 @@ final class MemoryStore: @unchecked Sendable {
         (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
     }
 
-    func appendToMainMemory(_ content: String) throws {
-        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        try fileManager.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-
-        let existing = readMainMemory()
-        let newContent: String
-        if existing.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            newContent = trimmed + "\n"
-        } else {
-            newContent = existing.trimmingCharacters(in: .newlines) + "\n\n" + trimmed + "\n"
-        }
-        try newContent.write(to: fileURL, atomically: true, encoding: .utf8)
-    }
-
     func saveMemory(_ content: String) throws {
         try fileManager.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try content.write(to: fileURL, atomically: true, encoding: .utf8)

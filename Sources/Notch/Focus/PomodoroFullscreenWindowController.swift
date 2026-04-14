@@ -15,13 +15,39 @@ private struct VisualEffectView: NSViewRepresentable {
 
 private struct PomodoroFullscreenView: View {
     @ObservedObject var pomodoro: PomodoroViewModel
+    @ObservedObject var learningStats: LearningStatsStore
     @AppStorage("app_language") private var appLanguage: String = "English"
 
-    var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
+    @State private var backgroundPulse = false
+    @State private var currentQuote = ""
 
-            VStack(spacing: 40) {
+    var body: some View {
+        let accentColor = Color(nsColor: pomodoro.phase.accentColor)
+
+        ZStack {
+            // Animated Breathing Background
+            Color.black.ignoresSafeArea()
+            
+            accentColor
+                .opacity(backgroundPulse ? 0.08 : 0.03)
+                .blur(radius: 100)
+                .scaleEffect(backgroundPulse ? 1.2 : 0.8)
+                .ignoresSafeArea()
+                .onAppear {
+                    withAnimation(.easeInOut(duration: 4.0).repeatForever(autoreverses: true)) {
+                        backgroundPulse = true
+                    }
+                    if currentQuote.isEmpty {
+                        currentQuote = MotivationalQuotes.getRandom(for: pomodoro.phase, lang: appLanguage)
+                    }
+                }
+                .onChange(of: pomodoro.phase) { _, newPhase in
+                    withAnimation(.smooth) {
+                        currentQuote = MotivationalQuotes.getRandom(for: newPhase, lang: appLanguage)
+                    }
+                }
+
+            VStack(spacing: 32) {
                 VStack(spacing: 16) {
                     Image(systemName: pomodoro.phase.symbolName)
                         .font(.system(size: 80, weight: .light))
@@ -30,15 +56,45 @@ private struct PomodoroFullscreenView: View {
                         .frame(height: 90, alignment: .center)
                     
                     Text(Localization.get(pomodoro.phase.rawValue, lang: appLanguage).uppercased())
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.9))
-                        .tracking(4)
+                        .font(.system(size: 20, weight: .black, design: .rounded))
+                        .foregroundStyle(Color(nsColor: pomodoro.phase.accentColor))
+                        .tracking(3)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule()
+                                .fill(.white.opacity(0.08))
+                        )
 
-                    Text((Localization.get("Round", lang: appLanguage) + " \(pomodoro.currentFocusSessionIndex)/\(pomodoro.sessionsBeforeLongBreak)").uppercased())
-                        .font(.system(size: 16, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.5))
-                        .tracking(2)
+                    HStack(spacing: 12) {
+                        PomodoroSessionDotsView(
+                            current: pomodoro.completedSessionsInCycle,
+                            total: pomodoro.sessionsBeforeLongBreak,
+                            isFocus: pomodoro.phase == .focus,
+                            tint: Color(nsColor: pomodoro.phase.accentColor),
+                            dotSize: 6,
+                            spacing: 8,
+                            indicatorSize: 11
+                        )
+
+                        Text("\(Localization.get("Round", lang: appLanguage)) \(pomodoro.currentFocusSessionIndex)/\(pomodoro.sessionsBeforeLongBreak)".uppercased())
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color(nsColor: pomodoro.phase.accentColor).opacity(0.85))
+                            .tracking(2)
+                    }
+                    .padding(.top, 4)
                 }
+                .padding(.top, 20)
+                
+                Text(currentQuote)
+                    .font(.system(size: 18, weight: .medium, design: .rounded))
+                    .italic()
+                    .foregroundStyle(.white.opacity(0.6))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+                    .frame(height: 50)
+                    .id(currentQuote) // Force refresh for animation
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
                 
                 TimelineView(.periodic(from: .now, by: 1.0)) { context in
                     Text(pomodoro.remainingText(at: context.date))
@@ -113,6 +169,7 @@ final class PomodoroFullscreenWindowController {
     private var cancellables = Set<AnyCancellable>()
     private weak var preferredScreen: NSScreen?
     private weak var pomodoro: PomodoroViewModel?
+    private weak var learningStats: LearningStatsStore?
 
     func setPreferredScreen(_ newScreen: NSScreen?) {
         preferredScreen = newScreen
@@ -122,8 +179,9 @@ final class PomodoroFullscreenWindowController {
         hostingView?.frame = CGRect(origin: .zero, size: targetFrame.size)
     }
 
-    func observe(pomodoro: PomodoroViewModel) {
+    func observe(pomodoro: PomodoroViewModel, stats: LearningStatsStore) {
         self.pomodoro = pomodoro
+        self.learningStats = stats
         cancellables.removeAll()
 
         Publishers.CombineLatest(pomodoro.$isFullscreenActive, pomodoro.$focusMode)
@@ -150,10 +208,10 @@ final class PomodoroFullscreenWindowController {
     }
 
     private func showFullscreen() {
-        guard let pomodoro else { return }
+        guard let pomodoro, let learningStats else { return }
 
         if let panel, let hv = hostingView {
-            hv.rootView = PomodoroFullscreenView(pomodoro: pomodoro)
+            hv.rootView = PomodoroFullscreenView(pomodoro: pomodoro, learningStats: learningStats)
             let frame = screen().frame
             panel.setFrame(frame, display: true)
             hv.frame = CGRect(origin: .zero, size: frame.size)
@@ -176,7 +234,7 @@ final class PomodoroFullscreenWindowController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.alphaValue = 0
 
-        let hv = NSHostingView(rootView: PomodoroFullscreenView(pomodoro: pomodoro))
+        let hv = NSHostingView(rootView: PomodoroFullscreenView(pomodoro: pomodoro, learningStats: learningStats))
         hv.frame = CGRect(origin: .zero, size: frame.size)
         hv.autoresizingMask = [.width, .height]
         panel.contentView = hv

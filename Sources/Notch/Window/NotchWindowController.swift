@@ -89,7 +89,7 @@ final class NotchWindowController {
         geminiExecApprovalPanel.setPreferredScreen(initialScreen)
         geminiExecApprovalPanel.observe(gemini: geminiLiveViewModel)
         pomodoroFullscreenOverlay.setPreferredScreen(initialScreen)
-        pomodoroFullscreenOverlay.observe(pomodoro: pomodoroViewModel)
+        pomodoroFullscreenOverlay.observe(pomodoro: pomodoroViewModel, stats: learningStatsStore)
         geminiLiveViewModel.onPresentSecretsPanel = { [weak self] in
             self?.presentSecretsFloatingPanel()
         }
@@ -385,11 +385,6 @@ final class NotchWindowController {
     func togglePomodoroSession() {
         presentationModel.selectPanel(.focus, reveal: true)
         pomodoroViewModel.toggleRunning()
-    }
-
-    func resetPomodoroFromUI() {
-        presentationModel.selectPanel(.focus, reveal: true)
-        pomodoroViewModel.reset()
     }
 
     func updateWindowFrame(animated: Bool) {

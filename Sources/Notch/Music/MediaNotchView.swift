@@ -214,11 +214,7 @@ struct MediaNotchView: View {
         )
         .background {
             ZStack {
-                if presentationModel.isExpanded && presentationModel.selectedPanel == .focus {
-                    Color.black
-                } else {
-                    Color.black
-                }
+                Color.black
                 // Ambient album art blur — chỉ hiện ở music panel khi có bài phát
                 if presentationModel.isExpanded
                     && presentationModel.selectedPanel == .media

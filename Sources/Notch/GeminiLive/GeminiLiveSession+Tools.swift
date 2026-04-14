@@ -481,48 +481,6 @@ extension GeminiLiveSession {
         return GeminiLiveStoragePaths.resolvedWorkspacePath(from: rawPath, directoryHint: directoryHint)
     }
 
-    private func resolvedReadableToolPath(_ rawPath: String, directoryHint: Bool? = nil) -> URL? {
-        if let workspaceURL = resolvedWorkspaceToolPath(rawPath, directoryHint: directoryHint) {
-            return workspaceURL
-        }
-
-        let trimmed = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        guard trimmed.hasPrefix("/") || trimmed.hasPrefix("~") else { return nil }
-        guard let builtInSkillsDirectory = GeminiLiveStoragePaths.builtInSkillsDirectory else { return nil }
-
-        let expanded = (trimmed as NSString).expandingTildeInPath
-        let candidate = URL(fileURLWithPath: expanded, isDirectory: directoryHint ?? false)
-            .standardizedFileURL
-            .resolvingSymlinksInPath()
-        let builtInRoot = builtInSkillsDirectory.standardizedFileURL.resolvingSymlinksInPath()
-        let rootPath = builtInRoot.path
-        let candidatePath = candidate.path
-        guard candidatePath == rootPath || candidatePath.hasPrefix(rootPath + "/") else {
-            return nil
-        }
-        return candidate
-    }
-
-    private func encodingName(_ encoding: String.Encoding) -> String {
-        switch encoding {
-        case .utf8:
-            return "utf-8"
-        case .utf16:
-            return "utf-16"
-        case .utf16LittleEndian:
-            return "utf-16le"
-        case .utf16BigEndian:
-            return "utf-16be"
-        case .utf32:
-            return "utf-32"
-        case .ascii:
-            return "us-ascii"
-        default:
-            return "text"
-        }
-    }
-
     private func workspacePathErrorResult(path: String) -> [String: Any] {
         [
             "success": false,

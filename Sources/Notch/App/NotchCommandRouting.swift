@@ -236,17 +236,6 @@ enum NotchCommandRouter {
         return nil
     }
 
-    private static func firstNonEmptyRaw(_ values: String?...) -> String? {
-        for value in values {
-            guard let value else { continue }
-            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty {
-                return trimmed
-            }
-        }
-        return nil
-    }
-
     private static func validatePomodoroTool(_ raw: String?) throws {
         guard let raw else { return }
         guard raw == "pomodoro" else {

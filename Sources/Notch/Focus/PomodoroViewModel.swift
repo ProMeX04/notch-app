@@ -369,20 +369,6 @@ final class PomodoroViewModel: ObservableObject {
         persistRuntimeState()
     }
 
-    func updateCustomPreset(slotIndex: Int, focusMinutes: Int, breakMinutes: Int) {
-        guard customPresets.indices.contains(slotIndex) else { return }
-
-        let clampedFocusMinutes = max(5, min(focusMinutes, 180))
-        let clampedBreakMinutes = max(1, min(breakMinutes, 60))
-        var updatedPreset = customPresets[slotIndex]
-        updatedPreset.focusMinutes = clampedFocusMinutes
-        updatedPreset.breakMinutes = clampedBreakMinutes
-
-        customPresets[slotIndex] = updatedPreset
-        persistCustomPresets()
-        selectPreset(updatedPreset)
-    }
-
     func updateCurrentDurations(focusMinutes: Int, breakMinutes: Int) {
         let clampedFocusMinutes = max(5, min(focusMinutes, 180))
         let clampedBreakMinutes = max(1, min(breakMinutes, 60))

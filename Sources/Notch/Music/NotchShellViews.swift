@@ -787,6 +787,12 @@ struct Localization {
         "Memory (MEMORY.md)": ["English": "Memory (MEMORY.md)", "Tiếng Việt": "Bộ nhớ (MEMORY.md)"],
         "Save User Profile": ["English": "Save User Profile", "Tiếng Việt": "Lưu hồ sơ"],
         "Save Memory": ["English": "Save Memory", "Tiếng Việt": "Lưu bộ nhớ"],
+        "Mode": ["English": "Mode", "Tiếng Việt": "Chế độ"],
+        "Zen": ["English": "Zen", "Tiếng Việt": "Tập trung"],
+        "Strict": ["English": "Strict", "Tiếng Việt": "Nghiêm ngặt"],
+        "Sound": ["English": "Sound", "Tiếng Việt": "Âm thanh"],
+        "Streak": ["English": "Streak", "Tiếng Việt": "Chuỗi"],
+        "Today": ["English": "Today", "Tiếng Việt": "Hôm nay"],
     ]
 
     static func get(_ key: String, lang: String) -> String {

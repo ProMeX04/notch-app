@@ -209,14 +209,6 @@ final class NotchPresentationModel: ObservableObject {
         }
     }
 
-    func toggleExpanded() {
-        if isExpanded && !isPinnedOpen {
-            scheduleCollapse(after: .zero)
-        } else {
-            reveal()
-        }
-    }
-
     private var hoverDelayDurationMilliseconds: Int {
         Int(hoverOpenDelayMilliseconds.rounded())
     }

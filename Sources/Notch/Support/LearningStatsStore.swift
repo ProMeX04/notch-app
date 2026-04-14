@@ -83,10 +83,6 @@ final class LearningStatsStore: ObservableObject {
         return streak
     }
 
-    func recentEntries(limit: Int = 6) -> [LearningSessionEntry] {
-        Array(entries.prefix(limit))
-    }
-
     func record(seconds: Int, source: LearningActivitySource) {
         let clampedSeconds = max(seconds, 0)
         guard clampedSeconds > 0 else { return }
@@ -128,12 +124,6 @@ final class LearningStatsStore: ObservableObject {
         }
 
         return "\(seconds)s"
-    }
-
-    func relativeTimestamp(for date: Date) -> String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .short
-        return formatter.localizedString(for: date, relativeTo: .now)
     }
 
     private func persistEntries() {

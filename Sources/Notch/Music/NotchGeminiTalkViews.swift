@@ -196,52 +196,77 @@ struct GeminiTalkPanelView: View {
             }
             .frame(width: 130)
 
-            LazyVGrid(
-                columns: [
-                    GridItem(.flexible(), spacing: 8),
-                    GridItem(.flexible(), spacing: 8),
-                ],
-                alignment: .leading,
-                spacing: 8
-            ) {
-                GeminiPillPicker(
-                    title: "Voice",
-                    icon: "waveform",
-                    tint: themeAccent,
-                    selection: $gemini.selectedVoice
-                )
-
-                GeminiPillPicker(
-                    title: "Thinking",
-                    icon: "brain.head.profile",
-                    tint: themeAccent,
-                    selection: $gemini.thinkingLevel
-                )
-
-                GeminiPillButton(
-                    title: Localization.get("Settings", lang: appLanguage),
-                    icon: "slider.horizontal.3",
-                    tint: themeAccent
-                ) {
-                    setupViewMode = .agentSettings
+            VStack(spacing: 12) {
+                HStack(spacing: 18) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "hammer.fill")
+                            .foregroundStyle(themeAccent)
+                        Text("\(gemini.enabledTools.count) \(Localization.get("Tools", lang: appLanguage))")
+                    }
+                    HStack(spacing: 6) {
+                        Image(systemName: "sparkles")
+                            .foregroundStyle(themeAccent)
+                        Text("\(gemini.enabledSkillNames.count) \(Localization.get("Skills", lang: appLanguage))")
+                    }
+                    Spacer(minLength: 0)
                 }
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.white.opacity(0.9))
+                .padding(.top, 2)
+                .padding(.bottom, 4)
 
-                GeminiPillButton(
-                    title: gemini.connectionState == .connecting
-                        ? Localization.get("Cancel", lang: appLanguage)
-                        : Localization.get(gemini.connectionButtonTitle, lang: appLanguage),
-                    icon: gemini.connectionState == .connecting
-                        ? "xmark.circle.fill"
-                        : gemini.connectionButtonIcon,
-                    tint: gemini.connectionState == .connecting
-                        ? Color(nsColor: .systemRed)
-                        : themeAccent
-                ) {
-                    gemini.toggleConnection()
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        GeminiPillPicker(
+                            title: "",
+                            icon: "cpu",
+                            tint: themeAccent,
+                            selection: $gemini.selectedModel,
+                            displayText: \.displayName
+                        )
+
+                        GeminiPillPicker(
+                            title: "",
+                            icon: "waveform",
+                            tint: themeAccent,
+                            selection: $gemini.selectedVoice
+                        )
+
+                        GeminiPillPicker(
+                            title: "",
+                            icon: "brain.head.profile",
+                            tint: themeAccent,
+                            selection: $gemini.thinkingLevel
+                        )
+                    }
+
+                    HStack(spacing: 8) {
+                        GeminiPillButton(
+                            title: Localization.get("Settings", lang: appLanguage),
+                            icon: "slider.horizontal.3",
+                            tint: themeAccent
+                        ) {
+                            setupViewMode = .agentSettings
+                        }
+
+                        GeminiPillButton(
+                            title: gemini.connectionState == .connecting
+                                ? Localization.get("Cancel", lang: appLanguage)
+                                : Localization.get(gemini.connectionButtonTitle, lang: appLanguage),
+                            icon: gemini.connectionState == .connecting
+                                ? "xmark.circle.fill"
+                                : gemini.connectionButtonIcon,
+                            tint: gemini.connectionState == .connecting
+                                ? Color(nsColor: .systemRed)
+                                : themeAccent
+                        ) {
+                            gemini.toggleConnection()
+                        }
+                    }
                 }
             }
-            .padding(.top, 14)
-            .frame(maxWidth: 320)
+            .padding(.top, 6)
+            .frame(maxWidth: .infinity)
 
             Spacer(minLength: 0)
         }
@@ -1740,7 +1765,22 @@ where T.RawValue == String, T.AllCases: RandomAccessCollection {
     let icon: String // e.g. "waveform"
     let tint: Color // e.g. Color.yellow
     @Binding var selection: T
+    let displayText: (T) -> String
     @AppStorage("app_language") private var appLanguage: String = "English"
+
+    init(
+        title: String,
+        icon: String,
+        tint: Color,
+        selection: Binding<T>,
+        displayText: @escaping (T) -> String = { $0.rawValue }
+    ) {
+        self.title = title
+        self.icon = icon
+        self.tint = tint
+        _selection = selection
+        self.displayText = displayText
+    }
 
     var body: some View {
         Menu {
@@ -1749,9 +1789,9 @@ where T.RawValue == String, T.AllCases: RandomAccessCollection {
                     selection = item
                 } label: {
                     if item == selection {
-                        Label(Localization.get(item.rawValue, lang: appLanguage), systemImage: "checkmark")
+                        Label(Localization.get(displayText(item), lang: appLanguage), systemImage: "checkmark")
                     } else {
-                        Text(Localization.get(item.rawValue, lang: appLanguage))
+                        Text(Localization.get(displayText(item), lang: appLanguage))
                     }
                 }
             }
@@ -1759,10 +1799,17 @@ where T.RawValue == String, T.AllCases: RandomAccessCollection {
             HStack(spacing: 4) {
                 Image(systemName: icon)
                     .font(.system(size: 11, weight: .bold))
-                Text("\(Localization.get(title, lang: appLanguage)): \(Localization.get(selection.rawValue, lang: appLanguage))")
-                    .font(.system(size: 11, weight: .bold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
+                if title.isEmpty {
+                    Text(Localization.get(displayText(selection), lang: appLanguage))
+                        .font(.system(size: 11, weight: .bold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+                } else {
+                    Text("\(Localization.get(title, lang: appLanguage)): \(Localization.get(displayText(selection), lang: appLanguage))")
+                        .font(.system(size: 11, weight: .bold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+                }
             }
             .foregroundStyle(.black.opacity(0.85))
             .padding(.horizontal, 12)

@@ -116,13 +116,6 @@ final class GeminiLiveSession: @unchecked Sendable {
     let audioProcessingQueue = DispatchQueue(label: "dev.notch.gemini.capture")
     let playbackQueue = DispatchQueue(label: "dev.notch.gemini.playback")
 
-    func prefixedProviderMessage(_ provider: String, _ message: String) -> String {
-        let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedMessage.isEmpty else { return "[\(provider)] Unknown error." }
-        guard !trimmedMessage.hasPrefix("[\(provider)]") else { return trimmedMessage }
-        return "[\(provider)] \(trimmedMessage)"
-    }
-
     let outputEngine = AVAudioEngine()
     let outputPlayer = AVAudioPlayerNode()
     let outputFormat = AVAudioFormat(

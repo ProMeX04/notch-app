@@ -64,6 +64,14 @@ final class GeminiLiveViewModel: ObservableObject {
             persistSettings()
         }
     }
+    @Published var selectedModel: GeminiLiveModel = .flashLivePreview {
+        didSet {
+            if let idx = systemPromptPresets.firstIndex(where: { $0.id == selectedSystemPromptID }) {
+                systemPromptPresets[idx].model = selectedModel.rawValue
+            }
+            persistSettings()
+        }
+    }
     @Published var enabledTools: Set<GeminiTool> = [] {
         didSet {
             if let idx = systemPromptPresets.firstIndex(where: { $0.id == selectedSystemPromptID }) {
@@ -175,6 +183,7 @@ final class GeminiLiveViewModel: ObservableObject {
         let active = selectedSystemPromptPreset
         _thinkingLevel = Published(initialValue: active.thinkingEnum)
         _selectedVoice = Published(initialValue: active.voiceEnum)
+        _selectedModel = Published(initialValue: active.modelEnum)
         _enabledTools = Published(initialValue: active.toolSet)
         _enabledSkillNames = Published(initialValue: Set(active.enabledSkillNames))
         normalizeEnabledSkillNames()
@@ -450,15 +459,12 @@ final class GeminiLiveViewModel: ObservableObject {
         let active = systemPromptPresets[existingIndex]
         _thinkingLevel = Published(initialValue: active.thinkingEnum)
         _selectedVoice = Published(initialValue: active.voiceEnum)
+        _selectedModel = Published(initialValue: active.modelEnum)
         _enabledTools = Published(initialValue: active.toolSet)
         _enabledSkillNames = Published(initialValue: Set(active.enabledSkillNames))
         normalizeEnabledSkillNames()
         syncEnabledSkillNamesToActivePreset()
         persistSettings()
-    }
-
-    func systemPromptPreset(id: String) -> GeminiSystemPromptPreset? {
-        systemPromptPresets.first(where: { $0.id == id })
     }
 
     @discardableResult
@@ -469,6 +475,7 @@ final class GeminiLiveViewModel: ObservableObject {
             content: "",
             enabledTools: [],
             voice: GeminiVoice.kore.rawValue,
+            model: GeminiLiveModel.flashLivePreview.rawValue,
             thinkingLevel: GeminiThinkingLevel.off.rawValue,
             lastUsedAt: Date()
         )
@@ -476,20 +483,11 @@ final class GeminiLiveViewModel: ObservableObject {
         selectedSystemPromptID = preset.id
         _thinkingLevel = Published(initialValue: .off)
         _selectedVoice = Published(initialValue: .kore)
+        _selectedModel = Published(initialValue: .flashLivePreview)
         _enabledTools = Published(initialValue: [])
         _enabledSkillNames = Published(initialValue: [])
         persistSettings()
         return preset
-    }
-
-    func updateSelectedSystemPromptAvatar(symbolName: String) {
-        guard let existingIndex = systemPromptPresets.firstIndex(where: { $0.id == selectedSystemPromptID }) else { return }
-        let resolvedSymbolName = GeminiSystemPromptPreset.availableAvatarSymbolNames.contains(symbolName)
-            ? symbolName
-            : GeminiSystemPromptPreset.defaultAvatarSymbolName
-        guard systemPromptPresets[existingIndex].avatarSymbolName != resolvedSymbolName else { return }
-        systemPromptPresets[existingIndex].avatarSymbolName = resolvedSymbolName
-        persistSettings()
     }
 
     func renameSelectedSystemPrompt(to title: String) {
@@ -560,6 +558,7 @@ final class GeminiLiveViewModel: ObservableObject {
                 content: trimmedContent,
                 enabledTools: [],
                 voice: GeminiVoice.kore.rawValue,
+                model: GeminiLiveModel.flashLivePreview.rawValue,
                 thinkingLevel: GeminiThinkingLevel.off.rawValue,
                 lastUsedAt: Date()
             )
@@ -567,6 +566,7 @@ final class GeminiLiveViewModel: ObservableObject {
             selectedSystemPromptID = preset.id
             _thinkingLevel = Published(initialValue: .off)
             _selectedVoice = Published(initialValue: .kore)
+            _selectedModel = Published(initialValue: .flashLivePreview)
             _enabledTools = Published(initialValue: [])
             _enabledSkillNames = Published(initialValue: [])
         }
@@ -1004,7 +1004,7 @@ final class GeminiLiveViewModel: ObservableObject {
                 let preset = self.selectedSystemPromptPreset
                 self.session.connect(
                     apiKey: configuredAPIKey,
-                    model: "gemini-3.1-flash-live-preview",
+                    model: preset.modelEnum.apiName,
                     systemPrompt: systemPrompt,
                     microphoneEnabled: self.effectiveMicrophoneEnabled,
                     thinkingBudget: preset.thinkingEnum.budget,
@@ -1380,22 +1380,6 @@ final class GeminiLiveViewModel: ObservableObject {
         return transcriptOverlayAutoHide ? .autoHide : .pinned
     }
 
-    func cycleTranscriptOverlayMode() {
-        switch transcriptOverlayMode {
-        case .hidden:
-            showTranscriptOverlay = true
-            transcriptOverlayAutoHide = true
-            statusText = "Captions set to auto-hide."
-        case .autoHide:
-            showTranscriptOverlay = true
-            transcriptOverlayAutoHide = false
-            statusText = "Captions pinned."
-        case .pinned:
-            showTranscriptOverlay = false
-            statusText = "Captions hidden."
-        }
-    }
-
     /// Sends typed text over the Live socket as `realtimeInput.text` (required for Gemini 3.1 Flash Live during conversation).
     @discardableResult
     func sendLiveChatMessage(_ raw: String) -> Bool {
@@ -1415,16 +1399,6 @@ final class GeminiLiveViewModel: ObservableObject {
         isModelThinking = false
         isModelSpeaking = false
         lastErrorMessage = nil
-    }
-
-    func clearSavedKey() {
-        keyStore.delete()
-        storedAPIKey = nil
-        hasSavedAPIKey = false
-        apiKeyText = ""
-        if connectionState == .disconnected || connectionState == .failed {
-            statusText = "Paste your Gemini API key to start Gemini Live."
-        }
     }
 
     func shutdown() {
@@ -1551,14 +1525,6 @@ final class GeminiLiveViewModel: ObservableObject {
             lastErrorMessage = "Couldn't delete skill \"\(name)\": \(error.localizedDescription)"
             statusText = "Skill deletion failed."
         }
-    }
-
-    func canDeleteSkill(_ skill: InstalledSkill) -> Bool {
-        !skillStore.isBuiltInSkill(named: skill.metadata.name)
-    }
-
-    func clearKeyDrafts() {
-        apiKeyText = ""
     }
 
     func reloadKeyDrafts() {

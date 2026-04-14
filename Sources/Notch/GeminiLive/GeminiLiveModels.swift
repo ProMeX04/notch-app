@@ -52,6 +52,22 @@ enum GeminiThinkingLevel: String, CaseIterable {
     }
 }
 
+enum GeminiLiveModel: String, CaseIterable {
+    case flashLivePreview = "gemini-3.1-flash-live-preview"
+    case nativeAudioPreview = "gemini-2.5-flash-native-audio-preview-12-2025"
+
+    var apiName: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .flashLivePreview:
+            return "3.1 Flash Live"
+        case .nativeAudioPreview:
+            return "2.5 Native Audio"
+        }
+    }
+}
+
 enum GeminiVoice: String, CaseIterable {
     // Standard Live API voices (original 8)
     case aoede = "Aoede"
@@ -300,6 +316,8 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
     var enabledSkillNames: [String]
     /// GeminiVoice.rawValue for this preset.
     var voice: String
+    /// GeminiLiveModel.rawValue for this preset.
+    var model: String
     /// GeminiThinkingLevel.rawValue for this preset.
     var thinkingLevel: String
     /// SF Symbol used as the agent avatar in setup UI.
@@ -316,6 +334,7 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         enabledTools: [String] = [],
         enabledSkillNames: [String] = [],
         voice: String = GeminiVoice.kore.rawValue,
+        model: String = GeminiLiveModel.flashLivePreview.rawValue,
         thinkingLevel: String = GeminiThinkingLevel.off.rawValue,
         avatarSymbolName: String = GeminiSystemPromptPreset.defaultAvatarSymbolName,
         avatarImageFilename: String? = nil,
@@ -327,6 +346,7 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         self.enabledTools = enabledTools
         self.enabledSkillNames = enabledSkillNames
         self.voice = voice
+        self.model = model
         self.thinkingLevel = thinkingLevel
         self.avatarSymbolName = avatarSymbolName
         self.avatarImageFilename = avatarImageFilename
@@ -334,7 +354,7 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, title, content, enabledTools, enabledSkillNames, voice, thinkingLevel, avatarSymbolName, avatarImageFilename, lastUsedAt
+        case id, title, content, enabledTools, enabledSkillNames, voice, model, thinkingLevel, avatarSymbolName, avatarImageFilename, lastUsedAt
     }
 
     init(from decoder: Decoder) throws {
@@ -345,6 +365,7 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         enabledTools = try c.decodeIfPresent([String].self, forKey: .enabledTools) ?? []
         enabledSkillNames = try c.decodeIfPresent([String].self, forKey: .enabledSkillNames) ?? []
         voice = try c.decodeIfPresent(String.self, forKey: .voice) ?? GeminiVoice.kore.rawValue
+        model = try c.decodeIfPresent(String.self, forKey: .model) ?? GeminiLiveModel.flashLivePreview.rawValue
         thinkingLevel = try c.decodeIfPresent(String.self, forKey: .thinkingLevel) ?? GeminiThinkingLevel.off.rawValue
         avatarSymbolName = try c.decodeIfPresent(String.self, forKey: .avatarSymbolName) ?? GeminiSystemPromptPreset.defaultAvatarSymbolName
         avatarImageFilename = try c.decodeIfPresent(String.self, forKey: .avatarImageFilename)
@@ -359,6 +380,7 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         try c.encode(enabledTools, forKey: .enabledTools)
         try c.encode(enabledSkillNames, forKey: .enabledSkillNames)
         try c.encode(voice, forKey: .voice)
+        try c.encode(model, forKey: .model)
         try c.encode(thinkingLevel, forKey: .thinkingLevel)
         try c.encode(avatarSymbolName, forKey: .avatarSymbolName)
         try c.encodeIfPresent(avatarImageFilename, forKey: .avatarImageFilename)
@@ -371,6 +393,10 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
 
     var voiceEnum: GeminiVoice {
         GeminiVoice(rawValue: voice) ?? .kore
+    }
+
+    var modelEnum: GeminiLiveModel {
+        GeminiLiveModel(rawValue: model) ?? .flashLivePreview
     }
 
     var thinkingEnum: GeminiThinkingLevel {
@@ -398,6 +424,7 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         content: "",
         enabledTools: GeminiTool.coreCases.map(\.rawValue),
         voice: GeminiVoice.kore.rawValue,
+        model: GeminiLiveModel.flashLivePreview.rawValue,
         thinkingLevel: GeminiThinkingLevel.off.rawValue
     )
 

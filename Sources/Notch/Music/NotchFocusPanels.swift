@@ -1047,37 +1047,4 @@ struct PomodoroStatsView: View {
     }
 }
 
-struct PomodoroSessionDotsView: View {
-    let current: Int
-    let total: Int
-    let isFocus: Bool
-    let tint: Color
-    
-    var body: some View {
-        HStack(spacing: 5) {
-            ForEach(0..<total, id: \.self) { index in
-                Circle()
-                    .fill(fillColor(for: index))
-                    .frame(width: 5, height: 5)
-                    .overlay {
-                        if isFocus && index == current {
-                            Circle()
-                                .stroke(tint.opacity(0.4), lineWidth: 1.5)
-                                .frame(width: 9, height: 9)
-                        }
-                    }
-                    .frame(width: 9, height: 9)
-            }
-        }
-    }
-    
-    private func fillColor(for index: Int) -> Color {
-        if index < current {
-            return tint
-        } else if isFocus && index == current {
-            return tint.opacity(0.3)
-        } else {
-            return tint.opacity(0.16)
-        }
-    }
-}
+// PomodoroSessionDotsView moved to its own file in Focus directory

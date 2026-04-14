@@ -18,6 +18,7 @@ final class NotchWindowController {
     private let liveChatInputPanel = GeminiLiveChatInputWindowController()
     private let geminiSecretsFloatingPanel = GeminiSecretsFloatingPanelController()
     private let geminiExecApprovalPanel = GeminiExecApprovalPanelController()
+    private let pomodoroFullscreenOverlay = PomodoroFullscreenWindowController()
 
     private(set) var isVisible = true
 
@@ -87,6 +88,8 @@ final class NotchWindowController {
         geminiSecretsFloatingPanel.setPreferredScreen(initialScreen)
         geminiExecApprovalPanel.setPreferredScreen(initialScreen)
         geminiExecApprovalPanel.observe(gemini: geminiLiveViewModel)
+        pomodoroFullscreenOverlay.setPreferredScreen(initialScreen)
+        pomodoroFullscreenOverlay.observe(pomodoro: pomodoroViewModel)
         geminiLiveViewModel.onPresentSecretsPanel = { [weak self] in
             self?.presentSecretsFloatingPanel()
         }
@@ -134,6 +137,7 @@ final class NotchWindowController {
         liveChatInputPanel.stopObserving()
         geminiSecretsFloatingPanel.shutdown()
         geminiExecApprovalPanel.stopObserving()
+        pomodoroFullscreenOverlay.stopObserving()
         geminiLiveViewModel.onPresentSecretsPanel = nil
         geminiLiveViewModel.onExecApprovalAttentionRequested = nil
         shelfViewModel.shutdown()
@@ -398,6 +402,7 @@ final class NotchWindowController {
         transcriptOverlay.setPreferredScreen(currentScreen)
         liveChatInputPanel.setPreferredScreen(currentScreen)
         geminiSecretsFloatingPanel.setPreferredScreen(currentScreen)
+        pomodoroFullscreenOverlay.setPreferredScreen(currentScreen)
 
         if isVisible {
             window.orderFrontRegardless()

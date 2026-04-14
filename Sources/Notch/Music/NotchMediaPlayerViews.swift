@@ -6,8 +6,8 @@ struct ExpandedAlbumArtView: View {
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            if playback.hasTrack {
-                Image(nsImage: playback.albumArt)
+            if playback.hasTrack, let albumArt = playback.albumArt {
+                Image(nsImage: albumArt)
                     .resizable()
                     .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 13))
@@ -22,12 +22,19 @@ struct ExpandedAlbumArtView: View {
                 playback.openCurrentApp()
             } label: {
                 ZStack(alignment: .bottomTrailing) {
-                    Image(nsImage: playback.albumArt)
-                        .resizable()
-                        .aspectRatio(1, contentMode: .fit)
-                        .matchedGeometryEffect(id: "albumArt", in: albumArtNamespace)
-                        .clipShape(RoundedRectangle(cornerRadius: 13))
-                        .frame(width: 90, height: 90)
+                    Group {
+                        if let albumArt = playback.albumArt {
+                            Image(nsImage: albumArt)
+                                .resizable()
+                                .aspectRatio(1, contentMode: .fit)
+                                .matchedGeometryEffect(id: "albumArt", in: albumArtNamespace)
+                        } else {
+                            RoundedRectangle(cornerRadius: 13)
+                                .fill(Color.white.opacity(0.06))
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 13))
+                    .frame(width: 90, height: 90)
 
                     if let appIcon = playback.appIcon, !playback.usingAppIconForArtwork {
                         Image(nsImage: appIcon)
@@ -149,36 +156,28 @@ struct ExpandedMediaControlsView: View {
     @ViewBuilder
     private func slotView(for slot: MediaControlSlot) -> some View {
         switch slot {
-        case .shuffle:
-            HoverButton(icon: "shuffle", iconColor: playback.isShuffled ? accent : accent.opacity(0.55), scale: .medium) {
-                playback.toggleShuffle()
-            }
         case .previous:
-            HoverButton(icon: "backward.fill", iconColor: accent, scale: .medium) {
+            HoverButton(icon: "backward.fill", iconColor: accent, scale: .medium, isEnabled: playback.canSkipToPreviousTrack) {
                 playback.previousTrack()
             }
         case .playPause:
-            HoverButton(icon: playback.isPlaying ? "pause.fill" : "play.fill", iconColor: accent, scale: .large) {
+            HoverButton(icon: playback.isPlaying ? "pause.fill" : "play.fill", iconColor: accent, scale: .large, isEnabled: playback.canTogglePlayback) {
                 playback.togglePlay()
             }
         case .next:
-            HoverButton(icon: "forward.fill", iconColor: accent, scale: .medium) {
+            HoverButton(icon: "forward.fill", iconColor: accent, scale: .medium, isEnabled: playback.canSkipToNextTrack) {
                 playback.nextTrack()
-            }
-        case .repeatMode:
-            HoverButton(icon: repeatIcon, iconColor: repeatIconColor, scale: .medium) {
-                playback.toggleRepeat()
             }
         case .favorite:
             FavoriteControlButton(playback: playback, accent: accent)
         case .volume:
             VolumeControlView(playback: playback, accent: accent)
         case .goBackward:
-            HoverButton(icon: "gobackward.15", iconColor: accent, scale: .medium) {
+            HoverButton(icon: "gobackward.15", iconColor: accent, scale: .medium, isEnabled: playback.canSkipBackward15Seconds) {
                 playback.skip(seconds: -15)
             }
         case .goForward:
-            HoverButton(icon: "goforward.15", iconColor: accent, scale: .medium) {
+            HoverButton(icon: "goforward.15", iconColor: accent, scale: .medium, isEnabled: playback.canSkipForward15Seconds) {
                 playback.skip(seconds: 15)
             }
         case .stop:
@@ -187,26 +186,6 @@ struct ExpandedMediaControlsView: View {
             }
         case .none:
             Color.clear.frame(width: 30, height: 30)
-        }
-    }
-
-    private var repeatIcon: String {
-        switch playback.repeatMode {
-        case .off:
-            return "repeat"
-        case .all:
-            return "repeat"
-        case .one:
-            return "repeat.1"
-        }
-    }
-
-    private var repeatIconColor: Color {
-        switch playback.repeatMode {
-        case .off:
-            return accent.opacity(0.55)
-        case .all, .one:
-            return accent
         }
     }
 }
@@ -357,12 +336,14 @@ struct HoverButton: View {
     var iconColor: Color = .white
     var scale: Image.Scale = .medium
     var contentTransition: ContentTransition = .symbolEffect
+    var isEnabled = true
     let action: () -> Void
 
     @State private var isHovering = false
 
     var body: some View {
         let size = CGFloat(scale == .large ? 40 : 30)
+        let effectiveIconColor = isEnabled ? iconColor : iconColor.opacity(0.5)
 
         Button(action: action) {
             Rectangle()
@@ -371,20 +352,22 @@ struct HoverButton: View {
                 .frame(width: size, height: size)
                 .overlay {
                     Capsule()
-                        .fill(isHovering ? iconColor.opacity(0.15) : .clear)
+                        .fill(isEnabled && isHovering ? iconColor.opacity(0.15) : .clear)
                         .frame(width: size, height: size)
                         .overlay {
                             Image(systemName: icon)
-                                .foregroundColor(iconColor)
+                                .foregroundColor(effectiveIconColor)
                                 .contentTransition(contentTransition)
                                 .font(scale == .large ? .largeTitle : .body)
                         }
                 }
         }
         .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.62)
         .onHover { hovering in
             withAnimation(.smooth(duration: 0.3)) {
-                isHovering = hovering
+                isHovering = isEnabled && hovering
             }
         }
     }
@@ -497,11 +480,9 @@ struct VolumeControlView: View {
 }
 
 enum MediaControlSlot: String, CaseIterable, Identifiable {
-    case shuffle
     case previous
     case playPause
     case next
-    case repeatMode
     case volume
     case favorite
     case goBackward
@@ -513,13 +494,11 @@ enum MediaControlSlot: String, CaseIterable, Identifiable {
 
     /// Một hàng: không tăng chiều cao panel (stop/volume/favorite bỏ — không ổn định trên mọi app).
     static let allControls: [MediaControlSlot] = [
-        .shuffle,
-        .goBackward,
         .previous,
+        .goBackward,
         .playPause,
-        .next,
         .goForward,
-        .repeatMode,
+        .next,
     ]
 }
 

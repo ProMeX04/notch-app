@@ -33,6 +33,12 @@ enum PomodoroPhase: String {
     }
 }
 
+enum PomodoroFocusMode: String, CaseIterable, Codable {
+    case off = "Off"
+    case zen = "Zen"
+    case strict = "Strict"
+}
+
 struct PomodoroPreset: Identifiable, Codable, Equatable {
     var id: String
     var title: String
@@ -105,6 +111,8 @@ final class PomodoroViewModel: ObservableObject {
     @Published private(set) var breakDurationOverrideSeconds: Int? { didSet { persistSettings() } }
     @Published private(set) var longBreakDurationOverrideSeconds: Int? { didSet { persistSettings() } }
     @Published private(set) var sessionsBeforeLongBreakOverride: Int? { didSet { persistSettings() } }
+    @Published private(set) var focusMode: PomodoroFocusMode { didSet { persistSettings() } }
+    @Published private(set) var isFullscreenActive = false
 
     private var phaseCompletionTask: Task<Void, Never>?
     private var phaseEndDate: Date?
@@ -148,6 +156,9 @@ final class PomodoroViewModel: ObservableObject {
         self.longBreakDurationOverrideSeconds = longBreakDurationOverrideSeconds
         self.sessionsBeforeLongBreakOverride = sessionsBeforeLongBreakOverride
 
+        let rawFocusMode = userDefaults.string(forKey: Self.focusModeKey) ?? ""
+        self.focusMode = PomodoroFocusMode(rawValue: rawFocusMode) ?? .off
+
         let restoredCustomPresets = Self.loadCustomPresets(from: userDefaults)
         customPresets = restoredCustomPresets
 
@@ -184,10 +195,6 @@ final class PomodoroViewModel: ObservableObject {
 
     var longBreakDurationSeconds: Int {
         longBreakDurationOverrideSeconds ?? (preset.longBreakMinutes * 60)
-    }
-
-    var showCompactIndicator: Bool {
-        hasActiveSession || isRunning
     }
 
     var actionTitle: String {
@@ -277,6 +284,7 @@ final class PomodoroViewModel: ObservableObject {
 
         hasActiveSession = true
         isRunning = true
+        evaluateFullscreenState()
         phaseEndDate = .now.addingTimeInterval(TimeInterval(remainingSeconds))
         startPhaseCompletionTask()
         persistRuntimeState()
@@ -301,6 +309,7 @@ final class PomodoroViewModel: ObservableObject {
         phaseEndDate = nil
         isRunning = false
         hasActiveSession = false
+        isFullscreenActive = false
         completedFocusSessions = 0
         phase = .focus
         remainingSeconds = duration(for: .focus, preset: preset)
@@ -455,9 +464,37 @@ final class PomodoroViewModel: ObservableObject {
         persistRuntimeState()
     }
 
+    func setFocusMode(_ mode: PomodoroFocusMode) {
+        guard focusMode != mode else { return }
+        focusMode = mode
+        isFullscreenActive = false
+        if isRunning {
+            pause()
+        }
+    }
+
+    private func evaluateFullscreenState() {
+        switch focusMode {
+        case .off:
+            isFullscreenActive = false
+        case .zen:
+            isFullscreenActive = true
+        case .strict:
+            isFullscreenActive = (phase == .shortBreak || phase == .longBreak)
+        }
+    }
+
+    func exitFullscreen() {
+        isFullscreenActive = false
+        if isRunning {
+            pause()
+        }
+    }
+
     func shutdown() {
         recordCurrentFocusProgressIfNeeded(referenceDate: .now)
         persistRuntimeState()
+        isFullscreenActive = false
         phaseCompletionTask?.cancel()
         phaseCompletionTask = nil
     }
@@ -596,6 +633,7 @@ final class PomodoroViewModel: ObservableObject {
     private func persistSettings() {
         userDefaults.set(autoStartBreaks, forKey: Self.autoStartBreaksKey)
         userDefaults.set(autoStartPomodoros, forKey: Self.autoStartPomodorosKey)
+        userDefaults.set(focusMode.rawValue, forKey: Self.focusModeKey)
         persistOptionalInt(focusDurationOverrideSeconds, forKey: Self.focusDurationOverrideSecondsKey)
         persistOptionalInt(breakDurationOverrideSeconds, forKey: Self.breakDurationOverrideSecondsKey)
         persistOptionalInt(longBreakDurationOverrideSeconds, forKey: Self.longBreakDurationOverrideSecondsKey)
@@ -702,4 +740,5 @@ final class PomodoroViewModel: ObservableObject {
     private static let longBreakDurationOverrideSecondsKey = "NotchPomodoroLongBreakDurationOverrideSeconds"
     private static let sessionsBeforeLongBreakOverrideKey = "NotchPomodoroSessionsBeforeLongBreakOverride"
     private static let runtimeStateDefaultsKey = "NotchPomodoroRuntimeState"
+    private static let focusModeKey = "NotchPomodoroFocusMode"
 }

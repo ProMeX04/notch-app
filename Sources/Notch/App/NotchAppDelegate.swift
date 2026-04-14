@@ -4,6 +4,7 @@ import UserNotifications
 @MainActor
 final class NotchAppDelegate: NSObject, NSApplicationDelegate {
     private var notchController: NotchWindowController?
+    private var statusItemController: StatusItemController?
     private var holdToTalkHotkeyManager: HoldToTalkHotkeyManager?
     private let singleInstanceCoordinator = SingleInstanceCoordinator()
 
@@ -45,6 +46,7 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
         )
 
         self.notchController = notchController
+        self.statusItemController = StatusItemController(windowController: notchController)
 
         let holdToTalkHotkeyManager = HoldToTalkHotkeyManager()
         holdToTalkHotkeyManager.onPress = { [weak notchController] in
@@ -85,6 +87,7 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         singleInstanceCoordinator.unregisterActivationHandler()
+        statusItemController = nil
         holdToTalkHotkeyManager = nil
         notchController?.shutdown()
     }

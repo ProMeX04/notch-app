@@ -7,7 +7,7 @@ struct NotchSettingsRootView: View {
     var body: some View {
         Form {
             Section {
-                Text("Use the Notch interface for panels, keys, and controls.")
+                Text("Use the Notch menu bar icon for panels, keys, and controls.")
                     .foregroundStyle(.secondary)
             } header: {
                 Text("Notch")

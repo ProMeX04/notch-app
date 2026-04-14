@@ -282,41 +282,10 @@ struct PomodoroTimeText: View {
     let weight: Font.Weight
 
     var body: some View {
-        TimelineView(PeriodicTimelineSchedule(from: .now, by: 1.0)) { context in
-            content(for: context.date)
-        }
-    }
-
-    @ViewBuilder
-    private func content(for date: Date) -> some View {
-        let components = PomodoroTimeComponents(seconds: pomodoro.remainingSeconds(at: date))
-
-        HStack(spacing: size <= 14 ? 1 : 3) {
-            PomodoroDigitColumn(
-                digit: components.minuteTens,
-                size: size,
-                weight: weight
-            )
-            PomodoroDigitColumn(
-                digit: components.minuteOnes,
-                size: size,
-                weight: weight
-            )
-
-            Text(":")
+        TimelineView(.periodic(from: .now, by: 1.0)) { context in
+            Text(pomodoro.remainingText(at: context.date))
                 .font(.system(size: size, weight: weight, design: .rounded))
-                .offset(y: size <= 14 ? -0.5 : -1)
-
-            PomodoroDigitColumn(
-                digit: components.secondTens,
-                size: size,
-                weight: weight
-            )
-            PomodoroDigitColumn(
-                digit: components.secondOnes,
-                size: size,
-                weight: weight
-            )
+                .monospacedDigit()
         }
     }
 }
@@ -327,65 +296,12 @@ struct StaticTimeText: View {
     let weight: Font.Weight
 
     var body: some View {
-        ClockDigitsRow(
-            components: PomodoroTimeComponents(seconds: seconds),
-            size: size,
-            weight: weight
-        )
-    }
-}
-
-struct ClockDigitsRow: View {
-    let components: PomodoroTimeComponents
-    let size: CGFloat
-    let weight: Font.Weight
-
-    var body: some View {
-        HStack(spacing: size <= 14 ? 1 : 3) {
-            PomodoroDigitColumn(
-                digit: components.minuteTens,
-                size: size,
-                weight: weight
-            )
-            PomodoroDigitColumn(
-                digit: components.minuteOnes,
-                size: size,
-                weight: weight
-            )
-
-            Text(":")
-                .font(.system(size: size, weight: weight, design: .rounded))
-                .offset(y: size <= 14 ? -0.5 : -1)
-
-            PomodoroDigitColumn(
-                digit: components.secondTens,
-                size: size,
-                weight: weight
-            )
-            PomodoroDigitColumn(
-                digit: components.secondOnes,
-                size: size,
-                weight: weight
-            )
-        }
-    }
-}
-
-struct PomodoroTimeComponents {
-    let minuteTens: Int
-    let minuteOnes: Int
-    let secondTens: Int
-    let secondOnes: Int
-
-    init(seconds: Int) {
-        let clampedSeconds = max(seconds, 0)
-        let minutes = min((clampedSeconds / 60), 99)
-        let seconds = clampedSeconds % 60
-
-        minuteTens = (minutes / 10) % 10
-        minuteOnes = minutes % 10
-        secondTens = (seconds / 10) % 10
-        secondOnes = seconds % 10
+        let minutes = seconds / 60
+        let secs = seconds % 60
+        let text = String(format: "%02d:%02d", minutes, secs)
+        Text(text)
+            .font(.system(size: size, weight: weight, design: .rounded))
+            .monospacedDigit()
     }
 }
 
@@ -526,35 +442,6 @@ struct FocusClockColumn<ClockContent: View, Accessory: View>: View {
                 .frame(width: 124, height: 18, alignment: .center)
         }
         .frame(width: 124, height: 78, alignment: .topLeading)
-    }
-}
-
-struct PomodoroDigitColumn: View {
-    let digit: Int
-    let size: CGFloat
-    let weight: Font.Weight
-
-    private var digitHeight: CGFloat {
-        size * (size <= 14 ? 1.05 : 0.98)
-    }
-
-    private var digitWidth: CGFloat {
-        size * (size <= 14 ? 0.62 : 0.64)
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            ForEach(0..<10, id: \.self) { value in
-                Text("\(value)")
-                    .font(.system(size: size, weight: weight, design: .rounded))
-                    .monospacedDigit()
-                    .frame(width: digitWidth, height: digitHeight)
-            }
-        }
-        .offset(y: -CGFloat(digit) * digitHeight)
-        .frame(width: digitWidth, height: digitHeight, alignment: .top)
-        .clipped()
-        .animation(.smooth(duration: 0.28), value: digit)
     }
 }
 
@@ -836,15 +723,73 @@ struct PomodoroQuickSettingsView: View {
                         settingToggle(label: "Auto Pomo", isOn: $pomodoro.autoStartPomodoros)
                     }
 
-                    settingButton(
-                        label: "Focus Sound",
-                        value: selectedFocusTransitionSound.displayName,
-                        icon: "waveform"
-                    ) {
-                        let nextSound = SoundManager.cycleFocusTransitionSound()
-                        focusTransitionSoundID = nextSound.rawValue
-                        SoundManager.previewFocusTransitionSound(nextSound)
+                    HStack(spacing: 6) {
+                        Menu {
+                            ForEach(PomodoroFocusMode.allCases, id: \.self) { mode in
+                                Button(Localization.get(mode.rawValue, lang: appLanguage)) {
+                                    pomodoro.setFocusMode(mode)
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 2) {
+                                Text(Localization.get("Mode", lang: appLanguage))
+                                    .font(.system(size: 9.8, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.85))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                                    .allowsTightening(true)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                                Text(Localization.get(pomodoro.focusMode.rawValue, lang: appLanguage))
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                    .foregroundStyle(tint)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                                    .multilineTextAlignment(.trailing)
+                                    .offset(y: 0.5)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+                            .background(settingCellBackground(stroke: Color.white.opacity(0.1)))
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+
+                        Menu {
+                            ForEach(FocusTransitionSoundOption.allCases, id: \.self) { sound in
+                                Button(Localization.get(sound.displayName, lang: appLanguage)) {
+                                    focusTransitionSoundID = sound.rawValue
+                                    SoundManager.previewFocusTransitionSound(sound)
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 2) {
+                                Text(Localization.get("Sound", lang: appLanguage))
+                                    .font(.system(size: 9.8, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.85))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                                    .allowsTightening(true)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                                Text(Localization.get(selectedFocusTransitionSound.displayName, lang: appLanguage))
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                    .foregroundStyle(tint)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                                    .multilineTextAlignment(.trailing)
+                                    .offset(y: 0.5)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+                            .background(settingCellBackground(stroke: Color.white.opacity(0.1)))
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                     }
+                    .padding(.top, 4)
                 }
                 .padding(.top, 4)
             }

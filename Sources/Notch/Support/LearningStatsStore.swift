@@ -91,14 +91,24 @@ final class LearningStatsStore: ObservableObject {
         let clampedSeconds = max(seconds, 0)
         guard clampedSeconds > 0 else { return }
 
-        let entry = LearningSessionEntry(
-            id: UUID(),
-            source: source,
-            seconds: clampedSeconds,
-            createdAt: .now
-        )
+        if let idx = entries.firstIndex(where: { $0.source == source && calendar.isDate($0.createdAt, inSameDayAs: .now) }) {
+            let existing = entries[idx]
+            entries[idx] = LearningSessionEntry(
+                id: existing.id,
+                source: source,
+                seconds: existing.seconds + clampedSeconds,
+                createdAt: .now
+            )
+        } else {
+            let entry = LearningSessionEntry(
+                id: UUID(),
+                source: source,
+                seconds: clampedSeconds,
+                createdAt: .now
+            )
+            entries.insert(entry, at: 0)
+        }
 
-        entries.insert(entry, at: 0)
         if entries.count > Self.maxStoredEntries {
             entries = Array(entries.prefix(Self.maxStoredEntries))
         }
@@ -144,5 +154,5 @@ final class LearningStatsStore: ObservableObject {
     }
 
     private static let entriesDefaultsKey = "NotchLearningEntries"
-    private static let maxStoredEntries = 180
+    private static let maxStoredEntries = 5000
 }

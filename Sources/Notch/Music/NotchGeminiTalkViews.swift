@@ -391,7 +391,7 @@ struct GeminiTalkPanelView: View {
             Text(Localization.get("Gemini Live needs a Gemini API key.", lang: appLanguage))
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.88))
-            Text(Localization.get("Keys are not entered in the notch. Use Manage keys below.", lang: appLanguage))
+            Text(Localization.get("Keys are not entered in the notch. Use the menu bar or Manage keys below.", lang: appLanguage))
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.white.opacity(0.52))
                 .fixedSize(horizontal: false, vertical: true)

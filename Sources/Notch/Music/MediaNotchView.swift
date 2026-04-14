@@ -4,7 +4,6 @@ import UniformTypeIdentifiers
 private enum CompactActivity: String {
     case media
     case talk
-    case pomodoro
     case idle
 }
 
@@ -51,13 +50,6 @@ struct MediaNotchView: View {
     private var compactActivityCandidates: [CompactActivityCandidate] {
         var candidates: [CompactActivityCandidate] = []
 
-        if pomodoro.isRunning {
-            candidates.append(.init(activity: .pomodoro, priority: 400))
-        } else if pomodoro.hasActiveSession {
-            let pausedPomodoroPriority = presentationModel.selectedPanel == .focus ? 350 : 100
-            candidates.append(.init(activity: .pomodoro, priority: pausedPomodoroPriority))
-        }
-
         if gemini.showCompactIndicator {
             let talkPriority = presentationModel.selectedPanel == .talk ? 320 : 300
             candidates.append(.init(activity: .talk, priority: talkPriority))
@@ -81,10 +73,6 @@ struct MediaNotchView: View {
 
         guard compactActivity != .idle else {
             return (baseWidth - 20) + (NotchMetrics.closedCornerRadius.bottom * 2)
-        }
-
-        if compactActivity == .pomodoro {
-            return baseWidth + 122 + (NotchMetrics.closedCornerRadius.bottom * 2)
         }
 
         let sideInset = max(0, presentationModel.closedNotchSize.height - 12)
@@ -156,57 +144,67 @@ struct MediaNotchView: View {
         return accepted
     }
 
+    @ViewBuilder
+    private var closedNotchContent: some View {
+        if compactActivity == .media {
+            CompactLiveActivityView(
+                playback: playback,
+                closedNotchWidth: presentationModel.closedNotchSize.width,
+                closedNotchHeight: presentationModel.closedNotchSize.height,
+                albumArtNamespace: albumArtNamespace
+            )
+        } else if compactActivity == .talk {
+            CompactTalkView(
+                gemini: gemini,
+                closedNotchWidth: presentationModel.closedNotchSize.width,
+                closedNotchHeight: presentationModel.closedNotchSize.height
+            )
+        } else {
+            IdleClosedNotchView(
+                closedNotchWidth: presentationModel.closedNotchSize.width,
+                closedNotchHeight: presentationModel.closedNotchSize.height
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var topSectionContent: some View {
+        if presentationModel.isExpanded {
+            NotchHeaderView(
+                closedNotchWidth: presentationModel.closedNotchSize.width,
+                closedNotchHeight: presentationModel.closedNotchSize.height,
+                presentationModel: presentationModel,
+                accessoryController: talkHeaderAccessoryController
+            )
+            .frame(height: expandedHeaderHeight)
+        } else {
+            closedNotchContent
+        }
+    }
+
+    @ViewBuilder
+    private var expandedPanelContent: some View {
+        if presentationModel.isExpanded {
+            ExpandedNotchContent(
+                playback: playback,
+                pomodoro: pomodoro,
+                gemini: gemini,
+                shelf: shelf,
+                learningStats: learningStats,
+                presentationModel: presentationModel,
+                talkHeaderAccessoryController: talkHeaderAccessoryController,
+                albumArtNamespace: albumArtNamespace
+            )
+            .padding(.top, presentationModel.selectedPanel == .focus ? (presentationModel.isFocusOverlayPresented ? 10 : 0) : 10)
+            .padding(.horizontal, presentationModel.selectedPanel == .focus ? 0 : 31)
+            .padding(.bottom, presentationModel.selectedPanel == .focus ? 0 : 12)
+        }
+    }
+
     private var mainLayout: some View {
         VStack(spacing: 0) {
-            if presentationModel.isExpanded {
-                NotchHeaderView(
-                    closedNotchWidth: presentationModel.closedNotchSize.width,
-                    closedNotchHeight: presentationModel.closedNotchSize.height,
-                    presentationModel: presentationModel,
-                    accessoryController: talkHeaderAccessoryController
-                )
-                .frame(height: expandedHeaderHeight)
-            } else if compactActivity == .media {
-                CompactLiveActivityView(
-                    playback: playback,
-                    closedNotchWidth: presentationModel.closedNotchSize.width,
-                    closedNotchHeight: presentationModel.closedNotchSize.height,
-                    albumArtNamespace: albumArtNamespace
-                )
-            } else if compactActivity == .pomodoro {
-                CompactPomodoroView(
-                    pomodoro: pomodoro,
-                    closedNotchWidth: presentationModel.closedNotchSize.width,
-                    closedNotchHeight: presentationModel.closedNotchSize.height
-                )
-            } else if compactActivity == .talk {
-                CompactTalkView(
-                    gemini: gemini,
-                    closedNotchWidth: presentationModel.closedNotchSize.width,
-                    closedNotchHeight: presentationModel.closedNotchSize.height
-                )
-            } else {
-                IdleClosedNotchView(
-                    closedNotchWidth: presentationModel.closedNotchSize.width,
-                    closedNotchHeight: presentationModel.closedNotchSize.height
-                )
-            }
-
-            if presentationModel.isExpanded {
-                ExpandedNotchContent(
-                    playback: playback,
-                    pomodoro: pomodoro,
-                    gemini: gemini,
-                    shelf: shelf,
-                    learningStats: learningStats,
-                    presentationModel: presentationModel,
-                    talkHeaderAccessoryController: talkHeaderAccessoryController,
-                    albumArtNamespace: albumArtNamespace
-                )
-                .padding(.top, presentationModel.selectedPanel == .focus ? (presentationModel.isFocusOverlayPresented ? 10 : 0) : 10)
-                .padding(.horizontal, presentationModel.selectedPanel == .focus ? 0 : 31)
-                .padding(.bottom, presentationModel.selectedPanel == .focus ? 0 : 12)
-            }
+            topSectionContent
+            expandedPanelContent
         }
         .padding(.horizontal, presentationModel.isExpanded ? 0 : NotchMetrics.closedCornerRadius.bottom)
         .frame(
@@ -224,14 +222,15 @@ struct MediaNotchView: View {
                 // Ambient album art blur — chỉ hiện ở music panel khi có bài phát
                 if presentationModel.isExpanded
                     && presentationModel.selectedPanel == .media
-                    && playback.isPlaying {
-                    Image(nsImage: playback.albumArt)
+                    && playback.isPlaying
+                    && playback.albumArt != nil,
+                    let albumArt = playback.albumArt {
+                    Image(nsImage: albumArt)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .scaleEffect(1.8)
                         .blur(radius: 35, opaque: true)
                         .opacity(0.25)
-                        .animation(.easeInOut(duration: 1.2), value: playback.albumArt)
                 }
             }
         }
@@ -273,8 +272,6 @@ struct MediaNotchView: View {
                     presentationModel.selectPanel(.media)
                 case .talk:
                     presentationModel.selectPanel(.talk)
-                case .pomodoro:
-                    presentationModel.selectPanel(.focus)
                 case .idle:
                     break
                 }

@@ -273,12 +273,19 @@ struct CompactLiveActivityView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            Image(nsImage: playback.albumArt)
-                .resizable()
-                .clipped()
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-                .matchedGeometryEffect(id: "albumArt", in: albumArtNamespace)
-                .frame(width: sideSize, height: sideSize)
+            Group {
+                if let albumArt = playback.albumArt {
+                    Image(nsImage: albumArt)
+                        .resizable()
+                        .clipped()
+                        .matchedGeometryEffect(id: "albumArt", in: albumArtNamespace)
+                } else {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.white.opacity(0.06))
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .frame(width: sideSize, height: sideSize)
 
             Rectangle()
                 .fill(.black)
@@ -289,89 +296,6 @@ struct CompactLiveActivityView: View {
                 isPlaying: playback.isPlaying
             )
             .frame(width: sideSize, height: sideSize)
-        }
-        .frame(height: closedNotchHeight, alignment: .center)
-    }
-}
-
-struct CompactPomodoroView: View {
-    @ObservedObject var pomodoro: PomodoroViewModel
-    let closedNotchWidth: CGFloat
-    let closedNotchHeight: CGFloat
-
-    private var sideSize: CGFloat {
-        max(0, closedNotchHeight - 12)
-    }
-
-    private var accentColor: Color {
-        Color(nsColor: pomodoro.phase.accentColor)
-    }
-
-    private func progress(at date: Date) -> Double {
-        let totalSeconds: Int
-        switch pomodoro.phase {
-        case .focus:
-            totalSeconds = pomodoro.focusDurationSeconds
-        case .shortBreak:
-            totalSeconds = pomodoro.breakDurationSeconds
-        case .longBreak:
-            totalSeconds = pomodoro.longBreakDurationSeconds
-        }
-
-        guard totalSeconds > 0 else { return 0 }
-        let remaining = pomodoro.remainingSeconds(at: date)
-        return Double(totalSeconds - remaining) / Double(totalSeconds)
-    }
-
-    private var leadingIndicatorWidth: CGFloat {
-        compactSideWidth
-    }
-
-    private var centerNotchWidth: CGFloat {
-        max(0, closedNotchWidth - NotchMetrics.closedCornerRadius.top)
-    }
-
-    private var timerWidth: CGFloat {
-        compactSideWidth
-    }
-
-    private var compactSideWidth: CGFloat {
-        max(72, sideSize + 36)
-    }
-
-    var body: some View {
-        HStack(spacing: 0) {
-            HStack(spacing: 6) {
-                Image(systemName: pomodoro.phase.symbolName)
-                    .font(.system(size: 14, weight: .black))
-                
-                Text("\(pomodoro.currentFocusSessionIndex)/\(pomodoro.sessionsBeforeLongBreak)")
-                    .font(.system(size: 13, weight: .black, design: .rounded))
-            }
-            .padding(.leading, 8)
-            .foregroundStyle(
-                pomodoro.isRunning
-                    ? accentColor.ensureMinimumBrightness(factor: 0.82)
-                    : accentColor.ensureMinimumBrightness(factor: 0.72).opacity(0.92)
-            )
-            .frame(width: leadingIndicatorWidth, height: sideSize, alignment: .leading)
-
-            Rectangle()
-                .fill(.black)
-                .frame(width: centerNotchWidth)
-
-            PomodoroTimeText(
-                pomodoro: pomodoro,
-                size: 14,
-                weight: .bold
-            )
-            .padding(.trailing, 8)
-            .foregroundStyle(
-                pomodoro.isRunning
-                    ? accentColor.ensureMinimumBrightness(factor: 0.82)
-                    : accentColor.ensureMinimumBrightness(factor: 0.72).opacity(0.92)
-            )
-            .frame(width: timerWidth, height: sideSize, alignment: .trailing)
         }
         .frame(height: closedNotchHeight, alignment: .center)
     }
@@ -806,7 +730,7 @@ struct Localization {
         "System Media": ["English": "System Media", "Tiếng Việt": "Hệ thống"],
         "Done": ["English": "Done", "Tiếng Việt": "Xong"],
         "Gemini Live needs a Gemini API key.": ["English": "Gemini Live needs a Gemini API key.", "Tiếng Việt": "Gemini Live cần một API Key."],
-        "Keys are not entered in the notch. Use Manage keys below.": ["English": "Keys are not entered in the notch. Use Manage keys below.", "Tiếng Việt": "Key không thể nhập tại Notch. Hãy dùng nút Quản lý Key bên dưới."],
+        "Keys are not entered in the notch. Use the menu bar or Manage keys below.": ["English": "Keys are not entered in the notch. Use the menu bar or Manage keys below.", "Tiếng Việt": "Key không thể nhập tại Notch. Hãy dùng Menu Bar hoặc nút Quản lý Key bên dưới."],
         "Approve Command": ["English": "Approve Command", "Tiếng Việt": "Phê duyệt lệnh"],
         "Deny": ["English": "Deny", "Tiếng Việt": "Từ chối"],
         "Gemini API Key": ["English": "Gemini API Key", "Tiếng Việt": "Gemini API Key"],

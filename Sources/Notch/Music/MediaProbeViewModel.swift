@@ -6,7 +6,7 @@ import SwiftUI
 @MainActor
 final class MediaProbeViewModel: ObservableObject {
     @Published private(set) var state: PlaybackState = .init(bundleIdentifier: "")
-    @Published private(set) var albumArt: NSImage = MediaProbeViewModel.fallbackArtwork
+    @Published private(set) var albumArt: NSImage?
     @Published private(set) var accentColor: NSColor = .white
     @Published private(set) var appIcon: NSImage?
     @Published private(set) var usingAppIconForArtwork = false
@@ -75,12 +75,24 @@ final class MediaProbeViewModel: ObservableObject {
         state.isPlaying
     }
 
-    var isShuffled: Bool {
-        state.isShuffled
+    var canTogglePlayback: Bool {
+        state.canTogglePlayback
     }
 
-    var repeatMode: RepeatMode {
-        state.repeatMode
+    var canSkipToPreviousTrack: Bool {
+        state.canSkipToPreviousTrack
+    }
+
+    var canSkipToNextTrack: Bool {
+        state.canSkipToNextTrack
+    }
+
+    var canSkipBackward15Seconds: Bool {
+        state.canSkipBackward15Seconds
+    }
+
+    var canSkipForward15Seconds: Bool {
+        state.canSkipForward15Seconds
     }
 
     var volume: Double {
@@ -100,7 +112,7 @@ final class MediaProbeViewModel: ObservableObject {
     }
 
     var hasTrack: Bool {
-        !state.title.isEmpty && state.title != "Nothing Playing"
+        state.hasTrackMetadata
     }
 
     func estimatedPlaybackPosition(at date: Date = Date()) -> TimeInterval {
@@ -158,18 +170,6 @@ final class MediaProbeViewModel: ObservableObject {
     func skip(seconds: TimeInterval) {
         let newPosition = min(max(0, state.currentTime + seconds), state.duration)
         seek(to: newPosition)
-    }
-
-    func toggleShuffle() {
-        Task {
-            await controller?.toggleShuffle()
-        }
-    }
-
-    func toggleRepeat() {
-        Task {
-            await controller?.toggleRepeat()
-        }
     }
 
     func toggleFavoriteTrack() {
@@ -233,18 +233,30 @@ final class MediaProbeViewModel: ObservableObject {
             return
         }
 
+        if shouldPreserveCurrentArtwork(for: state) {
+            return
+        }
+
         if let appIcon {
             albumArt = appIcon
             usingAppIconForArtwork = true
             return
         }
 
-        albumArt = Self.fallbackArtwork
-        usingAppIconForArtwork = true
+        albumArt = nil
+        usingAppIconForArtwork = false
+    }
+
+    private func shouldPreserveCurrentArtwork(for state: PlaybackState) -> Bool {
+        guard albumArt != nil else { return false }
+        return state.hasMediaContext || showCompactLiveActivity || !isPlayerIdle
     }
 
     private func updateAccentColor() {
-        let image = albumArt
+        guard let image = albumArt else {
+            accentColor = .white
+            return
+        }
         let token = UUID()
         artworkComputationToken = token
 
@@ -277,6 +289,7 @@ final class MediaProbeViewModel: ObservableObject {
     }
 
     private func refreshLiveActivityVisibility() {
+        let previousValue = showCompactLiveActivity
         let shouldShowCompactLiveActivity = state.isPlaying || !isPlayerIdle
 
         if showCompactLiveActivity != shouldShowCompactLiveActivity {
@@ -286,11 +299,12 @@ final class MediaProbeViewModel: ObservableObject {
         } else {
             showCompactLiveActivity = shouldShowCompactLiveActivity
         }
-    }
 
-    /// Khi không có artwork / không phát — waveform trung tính hơn `music.note`.
-    private static let fallbackArtwork =
-        NSImage(systemSymbolName: "waveform", accessibilityDescription: "No media playing") ?? NSImage()
+        if previousValue && !showCompactLiveActivity {
+            updateAlbumArt(using: state)
+            updateAccentColor()
+        }
+    }
 }
 
 private struct VisualSignature: Equatable {

@@ -21,11 +21,8 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
         playbackState.bundleIdentifier == "com.apple.Music"
     }
 
-    private let mediaRemoteBundle: CFBundle
     private let mediaRemoteSendCommand: @convention(c) (Int, AnyObject?) -> Void
     private let mediaRemoteSetElapsedTime: @convention(c) (Double) -> Void
-    private let mediaRemoteSetShuffleMode: @convention(c) (Int) -> Void
-    private let mediaRemoteSetRepeatMode: @convention(c) (Int) -> Void
     private let timestampFormatter = ISO8601DateFormatter()
 
     private var process: Process?
@@ -46,24 +43,13 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
             let setElapsedTimePointer = CFBundleGetFunctionPointerForName(
                 bundle,
                 "MRMediaRemoteSetElapsedTime" as CFString
-            ),
-            let setShuffleModePointer = CFBundleGetFunctionPointerForName(
-                bundle,
-                "MRMediaRemoteSetShuffleMode" as CFString
-            ),
-            let setRepeatModePointer = CFBundleGetFunctionPointerForName(
-                bundle,
-                "MRMediaRemoteSetRepeatMode" as CFString
             )
         else {
             return nil
         }
 
-        mediaRemoteBundle = bundle
         mediaRemoteSendCommand = unsafeBitCast(sendCommandPointer, to: (@convention(c) (Int, AnyObject?) -> Void).self)
         mediaRemoteSetElapsedTime = unsafeBitCast(setElapsedTimePointer, to: (@convention(c) (Double) -> Void).self)
-        mediaRemoteSetShuffleMode = unsafeBitCast(setShuffleModePointer, to: (@convention(c) (Int) -> Void).self)
-        mediaRemoteSetRepeatMode = unsafeBitCast(setRepeatModePointer, to: (@convention(c) (Int) -> Void).self)
 
         terminationObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification,
@@ -155,19 +141,6 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
         true
     }
 
-    func toggleShuffle() async {
-        guard canControlPlayback else { return }
-        mediaRemoteSetShuffleMode(playbackState.isShuffled ? 1 : 3)
-        playbackState.isShuffled.toggle()
-    }
-
-    func toggleRepeat() async {
-        guard canControlPlayback else { return }
-        let newRepeatMode = playbackState.repeatMode == .off ? 3 : (playbackState.repeatMode.rawValue - 1)
-        playbackState.repeatMode = RepeatMode(rawValue: newRepeatMode) ?? .off
-        mediaRemoteSetRepeatMode(newRepeatMode)
-    }
-
     func setVolume(_ level: Double) async {
         let clampedLevel = max(0.0, min(1.0, level))
         let volumePercentage = Int(clampedLevel * 100)
@@ -225,37 +198,26 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
     private func handleAdapterUpdate(_ update: NowPlayingUpdate) async {
         let payload = update.payload
         let diff = update.diff ?? false
+        let previousState = playbackState
 
-        var newPlaybackState = PlaybackState(bundleIdentifier: playbackState.bundleIdentifier)
+        var newPlaybackState = PlaybackState(bundleIdentifier: previousState.bundleIdentifier)
 
-        newPlaybackState.title = payload.title ?? (diff ? playbackState.title : "Nothing Playing")
-        newPlaybackState.artist = payload.artist ?? (diff ? playbackState.artist : "Notch")
-        newPlaybackState.album = payload.album ?? (diff ? playbackState.album : "")
-        newPlaybackState.duration = payload.duration ?? (diff ? playbackState.duration : 0)
+        newPlaybackState.title = payload.title ?? (diff ? previousState.title : "Nothing Playing")
+        newPlaybackState.artist = payload.artist ?? (diff ? previousState.artist : "Notch")
+        newPlaybackState.album = payload.album ?? (diff ? previousState.album : "")
+        newPlaybackState.duration = payload.duration ?? (diff ? previousState.duration : 0)
 
         if let elapsedTime = payload.elapsedTime {
             newPlaybackState.currentTime = elapsedTime
         } else if diff {
             if payload.playing == false {
-                let timeSinceLastUpdate = Date().timeIntervalSince(playbackState.lastUpdated)
-                newPlaybackState.currentTime = playbackState.currentTime + (playbackState.playbackRate * timeSinceLastUpdate)
+                let timeSinceLastUpdate = Date().timeIntervalSince(previousState.lastUpdated)
+                newPlaybackState.currentTime = previousState.currentTime + (previousState.playbackRate * timeSinceLastUpdate)
             } else {
-                newPlaybackState.currentTime = playbackState.currentTime
+                newPlaybackState.currentTime = previousState.currentTime
             }
         } else {
             newPlaybackState.currentTime = 0
-        }
-
-        if let shuffleMode = payload.shuffleMode {
-            newPlaybackState.isShuffled = shuffleMode != 1
-        } else if diff {
-            newPlaybackState.isShuffled = playbackState.isShuffled
-        }
-
-        if let repeatModeValue = payload.repeatMode {
-            newPlaybackState.repeatMode = RepeatMode(rawValue: repeatModeValue) ?? .off
-        } else if diff {
-            newPlaybackState.repeatMode = playbackState.repeatMode
         }
 
         if let artworkDataString = payload.artworkData {
@@ -263,28 +225,101 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
                 base64Encoded: artworkDataString.trimmingCharacters(in: .whitespacesAndNewlines)
             )
         } else if diff {
-            newPlaybackState.artwork = playbackState.artwork
+            newPlaybackState.artwork = previousState.artwork
         }
 
         if let dateString = payload.timestamp,
            let date = timestampFormatter.date(from: dateString) {
             newPlaybackState.lastUpdated = date
         } else if diff {
-            newPlaybackState.lastUpdated = playbackState.lastUpdated
+            newPlaybackState.lastUpdated = previousState.lastUpdated
         } else {
             newPlaybackState.lastUpdated = .now
         }
 
-        newPlaybackState.playbackRate = payload.playbackRate ?? (diff ? playbackState.playbackRate : 1.0)
-        newPlaybackState.isPlaying = payload.playing ?? (diff ? playbackState.isPlaying : false)
+        newPlaybackState.playbackRate = payload.playbackRate ?? (diff ? previousState.playbackRate : 1.0)
+        newPlaybackState.isPlaying = payload.playing ?? (diff ? previousState.isPlaying : false)
         newPlaybackState.bundleIdentifier =
             payload.parentApplicationBundleIdentifier ??
             payload.bundleIdentifier ??
-            (diff ? playbackState.bundleIdentifier : "")
-        newPlaybackState.volume = payload.volume ?? (diff ? playbackState.volume : 0.5)
+            (diff ? previousState.bundleIdentifier : "")
+        newPlaybackState.volume = payload.volume ?? (diff ? previousState.volume : 0.5)
+        newPlaybackState.prohibitsSkip = payload.prohibitsSkip ?? (diff ? previousState.prohibitsSkip : false)
+        newPlaybackState.supportsFastForward15Seconds =
+            payload.supportsFastForward15Seconds ??
+            (diff ? previousState.supportsFastForward15Seconds : nil)
+        newPlaybackState.supportsRewind15Seconds =
+            payload.supportsRewind15Seconds ??
+            (diff ? previousState.supportsRewind15Seconds : nil)
 
-        guard newPlaybackState != playbackState else { return }
+        mergeTransitionalMediaState(
+            into: &newPlaybackState,
+            payload: payload,
+            diff: diff,
+            previousState: previousState
+        )
+
+        guard newPlaybackState != previousState else { return }
         playbackState = newPlaybackState
+    }
+
+    private func mergeTransitionalMediaState(
+        into newPlaybackState: inout PlaybackState,
+        payload: NowPlayingPayload,
+        diff: Bool,
+        previousState: PlaybackState
+    ) {
+        guard previousState.hasMediaContext else { return }
+
+        if shouldPreservePreviousMetadata(
+            for: newPlaybackState,
+            payload: payload,
+            diff: diff,
+            previousState: previousState
+        ) {
+            newPlaybackState.title = previousState.title
+            newPlaybackState.artist = previousState.artist
+            newPlaybackState.album = previousState.album
+            newPlaybackState.duration = previousState.duration
+            newPlaybackState.bundleIdentifier = previousState.bundleIdentifier
+        }
+
+        if shouldPreservePreviousArtwork(
+            for: newPlaybackState,
+            payload: payload,
+            previousState: previousState
+        ) {
+            newPlaybackState.artwork = previousState.artwork
+        }
+    }
+
+    private func shouldPreservePreviousMetadata(
+        for newPlaybackState: PlaybackState,
+        payload: NowPlayingPayload,
+        diff: Bool,
+        previousState: PlaybackState
+    ) -> Bool {
+        guard !diff else { return false }
+        guard previousState.hasTrackMetadata else { return false }
+        guard !newPlaybackState.hasMediaContext else { return false }
+
+        return payload.title == nil &&
+            payload.artist == nil &&
+            payload.album == nil &&
+            payload.duration == nil &&
+            payload.artworkData == nil &&
+            payload.parentApplicationBundleIdentifier == nil &&
+            payload.bundleIdentifier == nil
+    }
+
+    private func shouldPreservePreviousArtwork(
+        for newPlaybackState: PlaybackState,
+        payload: NowPlayingPayload,
+        previousState: PlaybackState
+    ) -> Bool {
+        guard payload.artworkData == nil else { return false }
+        guard previousState.artwork != nil else { return false }
+        return newPlaybackState.hasMediaContext
     }
 
     private func fetchFavoriteStateIfSupported() async {
@@ -334,7 +369,7 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
     }
 
     private var hasTrackMetadata: Bool {
-        !playbackState.title.isEmpty && playbackState.title != "Nothing Playing"
+        playbackState.hasTrackMetadata
     }
 
     private var hasRunningSourceApp: Bool {
@@ -356,8 +391,9 @@ private struct NowPlayingPayload: Codable, Sendable {
     let album: String?
     let duration: Double?
     let elapsedTime: Double?
-    let shuffleMode: Int?
-    let repeatMode: Int?
+    let prohibitsSkip: Bool?
+    let supportsFastForward15Seconds: Bool?
+    let supportsRewind15Seconds: Bool?
     let artworkData: String?
     let timestamp: String?
     let playbackRate: Double?

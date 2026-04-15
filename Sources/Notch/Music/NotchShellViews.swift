@@ -192,26 +192,14 @@ struct NotchHeaderView: View {
         HStack(spacing: 0) {
             HStack(spacing: 10) {
                 ForEach(accessoryController.leadingActions) { action in
-                    Button(action: action.action) {
-                        HStack(spacing: 5) {
-                            if let icon = action.icon {
-                                Image(systemName: icon)
-                                    .font(.system(size: 10, weight: .bold))
-                            }
-                            Text(action.title)
-                                .font(.system(size: 10, weight: .semibold))
-                        }
-                        .foregroundStyle(foregroundStyle(for: action))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .frame(minHeight: 30)
-                        .background(
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .fill(backgroundFill(for: action))
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(action.isDisabled)
+                    StandardActionButton(
+                        title: action.title,
+                        icon: action.icon,
+                        tint: action.style == .primary ? Color(nsColor: .systemBlue) : .white,
+                        variant: action.style == .primary ? .primary : .secondary,
+                        isDisabled: action.isDisabled,
+                        action: action.action
+                    )
                 }
 
                 PanelSwitcher(
@@ -599,7 +587,7 @@ struct PanelSwitcher: View {
         case .focus:
             return "timer"
         case .talk:
-            return "waveform.and.mic"
+            return "bubble.left.and.bubble.right"
         case .shelf:
             return "tray.full"
         case .settings:
@@ -613,7 +601,7 @@ struct PanelSwitcher: View {
         } label: {
             Image(systemName: icon)
                 .font(.system(size: 11, weight: .semibold))
-                .frame(width: 28, height: 28)
+                .frame(width: StandardButtonMetrics.height, height: StandardButtonMetrics.height)
                 .background(
                     Capsule()
                         .fill(presentationModel.selectedPanel == panel ? Color.white.opacity(0.12) : Color.white.opacity(0.001))
@@ -692,7 +680,6 @@ struct Localization {
         "Sun": ["English": "Sun", "Tiếng Việt": "CN"],
         "Back": ["English": "Back", "Tiếng Việt": "Quay lại"],
         "Save": ["English": "Save", "Tiếng Việt": "Lưu"],
-        "Add": ["English": "Add", "Tiếng Việt": "Thêm"],
         "Profile": ["English": "Profile", "Tiếng Việt": "Hồ sơ"],
         "Tools": ["English": "Tools", "Tiếng Việt": "Công cụ"],
         "Skills": ["English": "Skills", "Tiếng Việt": "Kỹ năng"],
@@ -793,6 +780,13 @@ struct Localization {
         "Sound": ["English": "Sound", "Tiếng Việt": "Âm thanh"],
         "Streak": ["English": "Streak", "Tiếng Việt": "Chuỗi"],
         "Today": ["English": "Today", "Tiếng Việt": "Hôm nay"],
+        "Focusing on": ["English": "Focusing on", "Tiếng Việt": "Mục tiêu"],
+        "What are you working on?": ["English": "What are you working on?", "Tiếng Việt": "Bạn đang làm việc gì?"],
+        "Tasks": ["English": "Tasks", "Tiếng Việt": "Nhiệm vụ"],
+        "Add": ["English": "Add", "Tiếng Việt": "Thêm"],
+        "No tasks yet": ["English": "No tasks yet", "Tiếng Việt": "Chưa có nhiệm vụ"],
+        "Open tasks": ["English": "Open tasks", "Tiếng Việt": "Chưa xong"],
+        "Completed tasks": ["English": "Completed", "Tiếng Việt": "Đã xong"],
     ]
 
     static func get(_ key: String, lang: String) -> String {
@@ -928,22 +922,14 @@ struct GlobalSettingsView: View {
                 )
             }
 
-            Button {
+            StandardActionButton(
+                title: Localization.get("Quit Notch", lang: appLanguage),
+                icon: "power",
+                tint: Color(nsColor: .systemRed).opacity(0.85),
+                variant: .primary
+            ) {
                 NSApp.terminate(nil)
-            } label: {
-                HStack(spacing: 6) {
-                    Spacer()
-                    Image(systemName: "power")
-                    Text(Localization.get("Quit Notch", lang: appLanguage))
-                    Spacer()
-                }
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(Color(nsColor: .systemRed).opacity(0.85))
-                .padding(.vertical, 10)
-                .background(Color.white.opacity(0.05).cornerRadius(10))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.08), lineWidth: 1))
             }
-            .buttonStyle(.plain)
             .padding(.top, 4)
         }
     }
@@ -985,7 +971,7 @@ struct GlobalSettingsView: View {
             }
             .foregroundStyle(selectedSection == section ? .white : .white.opacity(0.68))
             .padding(.horizontal, 10)
-            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, minHeight: StandardButtonMetrics.height, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(selectedSection == section ? tint.opacity(0.16) : Color.white.opacity(0.05))
@@ -1066,25 +1052,12 @@ struct GlobalSettingsView: View {
     }
     
     private func languageButton(name: String) -> some View {
-        Button {
-            appLanguage = name
-        } label: {
-            Text(name)
-                .font(.system(size: 12, weight: .semibold))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(
-                    Capsule()
-                        .fill(appLanguage == name ? tint.opacity(0.15) : Color.white.opacity(0.06))
-                )
-                .overlay {
-                    if appLanguage == name {
-                        Capsule().stroke(tint.opacity(0.4), lineWidth: 1)
-                    }
-                }
-                .foregroundStyle(appLanguage == name ? tint : .white.opacity(0.6))
-        }
-        .buttonStyle(.plain)
+        StandardActionButton(
+            title: name,
+            tint: tint,
+            variant: appLanguage == name ? .primary : .secondary,
+            action: { appLanguage = name }
+        )
     }
 
     private func accentColorButton(for option: NotchAccentColorOption) -> some View {

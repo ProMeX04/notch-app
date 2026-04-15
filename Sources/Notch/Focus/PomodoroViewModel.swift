@@ -1,6 +1,21 @@
-import AppKit
-import Foundation
 import SwiftUI
+import Combine
+
+struct FocusTask: Identifiable, Codable, Equatable {
+    let id: UUID
+    var title: String
+    var isCompleted: Bool
+    var completedSessions: Int
+    var createdAt: Date
+
+    init(id: UUID = UUID(), title: String, isCompleted: Bool = false, completedSessions: Int = 0, createdAt: Date = .now) {
+        self.id = id
+        self.title = title
+        self.isCompleted = isCompleted
+        self.completedSessions = completedSessions
+        self.createdAt = createdAt
+    }
+}
 
 enum PomodoroPhase: String {
     case focus = "Focus"
@@ -99,7 +114,11 @@ private struct PomodoroRuntimeState: Codable {
 
 @MainActor
 final class PomodoroViewModel: ObservableObject {
-    @Published private(set) var phase: PomodoroPhase = .focus
+    @Published private(set) var phase: PomodoroPhase = .focus {
+        didSet {
+            refreshPhaseReminder()
+        }
+    }
     @Published private(set) var preset: PomodoroPreset
     @Published private(set) var customPresets: [PomodoroPreset]
     @Published private(set) var remainingSeconds: Int
@@ -107,15 +126,25 @@ final class PomodoroViewModel: ObservableObject {
     @Published private(set) var hasActiveSession = false
     @Published var autoStartBreaks: Bool { didSet { persistSettings() } }
     @Published var autoStartPomodoros: Bool { didSet { persistSettings() } }
+    @Published var tasks: [FocusTask] = [] { didSet { persistTasks() } }
+    @Published var selectedTaskId: UUID? = nil { didSet { persistTasks() } }
+    
+    var currentTask: String {
+        tasks.first(where: { $0.id == selectedTaskId })?.title ?? ""
+    }
     @Published private(set) var focusDurationOverrideSeconds: Int? { didSet { persistSettings() } }
     @Published private(set) var breakDurationOverrideSeconds: Int? { didSet { persistSettings() } }
     @Published private(set) var longBreakDurationOverrideSeconds: Int? { didSet { persistSettings() } }
     @Published private(set) var sessionsBeforeLongBreakOverride: Int? { didSet { persistSettings() } }
     @Published private(set) var focusMode: PomodoroFocusMode { didSet { persistSettings() } }
     @Published private(set) var isFullscreenActive = false
+    /// Matches `MotivationalQuotes` for the current phase — also used for system notifications when a phase begins (timer or skip).
+    @Published private(set) var phaseReminder: MotivationalQuote = MotivationalQuote(text: "", author: "")
 
     private var phaseCompletionTask: Task<Void, Never>?
     private var phaseEndDate: Date?
+    /// Avoids wiping persisted `selectedTaskId` while assigning `tasks` then `selectedTaskId` during `loadTasks()`.
+    private var suppressTaskPersistence = false
     private let userDefaults: UserDefaults
     private let learningStatsStore: LearningStatsStore
     @Published private(set) var completedFocusSessions = 0
@@ -170,7 +199,10 @@ final class PomodoroViewModel: ObservableObject {
 
         preset = resolvedPreset
         remainingSeconds = focusDurationOverrideSeconds ?? (resolvedPreset.focusMinutes * 60)
+        loadTasks()
         restoreRuntimeStateIfAvailable()
+        // `phase` may stay `.focus` after restore (no `didSet` fire) — ensure a reminder exists.
+        refreshPhaseReminder()
     }
 
     var availablePresets: [PomodoroPreset] {
@@ -315,6 +347,7 @@ final class PomodoroViewModel: ObservableObject {
         remainingSeconds = duration(for: .focus, preset: preset)
         recordedFocusSecondsForCurrentPhase = 0
         persistRuntimeState()
+        refreshPhaseReminder()
     }
 
     func skipPhase() {
@@ -323,7 +356,7 @@ final class PomodoroViewModel: ObservableObject {
         phaseCompletionTask?.cancel()
         phaseCompletionTask = nil
         phaseEndDate = nil
-        advancePhase(continueRunning: shouldContinueRunning)
+        advancePhase(continueRunning: shouldContinueRunning, postTransitionNotification: true)
         persistRuntimeState()
     }
 
@@ -367,6 +400,7 @@ final class PomodoroViewModel: ObservableObject {
         breakDurationOverrideSeconds = nil
         longBreakDurationOverrideSeconds = nil
         persistRuntimeState()
+        refreshPhaseReminder()
     }
 
     func updateCurrentDurations(focusMinutes: Int, breakMinutes: Int) {
@@ -485,10 +519,37 @@ final class PomodoroViewModel: ObservableObject {
         phaseCompletionTask = nil
     }
 
-    private func advancePhase(continueRunning: Bool) {
+    private func refreshPhaseReminder() {
+        let lang = UserDefaults.standard.string(forKey: "app_language") ?? "English"
+        phaseReminder = MotivationalQuotes.getRandom(for: phase, lang: lang)
+    }
+
+    private func postPhaseStartedNotification() {
+        let lang = UserDefaults.standard.string(forKey: "app_language") ?? "English"
+        let title = Localization.get(phase.rawValue, lang: lang)
+        var body = phaseReminder.text
+        if !phaseReminder.author.isEmpty {
+            body += "\n" + phaseReminder.author
+        }
+        AppNotificationManager.sendNotification(
+            title: title,
+            body: body,
+            identifier: "notch.pomodoro.phase-start.\(UUID().uuidString)"
+        )
+    }
+
+    private func advancePhase(continueRunning: Bool, postTransitionNotification: Bool = false) {
         if phase == .focus {
             recordCurrentFocusProgressIfNeeded(referenceDate: .now)
             completedFocusSessions += 1
+            
+            // Increment session count for the selected task
+            if let selectedId = selectedTaskId,
+               let index = tasks.firstIndex(where: { $0.id == selectedId }) {
+                tasks[index].completedSessions += 1
+                persistTasks()
+            }
+            
             phase = nextBreakPhase
         } else {
             phase = .focus
@@ -513,6 +574,10 @@ final class PomodoroViewModel: ObservableObject {
             isRunning = false
             persistRuntimeState()
         }
+
+        if postTransitionNotification {
+            postPhaseStartedNotification()
+        }
     }
 
     private func startPhaseCompletionTask() {
@@ -532,16 +597,11 @@ final class PomodoroViewModel: ObservableObject {
             switch finishedPhase {
             case .focus:
                 SoundManager.playFocusComplete()
-                AppNotificationManager.sendNotification(title: "Focus Session Complete", body: "Time for a break!")
-            case .shortBreak:
+            case .shortBreak, .longBreak:
                 SoundManager.playBreakComplete()
-                AppNotificationManager.sendNotification(title: "Short Break Complete", body: "Time to get back to work.")
-            case .longBreak:
-                SoundManager.playBreakComplete()
-                AppNotificationManager.sendNotification(title: "Long Break Complete", body: "Ready for another focus session?")
             }
 
-            self.advancePhase(continueRunning: true)
+            self.advancePhase(continueRunning: true, postTransitionNotification: true)
         }
     }
 
@@ -727,4 +787,48 @@ final class PomodoroViewModel: ObservableObject {
     private static let sessionsBeforeLongBreakOverrideKey = "NotchPomodoroSessionsBeforeLongBreakOverride"
     private static let runtimeStateDefaultsKey = "NotchPomodoroRuntimeState"
     private static let focusModeKey = "NotchPomodoroFocusMode"
+    private static let tasksKey = "NotchPomodoroTasks"
+    private static let selectedTaskIdKey = "NotchPomodoroSelectedTaskId"
+
+    private func persistTasks() {
+        guard !suppressTaskPersistence else { return }
+        if let encoded = try? JSONEncoder().encode(tasks) {
+            userDefaults.set(encoded, forKey: Self.tasksKey)
+        }
+        if let id = selectedTaskId {
+            userDefaults.set(id.uuidString, forKey: Self.selectedTaskIdKey)
+        } else {
+            userDefaults.removeObject(forKey: Self.selectedTaskIdKey)
+        }
+    }
+
+    private func loadTasks() {
+        suppressTaskPersistence = true
+        defer {
+            suppressTaskPersistence = false
+            persistTasks()
+        }
+
+        let loadedTasks: [FocusTask]
+        if let data = userDefaults.data(forKey: Self.tasksKey),
+           let decoded = try? JSONDecoder().decode([FocusTask].self, from: data) {
+            loadedTasks = decoded
+        } else {
+            loadedTasks = []
+        }
+
+        var selection: UUID?
+        if let idString = userDefaults.string(forKey: Self.selectedTaskIdKey),
+           let id = UUID(uuidString: idString) {
+            selection = id
+        }
+
+        tasks = loadedTasks
+
+        if let id = selection, loadedTasks.contains(where: { $0.id == id }) {
+            selectedTaskId = id
+        } else {
+            selectedTaskId = nil
+        }
+    }
 }

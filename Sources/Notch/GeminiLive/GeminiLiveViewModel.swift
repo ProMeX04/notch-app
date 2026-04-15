@@ -825,7 +825,7 @@ final class GeminiLiveViewModel: ObservableObject {
         case .connecting:
             return "stop.circle.fill"
         case .disconnected, .failed:
-            return "waveform.and.mic"
+            return "play.circle.fill"
         }
     }
 
@@ -838,7 +838,7 @@ final class GeminiLiveViewModel: ObservableObject {
 
     var microphoneButtonIcon: String {
         if inputMode == .pushToTalk {
-            return isHoldToTalkActive ? "waveform.and.mic" : "mic"
+            return isHoldToTalkActive ? "mic.circle.fill" : "mic"
         }
         return isMicrophoneEnabled ? "mic.fill" : "mic.slash.fill"
     }

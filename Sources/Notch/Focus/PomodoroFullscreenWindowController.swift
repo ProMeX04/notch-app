@@ -19,93 +19,158 @@ private struct PomodoroFullscreenView: View {
     @AppStorage("app_language") private var appLanguage: String = "English"
 
     @State private var backgroundPulse = false
-    @State private var currentQuote = ""
+    @State private var floatingOffset: CGFloat = 0
+    @State private var currentEntry = MotivationalQuote(text: "", author: "")
 
     var body: some View {
-        let accentColor = Color(nsColor: pomodoro.phase.accentColor)
+        let phase = pomodoro.phase
+
+        // Premium Color Palette
+        let gradientColors: [Color] = {
+            switch phase {
+            // Rose / salmon-pink — not pure red (aligns with focus accent elsewhere)
+            case .focus: return [
+                Color(red: 0.98, green: 0.40, blue: 0.55),
+                Color(red: 0.50, green: 0.13, blue: 0.26),
+            ]
+            case .shortBreak: return [Color(red: 0.1, green: 0.7, blue: 0.4), Color(red: 0.05, green: 0.3, blue: 0.2)]
+            case .longBreak: return [Color(red: 0.1, green: 0.4, blue: 0.9), Color(red: 0.05, green: 0.2, blue: 0.5)]
+            }
+        }()
 
         ZStack {
-            // Animated Breathing Background
+            // Background Layer: Deep Black + Subtle Gradient
             Color.black.ignoresSafeArea()
             
-            accentColor
-                .opacity(backgroundPulse ? 0.08 : 0.03)
-                .blur(radius: 100)
-                .scaleEffect(backgroundPulse ? 1.2 : 0.8)
+            RadialGradient(colors: [gradientColors[0].opacity(0.12), .clear], center: .center, startRadius: 0, endRadius: 600)
                 .ignoresSafeArea()
+
+            // Background Hero Icon: Large, Blurred, and Floating
+            Image(systemName: phase.symbolName)
+                .font(.system(size: 400))
+                .foregroundStyle(gradientColors[0].opacity(0.04))
+                .blur(radius: 4)
+                .offset(y: floatingOffset)
                 .onAppear {
-                    withAnimation(.easeInOut(duration: 4.0).repeatForever(autoreverses: true)) {
-                        backgroundPulse = true
-                    }
-                    if currentQuote.isEmpty {
-                        currentQuote = MotivationalQuotes.getRandom(for: pomodoro.phase, lang: appLanguage)
-                    }
-                }
-                .onChange(of: pomodoro.phase) { _, newPhase in
-                    withAnimation(.smooth) {
-                        currentQuote = MotivationalQuotes.getRandom(for: newPhase, lang: appLanguage)
+                    withAnimation(.easeInOut(duration: 6.0).repeatForever(autoreverses: true)) {
+                        floatingOffset = 40
                     }
                 }
 
-            VStack(spacing: 32) {
-                VStack(spacing: 16) {
-                    Image(systemName: pomodoro.phase.symbolName)
-                        .font(.system(size: 80, weight: .light))
-                        .foregroundStyle(Color(nsColor: pomodoro.phase.accentColor))
-                        .symbolRenderingMode(.hierarchical)
-                        .frame(height: 90, alignment: .center)
-                    
-                    Text(Localization.get(pomodoro.phase.rawValue, lang: appLanguage).uppercased())
-                        .font(.system(size: 20, weight: .black, design: .rounded))
-                        .foregroundStyle(Color(nsColor: pomodoro.phase.accentColor))
-                        .tracking(3)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 8)
-                        .background(
-                            Capsule()
-                                .fill(.white.opacity(0.08))
-                        )
+            VStack(spacing: 40) {
+                Spacer()
+                
+                // Group 1: Reminder (replaces phase label) & session status
+                VStack(spacing: 24) {
+                    VStack(spacing: 8) {
+                        Text(currentEntry.text)
+                            .font(.system(size: 17, weight: .semibold, design: .rounded))
+                            .foregroundStyle(gradientColors[0])
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(5)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        if !currentEntry.author.isEmpty {
+                            Text(currentEntry.author)
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                .foregroundStyle(gradientColors[0].opacity(0.55))
+                                .multilineTextAlignment(.center)
+                        }
+                    }
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 14)
+                    .frame(maxWidth: 680)
+                    .background(
+                        Capsule()
+                            .fill(gradientColors[0].opacity(0.1))
+                            .overlay(Capsule().stroke(gradientColors[0].opacity(0.2), lineWidth: 1))
+                    )
+                    .accessibilityLabel(
+                        "\(Localization.get(phase.rawValue, lang: appLanguage)). \(currentEntry.text). \(currentEntry.author)"
+                    )
 
                     HStack(spacing: 12) {
                         PomodoroSessionDotsView(
                             current: pomodoro.completedSessionsInCycle,
                             total: pomodoro.sessionsBeforeLongBreak,
-                            isFocus: pomodoro.phase == .focus,
-                            tint: Color(nsColor: pomodoro.phase.accentColor),
+                            isFocus: phase == .focus,
+                            tint: gradientColors[0],
                             dotSize: 6,
-                            spacing: 8,
-                            indicatorSize: 11
+                            spacing: 10,
+                            indicatorSize: 12
                         )
 
                         Text("\(Localization.get("Round", lang: appLanguage)) \(pomodoro.currentFocusSessionIndex)/\(pomodoro.sessionsBeforeLongBreak)".uppercased())
-                            .font(.system(size: 14, weight: .bold, design: .rounded))
-                            .foregroundStyle(Color(nsColor: pomodoro.phase.accentColor).opacity(0.85))
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .foregroundStyle(gradientColors[0].opacity(0.8))
                             .tracking(2)
                     }
-                    .padding(.top, 4)
-                }
-                .padding(.top, 20)
-                
-                Text(currentQuote)
-                    .font(.system(size: 18, weight: .medium, design: .rounded))
-                    .italic()
-                    .foregroundStyle(.white.opacity(0.6))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
-                    .frame(height: 50)
-                    .id(currentQuote) // Force refresh for animation
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-                
-                TimelineView(.periodic(from: .now, by: 1.0)) { context in
-                    Text(pomodoro.remainingText(at: context.date))
-                        .font(.system(size: 120, weight: .medium, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(Color(nsColor: pomodoro.phase.accentColor))
                 }
 
-                FullscreenControlBar(pomodoro: pomodoro, opacityProvider: 0.5)
-                    .padding(.top, 24)
+                // Group 2: The Hero Clock & Task
+                VStack(spacing: 24) {
+                    TimelineView(.periodic(from: .now, by: 1.0)) { context in
+                        Text(pomodoro.remainingText(at: context.date))
+                            .font(.system(size: 180, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(gradientColors[0])
+                            .contentTransition(.numericText())
+                            .animation(.spring(duration: 0.4), value: pomodoro.remainingSeconds)
+                            .shadow(color: gradientColors[0].opacity(0.35), radius: 50, x: 0, y: 0)
+                    }
+
+                    if !pomodoro.currentTask.isEmpty {
+                        VStack(spacing: 8) {
+                            Text(Localization.get("Focusing on", lang: appLanguage).uppercased())
+                                .font(.system(size: 10, weight: .black))
+                                .foregroundStyle(gradientColors[0].opacity(0.6))
+                                .tracking(3)
+
+                            HStack(spacing: 10) {
+                                Image(systemName: "checklist")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(gradientColors[0])
+
+                                Text(pomodoro.currentTask)
+                                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.white)
+                            }
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .fill(.white.opacity(0.05))
+                                    .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 5)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .stroke(.white.opacity(0.1), lineWidth: 0.5)
+                            )
+                        }
+                        .transition(.asymmetric(insertion: .scale(scale: 0.95).combined(with: .opacity), removal: .opacity))
+                    }
+                }
+                .animation(.spring(response: 0.4, dampingFraction: 0.8), value: pomodoro.currentTask)
+
+                Spacer()
+
+                // Group 3: Controls
+                FullscreenControlBar(pomodoro: pomodoro, accentColor: gradientColors[0])
+                    .padding(.bottom, 60)
             }
+        }
+        .onAppear {
+            if currentEntry.text.isEmpty {
+                currentEntry = MotivationalQuotes.getRandom(for: pomodoro.phase, lang: appLanguage)
+            }
+        }
+        .onChange(of: pomodoro.phase) { _, newPhase in
+            withAnimation(.smooth) {
+                currentEntry = MotivationalQuotes.getRandom(for: newPhase, lang: appLanguage)
+            }
+        }
+        .onChange(of: appLanguage) { _, _ in
+            currentEntry = MotivationalQuotes.getRandom(for: pomodoro.phase, lang: appLanguage)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
@@ -114,48 +179,40 @@ private struct PomodoroFullscreenView: View {
 
 private struct FullscreenControlBar: View {
     @ObservedObject var pomodoro: PomodoroViewModel
-    let opacityProvider: Double
+    let accentColor: Color
 
     var body: some View {
-        HStack(spacing: 24) {
+        HStack(spacing: 32) {
             Button {
                 pomodoro.skipPhase()
             } label: {
-                Text("Skip")
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .textCase(.uppercase)
-                    .foregroundStyle(.white.opacity(opacityProvider + 0.1))
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 8)
-                    .background(Capsule().fill(Color.white.opacity(opacityProvider * 0.15)))
-                    .overlay(Capsule().stroke(Color.white.opacity(opacityProvider * 0.25), lineWidth: 1))
+                Image(systemName: "forward.fill")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .frame(width: 56, height: 56)
+                    .background(Circle().fill(.white.opacity(0.08)))
             }
             .buttonStyle(.plain)
 
             Button {
                 pomodoro.toggleRunning()
             } label: {
-                Text(pomodoro.isRunning ? "Pause" : "Resume")
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .textCase(.uppercase)
+                Image(systemName: pomodoro.isRunning ? "pause.fill" : "play.fill")
+                    .font(.system(size: 28, weight: .bold))
                     .foregroundStyle(.black)
-                    .padding(.horizontal, 32)
-                    .padding(.vertical, 8)
-                    .background(Capsule().fill(.white.opacity(0.85)))
+                    .frame(width: 80, height: 80)
+                    .background(Circle().fill(.white))
             }
             .buttonStyle(.plain)
 
             Button {
                 pomodoro.exitFullscreen()
             } label: {
-                Text("Exit")
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .textCase(.uppercase)
-                    .foregroundStyle(.white.opacity(opacityProvider + 0.1))
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 8)
-                    .background(Capsule().fill(Color.white.opacity(opacityProvider * 0.15)))
-                    .overlay(Capsule().stroke(Color.white.opacity(opacityProvider * 0.25), lineWidth: 1))
+                Image(systemName: "xmark")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .frame(width: 56, height: 56)
+                    .background(Circle().fill(.white.opacity(0.08)))
             }
             .buttonStyle(.plain)
         }

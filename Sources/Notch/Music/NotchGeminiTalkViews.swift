@@ -1,20 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// Shared layout for Gemini Live panel controls (setup pickers/menus and live session bar).
-private enum GeminiPanelControlMetrics {
-    static let corner: CGFloat = 9
-    static let hPad: CGFloat = 10
-    static let vPad: CGFloat = 6
-    static let minHeight: CGFloat = 30
-    static let iconColWidth: CGFloat = 14
-    static let labelFont = Font.system(size: 10, weight: .semibold)
-    static let chevronFont = Font.system(size: 9, weight: .bold)
-    /// Menu / dropdown field chrome (pre-connect)
-    static let fieldFill = Color.white.opacity(0.06)
-    static let fieldStroke = Color.white.opacity(0.08)
-}
-
 private enum GeminiPanelControlPalette {
     static let liveInactiveFill = Color.white.opacity(0.08)
     static let liveInactiveStroke = Color.white.opacity(0.08)
@@ -22,59 +8,6 @@ private enum GeminiPanelControlPalette {
 
 private func themedNotchAccentColor(from accentColorID: String) -> Color {
     NotchAccentColorOption.resolve(rawValue: accentColorID).brightColor
-}
-
-/// One shared row for every pre-connect `Menu` label (Prompt, Tools, Voice, Thinking, …).
-private struct GeminiMenuFieldRow: View {
-    enum TrailingGlyph {
-        case chevron
-        case ellipsis
-        case none
-    }
-
-    let leadingIcon: String
-    let title: String
-    var trailing: TrailingGlyph = .chevron
-    var isDestructive: Bool = false
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: leadingIcon)
-                .font(GeminiPanelControlMetrics.labelFont)
-                .frame(width: GeminiPanelControlMetrics.iconColWidth, alignment: .center)
-            Text(title)
-                .font(GeminiPanelControlMetrics.labelFont)
-                .lineLimit(1)
-                .truncationMode(.tail)
-            Spacer(minLength: 0)
-            Group {
-                switch trailing {
-                case .chevron:
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(GeminiPanelControlMetrics.chevronFont)
-                case .ellipsis:
-                    Image(systemName: "ellipsis")
-                        .font(GeminiPanelControlMetrics.labelFont)
-                case .none:
-                    EmptyView()
-                }
-            }
-            .foregroundStyle(isDestructive ? Color.red.opacity(0.45) : .white.opacity(0.38))
-        }
-        .foregroundStyle(isDestructive ? Color.red.opacity(0.88) : .white.opacity(0.78))
-        .padding(.horizontal, GeminiPanelControlMetrics.hPad)
-        .padding(.vertical, GeminiPanelControlMetrics.vPad)
-        .frame(minHeight: GeminiPanelControlMetrics.minHeight)
-        .background(
-            RoundedRectangle(cornerRadius: GeminiPanelControlMetrics.corner, style: .continuous)
-                .fill(GeminiPanelControlMetrics.fieldFill)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: GeminiPanelControlMetrics.corner, style: .continuous)
-                .stroke(GeminiPanelControlMetrics.fieldStroke, lineWidth: 1)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
 }
 
 /// Invisible caption line so a bare button aligns with labeled pickers in setup rows.
@@ -227,14 +160,14 @@ struct GeminiTalkPanelView: View {
 
                         GeminiPillPicker(
                             title: "",
-                            icon: "waveform",
+                            icon: "speaker.fill",
                             tint: themeAccent,
                             selection: $gemini.selectedVoice
                         )
 
                         GeminiPillPicker(
                             title: "",
-                            icon: "brain.head.profile",
+                            icon: "gearshape.2.fill",
                             tint: themeAccent,
                             selection: $gemini.thinkingLevel
                         )
@@ -590,7 +523,7 @@ struct GeminiTalkPanelView: View {
                     }
                 }
             }
-            .padding(.bottom, 10)
+            .padding(.bottom, gemini.connectionState == .connected ? 4 : 10)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, minHeight: 116, alignment: .topLeading)
@@ -640,16 +573,16 @@ struct GeminiTalkPanelView: View {
                         settingsTab = tab
                     } label: {
                         Text(Localization.get(tab.rawValue, lang: appLanguage))
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .font(StandardButtonMetrics.font)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.65)
                             .foregroundStyle(settingsTab == tab ? .black.opacity(0.85) : .white.opacity(0.85))
-                            .padding(.horizontal, 12)
-                            .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
+                            .padding(.horizontal, 7)
+                            .frame(maxWidth: .infinity, minHeight: StandardButtonMetrics.height, alignment: .leading)
                             .background(
                                 Group {
                                     if settingsTab == tab {
-                                        Capsule()
-                                            .fill(themeAccent)
-                                            .shadow(color: .black.opacity(0.1), radius: 1, x: 0, y: 1)
+                                        StandardPrimaryPillChrome(tint: themeAccent)
                                     } else {
                                         Capsule().fill(Color.white.opacity(0.1))
                                     }
@@ -659,22 +592,16 @@ struct GeminiTalkPanelView: View {
                     .buttonStyle(.plain)
                 }
 
-                Button {
+                StandardActionButton(
+                    title: Localization.get("Done", lang: appLanguage),
+                    tint: themeAccent,
+                    variant: .primary,
+                    fillsAvailableWidth: true
+                ) {
                     setupViewMode = .home
-                } label: {
-                    Text(Localization.get("Done", lang: appLanguage))
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity, minHeight: 28, alignment: .center)
-                        .background(
-                            Capsule()
-                                .fill(themeAccent)
-                                .shadow(color: .black.opacity(0.1), radius: 1, x: 0, y: 1)
-                        )
                 }
-                .buttonStyle(.plain)
             }
-            .frame(width: 140, alignment: .top)
+            .frame(width: 78, alignment: .top)
 
             // Content
             ScrollView(showsIndicators: false) {
@@ -715,7 +642,7 @@ struct GeminiTalkPanelView: View {
                                 HStack(spacing: 8) {
                                     GeminiPillButton(
                                         title: Localization.get("Memory", lang: appLanguage),
-                                        icon: "brain",
+                                        icon: "bookmark.fill",
                                         tint: themeAccent
                                     ) {
                                         beginEditingMemory()
@@ -909,7 +836,7 @@ struct GeminiPromptPicker: View {
                     }
                 }
             } label: {
-                GeminiMenuFieldRow(leadingIcon: "text.quote", title: selectedTitle)
+                NotchMenuFieldRow(leadingIcon: "text.quote", title: selectedTitle)
             }
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -976,27 +903,27 @@ struct GeminiAgentPicker: View {
                     .frame(width: 22, height: 22)
 
                     Text(selectedTitle)
-                        .font(GeminiPanelControlMetrics.labelFont)
+                        .font(NotchPanelFieldMetrics.labelFont)
                         .lineLimit(1)
                         .truncationMode(.tail)
 
                     Spacer(minLength: 0)
 
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(GeminiPanelControlMetrics.chevronFont)
+                        .font(NotchPanelFieldMetrics.chevronFont)
                         .foregroundStyle(.white.opacity(0.38))
                 }
                 .foregroundStyle(.white.opacity(0.78))
-                .padding(.horizontal, GeminiPanelControlMetrics.hPad)
-                .padding(.vertical, GeminiPanelControlMetrics.vPad)
-                .frame(minHeight: GeminiPanelControlMetrics.minHeight)
+                .padding(.horizontal, NotchPanelFieldMetrics.hPad)
+                .padding(.vertical, NotchPanelFieldMetrics.vPad)
+                .frame(minHeight: NotchPanelFieldMetrics.minHeight)
                 .background(
-                    RoundedRectangle(cornerRadius: GeminiPanelControlMetrics.corner, style: .continuous)
-                        .fill(GeminiPanelControlMetrics.fieldFill)
+                    RoundedRectangle(cornerRadius: NotchPanelFieldMetrics.corner, style: .continuous)
+                        .fill(NotchPanelFieldMetrics.fieldFill)
                 )
                 .overlay {
-                    RoundedRectangle(cornerRadius: GeminiPanelControlMetrics.corner, style: .continuous)
-                        .stroke(GeminiPanelControlMetrics.fieldStroke, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: NotchPanelFieldMetrics.corner, style: .continuous)
+                        .stroke(NotchPanelFieldMetrics.fieldStroke, lineWidth: 1)
                 }
             }
             .buttonStyle(.plain)
@@ -1139,7 +1066,7 @@ struct GeminiEditAgentButton: View {
 
     var body: some View {
         Button(action: onEdit) {
-            GeminiMenuFieldRow(
+            NotchMenuFieldRow(
                 leadingIcon: "pencil",
                 title: Localization.get("Edit System Prompt", lang: appLanguage)
             )
@@ -1282,32 +1209,13 @@ struct GeminiActionButton: View {
     @AppStorage("app_language") private var appLanguage: String = "English"
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 11, weight: .bold))
-                    .frame(width: GeminiPanelControlMetrics.iconColWidth, alignment: .center)
-
-                Text(title)
-                    .font(.system(size: 11, weight: .semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
-            }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 12)
-            .padding(.vertical, GeminiPanelControlMetrics.vPad)
-            .frame(maxWidth: .infinity, minHeight: GeminiPanelControlMetrics.minHeight)
-            .background(
-                RoundedRectangle(cornerRadius: GeminiPanelControlMetrics.corner, style: .continuous)
-                    .fill(tint.opacity(0.2))
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: GeminiPanelControlMetrics.corner, style: .continuous)
-                    .stroke(tint.opacity(0.22), lineWidth: 1)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+        StandardActionButton(
+            title: title,
+            icon: icon,
+            tint: tint,
+            variant: .primary,
+            action: action
+        )
     }
 }
 
@@ -1341,18 +1249,18 @@ private struct GeminiControlPill: View {
     var body: some View {
         HStack(spacing: 5) {
             Image(systemName: icon)
-                .font(GeminiPanelControlMetrics.labelFont)
+                .font(NotchPanelFieldMetrics.labelFont)
                 .symbolRenderingMode(.monochrome)
-                .frame(width: GeminiPanelControlMetrics.iconColWidth, alignment: .center)
+                .frame(width: NotchPanelFieldMetrics.iconColWidth, alignment: .center)
             Text(label)
-                .font(GeminiPanelControlMetrics.labelFont)
+                .font(NotchPanelFieldMetrics.labelFont)
                 .lineLimit(1)
                 .minimumScaleFactor(0.82)
         }
         .foregroundStyle(foregroundColor)
-        .padding(.horizontal, GeminiPanelControlMetrics.hPad)
-        .padding(.vertical, GeminiPanelControlMetrics.vPad)
-        .frame(minHeight: GeminiPanelControlMetrics.minHeight)
+        .padding(.horizontal, NotchPanelFieldMetrics.hPad)
+        .padding(.vertical, NotchPanelFieldMetrics.vPad)
+        .frame(minHeight: NotchPanelFieldMetrics.minHeight)
         .background(
             Capsule()
                 .fill(backgroundFill)
@@ -1615,26 +1523,26 @@ struct GeminiOutputVolumeControl: View {
             return "speaker.fill"
         }
         if value < 0.67 {
-            return "speaker.wave.2.fill"
+            return "hifispeaker.fill"
         }
-        return "speaker.wave.3.fill"
+        return "hifispeaker.2.fill"
     }
 
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
-                .font(GeminiPanelControlMetrics.labelFont)
+                .font(NotchPanelFieldMetrics.labelFont)
                 .foregroundStyle(.white.opacity(0.82))
-                .frame(width: GeminiPanelControlMetrics.iconColWidth, alignment: .center)
+                .frame(width: NotchPanelFieldMetrics.iconColWidth, alignment: .center)
 
             Slider(value: $value, in: 0...1)
                 .controlSize(.small)
                 .tint(.white.opacity(0.9))
                 .frame(width: 72)
         }
-        .padding(.horizontal, GeminiPanelControlMetrics.hPad)
-        .padding(.vertical, GeminiPanelControlMetrics.vPad)
-        .frame(minHeight: GeminiPanelControlMetrics.minHeight)
+        .padding(.horizontal, NotchPanelFieldMetrics.hPad)
+        .padding(.vertical, NotchPanelFieldMetrics.vPad)
+        .frame(minHeight: NotchPanelFieldMetrics.minHeight)
         .background(
             Capsule()
                 .fill(GeminiPanelControlPalette.liveInactiveFill)
@@ -1652,26 +1560,13 @@ struct GeminiSecondaryButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(GeminiPanelControlMetrics.labelFont)
-                .foregroundStyle(.white.opacity(0.75))
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
-                .padding(.horizontal, GeminiPanelControlMetrics.hPad)
-                .padding(.vertical, GeminiPanelControlMetrics.vPad)
-                .frame(maxWidth: .infinity, minHeight: GeminiPanelControlMetrics.minHeight)
-                .background(
-                    RoundedRectangle(cornerRadius: GeminiPanelControlMetrics.corner, style: .continuous)
-                        .fill(Color.white.opacity(0.04))
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: GeminiPanelControlMetrics.corner, style: .continuous)
-                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
-                }
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+        StandardActionButton(
+            title: title,
+            icon: nil,
+            tint: .white,
+            variant: .primary,
+            action: action
+        )
     }
 }
 
@@ -1752,7 +1647,7 @@ where T.RawValue == String, T.AllCases: RandomAccessCollection {
                 }
             }
         } label: {
-            GeminiMenuFieldRow(leadingIcon: leadingIcon, title: buttonTitle)
+            NotchMenuFieldRow(leadingIcon: leadingIcon, title: buttonTitle)
         }
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1762,7 +1657,7 @@ where T.RawValue == String, T.AllCases: RandomAccessCollection {
 struct GeminiPillPicker<T: RawRepresentable & CaseIterable & Hashable>: View
 where T.RawValue == String, T.AllCases: RandomAccessCollection {
     let title: String
-    let icon: String // e.g. "waveform"
+    let icon: String // e.g. "speaker.fill"
     let tint: Color // e.g. Color.yellow
     @Binding var selection: T
     let displayText: (T) -> String
@@ -1798,28 +1693,17 @@ where T.RawValue == String, T.AllCases: RandomAccessCollection {
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: icon)
-                    .font(.system(size: 11, weight: .bold))
                 if title.isEmpty {
                     Text(Localization.get(displayText(selection), lang: appLanguage))
-                        .font(.system(size: 11, weight: .bold))
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
                 } else {
                     Text("\(Localization.get(title, lang: appLanguage)): \(Localization.get(displayText(selection), lang: appLanguage))")
-                        .font(.system(size: 11, weight: .bold))
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
                 }
             }
-            .foregroundStyle(.black.opacity(0.85))
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, minHeight: 30)
-            .background(
-                Capsule()
-                    .fill(tint)
-                    .shadow(color: .black.opacity(0.1), radius: 1, x: 0, y: 1)
-            )
-            .contentShape(Rectangle())
+            .standardPrimaryPillLabelStyle(tint: tint)
         }
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity)
@@ -1834,32 +1718,14 @@ struct GeminiPillButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 4) {
-                if let icon = icon {
-                    Image(systemName: icon)
-                        .font(.system(size: 11, weight: .bold))
-                }
-                Text(title)
-                    .font(.system(size: 11, weight: .bold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
-            }
-            .foregroundStyle(.black.opacity(0.85))
-            .padding(.horizontal, 10)
-            .padding(.vertical, GeminiPanelControlMetrics.vPad)
-            .frame(maxWidth: .infinity, minHeight: GeminiPanelControlMetrics.minHeight)
-            .background(
-                Capsule()
-                    .fill(tint)
-                    .shadow(color: .black.opacity(0.1), radius: 1, x: 0, y: 1)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .frame(maxWidth: .infinity)
-        .disabled(isDisabled)
-        .opacity(isDisabled ? 0.5 : 1.0)
+        StandardActionButton(
+            title: title,
+            icon: icon,
+            tint: tint,
+            variant: .primary,
+            isDisabled: isDisabled,
+            action: action
+        )
     }
 }
 
@@ -1903,18 +1769,19 @@ struct GeminiToolsPicker: View {
                 
                 Spacer()
                 
-                Button {
-                    if hasAllToolsSelected {
-                        selection = []
-                    } else {
-                        selection = allSelectableTools
+                StandardActionButton(
+                    title: Localization.get(hasAllToolsSelected ? "Disable All" : "Enable All", lang: appLanguage),
+                    tint: themeAccent,
+                    variant: .primary,
+                    isDisabled: isDisabled,
+                    action: {
+                        if hasAllToolsSelected {
+                            selection = []
+                        } else {
+                            selection = allSelectableTools
+                        }
                     }
-                } label: {
-                    Text(Localization.get(hasAllToolsSelected ? "Disable All" : "Enable All", lang: appLanguage))
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(themeAccent)
-                }
-                .buttonStyle(.plain)
+                )
             }
             .padding(.bottom, 2)
 

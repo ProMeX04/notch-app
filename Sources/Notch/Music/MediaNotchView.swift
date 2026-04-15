@@ -88,6 +88,13 @@ struct MediaNotchView: View {
         max(22, presentationModel.closedNotchSize.height - 6)
     }
 
+    /// Tighter bottom inset for Talk so the live control bar sits nearer the notch bottom.
+    private var expandedPanelBottomInset: CGFloat {
+        if presentationModel.selectedPanel == .focus { return 0 }
+        if presentationModel.selectedPanel == .talk { return 4 }
+        return 12
+    }
+
     private var showsDarkInnerNotch: Bool {
         presentationModel.selectedPanel != .focus && presentationModel.selectedPanel != .media
     }
@@ -197,7 +204,7 @@ struct MediaNotchView: View {
             )
             .padding(.top, presentationModel.selectedPanel == .focus ? (presentationModel.isFocusOverlayPresented ? 10 : 0) : 10)
             .padding(.horizontal, presentationModel.selectedPanel == .focus ? 0 : 31)
-            .padding(.bottom, presentationModel.selectedPanel == .focus ? 0 : 12)
+            .padding(.bottom, expandedPanelBottomInset)
         }
     }
 

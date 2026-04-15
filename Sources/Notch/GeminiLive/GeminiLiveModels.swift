@@ -293,11 +293,11 @@ enum GeminiTool: String, CaseIterable, Identifiable {
 }
 
 struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
-    static let defaultAvatarSymbolName = "waveform"
+    static let defaultAvatarSymbolName = "sparkles"
     static let availableAvatarSymbolNames = [
-        "waveform",
+        "music.mic",
         "sparkles",
-        "brain.head.profile",
+        "books.vertical.fill",
         "person.crop.circle.fill",
         "bubble.left.and.bubble.right.fill",
         "wand.and.stars",

@@ -78,26 +78,7 @@ struct PomodoroPanelView: View {
                     VStack(spacing: 8) {
                         Text(Localization.get(displayedPhase.rawValue, lang: appLanguage))
                             .font(.system(size: 13, weight: .black, design: .rounded))
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 6)
-                            .background(
-                                Capsule()
-                                    .fill(.black.opacity(0.35))
-                            )
                             .foregroundStyle(displayedTint)
-                            .onTapGesture {
-                                withAnimation(.smooth(duration: 0.22)) {
-                                    let phases: [PomodoroPhase] = [.focus, .shortBreak, .longBreak]
-                                    let currentIndex = phases.firstIndex(of: displayedPhase) ?? 0
-                                    let nextPhase = phases[(currentIndex + 1) % phases.count]
-
-                                    if pomodoro.hasActiveSession {
-                                        pomodoro.setPhase(nextPhase)
-                                    } else {
-                                        idleEditorPhase = nextPhase
-                                    }
-                                }
-                            }
 
                         if pomodoro.hasActiveSession {
                             HStack(spacing: 8) {
@@ -176,26 +157,33 @@ struct PomodoroPanelView: View {
                     HStack(spacing: 8) {
                         Spacer()
                         VStack(spacing: 6) {
+                            if !pomodoro.isRunning {
+                                focusModeMenu
+                            }
+
                             if pomodoro.isRunning {
                                 StandardActionButton(
                                     title: Localization.get("Skip", lang: appLanguage),
                                     icon: "forward.end.fill",
                                     tint: displayedTint,
-                                    variant: .primary
+                                    variant: .primary,
+                                    fillsAvailableWidth: true
                                 ) {
                                     pomodoro.skipPhase()
                                 }
                             }
-                            
+
                             StandardActionButton(
                                 title: Localization.get(pomodoro.isRunning ? "Pause" : "Start", lang: appLanguage),
                                 icon: pomodoro.isRunning ? "pause.fill" : "play.fill",
                                 tint: interfaceTint,
-                                variant: .primary
+                                variant: .primary,
+                                fillsAvailableWidth: true
                             ) {
                                 pomodoro.toggleRunning()
                             }
                         }
+                        .fixedSize(horizontal: true, vertical: false)
                     }
                     .padding(.horizontal, 12)
                     .frame(maxWidth: .infinity)
@@ -228,6 +216,26 @@ struct PomodoroPanelView: View {
                 idleEditorPhase = .focus
             }
         }
+    }
+
+    /// Chọn Off / Zen / Strict — compact, không prefix "Mode:"; chỉ hiện khi timer không chạy (idle / tạm dừng).
+    private var focusModeMenu: some View {
+        Menu {
+            ForEach(PomodoroFocusMode.allCases, id: \.self) { mode in
+                Button(Localization.get(mode.rawValue, lang: appLanguage)) {
+                    pomodoro.setFocusMode(mode)
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "rectangle.split.2x1")
+                Text(Localization.get(pomodoro.focusMode.rawValue, lang: appLanguage))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.65)
+            }
+            .standardPrimaryPillLabelStyle(tint: interfaceTint, fillsWidth: true)
+        }
+        .buttonStyle(.plain)
     }
 
     private func adjustIdleDuration(by direction: Int) {
@@ -668,36 +676,21 @@ struct PomodoroQuickSettingsView: View {
                         settingToggle(label: "Auto Pomo", isOn: $pomodoro.autoStartPomodoros)
                     }
 
-                    HStack(spacing: 6) {
-                        Menu {
-                            ForEach(PomodoroFocusMode.allCases, id: \.self) { mode in
-                                Button(Localization.get(mode.rawValue, lang: appLanguage)) {
-                                    pomodoro.setFocusMode(mode)
-                                }
+                    Menu {
+                        ForEach(FocusTransitionSoundOption.allCases, id: \.self) { sound in
+                            Button(Localization.get(sound.displayName, lang: appLanguage)) {
+                                focusTransitionSoundID = sound.rawValue
+                                SoundManager.previewFocusTransitionSound(sound)
                             }
-                        } label: {
-                            NotchMenuFieldRow(
-                                leadingIcon: "rectangle.split.2x1",
-                                title: "\(Localization.get("Mode", lang: appLanguage)): \(Localization.get(pomodoro.focusMode.rawValue, lang: appLanguage))"
-                            )
                         }
-                        .buttonStyle(.plain)
-
-                        Menu {
-                            ForEach(FocusTransitionSoundOption.allCases, id: \.self) { sound in
-                                Button(Localization.get(sound.displayName, lang: appLanguage)) {
-                                    focusTransitionSoundID = sound.rawValue
-                                    SoundManager.previewFocusTransitionSound(sound)
-                                }
-                            }
-                        } label: {
-                            NotchMenuFieldRow(
-                                leadingIcon: "speaker.fill",
-                                title: "\(Localization.get("Sound", lang: appLanguage)): \(Localization.get(selectedFocusTransitionSound.displayName, lang: appLanguage))"
-                            )
-                        }
-                        .buttonStyle(.plain)
+                    } label: {
+                        NotchMenuFieldRow(
+                            leadingIcon: "speaker.fill",
+                            title: "\(Localization.get("Sound", lang: appLanguage)): \(Localization.get(selectedFocusTransitionSound.displayName, lang: appLanguage))"
+                        )
                     }
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity)
                     .padding(.top, 4)
                 }
                 .padding(.top, 4)

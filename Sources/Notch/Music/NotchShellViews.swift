@@ -537,7 +537,7 @@ struct ExpandedNotchContent: View {
                     presentationModel: presentationModel
                 )
             } else if presentationModel.selectedPanel == .settings {
-                GlobalSettingsView(gemini: gemini, presentationModel: presentationModel)
+                GlobalSettingsView(presentationModel: presentationModel)
             } else {
                 HStack {
                     ExpandedAlbumArtView(
@@ -659,6 +659,8 @@ struct Localization {
         "Focus on": ["English": "Focus on", "Tiếng Việt": "Tập trung ngày"],
         "Break": ["English": "Break", "Tiếng Việt": "Giải lao"],
         "Pause": ["English": "Pause", "Tiếng Việt": "Tạm dừng"],
+        "Resume": ["English": "Resume", "Tiếng Việt": "Tiếp tục"],
+        "Start Focus": ["English": "Start Focus", "Tiếng Việt": "Bắt đầu tập trung"],
         "Start": ["English": "Start", "Tiếng Việt": "Bắt đầu"],
         "Reset": ["English": "Reset", "Tiếng Việt": "Đặt lại"],
         "Skip": ["English": "Skip", "Tiếng Việt": "Bỏ qua"],
@@ -683,6 +685,11 @@ struct Localization {
         "Profile": ["English": "Profile", "Tiếng Việt": "Hồ sơ"],
         "Tools": ["English": "Tools", "Tiếng Việt": "Công cụ"],
         "Skills": ["English": "Skills", "Tiếng Việt": "Kỹ năng"],
+        "Common": ["English": "General", "Tiếng Việt": "Chung"],
+        "Push to Talk hint": [
+            "English": "Used only in Push to Talk mode while Gemini Live is connected. Shortcuts must include at least one modifier key.",
+            "Tiếng Việt": "Chỉ dùng ở chế độ Nhấn để nói khi Gemini Live đang kết nối. Phím tắt cần có ít nhất một phím bổ trợ (⌘, ⌥, ⌃ hoặc ⇧).",
+        ],
         "System Prompt": ["English": "System Prompt", "Tiếng Việt": "Lời nhắc hệ thống"],
         "New Agent": ["English": "New Agent", "Tiếng Việt": "Agent mới"],
         "Delete Agent": ["English": "Delete Agent", "Tiếng Việt": "Xóa Agent"],
@@ -775,8 +782,8 @@ struct Localization {
         "Save User Profile": ["English": "Save User Profile", "Tiếng Việt": "Lưu hồ sơ"],
         "Save Memory": ["English": "Save Memory", "Tiếng Việt": "Lưu bộ nhớ"],
         "Mode": ["English": "Mode", "Tiếng Việt": "Chế độ"],
-        "Zen": ["English": "Zen", "Tiếng Việt": "Tập trung"],
-        "Strict": ["English": "Strict", "Tiếng Việt": "Nghiêm ngặt"],
+        "Zen": ["English": "Zen", "Tiếng Việt": "Chìm đắm"],
+        "Strict": ["English": "Strict", "Tiếng Việt": "Kỷ luật nghỉ"],
         "Sound": ["English": "Sound", "Tiếng Việt": "Âm thanh"],
         "Streak": ["English": "Streak", "Tiếng Việt": "Chuỗi"],
         "Today": ["English": "Today", "Tiếng Việt": "Hôm nay"],
@@ -787,6 +794,16 @@ struct Localization {
         "No tasks yet": ["English": "No tasks yet", "Tiếng Việt": "Chưa có nhiệm vụ"],
         "Open tasks": ["English": "Open tasks", "Tiếng Việt": "Chưa xong"],
         "Completed tasks": ["English": "Completed", "Tiếng Việt": "Đã xong"],
+        "Subscription": ["English": "Subscription", "Tiếng Việt": "Đăng ký"],
+        "Notch Pro": ["English": "Notch Pro", "Tiếng Việt": "Notch Pro"],
+        "Subscribed": ["English": "Subscribed", "Tiếng Việt": "Đã đăng ký"],
+        "Not subscribed": ["English": "Not subscribed", "Tiếng Việt": "Chưa đăng ký"],
+        "Subscribe": ["English": "Subscribe", "Tiếng Việt": "Đăng ký"],
+        "Restore Purchases": ["English": "Restore Purchases", "Tiếng Việt": "Khôi phục giao dịch"],
+        "Subscriptions are billed by Apple. Manage or cancel in System Settings → Apple Account → Subscriptions.": [
+            "English": "Subscriptions are billed by Apple. Manage or cancel in System Settings → Apple Account → Subscriptions.",
+            "Tiếng Việt": "Thanh toán qua Apple. Quản lý hoặc hủy tại Cài đặt Hệ thống → Tài khoản Apple → Đăng ký.",
+        ],
     ]
 
     static func get(_ key: String, lang: String) -> String {
@@ -796,67 +813,101 @@ struct Localization {
 
 // MARK: - Global Settings View
 
-private enum GlobalSettingsSection: String, CaseIterable, Identifiable {
-    case general = "General"
-    case apiKeys = "API Keys"
-
-    var id: String { rawValue }
-}
-
 struct GlobalSettingsView: View {
-    @ObservedObject var gemini: GeminiLiveViewModel
     @ObservedObject var presentationModel: NotchPresentationModel
+    @ObservedObject private var subscriptionManager = AppStoreSubscriptionManager.shared
     @AppStorage("app_language") private var appLanguage: String = "English"
-    @State private var holdShortcut = HoldToTalkShortcutStore.load()
-    @State private var selectedSection: GlobalSettingsSection = .general
 
     private var tint: Color {
         presentationModel.accentColor.ensureMinimumBrightness(factor: 0.78)
     }
     
     var body: some View {
-        HStack(spacing: 18) {
-            settingsSidebar
-            settingsDetail
-        }
-    }
-
-    private var settingsSidebar: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(Localization.get("General Settings", lang: appLanguage))
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(.white.opacity(0.5))
-                .padding(.horizontal, 4)
-
-            ForEach(GlobalSettingsSection.allCases) { section in
-                sidebarButton(for: section)
-            }
-
-            Spacer(minLength: 0)
-
-            Text("\(Localization.get("Version", lang: appLanguage)) 1.0.0")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.3))
-                .padding(.horizontal, 4)
-        }
-        .frame(width: 132, alignment: .topLeading)
-    }
-
-    private var settingsDetail: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 16) {
-                if selectedSection == .general {
-                    generalSettingsSection
-                } else {
-                    apiKeysSection
-                }
+            VStack(alignment: .leading, spacing: 12) {
+                Text(Localization.get("General Settings", lang: appLanguage))
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .padding(.horizontal, 2)
+
+                generalSettingsSection
+
+                Text("\(Localization.get("Version", lang: appLanguage)) 1.0.0")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.3))
+                    .padding(.top, 4)
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .task {
+            await subscriptionManager.loadOfferings()
+        }
     }
 
     private var generalSettingsSection: some View {
         VStack(alignment: .leading, spacing: 16) {
+            Text(Localization.get("Subscription", lang: appLanguage))
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.white.opacity(0.5))
+                .padding(.horizontal, 2)
+
+            settingsSectionCard(
+                title: Localization.get("Notch Pro", lang: appLanguage),
+                subtitle: Localization.get(
+                    "Subscriptions are billed by Apple. Manage or cancel in System Settings → Apple Account → Subscriptions.",
+                    lang: appLanguage
+                )
+            ) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text(
+                            subscriptionManager.isProEntitled
+                                ? Localization.get("Subscribed", lang: appLanguage)
+                                : Localization.get("Not subscribed", lang: appLanguage)
+                        )
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.9))
+                        Spacer()
+                        if let price = subscriptionManager.subscriptionProduct?.displayPrice {
+                            Text(price)
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .foregroundStyle(tint)
+                        }
+                    }
+
+                    if let message = subscriptionManager.lastErrorMessage {
+                        Text(message)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color(nsColor: .systemOrange))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    HStack(spacing: 8) {
+                        StandardActionButton(
+                            title: Localization.get("Subscribe", lang: appLanguage),
+                            icon: "cart",
+                            tint: tint,
+                            variant: .primary,
+                            isDisabled: subscriptionManager.isLoading || subscriptionManager.isProEntitled,
+                            fillsAvailableWidth: true
+                        ) {
+                            Task { await subscriptionManager.purchaseSubscription() }
+                        }
+
+                        StandardActionButton(
+                            title: Localization.get("Restore Purchases", lang: appLanguage),
+                            icon: "arrow.clockwise",
+                            tint: tint,
+                            variant: .secondary,
+                            isDisabled: subscriptionManager.isLoading,
+                            fillsAvailableWidth: true
+                        ) {
+                            Task { await subscriptionManager.restorePurchases() }
+                        }
+                    }
+                }
+            }
+
             settingsSectionCard {
                 HStack(spacing: 8) {
                     languageButton(name: "English")
@@ -866,9 +917,14 @@ struct GlobalSettingsView: View {
             }
 
             settingsSectionCard {
-                HStack(spacing: 16) {
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 5),
+                    alignment: .leading,
+                    spacing: 12
+                ) {
                     ForEach(NotchAccentColorOption.allCases) { option in
                         accentColorButton(for: option)
+                            .frame(maxWidth: .infinity)
                     }
                 }
                 .padding(.vertical, 4)
@@ -907,81 +963,30 @@ struct GlobalSettingsView: View {
                     Text(Localization.get("Hide in Fullscreen", lang: appLanguage))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.9))
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .toggleStyle(.switch)
                 .tint(tint)
-            }
-
-            settingsSectionCard {
-                HoldToTalkShortcutRecorderView(
-                    shortcut: $holdShortcut,
-                    title: Localization.get("Push to Talk", lang: appLanguage),
-                    helperText: "Current: \(holdShortcut.displayString)",
-                    isNotchStyle: true,
-                    tint: tint
-                )
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             StandardActionButton(
                 title: Localization.get("Quit Notch", lang: appLanguage),
                 icon: "power",
                 tint: Color(nsColor: .systemRed).opacity(0.85),
-                variant: .primary
+                variant: .primary,
+                fillsAvailableWidth: true
             ) {
                 NSApp.terminate(nil)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 4)
         }
-    }
-
-    private var apiKeysSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            settingsSectionCard(
-                title: "Gemini",
-                subtitle: Localization.get("Gemini API Key", lang: appLanguage)
-            ) {
-                settingsTextField(
-                    title: "Gemini",
-                    placeholder: Localization.get("Gemini API Key", lang: appLanguage),
-                    text: $gemini.apiKeyText
-                ) {
-                    Task { await gemini.saveAPIKey() }
-                }
-            }
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var hoverDelayLabel: String {
         String(format: "%.2fs", presentationModel.hoverOpenDelaySeconds)
-    }
-
-    private func sidebarButton(for section: GlobalSettingsSection) -> some View {
-        Button {
-            selectedSection = section
-        } label: {
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(selectedSection == section ? tint : .white.opacity(0.16))
-                    .frame(width: 6, height: 6)
-
-                Text(Localization.get(section.rawValue, lang: appLanguage))
-                    .font(.system(size: 12, weight: .semibold))
-
-                Spacer(minLength: 0)
-            }
-            .foregroundStyle(selectedSection == section ? .white : .white.opacity(0.68))
-            .padding(.horizontal, 10)
-            .frame(maxWidth: .infinity, minHeight: StandardButtonMetrics.height, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(selectedSection == section ? tint.opacity(0.16) : Color.white.opacity(0.05))
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(selectedSection == section ? tint.opacity(0.4) : Color.white.opacity(0.08), lineWidth: 1)
-            }
-        }
-        .buttonStyle(.plain)
     }
 
     private func settingsSectionCard<Content: View>(title: String? = nil, subtitle: String? = nil, @ViewBuilder content: () -> Content) -> some View {
@@ -1005,6 +1010,7 @@ struct GlobalSettingsView: View {
 
             content()
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14)
         .padding(.vertical, 14)
         .background(
@@ -1014,40 +1020,6 @@ struct GlobalSettingsView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(Color.white.opacity(0.1), lineWidth: 1)
-        }
-    }
-
-    private func settingsTextField(title: String, placeholder: String, text: Binding<String>, onCommit: @escaping () -> Void) -> some View {
-        HStack(spacing: 8) {
-            Text(title)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(.white.opacity(0.32))
-                .frame(width: 55, alignment: .leading)
-
-            SecureField(placeholder, text: text, onCommit: onCommit)
-                .textFieldStyle(.plain)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.white)
-            
-            if !text.wrappedValue.isEmpty {
-                Button {
-                    onCommit()
-                } label: {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(tint)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.white.opacity(0.06))
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
         }
     }
     

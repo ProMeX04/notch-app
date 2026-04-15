@@ -325,9 +325,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             .foregroundColor: color.withAlphaComponent(0.9)
         ]
         
-        // Limit task length
-        let maxCharCount = 20
-        let displayTask = task.count > maxCharCount ? String(task.prefix(maxCharCount)) + "…" : task
+        // Limit task by width (pt), not character count — fairer for Vietnamese / mixed scripts.
+        let maxTaskWidth: CGFloat = 280
+        let displayTask = Self.truncateToWidth(task, maxWidth: maxTaskWidth, attributes: taskAttributes)
         let taskSize = displayTask.isEmpty ? .zero : displayTask.size(withAttributes: taskAttributes)
 
         let config = NSImage.SymbolConfiguration(pointSize: 12.5, weight: .bold)
@@ -409,6 +409,31 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return image
     }
 
+    /// Truncates with ellipsis when the rendered width exceeds `maxWidth` (uses same font as drawing).
+    private static func truncateToWidth(_ string: String, maxWidth: CGFloat, attributes: [NSAttributedString.Key: Any]) -> String {
+        guard !string.isEmpty else { return "" }
+        let ns = string as NSString
+        if ns.size(withAttributes: attributes).width <= maxWidth {
+            return string
+        }
+        let ellipsis = "…"
+        let ellipsisWidth = (ellipsis as NSString).size(withAttributes: attributes).width
+        var low = 0
+        var high = string.count
+        while low < high {
+            let mid = (low + high + 1) / 2
+            let prefix = String(string.prefix(mid))
+            let w = (prefix as NSString).size(withAttributes: attributes).width + ellipsisWidth
+            if w <= maxWidth {
+                low = mid
+            } else {
+                high = mid - 1
+            }
+        }
+        if low == 0 { return ellipsis }
+        return String(string.prefix(low)) + ellipsis
+    }
+
     private func refreshAllFocusStatusItems() {
         updatePomodoroStatusItem()
     }
@@ -444,7 +469,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let pomodoro = windowController.pomodoroViewModel
         let text = pomodoro.remainingText(at: .now)
         let symbolName = pomodoro.phase.symbolName
-        let cacheKey = "\(pomodoro.phase.rawValue)|\(symbolName)|\(text)"
+        let taskForBar = pomodoro.currentTask
+        let cacheKey = "\(pomodoro.phase.rawValue)|\(symbolName)|\(text)|\(taskForBar)"
 
         if cacheKey == lastRenderedTimerCacheKey, let cached = lastRenderedTimerImage {
             button.image = cached
@@ -454,7 +480,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let image = generateTimerImage(
             symbolName: symbolName,
             text: text,
-            task: pomodoro.phase == .focus ? pomodoro.currentTask : "",
+            task: taskForBar,
             color: pomodoro.phase.accentColor
         )
         lastRenderedTimerCacheKey = cacheKey
@@ -587,24 +613,34 @@ struct TaskPopoverView: View {
         pomodoro.tasks.filter { $0.isCompleted }
     }
 
+    private var focusControlTitle: String {
+        if pomodoro.isRunning {
+            return Localization.get("Pause", lang: appLanguage)
+        }
+        if pomodoro.hasActiveSession {
+            return Localization.get("Resume", lang: appLanguage)
+        }
+        return Localization.get("Start Focus", lang: appLanguage)
+    }
+
     var body: some View {
         ZStack(alignment: .topTrailing) {
             VStack(spacing: 0) {
-                // Header with Stats
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(Localization.get("Focusing on", lang: appLanguage).uppercased())
-                            .font(.system(size: 10, weight: .black))
-                            .foregroundStyle(secondaryLabel)
-                            .tracking(2)
-                        
-                        Text(pomodoro.currentTask.isEmpty ? Localization.get("Tasks", lang: appLanguage) : pomodoro.currentTask)
-                            .font(.system(size: 14, weight: .bold, design: .rounded))
-                            .foregroundStyle(primaryLabel)
-                            .lineLimit(1)
-                    }
-                    
-                    Spacer()
+                // Header: current task + start / pause / resume
+                HStack(alignment: .center, spacing: 12) {
+                    Text(pomodoro.currentTask.isEmpty ? Localization.get("Tasks", lang: appLanguage) : pomodoro.currentTask)
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundStyle(primaryLabel)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    StandardActionButton(
+                        title: focusControlTitle,
+                        icon: pomodoro.isRunning ? "pause.fill" : "play.fill",
+                        tint: taskSelectionTint,
+                        variant: .primary,
+                        action: { pomodoro.toggleRunning() }
+                    )
                 }
                 .padding(.bottom, 16)
 

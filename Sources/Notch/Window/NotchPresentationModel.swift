@@ -9,6 +9,11 @@ enum NotchAccentColorOption: String, CaseIterable, Identifiable {
     case gold
     case coral
     case rose
+    case purple
+    case indigo
+    case green
+    case teal
+    case cyan
 
     static let defaultOption: Self = .blue
 
@@ -26,6 +31,16 @@ enum NotchAccentColorOption: String, CaseIterable, Identifiable {
             return "Coral"
         case .rose:
             return "Rose"
+        case .purple:
+            return "Purple"
+        case .indigo:
+            return "Indigo"
+        case .green:
+            return "Green"
+        case .teal:
+            return "Teal"
+        case .cyan:
+            return "Cyan"
         }
     }
 
@@ -41,22 +56,21 @@ enum NotchAccentColorOption: String, CaseIterable, Identifiable {
             return Color(nsColor: .systemOrange)
         case .rose:
             return Color(nsColor: .systemPink)
+        case .purple:
+            return Color(nsColor: .systemPurple)
+        case .indigo:
+            return Color(nsColor: .systemIndigo)
+        case .green:
+            return Color(nsColor: .systemGreen)
+        case .teal:
+            return Color(nsColor: .systemTeal)
+        case .cyan:
+            return Color(nsColor: .systemCyan)
         }
     }
 
     var brightColor: Color {
-        switch self {
-        case .blue:
-            return Color(nsColor: .systemBlue).ensureMinimumBrightness(factor: 0.78)
-        case .mint:
-            return Color(nsColor: .systemMint).ensureMinimumBrightness(factor: 0.78)
-        case .gold:
-            return Color(nsColor: .systemYellow).ensureMinimumBrightness(factor: 0.78)
-        case .coral:
-            return Color(nsColor: .systemOrange).ensureMinimumBrightness(factor: 0.78)
-        case .rose:
-            return Color(nsColor: .systemPink).ensureMinimumBrightness(factor: 0.78)
-        }
+        color.ensureMinimumBrightness(factor: 0.78)
     }
 
     static func resolve(rawValue: String) -> Self {

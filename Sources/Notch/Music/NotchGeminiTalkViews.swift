@@ -55,38 +55,95 @@ private struct GeminiAgentCommonSettingsContent: View {
     @ObservedObject var gemini: GeminiLiveViewModel
     @Binding var holdShortcut: HoldToTalkShortcut
     let themeAccent: Color
+    let openSettings: () -> Void
     @AppStorage("app_language") private var appLanguage: String = "English"
+
+    private var isUsingAPIKey: Bool {
+        gemini.selectedConnectionMethod == .userAPIKey
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             settingsCard(
                 title: "Gemini",
-                subtitle: Localization.get("Gemini API Key", lang: appLanguage)
+                subtitle: "Choose how Notch connects to Gemini Live"
             ) {
-                HStack(spacing: 8) {
-                    Text("Gemini")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.32))
-                        .frame(width: 55, alignment: .leading)
-
-                    SecureField(
-                        Localization.get("Gemini API Key", lang: appLanguage),
-                        text: $gemini.apiKeyText,
-                        onCommit: { Task { await gemini.saveAPIKey() } }
-                    )
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white)
-
-                    if !gemini.apiKeyText.isEmpty {
-                        Button {
-                            Task { await gemini.saveAPIKey() }
-                        } label: {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(themeAccent)
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        ForEach(GeminiLiveConnectionMethod.allCases) { method in
+                            Button {
+                                gemini.selectedConnectionMethod = method
+                            } label: {
+                                Text(method.title)
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(
+                                        gemini.selectedConnectionMethod == method
+                                            ? .black.opacity(0.84)
+                                            : .white.opacity(0.72)
+                                    )
+                                    .padding(.horizontal, 12)
+                                    .frame(height: 28)
+                                    .frame(maxWidth: .infinity)
+                                    .background(
+                                        Capsule()
+                                            .fill(
+                                                gemini.selectedConnectionMethod == method
+                                                    ? themeAccent
+                                                    : Color.white.opacity(0.08)
+                                            )
+                                    )
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
+
+                    if isUsingAPIKey {
+                        HStack(spacing: 8) {
+                            Text("Key")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.32))
+                                .frame(width: 55, alignment: .leading)
+
+                            SecureField(
+                                "AIza...",
+                                text: $gemini.apiKeyText,
+                                onCommit: { Task { await gemini.saveAPIKey() } }
+                            )
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.white)
+
+                            if !gemini.apiKeyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                Button {
+                                    Task { await gemini.saveAPIKey() }
+                                } label: {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(themeAccent)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    } else {
+                        HStack(spacing: 8) {
+                            Text("Account")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.32))
+                                .frame(width: 55, alignment: .leading)
+
+                            Text(gemini.backendSignedInSummary.map { "Signed in as \($0)" } ?? "Sign in required")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(gemini.isBackendAuthenticated ? .white.opacity(0.88) : .white.opacity(0.5))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Button(Localization.get("Open Settings Tab", lang: appLanguage)) {
+                                openSettings()
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(themeAccent)
+                        }
+                    }
+
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
@@ -261,7 +318,7 @@ struct GeminiTalkPanelView: View {
 
                         GeminiPillPicker(
                             title: "",
-                            icon: "speaker.fill",
+                            icon: "waveform",
                             tint: themeAccent,
                             selection: $gemini.selectedVoice
                         )
@@ -331,7 +388,7 @@ struct GeminiTalkPanelView: View {
         if gemini.hasSavedAPIKey {
             setupViewMode = .agentSettings
         } else {
-            gemini.requestManageKeysPanel()
+            openSettingsPanel()
         }
         promptEditorMode = nil
         promptDraftTitle = ""
@@ -343,7 +400,7 @@ struct GeminiTalkPanelView: View {
         if gemini.hasSavedAPIKey {
             setupViewMode = .agentSettings
         } else {
-            gemini.requestManageKeysPanel()
+            openSettingsPanel()
         }
         promptEditorMode = .edit(selectedPrompt.id)
         promptDraftTitle = selectedPrompt.title
@@ -444,23 +501,27 @@ struct GeminiTalkPanelView: View {
         headerAccessoryController.clear()
     }
 
-    /// No API keys are configured in the notch — use the floating panel or prompts below.
+    private func openSettingsPanel() {
+        presentationModel.selectPanel(.settings)
+    }
+
+    /// No managed Gemini backend is configured in the notch.
     private var noGeminiKeySetupView: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(Localization.get("Gemini Live needs a Gemini API key.", lang: appLanguage))
+            Text(gemini.selectedConnectionSetupTitle)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.88))
-            Text(Localization.get("Keys are not entered in the notch. Use the menu bar or Manage keys below.", lang: appLanguage))
+            Text(gemini.selectedConnectionSetupDescription)
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.white.opacity(0.52))
                 .fixedSize(horizontal: false, vertical: true)
 
             GeminiActionButton(
-                title: Localization.get("Manage keys", lang: appLanguage),
+                title: gemini.selectedConnectionManageButtonTitle,
                 icon: "key.fill",
                 tint: statusColor
             ) {
-                gemini.requestManageKeysPanel()
+                openSettingsPanel()
             }
             .frame(maxWidth: .infinity)
 
@@ -712,7 +773,8 @@ struct GeminiTalkPanelView: View {
                         GeminiAgentCommonSettingsContent(
                             gemini: vm,
                             holdShortcut: $holdShortcut,
-                            themeAccent: themeAccent
+                            themeAccent: themeAccent,
+                            openSettings: openSettingsPanel
                         )
 
                     case .prompt:
@@ -1421,7 +1483,14 @@ struct GeminiTranscriptModeToggle: View {
     }
 
     private var label: String {
-        Localization.get("Subs", lang: appLanguage)
+        switch mode {
+        case .autoHide:
+            return Localization.get("Auto Hide", lang: appLanguage)
+        case .pinned:
+            return Localization.get("Pin", lang: appLanguage)
+        case .hidden:
+            return Localization.get("Off", lang: appLanguage)
+        }
     }
 
     private var isActive: Bool {
@@ -1634,12 +1703,12 @@ struct GeminiOutputVolumeControl: View {
             return "speaker.slash.fill"
         }
         if value < 0.34 {
-            return "speaker.fill"
+            return "speaker.1.fill"
         }
         if value < 0.67 {
-            return "hifispeaker.fill"
+            return "speaker.2.fill"
         }
-        return "hifispeaker.2.fill"
+        return "speaker.3.fill"
     }
 
     var body: some View {
@@ -1879,26 +1948,26 @@ struct GeminiToolsPicker: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
+            HStack(spacing: 8) {
                 Text(Localization.get("Core Tools", lang: appLanguage))
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(.white.opacity(0.4))
-                
+
                 Spacer()
-                
-                StandardActionButton(
-                    title: Localization.get(hasAllToolsSelected ? "Disable All" : "Enable All", lang: appLanguage),
-                    tint: themeAccent,
-                    variant: .primary,
-                    isDisabled: isDisabled,
-                    action: {
-                        if hasAllToolsSelected {
-                            selection = []
-                        } else {
-                            selection = allSelectableTools
-                        }
+
+                Button {
+                    if hasAllToolsSelected {
+                        selection = []
+                    } else {
+                        selection = allSelectableTools
                     }
-                )
+                } label: {
+                    Text(Localization.get(hasAllToolsSelected ? "Disable All" : "Enable All", lang: appLanguage))
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(themeAccent)
+                }
+                .buttonStyle(.plain)
+                .disabled(isDisabled)
             }
             .padding(.bottom, 2)
 

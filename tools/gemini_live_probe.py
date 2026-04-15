@@ -10,11 +10,13 @@ import subprocess
 import sys
 import time
 from contextlib import suppress
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 import websockets
 
 
-MODEL = "gemini-3.1-flash-live-preview"
+DEFAULT_MODEL = "gemini-3.1-flash-live-preview"
 KEYCHAIN_SERVICE = "dev.notch"
 KEYCHAIN_ACCOUNT = "GeminiLiveAPIKey"
 
@@ -63,6 +65,40 @@ def read_api_key() -> str:
             "Keychain trả về rỗng. Đặt GEMINI_API_KEY hoặc kiểm tra mục Keychain dev.notch / GeminiLiveAPIKey."
         )
     return key
+
+
+def request_ephemeral_token(backend_url: str, client_token: str | None, model: str) -> str:
+    trimmed = backend_url.rstrip("/")
+    url = f"{trimmed}/v1/gemini-live/session-token"
+    body = json.dumps(
+        {
+            "model": model,
+            "response_modalities": ["AUDIO"],
+        }
+    ).encode("utf-8")
+
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    if client_token:
+        headers["Authorization"] = f"Bearer {client_token}"
+
+    request = Request(url, method="POST", data=body, headers=headers)
+
+    try:
+        with urlopen(request, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except HTTPError as e:
+        detail = e.read().decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"Backend token API trả HTTP {e.code}: {detail}") from e
+    except URLError as e:
+        raise RuntimeError(f"Không gọi được backend token API: {e.reason}") from e
+
+    token = str(payload.get("name", "")).strip()
+    if not token.startswith("auth_tokens/"):
+        raise RuntimeError(f"Backend không trả ephemeral token hợp lệ: {payload}")
+    return token
 
 
 async def send_json(ws, payload: dict) -> None:
@@ -235,6 +271,16 @@ async def receive_events(
                 summary["model_text_parts"].append(raw_text)
                 print(f"[model-text] {raw_text}")
 
+            executable_code = part.get("executableCode") or {}
+            if executable_code.get("code"):
+                summary["executable_code_parts"].append(executable_code["code"])
+                print(f"[exec-code]\n{executable_code['code']}")
+
+            code_result = part.get("codeExecutionResult") or {}
+            if code_result.get("output"):
+                summary["code_execution_outputs"].append(code_result["output"])
+                print(f"[exec-result]\n{code_result['output']}")
+
             inline = part.get("inlineData") or {}
             data = inline.get("data")
             if data:
@@ -251,6 +297,7 @@ async def main() -> int:
     parser = argparse.ArgumentParser(
         description="Probe Gemini Live: mic (ffmpeg) hoặc gửi text qua realtimeInput.text sau setupComplete."
     )
+    parser.add_argument("--model", default=DEFAULT_MODEL, help=f"Model Live API để test. Default: {DEFAULT_MODEL}")
     parser.add_argument("--device", default=":0", help="FFmpeg avfoundation input, default ':0' for the first mic.")
     parser.add_argument("--duration", type=float, default=12.0, help="Seconds to capture microphone audio.")
     parser.add_argument("--tail-seconds", type=float, default=8.0, help="Seconds to keep listening after mic capture stops.")
@@ -277,6 +324,21 @@ async def main() -> int:
         action="store_true",
         help="In top-level keys của mỗi JSON nhận từ server (debug).",
     )
+    parser.add_argument(
+        "--backend-url",
+        default=os.environ.get("NOTCH_GEMINI_LIVE_BACKEND_URL", "").strip() or None,
+        help="Gemini Live backend URL để xin ephemeral token, ví dụ https://laihieu2714.ddns.net/notch",
+    )
+    parser.add_argument(
+        "--client-token",
+        default=os.environ.get("NOTCH_GEMINI_LIVE_CLIENT_TOKEN", "").strip() or None,
+        help="Bearer token cho backend ephemeral-token API (nếu backend yêu cầu).",
+    )
+    parser.add_argument(
+        "--enable-google-search",
+        action="store_true",
+        help="Bật built-in Google Search tool trực tiếp trong Live API setup.",
+    )
     args = parser.parse_args()
 
     user_text_turn: str | None
@@ -291,12 +353,22 @@ async def main() -> int:
         print("[probe] --send-text cần nội dung không rỗng (hoặc stdin khi dùng '-').", file=sys.stderr)
         return 2
 
-    api_key = read_api_key()
-    url = (
-        "wss://generativelanguage.googleapis.com/ws/"
-        "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
-        f"?key={api_key}"
-    )
+    if args.backend_url:
+        connection_credential = request_ephemeral_token(args.backend_url, args.client_token, args.model)
+        url = (
+            "wss://generativelanguage.googleapis.com/ws/"
+            "google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained"
+            f"?access_token={connection_credential}"
+        )
+        print(f"[probe] dùng ephemeral token từ backend {args.backend_url}")
+    else:
+        api_key = read_api_key()
+        url = (
+            "wss://generativelanguage.googleapis.com/ws/"
+            "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
+            f"?key={api_key}"
+        )
+        print("[probe] dùng API key trực tiếp")
 
     summary = {
         "audio_chunks": 0,
@@ -305,6 +377,8 @@ async def main() -> int:
         "user_transcripts": [],
         "model_transcripts": [],
         "model_text_parts": [],
+        "executable_code_parts": [],
+        "code_execution_outputs": [],
         "errors": [],
         "ffmpeg_stderr": "",
     }
@@ -320,36 +394,39 @@ async def main() -> int:
         modalities = ["AUDIO"]
 
     base_instruction = "You are a concise voice assistant. Keep spoken replies brief."
+    tools = [{"google_search": {}}] if args.enable_google_search else None
 
     print("[probe] connecting to Gemini Live...")
     async with websockets.connect(url, max_size=None) as ws:
-        await send_json(
-            ws,
-            {
-                "setup": {
-                    "model": f"models/{MODEL}",
-                    "inputAudioTranscription": {},
-                    "outputAudioTranscription": {},
-                    "generationConfig": {
-                        "responseModalities": modalities,
-                        "speechConfig": {
-                            "voiceConfig": {
-                                "prebuiltVoiceConfig": {
-                                    "voiceName": "Kore",
-                                }
+        setup_payload = {
+            "setup": {
+                "model": f"models/{args.model}",
+                "inputAudioTranscription": {},
+                "outputAudioTranscription": {},
+                "generationConfig": {
+                    "responseModalities": modalities,
+                    "speechConfig": {
+                        "voiceConfig": {
+                            "prebuiltVoiceConfig": {
+                                "voiceName": "Kore",
                             }
-                        },
+                        }
                     },
-                    "systemInstruction": {
-                        "parts": [
-                            {
-                                "text": base_instruction,
-                            }
-                        ]
-                    },
-                }
-            },
-        )
+                },
+                "systemInstruction": {
+                    "parts": [
+                        {
+                            "text": base_instruction,
+                        }
+                    ]
+                },
+            }
+        }
+        if tools:
+            setup_payload["setup"]["tools"] = tools
+            print("[probe] bật built-in Google Search tool")
+
+        await send_json(ws, setup_payload)
         print("[probe] đã gửi setup — chờ setupComplete từ server...")
 
         # Hạn nhận: ban đầu rộng để không cắt ngang lúc chờ setup; main sẽ thu hẹp sau setupComplete.
@@ -413,6 +490,8 @@ async def main() -> int:
         f"user_tx={len(summary['user_transcripts'])} "
         f"model_tx={len(summary['model_transcripts'])} "
         f"model_text_parts={len(summary['model_text_parts'])} "
+        f"exec_code_parts={len(summary['executable_code_parts'])} "
+        f"exec_outputs={len(summary['code_execution_outputs'])} "
         f"errors={len(summary['errors'])}"
     )
     if summary["ffmpeg_stderr"]:

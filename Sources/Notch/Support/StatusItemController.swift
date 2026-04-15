@@ -64,7 +64,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     )
 
     private lazy var manageServiceKeysItem = NSMenuItem(
-        title: "Manage Keys…",
+        title: "Gemini Settings…",
         action: #selector(showManageKeys),
         keyEquivalent: ""
     )

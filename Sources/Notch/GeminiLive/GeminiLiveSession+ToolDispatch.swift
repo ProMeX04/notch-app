@@ -9,8 +9,6 @@ extension GeminiLiveSession {
         GeminiLiveToolLogging.debug("called tool \(name) with args \(call["args"] ?? [:])")
 
         switch name {
-        case "webSearch":
-            handleWebSearchCall(id: id, call: call)
         case "read":
             handleReadCall(id: id, call: call)
         case "write":
@@ -28,18 +26,6 @@ extension GeminiLiveSession {
         default:
             sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
         }
-    }
-
-    private func handleWebSearchCall(id: String, call: [String: Any]) {
-        let name = "webSearch"
-        guard let args = call["args"] as? [String: Any],
-              let query = args["query"] as? String else {
-            sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
-            return
-        }
-        let maxResults = (args["maxResults"] as? NSNumber)?.intValue ?? args["maxResults"] as? Int ?? 5
-        notifyFunctionStarted(name: name, args: args)
-        executeWebSearchAsync(id: id, name: name, args: args, query: query, maxResults: maxResults)
     }
 
     private func handleExecCall(id: String, call: [String: Any]) {

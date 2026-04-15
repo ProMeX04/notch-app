@@ -127,6 +127,14 @@ enum GeminiLiveStoragePaths {
         developmentDirectory.appendingPathComponent("gemini-api-key.json")
     }
 
+    static var developmentGeminiLiveClientTokenFile: URL {
+        developmentDirectory.appendingPathComponent("gemini-live-client-token.json")
+    }
+
+    static var developmentGeminiLiveAuthTokenFile: URL {
+        developmentDirectory.appendingPathComponent("gemini-live-auth-token.json")
+    }
+
     static var developmentBraveSearchAPIKeyFile: URL {
         developmentDirectory.appendingPathComponent("brave-search-api-key.json")
     }

@@ -2,11 +2,67 @@ import AppKit
 import Foundation
 import Security
 
+enum GeminiLiveHostedBackend {
+    static let defaultURL = "https://laihieu2714.ddns.net/notch"
+}
+
 enum GeminiLiveInputMode: String, Codable, CaseIterable, Identifiable {
     case openMic
     case pushToTalk
 
     var id: String { rawValue }
+}
+
+enum GeminiLiveConnectionMethod: String, Codable, CaseIterable, Identifiable {
+    case userAPIKey = "user-api-key"
+    case managedServer = "managed-server"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .userAPIKey:
+            return "API Key"
+        case .managedServer:
+            return "Notch Account"
+        }
+    }
+
+    var shortTitle: String {
+        switch self {
+        case .userAPIKey:
+            return "API Key"
+        case .managedServer:
+            return "Account"
+        }
+    }
+
+    var setupTitle: String {
+        switch self {
+        case .userAPIKey:
+            return "Enter your Gemini API key."
+        case .managedServer:
+            return "Sign in to your Notch account."
+        }
+    }
+
+    var setupDescription: String {
+        switch self {
+        case .userAPIKey:
+            return "Use your own Gemini API key to connect directly."
+        case .managedServer:
+            return "Use your email and password in the Settings tab to connect across the app."
+        }
+    }
+
+    var manageButtonTitle: String {
+        switch self {
+        case .userAPIKey:
+            return "Open Settings tab"
+        case .managedServer:
+            return "Open Settings tab"
+        }
+    }
 }
 
 final class GeminiLiveAPIKeyStore {
@@ -143,6 +199,7 @@ struct GeminiLiveSettings {
     let transcriptOverlayAutoHide: Bool
     let showLiveChatInput: Bool
     let outputVolume: Double
+    let connectionMethod: GeminiLiveConnectionMethod
     let systemPromptPresets: [GeminiSystemPromptPreset]
     let selectedSystemPromptID: String
 }
@@ -175,6 +232,7 @@ final class GeminiLiveSettingsStore {
             transcriptOverlayAutoHide: payload.transcriptOverlayAutoHide ?? true,
             showLiveChatInput: payload.showLiveChatInput ?? true,
             outputVolume: payload.outputVolume ?? 1,
+            connectionMethod: payload.connectionMethod ?? .userAPIKey,
             systemPromptPresets: presets,
             selectedSystemPromptID: payload.selectedSystemPromptID ?? GeminiSystemPromptPreset.defaultPreset.id
         )
@@ -188,6 +246,7 @@ final class GeminiLiveSettingsStore {
             transcriptOverlayAutoHide: settings.transcriptOverlayAutoHide,
             showLiveChatInput: settings.showLiveChatInput,
             outputVolume: settings.outputVolume,
+            connectionMethod: settings.connectionMethod,
             systemPromptPresets: settings.systemPromptPresets,
             selectedSystemPromptID: settings.selectedSystemPromptID
         )
@@ -203,6 +262,7 @@ final class GeminiLiveSettingsStore {
         let transcriptOverlayAutoHide: Bool?
         let showLiveChatInput: Bool?
         let outputVolume: Double?
+        let connectionMethod: GeminiLiveConnectionMethod?
         let systemPromptPresets: [GeminiSystemPromptPreset]?
         let selectedSystemPromptID: String?
         /// Legacy: skills lived at root; migrated into each preset on read. Not written on save.
@@ -215,6 +275,7 @@ final class GeminiLiveSettingsStore {
             transcriptOverlayAutoHide: Bool,
             showLiveChatInput: Bool,
             outputVolume: Double,
+            connectionMethod: GeminiLiveConnectionMethod,
             systemPromptPresets: [GeminiSystemPromptPreset],
             selectedSystemPromptID: String
         ) {
@@ -224,6 +285,7 @@ final class GeminiLiveSettingsStore {
             self.transcriptOverlayAutoHide = transcriptOverlayAutoHide
             self.showLiveChatInput = showLiveChatInput
             self.outputVolume = outputVolume
+            self.connectionMethod = connectionMethod
             self.systemPromptPresets = systemPromptPresets
             self.selectedSystemPromptID = selectedSystemPromptID
             self.enabledSkillNames = nil
@@ -237,6 +299,7 @@ final class GeminiLiveSettingsStore {
             try container.encode(transcriptOverlayAutoHide ?? true, forKey: .transcriptOverlayAutoHide)
             try container.encode(showLiveChatInput ?? true, forKey: .showLiveChatInput)
             try container.encodeIfPresent(outputVolume, forKey: .outputVolume)
+            try container.encodeIfPresent(connectionMethod, forKey: .connectionMethod)
             try container.encodeIfPresent(systemPromptPresets, forKey: .systemPromptPresets)
             try container.encodeIfPresent(selectedSystemPromptID, forKey: .selectedSystemPromptID)
         }
@@ -249,6 +312,7 @@ final class GeminiLiveSettingsStore {
             transcriptOverlayAutoHide = try container.decodeIfPresent(Bool.self, forKey: .transcriptOverlayAutoHide)
             showLiveChatInput = try container.decodeIfPresent(Bool.self, forKey: .showLiveChatInput)
             outputVolume = try container.decodeIfPresent(Double.self, forKey: .outputVolume)
+            connectionMethod = try container.decodeIfPresent(GeminiLiveConnectionMethod.self, forKey: .connectionMethod)
             systemPromptPresets = try container.decodeIfPresent([GeminiSystemPromptPreset].self, forKey: .systemPromptPresets)
             selectedSystemPromptID = try container.decodeIfPresent(String.self, forKey: .selectedSystemPromptID)
             enabledSkillNames = try container.decodeIfPresent([String].self, forKey: .enabledSkillNames)
@@ -261,6 +325,7 @@ final class GeminiLiveSettingsStore {
             case transcriptOverlayAutoHide
             case showLiveChatInput
             case outputVolume
+            case connectionMethod
             case systemPromptPresets
             case selectedSystemPromptID
             case enabledSkillNames

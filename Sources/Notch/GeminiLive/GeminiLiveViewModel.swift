@@ -29,11 +29,22 @@ final class GeminiLiveViewModel: ObservableObject {
         didSet { persistSettings() }
     }
     @Published private(set) var isHoldToTalkActive = false
-    @Published private(set) var statusText = "Paste your Gemini API key to start Gemini Live."
+    @Published private(set) var statusText = "Configure Gemini Live to start."
     @Published private(set) var lastErrorMessage: String?
+    @Published var selectedConnectionMethod: GeminiLiveConnectionMethod = .userAPIKey {
+        didSet {
+            persistSettings()
+            syncConfiguredConnectionState(updateStatus: connectionState != .connected && connectionState != .connecting)
+        }
+    }
     @Published private(set) var userTranscript = ""
     @Published private(set) var modelTranscript = ""
     @Published var apiKeyText: String
+    @Published var backendURLText: String
+    @Published var backendClientTokenText: String
+    @Published var backendAuthEmailText: String
+    @Published var backendAuthPasswordText: String = ""
+    @Published private(set) var backendAuthenticatedEmail: String?
     @Published var userProfileContent: String = ""
     @Published var memoryContent: String = ""
 
@@ -124,6 +135,9 @@ final class GeminiLiveViewModel: ObservableObject {
     private var screenShareFilter: SCContentFilter?
     private let session: GeminiLiveSession
     private let keyStore: GeminiLiveAPIKeyStore
+    private let backendConfigStore: GeminiLiveBackendConfigStore
+    private let backendAuthStore: GeminiLiveBackendAuthStore
+    private let backendClient: GeminiLiveBackendClient
     private let settingsStore: GeminiLiveSettingsStore
     private let execApprovalStore: GeminiLiveExecApprovalStore
     private let agentAvatarStore: GeminiAgentAvatarStore
@@ -135,9 +149,9 @@ final class GeminiLiveViewModel: ObservableObject {
     private var isNormalizingEnabledSkillNames = false
 
     private var storedAPIKey: String?
+    private var storedBackendConfiguration: GeminiLiveBackendConfiguration?
+    private var storedBackendAuthSession: GeminiLiveBackendAuthSession?
     var onExecApprovalAttentionRequested: (() -> Void)?
-    /// Present the key management window (standard `NSWindow`, set by `NotchWindowController`).
-    var onPresentSecretsPanel: (() -> Void)?
 
     var currentPendingExecApproval: ExecApprovalRequest? {
         pendingExecApprovals.first
@@ -146,6 +160,9 @@ final class GeminiLiveViewModel: ObservableObject {
     init(processInfo: ProcessInfo = .processInfo, session: GeminiLiveSession = GeminiLiveSession()) {
         self.session = session
         keyStore = GeminiLiveAPIKeyStore(processInfo: processInfo)
+        backendConfigStore = GeminiLiveBackendConfigStore(processInfo: processInfo)
+        backendAuthStore = GeminiLiveBackendAuthStore(processInfo: processInfo)
+        backendClient = GeminiLiveBackendClient()
         settingsStore = GeminiLiveSettingsStore()
         execApprovalStore = GeminiLiveExecApprovalStore()
         agentAvatarStore = GeminiAgentAvatarStore()
@@ -155,13 +172,15 @@ final class GeminiLiveViewModel: ObservableObject {
         memoryStore = MemoryStore()
         installedSkills = skillStore.listInstalledSkills()
 
-        if let savedSettings = settingsStore.read() {
+        let savedSettings = settingsStore.read()
+        if let savedSettings {
             isMicrophoneEnabled = savedSettings.isMicrophoneEnabled
             inputMode = savedSettings.inputMode
             showTranscriptOverlay = savedSettings.showTranscriptOverlay
             transcriptOverlayAutoHide = savedSettings.transcriptOverlayAutoHide
             showLiveChatInput = savedSettings.showLiveChatInput
             outputVolume = min(max(savedSettings.outputVolume, 0), 1)
+            selectedConnectionMethod = savedSettings.connectionMethod
             systemPromptPresets = savedSettings.systemPromptPresets
             selectedSystemPromptID = savedSettings.selectedSystemPromptID
         }
@@ -169,14 +188,29 @@ final class GeminiLiveViewModel: ObservableObject {
         userProfileContent = userStore.readUserProfile()
         memoryContent = memoryStore.readMainMemory()
 
-        if let storedKey = keyStore.read(), !storedKey.isEmpty {
-            storedAPIKey = storedKey
-            apiKeyText = storedKey
-            hasSavedAPIKey = true
-            statusText = "Ready to connect to Gemini Live."
+        let currentGeminiKey = keyStore.read()?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedCurrentGeminiKey = (currentGeminiKey?.isEmpty == false) ? currentGeminiKey : nil
+        storedAPIKey = normalizedCurrentGeminiKey
+        apiKeyText = normalizedCurrentGeminiKey ?? ""
+        let backendAuthSession = backendAuthStore.read()
+        storedBackendAuthSession = backendAuthSession
+        backendAuthEmailText = backendAuthSession?.user.email ?? backendAuthStore.readLastEmail()
+        backendAuthenticatedEmail = backendAuthSession?.user.email
+
+        if let storedBackend = backendConfigStore.read() {
+            storedBackendConfiguration = storedBackend
+            backendURLText = GeminiLiveHostedBackend.defaultURL
+            backendClientTokenText = ""
         } else {
-            apiKeyText = ""
+            backendURLText = GeminiLiveHostedBackend.defaultURL
+            backendClientTokenText = ""
         }
+
+        if savedSettings == nil, normalizedCurrentGeminiKey == nil {
+            selectedConnectionMethod = .managedServer
+        }
+
+        syncConfiguredConnectionState(updateStatus: true)
 
         normalizeSystemPromptSelection()
         // Load all per-preset settings without triggering write-through didSets.
@@ -206,7 +240,7 @@ final class GeminiLiveViewModel: ObservableObject {
                         self.statusText = message
                     }
                 } else {
-                    self.statusText = self.hasConfiguredAPIKey ? "Ready to connect to Gemini Live." : "Paste your Gemini API key to start Gemini Live."
+                    self.statusText = self.defaultDisconnectedStatusText
                 }
 
                 // Auto-reconnect on unexpected failure
@@ -406,11 +440,64 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     var hasConfiguredAPIKey: Bool {
-        !(configuredAPIKey?.isEmpty ?? true)
+        hasConfiguredConnection
+    }
+
+    var hasConfiguredConnection: Bool {
+        switch selectedConnectionMethod {
+        case .userAPIKey:
+            return configuredAPIKey != nil
+        case .managedServer:
+            return configuredBackendConfiguration != nil && backendAuthorizationToken != nil
+        }
+    }
+
+    var hasAnyConfiguredConnection: Bool {
+        configuredBackendConfiguration != nil || configuredAPIKey != nil
+    }
+
+    var selectedConnectionSetupTitle: String {
+        selectedConnectionMethod.setupTitle
+    }
+
+    var selectedConnectionSetupDescription: String {
+        switch selectedConnectionMethod {
+        case .userAPIKey:
+            return selectedConnectionMethod.setupDescription
+        case .managedServer:
+            if configuredBackendConfiguration == nil {
+                return "Configure the backend URL first in the Settings tab."
+            }
+            if backendAuthorizationToken == nil {
+                return "Sign in to your server account in the Settings tab."
+            }
+            return "Ready to use your server-managed Gemini session."
+        }
+    }
+
+    var selectedConnectionManageButtonTitle: String {
+        selectedConnectionMethod.manageButtonTitle
+    }
+
+    var isBackendAuthenticated: Bool {
+        backendAuthorizationToken != nil
+    }
+
+    var backendSignedInSummary: String? {
+        backendAuthenticatedEmail
+    }
+
+    var defaultDisconnectedStatusText: String {
+        hasConfiguredConnection ? "Ready to connect to Gemini Live." : selectedConnectionMethod.setupDescription
     }
 
     func requestManageKeysPanel() {
-        onPresentSecretsPanel?()
+        openAppSettings()
+    }
+
+    func openAppSettings() {
+        NSApp.activate(ignoringOtherApps: true)
+        _ = NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
     }
 
     var selectedSystemPromptPreset: GeminiSystemPromptPreset {
@@ -686,7 +773,7 @@ final class GeminiLiveViewModel: ObservableObject {
         var lines: [String] = []
 
         if effectiveTools.contains(.webSearch) {
-            lines.append("- When the user asks for up-to-date information, use `webSearch` instead of guessing. This is the default web lookup tool.")
+            lines.append("- When the user asks for up-to-date information, use the built-in Google Search tool instead of guessing.")
         }
         if effectiveTools.contains(.exec) {
             lines.append("- Use `exec` for local shell commands on this Mac, such as `curl`, `python3`, `jq`, or `git`. Commands default to `~/.notch/workspace`, and new commands may require approval.")
@@ -928,10 +1015,85 @@ final class GeminiLiveViewModel: ObservableObject {
         disconnect()
     }
 
+    func saveBackendConfiguration() async -> Bool {
+        guard let draftBackendURL else {
+            lastErrorMessage = "Gemini Live server URL is missing."
+            statusText = "Enter the Gemini Live server URL, then save again."
+            return false
+        }
+
+        isSavingAPIKey = true
+        lastErrorMessage = nil
+        statusText = "Testing Gemini Live server..."
+        defer { isSavingAPIKey = false }
+
+        do {
+            guard
+                let normalizedURL = URL(string: draftBackendURL),
+                let scheme = normalizedURL.scheme,
+                !scheme.isEmpty,
+                normalizedURL.host != nil
+            else {
+                throw GeminiLiveBackendError.invalidBaseURL
+            }
+
+            let normalizedConfiguration = GeminiLiveBackendConfiguration(
+                baseURL: normalizedURL.path.isEmpty ? normalizedURL.appendingPathComponent("") : normalizedURL,
+                clientToken: draftBackendClientToken,
+                userAccessToken: storedBackendAuthSession?.accessToken
+            )
+            do {
+                try await backendClient.validate(configuration: normalizedConfiguration)
+            } catch GeminiLiveBackendError.unauthorized {
+                guard backendConfigStore.save(
+                    baseURLString: normalizedConfiguration.displayURL,
+                    clientToken: normalizedConfiguration.clientToken
+                ) else {
+                    lastErrorMessage = "Couldn't save the Gemini Live server configuration."
+                    statusText = "Gemini Live server validation passed, but saving failed."
+                    return false
+                }
+
+                storedBackendConfiguration = GeminiLiveBackendConfiguration(
+                    baseURL: normalizedConfiguration.baseURL,
+                    clientToken: normalizedConfiguration.clientToken,
+                    userAccessToken: nil
+                )
+                backendURLText = normalizedConfiguration.displayURL
+                backendClientTokenText = normalizedConfiguration.clientToken ?? ""
+                lastErrorMessage = nil
+                statusText = "Gemini Live server saved. Sign in to continue."
+                syncConfiguredConnectionState()
+                return true
+            }
+
+            guard backendConfigStore.save(
+                baseURLString: normalizedConfiguration.displayURL,
+                clientToken: normalizedConfiguration.clientToken
+            ) else {
+                lastErrorMessage = "Couldn't save the Gemini Live server configuration."
+                statusText = "Gemini Live server validation passed, but saving failed."
+                return false
+            }
+
+            storedBackendConfiguration = normalizedConfiguration
+            backendURLText = normalizedConfiguration.displayURL
+            backendClientTokenText = normalizedConfiguration.clientToken ?? ""
+            lastErrorMessage = nil
+            statusText = "Gemini Live server saved."
+            syncConfiguredConnectionState()
+            return true
+        } catch {
+            lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            statusText = "Gemini Live server test failed."
+            return false
+        }
+    }
+
     func saveAPIKey() async -> Bool {
         guard let draftAPIKey else {
             lastErrorMessage = "Gemini API key is missing."
-            statusText = "Paste a Gemini API key, then save again."
+            statusText = "Enter your Gemini API key, then save again."
             return false
         }
 
@@ -944,15 +1106,16 @@ final class GeminiLiveViewModel: ObservableObject {
             try await validateAPIKey(draftAPIKey)
 
             guard keyStore.save(draftAPIKey) else {
-                lastErrorMessage = "Couldn't save the Gemini API key."
-                statusText = keyStore.saveFailureMessage
+                lastErrorMessage = keyStore.saveFailureMessage
+                statusText = "Gemini API key test passed, but saving failed."
                 return false
             }
 
             storedAPIKey = draftAPIKey
             apiKeyText = draftAPIKey
-            hasSavedAPIKey = true
+            lastErrorMessage = nil
             statusText = keyStore.saveSuccessMessage
+            syncConfiguredConnectionState()
             return true
         } catch {
             lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -961,11 +1124,113 @@ final class GeminiLiveViewModel: ObservableObject {
         }
     }
 
+    func signupBackendAccount() async -> Bool {
+        guard let configuration = await ensureBackendConfigurationForAuth() else {
+            lastErrorMessage = "Gemini Live server URL is missing."
+            statusText = "Check the connection and try again."
+            return false
+        }
+        guard let email = draftBackendAuthEmail else {
+            lastErrorMessage = "Email is missing."
+            statusText = "Enter your email, then try again."
+            return false
+        }
+        guard let password = draftBackendAuthPassword else {
+            lastErrorMessage = "Password is missing."
+            statusText = "Enter your password, then try again."
+            return false
+        }
+
+        isSavingAPIKey = true
+        lastErrorMessage = nil
+        statusText = "Creating your server account..."
+        defer { isSavingAPIKey = false }
+        backendAuthStore.saveLastEmail(email)
+
+        do {
+            let session = try await backendClient.signup(
+                configuration: configuration,
+                email: email,
+                password: password,
+                name: nil
+            )
+            storeBackendAuthSession(session)
+            backendAuthPasswordText = ""
+            statusText = "Signed in to Gemini Live server."
+            return true
+        } catch {
+            lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            statusText = "Couldn't create your server account."
+            return false
+        }
+    }
+
+    func loginBackendAccount() async -> Bool {
+        guard let configuration = await ensureBackendConfigurationForAuth() else {
+            lastErrorMessage = "Gemini Live server URL is missing."
+            statusText = "Check the connection and try again."
+            return false
+        }
+        guard let email = draftBackendAuthEmail else {
+            lastErrorMessage = "Email is missing."
+            statusText = "Enter your email, then try again."
+            return false
+        }
+        guard let password = draftBackendAuthPassword else {
+            lastErrorMessage = "Password is missing."
+            statusText = "Enter your password, then try again."
+            return false
+        }
+
+        isSavingAPIKey = true
+        lastErrorMessage = nil
+        statusText = "Signing in to Gemini Live server..."
+        defer { isSavingAPIKey = false }
+        backendAuthStore.saveLastEmail(email)
+
+        do {
+            let session = try await backendClient.login(
+                configuration: configuration,
+                email: email,
+                password: password
+            )
+            storeBackendAuthSession(session)
+            backendAuthPasswordText = ""
+            statusText = "Signed in to Gemini Live server."
+            return true
+        } catch {
+            lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            statusText = "Couldn't sign in to Gemini Live server."
+            return false
+        }
+    }
+
+    func logoutBackendAccount() async {
+        isSavingAPIKey = true
+        defer { isSavingAPIKey = false }
+
+        if let configuration = configuredBackendConfigurationWithAuth {
+            do {
+                try await backendClient.logout(configuration: configuration)
+            } catch {
+                lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            }
+        }
+
+        clearBackendAuthSession()
+        backendAuthPasswordText = ""
+        statusText = configuredBackendConfiguration == nil
+            ? "Gemini Live server saved. Sign in to continue."
+            : "Signed out from Gemini Live server."
+    }
+
     func connect(clearingTranscripts: Bool = true) {
-        guard let configuredAPIKey else {
+        guard hasConfiguredConnection else {
             connectionState = .failed
-            lastErrorMessage = "Gemini API key is missing."
-            statusText = "Save a Gemini API key, then connect again."
+            lastErrorMessage = selectedConnectionMethod == .userAPIKey
+                ? "Gemini API key is missing."
+                : "Gemini Live server is missing."
+            statusText = defaultDisconnectedStatusText
             return
         }
 
@@ -1002,8 +1267,66 @@ final class GeminiLiveViewModel: ObservableObject {
                 )
 
                 let preset = self.selectedSystemPromptPreset
+                let systemInstruction = systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+                let existingConfiguration = !clearingTranscripts ? self.session.currentConfiguration : nil
+                let connectionCredential: String
+                let restAPIKey: String?
+                let backendConfiguration: GeminiLiveBackendConfiguration?
+
+                if let existingConfiguration {
+                    connectionCredential = existingConfiguration.connectionCredential
+                    restAPIKey = existingConfiguration.restAPIKey
+                    backendConfiguration = existingConfiguration.backendConfiguration
+                } else {
+                    switch self.selectedConnectionMethod {
+                    case .managedServer:
+                        guard let configuredBackend = self.configuredBackendConfigurationWithAuth else {
+                            self.connectionState = .failed
+                            self.lastErrorMessage = self.configuredBackendConfiguration == nil
+                                ? "Gemini Live server is missing."
+                                : "Please sign in to your Gemini Live server account."
+                            self.statusText = self.defaultDisconnectedStatusText
+                            return
+                        }
+
+                        self.statusText = "Requesting secure Gemini Live token..."
+                        do {
+                            let token = try await self.backendClient.createSessionToken(
+                                configuration: configuredBackend,
+                                requestBody: GeminiLiveSessionTokenRequest(
+                                    model: preset.modelEnum.apiName,
+                                    systemInstruction: systemInstruction.isEmpty ? nil : systemInstruction,
+                                    voiceName: preset.voiceEnum.apiName,
+                                    thinkingBudget: preset.thinkingEnum.budget > 0 ? preset.thinkingEnum.budget : nil,
+                                    responseModalities: ["AUDIO"]
+                                )
+                            )
+                            connectionCredential = token.name
+                            restAPIKey = nil
+                            backendConfiguration = configuredBackend
+                        } catch {
+                            self.connectionState = .failed
+                            self.lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                            self.statusText = "Couldn't create a Gemini Live session token."
+                            return
+                        }
+                    case .userAPIKey:
+                        guard let configuredAPIKey = self.configuredAPIKey else {
+                            self.connectionState = .failed
+                            self.lastErrorMessage = "Gemini API key is missing."
+                            self.statusText = self.defaultDisconnectedStatusText
+                            return
+                        }
+                        connectionCredential = configuredAPIKey
+                        restAPIKey = configuredAPIKey
+                        backendConfiguration = nil
+                    }
+                }
+
                 self.session.connect(
-                    apiKey: configuredAPIKey,
+                    connectionCredential: connectionCredential,
+                    restAPIKey: restAPIKey,
+                    backendConfiguration: backendConfiguration,
                     model: preset.modelEnum.apiName,
                     systemPrompt: systemPrompt,
                     microphoneEnabled: self.effectiveMicrophoneEnabled,
@@ -1032,7 +1355,7 @@ final class GeminiLiveViewModel: ObservableObject {
         currentSkillSnapshot = nil
         session.disconnect(userInitiated: true)
         connectionState = .disconnected
-        statusText = hasConfiguredAPIKey ? "Ready to connect to Gemini Live." : "Paste your Gemini API key to start Gemini Live."
+        statusText = defaultDisconnectedStatusText
     }
 
     private func scheduleReconnect() {
@@ -1528,9 +1851,19 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     func reloadKeyDrafts() {
+        let currentBackendConfiguration = backendConfigStore.read()
+        storedBackendConfiguration = currentBackendConfiguration
+        backendURLText = currentBackendConfiguration?.displayURL ?? ""
+        backendClientTokenText = currentBackendConfiguration?.clientToken ?? ""
+
         let currentGeminiKey = currentStoredGeminiKey()
         storedAPIKey = currentGeminiKey
         apiKeyText = currentGeminiKey ?? ""
+        let currentBackendAuthSession = backendAuthStore.read()
+        storedBackendAuthSession = currentBackendAuthSession
+        backendAuthenticatedEmail = currentBackendAuthSession?.user.email
+        backendAuthEmailText = currentBackendAuthSession?.user.email ?? backendAuthStore.readLastEmail()
+        syncConfiguredConnectionState(updateStatus: connectionState != .connected && connectionState != .connecting)
     }
 
     private func persistSettings() {
@@ -1542,6 +1875,7 @@ final class GeminiLiveViewModel: ObservableObject {
                 transcriptOverlayAutoHide: transcriptOverlayAutoHide,
                 showLiveChatInput: showLiveChatInput,
                 outputVolume: outputVolume,
+                connectionMethod: selectedConnectionMethod,
                 systemPromptPresets: systemPromptPresets,
                 selectedSystemPromptID: selectedSystemPromptID
             )
@@ -1585,9 +1919,63 @@ final class GeminiLiveViewModel: ObservableObject {
         systemPromptPresets[idx].enabledSkillNames = enabledSkillNames.sorted()
     }
 
+    private var draftBackendURL: String? {
+        let trimmedInput = backendURLText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedInput.isEmpty ? nil : trimmedInput
+    }
+
+    private var draftBackendAuthEmail: String? {
+        let trimmedInput = backendAuthEmailText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedInput.isEmpty ? nil : trimmedInput
+    }
+
+    private var draftBackendAuthPassword: String? {
+        let trimmedInput = backendAuthPasswordText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedInput.isEmpty ? nil : trimmedInput
+    }
+
     private var draftAPIKey: String? {
         let trimmedInput = apiKeyText.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmedInput.isEmpty ? nil : trimmedInput
+    }
+
+    private var draftBackendClientToken: String? {
+        let trimmedInput = backendClientTokenText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedInput.isEmpty ? nil : trimmedInput
+    }
+
+    private var configuredBackendConfiguration: GeminiLiveBackendConfiguration? {
+        storedBackendConfiguration ?? backendConfigStore.read()
+    }
+
+    private var configuredBackendConfigurationForAuth: GeminiLiveBackendConfiguration? {
+        guard let configuration = configuredBackendConfiguration else { return nil }
+        return GeminiLiveBackendConfiguration(
+            baseURL: configuration.baseURL,
+            clientToken: configuration.clientToken,
+            userAccessToken: nil
+        )
+    }
+
+    private var needsBackendConfigurationSave: Bool {
+        guard let draftBackendURL else { return configuredBackendConfiguration == nil }
+        guard let configuration = configuredBackendConfiguration else { return true }
+
+        return configuration.displayURL != draftBackendURL
+            || configuration.clientToken != draftBackendClientToken
+    }
+
+    private var configuredBackendConfigurationWithAuth: GeminiLiveBackendConfiguration? {
+        guard let configuration = configuredBackendConfiguration else { return nil }
+        return GeminiLiveBackendConfiguration(
+            baseURL: configuration.baseURL,
+            clientToken: configuration.clientToken,
+            userAccessToken: storedBackendAuthSession?.accessToken
+        )
+    }
+
+    private var backendAuthorizationToken: String? {
+        configuredBackendConfigurationWithAuth?.authorizationToken
     }
 
     private var configuredAPIKey: String? {
@@ -1596,6 +1984,45 @@ final class GeminiLiveViewModel: ObservableObject {
 
     private func currentStoredGeminiKey() -> String? {
         normalizedStoredSecret(storedAPIKey ?? keyStore.read())
+    }
+
+    private func syncConfiguredConnectionState(updateStatus: Bool = false) {
+        hasSavedAPIKey = hasConfiguredConnection
+        guard updateStatus else { return }
+        statusText = defaultDisconnectedStatusText
+    }
+
+    private func ensureBackendConfigurationForAuth() async -> GeminiLiveBackendConfiguration? {
+        backendURLText = GeminiLiveHostedBackend.defaultURL
+        backendClientTokenText = ""
+
+        if needsBackendConfigurationSave {
+            let didSave = await saveBackendConfiguration()
+            guard didSave else { return nil }
+        }
+
+        return configuredBackendConfigurationForAuth
+    }
+
+    private func storeBackendAuthSession(_ session: GeminiLiveBackendAuthSession) {
+        _ = backendAuthStore.save(session)
+        storedBackendAuthSession = session
+        backendAuthenticatedEmail = session.user.email
+        backendAuthEmailText = session.user.email
+        backendAuthStore.saveLastEmail(session.user.email)
+        lastErrorMessage = nil
+        syncConfiguredConnectionState()
+    }
+
+    private func clearBackendAuthSession() {
+        let preservedEmail = draftBackendAuthEmail
+        backendAuthStore.delete()
+        if let preservedEmail {
+            backendAuthStore.saveLastEmail(preservedEmail)
+        }
+        storedBackendAuthSession = nil
+        backendAuthenticatedEmail = nil
+        syncConfiguredConnectionState()
     }
 
     private func normalizedStoredSecret(_ value: String?) -> String? {

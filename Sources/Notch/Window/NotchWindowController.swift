@@ -16,7 +16,6 @@ final class NotchWindowController {
     private var cancellables = Set<AnyCancellable>()
     private let transcriptOverlay = TranscriptOverlayWindowController()
     private let liveChatInputPanel = GeminiLiveChatInputWindowController()
-    private let geminiSecretsFloatingPanel = GeminiSecretsFloatingPanelController()
     private let geminiExecApprovalPanel = GeminiExecApprovalPanelController()
     private let pomodoroFullscreenOverlay = PomodoroFullscreenWindowController()
 
@@ -85,14 +84,10 @@ final class NotchWindowController {
         transcriptOverlay.observe(gemini: geminiLiveViewModel)
         liveChatInputPanel.setPreferredScreen(initialScreen)
         liveChatInputPanel.observe(gemini: geminiLiveViewModel)
-        geminiSecretsFloatingPanel.setPreferredScreen(initialScreen)
         geminiExecApprovalPanel.setPreferredScreen(initialScreen)
         geminiExecApprovalPanel.observe(gemini: geminiLiveViewModel)
         pomodoroFullscreenOverlay.setPreferredScreen(initialScreen)
         pomodoroFullscreenOverlay.observe(pomodoro: pomodoroViewModel, stats: learningStatsStore)
-        geminiLiveViewModel.onPresentSecretsPanel = { [weak self] in
-            self?.presentSecretsFloatingPanel()
-        }
         geminiLiveViewModel.onExecApprovalAttentionRequested = { [weak self] in
             self?.presentExecApproval()
         }
@@ -135,10 +130,8 @@ final class NotchWindowController {
         hide()
         transcriptOverlay.stopObserving()
         liveChatInputPanel.stopObserving()
-        geminiSecretsFloatingPanel.shutdown()
         geminiExecApprovalPanel.stopObserving()
         pomodoroFullscreenOverlay.stopObserving()
-        geminiLiveViewModel.onPresentSecretsPanel = nil
         geminiLiveViewModel.onExecApprovalAttentionRequested = nil
         shelfViewModel.shutdown()
         playbackViewModel.shutdown()
@@ -173,14 +166,8 @@ final class NotchWindowController {
         showPanel(.talk)
     }
 
-    /// Floating panel for API keys — not in the notch.
-    func presentSecretsFloatingPanel() {
-        NSApp.activate(ignoringOtherApps: true)
-        geminiSecretsFloatingPanel.present(gemini: geminiLiveViewModel)
-    }
-
     func presentManageKeysFromStatusMenu() {
-        presentSecretsFloatingPanel()
+        openAppSettings()
     }
 
     func presentExecApproval() {
@@ -382,6 +369,10 @@ final class NotchWindowController {
         playbackViewModel.openCurrentApp()
     }
 
+    func openAppSettings() {
+        geminiLiveViewModel.openAppSettings()
+    }
+
     func togglePomodoroSession() {
         presentationModel.selectPanel(.focus, reveal: true)
         pomodoroViewModel.toggleRunning()
@@ -396,7 +387,6 @@ final class NotchWindowController {
         hostingView.frame = CGRect(origin: .zero, size: NotchMetrics.windowSize)
         transcriptOverlay.setPreferredScreen(currentScreen)
         liveChatInputPanel.setPreferredScreen(currentScreen)
-        geminiSecretsFloatingPanel.setPreferredScreen(currentScreen)
         pomodoroFullscreenOverlay.setPreferredScreen(currentScreen)
 
         if isVisible {

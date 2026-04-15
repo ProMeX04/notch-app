@@ -161,7 +161,9 @@ final class GeminiLiveSession: @unchecked Sendable {
     }
 
     func connect(
-        apiKey: String,
+        connectionCredential: String,
+        restAPIKey: String? = nil,
+        backendConfiguration: GeminiLiveBackendConfiguration? = nil,
         model: String,
         systemPrompt: String?,
         microphoneEnabled: Bool,
@@ -183,7 +185,9 @@ final class GeminiLiveSession: @unchecked Sendable {
         }
 
         let configuration = LiveSessionConfiguration(
-            apiKey: apiKey,
+            connectionCredential: connectionCredential,
+            restAPIKey: restAPIKey,
+            backendConfiguration: backendConfiguration,
             model: model,
             systemPrompt: systemPrompt,
             thinkingBudget: thinkingBudget,
@@ -290,36 +294,27 @@ final class GeminiLiveSession: @unchecked Sendable {
         allowModelAudioPlayback = true
     }
 
-    func liveURL(apiKey: String) -> URL? {
-        var components = URLComponents(string: "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent")
+    func liveURLRequest(connectionCredential: String) -> URLRequest? {
+        let trimmedCredential = connectionCredential.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedCredential.isEmpty else { return nil }
+
+        let isEphemeralToken = trimmedCredential.hasPrefix("auth_tokens/")
+        let apiVersion = isEphemeralToken ? "v1alpha" : "v1beta"
+        let method = isEphemeralToken ? "BidiGenerateContentConstrained" : "BidiGenerateContent"
+        let queryName = isEphemeralToken ? "access_token" : "key"
+
+        var components = URLComponents(
+            string: "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.\(apiVersion).GenerativeService.\(method)"
+        )
         components?.queryItems = [
-            URLQueryItem(name: "key", value: apiKey),
+            URLQueryItem(name: queryName, value: trimmedCredential),
         ]
-        return components?.url
+        guard let url = components?.url else { return nil }
+        return URLRequest(url: url)
     }
 
     var enabledToolDeclarations: [[String: Any]] {
         var decls: [[String: Any]] = []
-        if enabledTools.contains(.webSearch) {
-            decls.append([
-                "name": "webSearch",
-                "description": "Search the web using Gemini with Google Search grounding. Return a concise grounded answer with sources when the user asks for up-to-date information or facts you may not know.",
-                "parameters": [
-                    "type": "OBJECT",
-                    "properties": [
-                        "query": [
-                            "type": "STRING",
-                            "description": "The search query to look up."
-                        ],
-                        "maxResults": [
-                            "type": "NUMBER",
-                            "description": "Optional. Maximum number of results to return (1–10). Defaults to 5."
-                        ]
-                    ],
-                    "required": ["query"]
-                ]
-            ])
-        }
         if enabledTools.contains(.exec) {
             decls.append([
                 "name": "exec",
@@ -390,6 +385,24 @@ final class GeminiLiveSession: @unchecked Sendable {
         return decls
     }
 
+    var liveSetupTools: [[String: Any]] {
+        var tools: [[String: Any]] = []
+
+        if enabledTools.contains(.webSearch) {
+            tools.append([
+                "google_search": [:]
+            ])
+        }
+
+        if !enabledToolDeclarations.isEmpty {
+            tools.append([
+                "functionDeclarations": enabledToolDeclarations
+            ])
+        }
+
+        return tools
+    }
+
     func startConnection(
         using configuration: LiveSessionConfiguration,
         statusText: String,
@@ -405,14 +418,14 @@ final class GeminiLiveSession: @unchecked Sendable {
         setupCompleteTime = nil
         isResumingConnection = latestSessionHandle != nil
 
-        guard let url = liveURL(apiKey: configuration.apiKey) else {
+        guard let request = liveURLRequest(connectionCredential: configuration.connectionCredential) else {
             onStateChange?(.failed, "Couldn't create the Gemini Live URL.")
             return
         }
 
         prepareOutputIfNeeded()
 
-        let task = urlSession.webSocketTask(with: url)
+        let task = urlSession.webSocketTask(with: request)
         socketTask = task
         task.resume()
         onStateChange?(displayState, statusText)
@@ -540,12 +553,10 @@ final class GeminiLiveSession: @unchecked Sendable {
                     "silenceDurationMs": 500,
                 ],
             ],
-            "tools": [
-                [
-                    "functionDeclarations": enabledToolDeclarations
-                ]
-            ],
         ]
+        if !liveSetupTools.isEmpty {
+            setup["tools"] = liveSetupTools
+        }
         if let systemPrompt = configuration.systemPrompt {
             setup["systemInstruction"] = ["parts": [["text": systemPrompt]]]
         }
@@ -772,7 +783,9 @@ final class GeminiLiveSession: @unchecked Sendable {
 }
 
 struct LiveSessionConfiguration {
-    let apiKey: String
+    let connectionCredential: String
+    let restAPIKey: String?
+    let backendConfiguration: GeminiLiveBackendConfiguration?
     let model: String
     let systemPrompt: String?
     let thinkingBudget: Int

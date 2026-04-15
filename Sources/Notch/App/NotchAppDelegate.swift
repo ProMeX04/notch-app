@@ -7,6 +7,12 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
     private var statusItemController: StatusItemController?
     private var holdToTalkHotkeyManager: HoldToTalkHotkeyManager?
     private let singleInstanceCoordinator = SingleInstanceCoordinator()
+    let geminiLiveViewModel = GeminiLiveViewModel()
+    lazy var learningStatsStore = LearningStatsStore()
+    lazy var playbackViewModel = MediaProbeViewModel()
+    lazy var pomodoroViewModel = PomodoroViewModel(learningStatsStore: learningStatsStore)
+    lazy var shelfViewModel = NotchShelfViewModel()
+    lazy var presentationModel = NotchPresentationModel()
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         guard singleInstanceCoordinator.shouldTerminateForExistingInstance() else { return }
@@ -30,12 +36,6 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
         }
         UNUserNotificationCenter.current().delegate = self
 
-        let learningStatsStore = LearningStatsStore()
-        let playbackViewModel = MediaProbeViewModel()
-        let pomodoroViewModel = PomodoroViewModel(learningStatsStore: learningStatsStore)
-        let geminiLiveViewModel = GeminiLiveViewModel()
-        let shelfViewModel = NotchShelfViewModel()
-        let presentationModel = NotchPresentationModel()
         let notchController = NotchWindowController(
             playbackViewModel: playbackViewModel,
             pomodoroViewModel: pomodoroViewModel,

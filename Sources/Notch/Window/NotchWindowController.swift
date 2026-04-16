@@ -38,7 +38,7 @@ final class NotchWindowController {
 
         let initialScreen = NotchMetrics.preferredScreen()
         presentationModel.closedNotchSize = NotchMetrics.baseClosedSize(for: initialScreen)
-        let initialFrame = NotchMetrics.windowFrame(on: initialScreen)
+        let initialFrame = NotchMetrics.windowFrame(on: initialScreen, selectedPanel: presentationModel.selectedPanel)
         let styleMask: NSWindow.StyleMask = [.borderless, .nonactivatingPanel, .utilityWindow, .hudWindow]
         let window = NotchFloatingPanel(
             contentRect: initialFrame,
@@ -59,7 +59,7 @@ final class NotchWindowController {
             )
         )
 
-        hostingView.frame = CGRect(origin: .zero, size: NotchMetrics.windowSize)
+        hostingView.frame = CGRect(origin: .zero, size: NotchMetrics.windowSize(for: presentationModel.selectedPanel))
         hostingView.autoresizingMask = [.width, .height]
         window.contentView = hostingView
 
@@ -80,6 +80,13 @@ final class NotchWindowController {
             }
             .store(in: &cancellables)
 
+        Publishers.CombineLatest(presentationModel.$selectedPanel, presentationModel.$isExpanded)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _, _ in
+                self?.updateWindowFrame(animated: true)
+            }
+            .store(in: &cancellables)
+
         transcriptOverlay.setPreferredScreen(initialScreen)
         transcriptOverlay.observe(gemini: geminiLiveViewModel)
         liveChatInputPanel.setPreferredScreen(initialScreen)
@@ -90,6 +97,9 @@ final class NotchWindowController {
         pomodoroFullscreenOverlay.observe(pomodoro: pomodoroViewModel, stats: learningStatsStore)
         geminiLiveViewModel.onExecApprovalAttentionRequested = { [weak self] in
             self?.presentExecApproval()
+        }
+        geminiLiveViewModel.onOpenAppSettingsRequested = { [weak self] in
+            self?.showPanel(.settings)
         }
     }
 
@@ -133,6 +143,7 @@ final class NotchWindowController {
         geminiExecApprovalPanel.stopObserving()
         pomodoroFullscreenOverlay.stopObserving()
         geminiLiveViewModel.onExecApprovalAttentionRequested = nil
+        geminiLiveViewModel.onOpenAppSettingsRequested = nil
         shelfViewModel.shutdown()
         playbackViewModel.shutdown()
         pomodoroViewModel.shutdown()
@@ -381,10 +392,10 @@ final class NotchWindowController {
     func updateWindowFrame(animated: Bool) {
         let currentScreen = window.screen ?? NotchMetrics.preferredScreen()
         presentationModel.closedNotchSize = NotchMetrics.baseClosedSize(for: currentScreen)
-        let frame = NotchMetrics.windowFrame(on: currentScreen)
+        let frame = NotchMetrics.windowFrame(on: currentScreen, selectedPanel: presentationModel.selectedPanel)
 
         window.setFrame(frame, display: true, animate: animated)
-        hostingView.frame = CGRect(origin: .zero, size: NotchMetrics.windowSize)
+        hostingView.frame = CGRect(origin: .zero, size: NotchMetrics.windowSize(for: presentationModel.selectedPanel))
         transcriptOverlay.setPreferredScreen(currentScreen)
         liveChatInputPanel.setPreferredScreen(currentScreen)
         pomodoroFullscreenOverlay.setPreferredScreen(currentScreen)

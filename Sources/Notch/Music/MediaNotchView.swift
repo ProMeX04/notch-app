@@ -66,7 +66,7 @@ struct MediaNotchView: View {
 
     private var currentBodyWidth: CGFloat {
         if presentationModel.isExpanded {
-            return NotchMetrics.openSize.width
+            return NotchMetrics.openSize(for: presentationModel.selectedPanel).width
         }
 
         let baseWidth = presentationModel.closedNotchSize.width
@@ -81,7 +81,9 @@ struct MediaNotchView: View {
     }
 
     private var currentBodyHeight: CGFloat {
-        presentationModel.isExpanded ? NotchMetrics.openSize.height : presentationModel.closedNotchSize.height
+        presentationModel.isExpanded
+            ? NotchMetrics.openHeight(for: presentationModel.selectedPanel)
+            : presentationModel.closedNotchSize.height
     }
 
     private var expandedHeaderHeight: CGFloat {
@@ -113,8 +115,8 @@ struct MediaNotchView: View {
         }
         .padding(.bottom, 8)
         .frame(
-            maxWidth: NotchMetrics.windowSize.width,
-            maxHeight: NotchMetrics.windowSize.height,
+            maxWidth: NotchMetrics.windowSize(for: presentationModel.selectedPanel).width,
+            maxHeight: NotchMetrics.windowSize(for: presentationModel.selectedPanel).height,
             alignment: .top
         )
         .background {
@@ -262,7 +264,7 @@ struct MediaNotchView: View {
             color: (presentationModel.isExpanded || isHovering) ? .black.opacity(0.7) : .clear,
             radius: 6
         )
-        .frame(height: presentationModel.isExpanded ? NotchMetrics.openSize.height : nil)
+        .frame(height: presentationModel.isExpanded ? NotchMetrics.openHeight(for: presentationModel.selectedPanel) : nil)
         .contentShape(Rectangle())
         .onHover { hovering in
             isHovering = hovering

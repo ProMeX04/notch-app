@@ -482,6 +482,12 @@ final class GeminiLiveSession: @unchecked Sendable {
             return false
         }
 
+        // Hosted Gemini Live uses short-lived auth_tokens. Let the view model request
+        // a fresh token before reconnecting instead of reusing a possibly expired one.
+        if shouldDelegateReconnectToViewModel(configuration: currentConfiguration) {
+            return false
+        }
+
         if requireSafeResumptionHandle && (!latestSessionHandleIsResumable || latestSessionHandle == nil) {
             return false
         }
@@ -515,6 +521,10 @@ final class GeminiLiveSession: @unchecked Sendable {
         let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.hasSuffix("s") else { return nil }
         return Double(trimmed.dropLast())
+    }
+
+    private func shouldDelegateReconnectToViewModel(configuration: LiveSessionConfiguration) -> Bool {
+        configuration.backendConfiguration != nil && configuration.connectionCredential.hasPrefix("auth_tokens/")
     }
 
     func sendSetup(using configuration: LiveSessionConfiguration, displayState: GeminiLiveConnectionState) {

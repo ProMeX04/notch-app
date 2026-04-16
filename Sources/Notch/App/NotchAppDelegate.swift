@@ -60,6 +60,8 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
         notchController.show()
         configureDebugLaunchBehavior(using: notchController)
 
+        Task { await AppStoreSubscriptionManager.shared.refreshEntitlements() }
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(screenConfigurationDidChange),

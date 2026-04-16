@@ -119,6 +119,9 @@ final class GeminiLiveViewModel: ObservableObject {
     @Published private(set) var overlayInput = TranscriptOverlayInput.idle
     @Published private(set) var isAutoReconnecting = false
     @Published private(set) var pendingExecApprovals: [ExecApprovalRequest] = []
+    /// True when the user has Pro via StoreKit, server (`is_pro`), or dev bypass.
+    @Published private(set) var isProUser = false
+    private var isProFromBackend = false
     private var toastClearTask: Task<Void, Never>?
     private var reconnectTask: Task<Void, Never>?
     private var reconnectAttempt = 0
@@ -152,6 +155,7 @@ final class GeminiLiveViewModel: ObservableObject {
     private var storedBackendConfiguration: GeminiLiveBackendConfiguration?
     private var storedBackendAuthSession: GeminiLiveBackendAuthSession?
     var onExecApprovalAttentionRequested: (() -> Void)?
+    var onOpenAppSettingsRequested: (() -> Void)?
 
     var currentPendingExecApproval: ExecApprovalRequest? {
         pendingExecApprovals.first
@@ -436,7 +440,75 @@ final class GeminiLiveViewModel: ObservableObject {
             }
             .store(in: &subscriptions)
 
+        recomputeProEntitlement()
+        AppStoreSubscriptionManager.shared.$isProEntitled
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.recomputeProEntitlement()
+            }
+            .store(in: &subscriptions)
+
         persistSettings()
+
+        Task { [weak self] in
+            await self?.refreshBackendSubscriptionStatus()
+        }
+    }
+
+    private func recomputeProEntitlement() {
+        isProUser = NotchProEntitlement.isProUser(
+            storeKitEntitled: AppStoreSubscriptionManager.shared.isProEntitled,
+            backendPro: isProFromBackend
+        )
+    }
+
+    func openWebAccountSignup() {
+        NotchWebPortal.openInBrowser(NotchWebPortal.signupURL())
+    }
+
+    func openWebAccountLogin() {
+        NotchWebPortal.openInBrowser(NotchWebPortal.loginURL())
+    }
+
+    func openWebProCheckout() {
+        guard let configuration = configuredBackendUserConfiguration else {
+            NotchWebPortal.openInBrowser(NotchWebPortal.proCheckoutURL())
+            return
+        }
+
+        Task {
+            do {
+                let bridge = try await backendClient.createWebBridgeToken(configuration: configuration)
+                let url = NotchWebPortal.authBridgeURL(token: bridge.bridgeToken)
+                NotchWebPortal.openInBrowser(url)
+            } catch {
+                await MainActor.run {
+                    self.lastErrorMessage = error.localizedDescription
+                }
+                NotchWebPortal.openInBrowser(NotchWebPortal.proCheckoutURL())
+            }
+        }
+    }
+
+    /// Refreshes `is_pro` from `GET /auth/me` after web signup, login, or Pro purchase.
+    func refreshBackendSubscriptionStatus() async {
+        guard let configuration = configuredBackendUserConfiguration else {
+            isProFromBackend = false
+            recomputeProEntitlement()
+            return
+        }
+
+        do {
+            let user = try await backendClient.me(configuration: configuration)
+            isProFromBackend = user.isPro ?? false
+            recomputeProEntitlement()
+        } catch {
+            if shouldClearBackendAuthSession(for: error) {
+                clearBackendAuthSession()
+                return
+            }
+            // Keep previous backend Pro flag if the request fails (offline, etc.).
+        }
     }
 
     var hasConfiguredAPIKey: Bool {
@@ -450,10 +522,6 @@ final class GeminiLiveViewModel: ObservableObject {
         case .managedServer:
             return configuredBackendConfiguration != nil && backendAuthorizationToken != nil
         }
-    }
-
-    var hasAnyConfiguredConnection: Bool {
-        configuredBackendConfiguration != nil || configuredAPIKey != nil
     }
 
     var selectedConnectionSetupTitle: String {
@@ -480,7 +548,7 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     var isBackendAuthenticated: Bool {
-        backendAuthorizationToken != nil
+        storedBackendAuthSession != nil
     }
 
     var backendSignedInSummary: String? {
@@ -491,13 +559,9 @@ final class GeminiLiveViewModel: ObservableObject {
         hasConfiguredConnection ? "Ready to connect to Gemini Live." : selectedConnectionMethod.setupDescription
     }
 
-    func requestManageKeysPanel() {
-        openAppSettings()
-    }
-
     func openAppSettings() {
         NSApp.activate(ignoringOtherApps: true)
-        _ = NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        onOpenAppSettingsRequested?()
     }
 
     var selectedSystemPromptPreset: GeminiSystemPromptPreset {
@@ -1140,6 +1204,11 @@ final class GeminiLiveViewModel: ObservableObject {
             statusText = "Enter your password, then try again."
             return false
         }
+        guard password.count >= 8 else {
+            lastErrorMessage = "Password must be at least 8 characters."
+            statusText = "Use a longer password, then try again."
+            return false
+        }
 
         isSavingAPIKey = true
         lastErrorMessage = nil
@@ -1156,7 +1225,7 @@ final class GeminiLiveViewModel: ObservableObject {
             )
             storeBackendAuthSession(session)
             backendAuthPasswordText = ""
-            statusText = "Signed in to Gemini Live server."
+            statusText = defaultDisconnectedStatusText
             return true
         } catch {
             lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -1181,6 +1250,11 @@ final class GeminiLiveViewModel: ObservableObject {
             statusText = "Enter your password, then try again."
             return false
         }
+        guard password.count >= 8 else {
+            lastErrorMessage = "Password must be at least 8 characters."
+            statusText = "Use a longer password, then try again."
+            return false
+        }
 
         isSavingAPIKey = true
         lastErrorMessage = nil
@@ -1196,7 +1270,7 @@ final class GeminiLiveViewModel: ObservableObject {
             )
             storeBackendAuthSession(session)
             backendAuthPasswordText = ""
-            statusText = "Signed in to Gemini Live server."
+            statusText = defaultDisconnectedStatusText
             return true
         } catch {
             lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -1205,11 +1279,79 @@ final class GeminiLiveViewModel: ObservableObject {
         }
     }
 
+    /// Applies an access token obtained in the browser (after web login). Web and the app do not share storage; this links the same session into the Keychain.
+    func applyWebSessionToken(_ rawToken: String) async -> Bool {
+        let token = Self.normalizedPastedAccessToken(rawToken)
+        guard !token.isEmpty else {
+            lastErrorMessage = "Session token is empty."
+            return false
+        }
+        guard await ensureBackendConfigurationForAuth() != nil else {
+            lastErrorMessage = "Gemini Live server URL is missing."
+            return false
+        }
+        guard let configuration = configuredBackendConfiguration else {
+            lastErrorMessage = "Gemini Live server URL is missing."
+            return false
+        }
+
+        isSavingAPIKey = true
+        lastErrorMessage = nil
+        defer { isSavingAPIKey = false }
+
+        let withToken = GeminiLiveBackendConfiguration(
+            baseURL: configuration.baseURL,
+            clientToken: configuration.clientToken,
+            userAccessToken: token
+        )
+
+        do {
+            let user = try await backendClient.me(configuration: withToken)
+            let expiresAt = Self.iso8601ExpiryForPastedSession()
+            let session = GeminiLiveBackendAuthSession(
+                accessToken: token,
+                expiresAt: expiresAt,
+                user: user
+            )
+            storeBackendAuthSession(session)
+            await refreshBackendSubscriptionStatus()
+            return true
+        } catch {
+            lastErrorMessage = "Invalid or expired session token."
+            return false
+        }
+    }
+
+    /// Strips accidental `Bearer ` prefix and surrounding quotes from pasted tokens.
+    private static func normalizedPastedAccessToken(_ raw: String) -> String {
+        var t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return "" }
+        let prefix = "Bearer "
+        if t.lowercased().hasPrefix(prefix.lowercased()) {
+            t = String(t.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if (t.hasPrefix("\"") && t.hasSuffix("\"") && t.count >= 2) || (t.hasPrefix("'") && t.hasSuffix("'") && t.count >= 2) {
+            t = String(t.dropFirst().dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return t
+    }
+
+    private static func iso8601ExpiryForPastedSession() -> String {
+        let date = Date().addingTimeInterval(30 * 24 * 3600)
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        var s = formatter.string(from: date)
+        if s.hasSuffix("+00:00") {
+            s = String(s.dropLast(6)) + "Z"
+        }
+        return s
+    }
+
     func logoutBackendAccount() async {
         isSavingAPIKey = true
         defer { isSavingAPIKey = false }
 
-        if let configuration = configuredBackendConfigurationWithAuth {
+        if let configuration = configuredBackendUserConfiguration {
             do {
                 try await backendClient.logout(configuration: configuration)
             } catch {
@@ -1230,6 +1372,13 @@ final class GeminiLiveViewModel: ObservableObject {
             lastErrorMessage = selectedConnectionMethod == .userAPIKey
                 ? "Gemini API key is missing."
                 : "Gemini Live server is missing."
+            statusText = defaultDisconnectedStatusText
+            return
+        }
+
+        if selectedConnectionMethod == .managedServer && !isProUser {
+            connectionState = .failed
+            lastErrorMessage = "Notch Pro is required to use the hosted Gemini Live server."
             statusText = defaultDisconnectedStatusText
             return
         }
@@ -1273,7 +1422,8 @@ final class GeminiLiveViewModel: ObservableObject {
                 let restAPIKey: String?
                 let backendConfiguration: GeminiLiveBackendConfiguration?
 
-                if let existingConfiguration {
+                if let existingConfiguration,
+                   !self.shouldRefreshManagedServerCredential(existingConfiguration) {
                     connectionCredential = existingConfiguration.connectionCredential
                     restAPIKey = existingConfiguration.restAPIKey
                     backendConfiguration = existingConfiguration.backendConfiguration
@@ -1291,20 +1441,20 @@ final class GeminiLiveViewModel: ObservableObject {
 
                         self.statusText = "Requesting secure Gemini Live token..."
                         do {
-                            let token = try await self.backendClient.createSessionToken(
+                            let token = try await self.requestManagedServerSessionToken(
                                 configuration: configuredBackend,
-                                requestBody: GeminiLiveSessionTokenRequest(
-                                    model: preset.modelEnum.apiName,
-                                    systemInstruction: systemInstruction.isEmpty ? nil : systemInstruction,
-                                    voiceName: preset.voiceEnum.apiName,
-                                    thinkingBudget: preset.thinkingEnum.budget > 0 ? preset.thinkingEnum.budget : nil,
-                                    responseModalities: ["AUDIO"]
-                                )
+                                model: preset.modelEnum.apiName,
+                                systemInstruction: systemInstruction.isEmpty ? nil : systemInstruction,
+                                voiceName: preset.voiceEnum.apiName,
+                                thinkingBudget: preset.thinkingEnum.budget > 0 ? preset.thinkingEnum.budget : nil
                             )
                             connectionCredential = token.name
                             restAPIKey = nil
                             backendConfiguration = configuredBackend
                         } catch {
+                            if self.shouldClearBackendAuthSession(for: error) {
+                                self.clearBackendAuthSession()
+                            }
                             self.connectionState = .failed
                             self.lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                             self.statusText = "Couldn't create a Gemini Live session token."
@@ -1338,6 +1488,25 @@ final class GeminiLiveViewModel: ObservableObject {
                 )
             }
         }
+    }
+
+    private func requestManagedServerSessionToken(
+        configuration: GeminiLiveBackendConfiguration,
+        model: String,
+        systemInstruction: String?,
+        voiceName: String,
+        thinkingBudget: Int?
+    ) async throws -> GeminiLiveEphemeralTokenResponse {
+        try await backendClient.createSessionToken(
+            configuration: configuration,
+            requestBody: GeminiLiveSessionTokenRequest(
+                model: model,
+                systemInstruction: systemInstruction,
+                voiceName: voiceName,
+                thinkingBudget: thinkingBudget,
+                responseModalities: ["AUDIO"]
+            )
+        )
     }
 
     func disconnect() {
@@ -1974,6 +2143,18 @@ final class GeminiLiveViewModel: ObservableObject {
         )
     }
 
+    private var configuredBackendUserConfiguration: GeminiLiveBackendConfiguration? {
+        guard let configuration = configuredBackendConfiguration,
+              let session = storedBackendAuthSession else {
+            return nil
+        }
+        return GeminiLiveBackendConfiguration(
+            baseURL: configuration.baseURL,
+            clientToken: nil,
+            userAccessToken: session.accessToken
+        )
+    }
+
     private var backendAuthorizationToken: String? {
         configuredBackendConfigurationWithAuth?.authorizationToken
     }
@@ -2011,6 +2192,8 @@ final class GeminiLiveViewModel: ObservableObject {
         backendAuthEmailText = session.user.email
         backendAuthStore.saveLastEmail(session.user.email)
         lastErrorMessage = nil
+        isProFromBackend = session.user.isPro ?? false
+        recomputeProEntitlement()
         syncConfiguredConnectionState()
     }
 
@@ -2022,7 +2205,33 @@ final class GeminiLiveViewModel: ObservableObject {
         }
         storedBackendAuthSession = nil
         backendAuthenticatedEmail = nil
+        isProFromBackend = false
+        recomputeProEntitlement()
         syncConfiguredConnectionState()
+    }
+
+    private func shouldClearBackendAuthSession(for error: Error) -> Bool {
+        if let backendError = error as? GeminiLiveBackendError {
+            switch backendError {
+            case .unauthorized:
+                return true
+            case let .server(message):
+                let normalized = message.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                return normalized.contains("invalid or expired session token")
+                    || normalized.contains("session token")
+                    || normalized.contains("unauthorized")
+            default:
+                return false
+            }
+        }
+
+        let normalized = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized.contains("invalid or expired session token")
+            || normalized.contains("unauthorized")
+    }
+
+    private func shouldRefreshManagedServerCredential(_ configuration: LiveSessionConfiguration) -> Bool {
+        configuration.backendConfiguration != nil && configuration.connectionCredential.hasPrefix("auth_tokens/")
     }
 
     private func normalizedStoredSecret(_ value: String?) -> String? {

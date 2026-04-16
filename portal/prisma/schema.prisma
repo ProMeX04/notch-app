@@ -1,0 +1,73 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String           @id @default(cuid())
+  name         String?
+  email        String?          @unique
+  password     String?
+  image        String?
+  isPro        Boolean          @default(false)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  sessions     AuthSession[]
+  bridgeTokens AuthBridgeToken[]
+  payments     PaymentTransaction[]
+}
+
+model AuthSession {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model AuthBridgeToken {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  consumedAt DateTime?
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model PaymentTransaction {
+  id             String   @id @default(cuid())
+  provider       String
+  status         String
+  amount         Int
+  currency       String
+  orderId        String   @unique
+  requestId      String   @unique
+  providerRef    String?
+  payUrl         String?
+  orderInfo      String
+  rawResponse    Json?
+  rawNotification Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  paidAt         DateTime?
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+}

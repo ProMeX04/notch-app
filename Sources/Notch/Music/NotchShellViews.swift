@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 final class NotchHeaderAccessoryController: ObservableObject {
@@ -846,6 +847,54 @@ struct Localization {
             "English": "Subscriptions are billed by Apple. Manage or cancel in System Settings → Apple Account → Subscriptions.",
             "Tiếng Việt": "Thanh toán qua Apple. Quản lý hoặc hủy tại Cài đặt Hệ thống → Tài khoản Apple → Đăng ký.",
         ],
+        "Notch Pro is required to use the hosted Gemini Live server.": [
+            "English": "Notch Pro is required to use the hosted Gemini Live server.",
+            "Tiếng Việt": "Cần Notch Pro để dùng máy chủ Gemini Live được Notch cung cấp.",
+        ],
+        "Create account on the web": [
+            "English": "Create account on the web",
+            "Tiếng Việt": "Tạo tài khoản trên web",
+        ],
+        "Sign in on the web": [
+            "English": "Sign in on the web",
+            "Tiếng Việt": "Đăng nhập trên web",
+        ],
+        "Then sign in to the app with the same email and password.": [
+            "English": "Then sign in to the app with the same email and password.",
+            "Tiếng Việt": "Sau đó đăng nhập trong app bằng cùng email và mật khẩu.",
+        ],
+        "Copy-token flow (recommended): on the web sign-in page, the token is copied after login — open Notch, tap Paste from clipboard, then Sign in with token. Or sign in below with email and password.": [
+            "English": "Copy-token flow (recommended): on the web sign-in page, the token is copied after login — open Notch, tap Paste from clipboard, then Sign in with token. Or sign in below with email and password.",
+            "Tiếng Việt": "Nên dùng: sau khi đăng nhập trên web, token được copy — mở Notch, bấm Dán từ clipboard, rồi Đăng nhập bằng token. Hoặc đăng nhập bên dưới bằng email và mật khẩu.",
+        ],
+        "Session token": [
+            "English": "Session token",
+            "Tiếng Việt": "Token phiên",
+        ],
+        "Paste from clipboard": [
+            "English": "Paste from clipboard",
+            "Tiếng Việt": "Dán từ clipboard",
+        ],
+        "Sign in with token": [
+            "English": "Sign in with token",
+            "Tiếng Việt": "Đăng nhập bằng token",
+        ],
+        "Invalid or expired session token.": [
+            "English": "Invalid or expired session token.",
+            "Tiếng Việt": "Token không hợp lệ hoặc đã hết hạn.",
+        ],
+        "Buy Notch Pro on the web": [
+            "English": "Buy Notch Pro on the web",
+            "Tiếng Việt": "Mua Notch Pro trên web",
+        ],
+        "Refresh Pro status": [
+            "English": "Refresh Pro status",
+            "Tiếng Việt": "Cập nhật trạng thái Pro",
+        ],
+        "You can also subscribe through the Mac App Store.": [
+            "English": "You can also subscribe through the Mac App Store.",
+            "Tiếng Việt": "Bạn cũng có thể đăng ký qua Mac App Store.",
+        ],
     ]
 
     static func get(_ key: String, lang: String) -> String {
@@ -858,185 +907,248 @@ struct Localization {
 struct GlobalSettingsView: View {
     @ObservedObject var presentationModel: NotchPresentationModel
     @ObservedObject var gemini: GeminiLiveViewModel
-    @ObservedObject private var subscriptionManager = AppStoreSubscriptionManager.shared
     @AppStorage("app_language") private var appLanguage: String = "English"
+    @State private var webSessionTokenDraft = ""
+    @State private var lastPastedWebSessionToken = ""
 
     private var tint: Color {
         presentationModel.accentColor.ensureMinimumBrightness(factor: 0.78)
     }
 
-    private var isUsingAPIKey: Bool {
-        gemini.selectedConnectionMethod == .userAPIKey
+    private var canApplyWebSessionToken: Bool {
+        !webSessionTokenDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !gemini.isSavingAPIKey
     }
 
-    private var canSaveConnection: Bool {
-        !gemini.isSavingAPIKey
-    }
-
-    private var canSubmitBackendAuth: Bool {
-        !gemini.backendAuthEmailText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !gemini.backendAuthPasswordText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !gemini.isSavingAPIKey
+    private var isShowingInlineAuthError: Bool {
+        !gemini.isBackendAuthenticated
+            && gemini.selectedConnectionMethod == .managedServer
     }
     
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(Localization.get("General Settings", lang: appLanguage))
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.5))
-                    .padding(.horizontal, 2)
-
+            VStack(alignment: .leading, spacing: 10) {
                 generalSettingsSection
 
                 Text("\(Localization.get("Version", lang: appLanguage)) 1.0.0")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.white.opacity(0.3))
-                    .padding(.top, 4)
+                    .padding(.top, 2)
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .task {
-            await subscriptionManager.loadOfferings()
+        .onChange(of: webSessionTokenDraft) { _, newValue in
+            if newValue != lastPastedWebSessionToken {
+                lastPastedWebSessionToken = ""
+            }
         }
     }
 
     private var generalSettingsSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(Localization.get("Gemini Live", lang: appLanguage))
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(.white.opacity(0.5))
-                .padding(.horizontal, 2)
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 14) {
+                    Button {
+                        if !gemini.isBackendAuthenticated {
+                            gemini.openWebAccountLogin()
+                        }
+                    } label: {
+                        accountAvatar
+                    }
+                    .buttonStyle(.plain)
 
-            geminiSettingsSection
+                    VStack(alignment: .leading, spacing: 4) {
+                        if gemini.isBackendAuthenticated {
+                            HStack(spacing: 8) {
+                                Text(gemini.backendSignedInSummary ?? Localization.get("Notch Account", lang: appLanguage))
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(.white.opacity(0.95))
 
-            Text(Localization.get("Subscription", lang: appLanguage))
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(.white.opacity(0.5))
-                .padding(.horizontal, 2)
+                                if gemini.isProUser {
+                                    Text("PRO")
+                                        .font(.system(size: 9, weight: .black, design: .rounded))
+                                        .foregroundStyle(.black.opacity(0.85))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 3)
+                                        .background(
+                                            Capsule(style: .continuous)
+                                                .fill(Color(nsColor: .systemYellow))
+                                        )
+                                } else {
+                                    Text(Localization.get("Not subscribed", lang: appLanguage))
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundStyle(.white.opacity(0.48))
+                                }
+                            }
 
-            settingsSectionCard(
-                title: Localization.get("Notch Pro", lang: appLanguage),
-                subtitle: Localization.get(
-                    "Subscriptions are billed by Apple. Manage or cancel in System Settings → Apple Account → Subscriptions.",
-                    lang: appLanguage
-                )
-            ) {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text(
-                            subscriptionManager.isProEntitled
-                                ? Localization.get("Subscribed", lang: appLanguage)
-                                : Localization.get("Not subscribed", lang: appLanguage)
-                        )
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.9))
-                        Spacer()
-                        if let price = subscriptionManager.subscriptionProduct?.displayPrice {
-                            Text(price)
-                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                            Button(Localization.get("Sign out", lang: appLanguage)) {
+                                Task { await gemini.logoutBackendAccount() }
+                            }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Color(nsColor: .systemRed).opacity(0.9))
+                        } else {
+                            HStack(spacing: 10) {
+                                Button(Localization.get("Sign in", lang: appLanguage)) {
+                                    gemini.openWebAccountLogin()
+                                }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(tint)
+
+                                settingsInlineInputCard {
+                                    HStack(spacing: 8) {
+                                        SecureField("ntk_…", text: $webSessionTokenDraft)
+                                            .textFieldStyle(.plain)
+                                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                            .foregroundStyle(.white)
+
+                                        Button(lastPastedWebSessionToken.isEmpty ? Localization.get("Paste from clipboard", lang: appLanguage) : "Xác nhận") {
+                                            if lastPastedWebSessionToken.isEmpty {
+                                                if let s = NSPasteboard.general.string(forType: .string) {
+                                                    webSessionTokenDraft = s
+                                                    lastPastedWebSessionToken = s
+                                                }
+                                            } else {
+                                                Task {
+                                                    let ok = await gemini.applyWebSessionToken(webSessionTokenDraft)
+                                                    if ok {
+                                                        webSessionTokenDraft = ""
+                                                        lastPastedWebSessionToken = ""
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        .buttonStyle(.plain)
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundStyle(lastPastedWebSessionToken.isEmpty ? tint : .green)
+                                    }
+                                }
+                            }
                         }
                     }
 
-                    if let message = subscriptionManager.lastErrorMessage {
-                        Text(message)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Color(nsColor: .systemOrange))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                    Spacer(minLength: 16)
 
-                    HStack(spacing: 8) {
-                        StandardActionButton(
-                            title: Localization.get("Subscribe", lang: appLanguage),
-                            icon: "cart",
-                            tint: tint,
-                            variant: .primary,
-                            isDisabled: subscriptionManager.isLoading || subscriptionManager.isProEntitled,
-                            fillsAvailableWidth: true
-                        ) {
-                            Task { await subscriptionManager.purchaseSubscription() }
-                        }
+                    if gemini.isBackendAuthenticated && !gemini.isProUser {
+                        HStack(spacing: 8) {
+                            StandardActionButton(
+                                title: Localization.get("Buy Notch Pro on the web", lang: appLanguage),
+                                icon: "sparkles",
+                                tint: tint,
+                                variant: .primary
+                            ) {
+                                gemini.openWebProCheckout()
+                            }
 
-                        StandardActionButton(
-                            title: Localization.get("Restore Purchases", lang: appLanguage),
-                            icon: "arrow.clockwise",
-                            tint: tint,
-                            variant: .secondary,
-                            isDisabled: subscriptionManager.isLoading,
-                            fillsAvailableWidth: true
-                        ) {
-                            Task { await subscriptionManager.restorePurchases() }
+                            Button {
+                                Task { await gemini.refreshBackendSubscriptionStatus() }
+                            } label: {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(tint)
+                                    .frame(width: StandardButtonMetrics.height, height: StandardButtonMetrics.height)
+                                    .background(
+                                        Capsule(style: .continuous)
+                                            .fill(tint.opacity(0.12))
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                            .help(Localization.get("Refresh Pro status", lang: appLanguage))
                         }
                     }
                 }
-            }
 
-            Text(Localization.get("Appearance", lang: appLanguage))
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(.white.opacity(0.5))
-                .padding(.horizontal, 2)
 
-            settingsSectionCard {
-                HStack(spacing: 8) {
-                    languageButton(name: "English")
-                    languageButton(name: "Tiếng Việt")
+                if !gemini.isBackendAuthenticated {
+                    VStack(alignment: .leading, spacing: 10) {
+                        if let error = gemini.lastErrorMessage, !error.isEmpty {
+                            Text(Localization.get(error, lang: appLanguage))
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Color(nsColor: .systemRed).opacity(0.9))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                 }
-                .frame(maxWidth: .infinity)
-            }
 
-            settingsSectionCard {
-                LazyVGrid(
-                    columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 5),
-                    alignment: .leading,
-                    spacing: 12
-                ) {
-                    ForEach(NotchAccentColorOption.allCases) { option in
-                        accentColorButton(for: option)
+                settingsGroupedDivider()
+
+                Text(Localization.get("Appearance", lang: appLanguage))
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.95))
+
+                VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(Localization.get("Language", lang: appLanguage))
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.45))
+
+                            HStack(spacing: 8) {
+                                languageButton(name: "English")
+                                languageButton(name: "Tiếng Việt")
+                            }
                             .frame(maxWidth: .infinity)
-                    }
-                }
-                .padding(.vertical, 4)
-                .frame(maxWidth: .infinity)
-            }
+                        }
 
-            settingsSectionCard {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text(Localization.get("Hover to Open", lang: appLanguage))
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.9))
-                        Spacer()
-                        Text(hoverDelayLabel)
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .foregroundStyle(tint)
-                    }
+                        settingsGroupedDivider()
 
-                    Slider(
-                        value: Binding(
-                            get: { presentationModel.hoverOpenDelaySeconds },
-                            set: { presentationModel.setHoverOpenDelay(seconds: $0) }
-                        ),
-                        in: 0.05...1.0,
-                        step: 0.05
-                    )
-                    .tint(tint)
-                }
-            }
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Accent")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.45))
 
-            settingsSectionCard {
-                Toggle(isOn: Binding(
-                    get: { presentationModel.hideInFullscreen },
-                    set: { presentationModel.setHideInFullscreen($0) }
-                )) {
-                    Text(Localization.get("Hide in Fullscreen", lang: appLanguage))
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.9))
+                            LazyVGrid(
+                                columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 5),
+                                alignment: .leading,
+                                spacing: 10
+                            ) {
+                                ForEach(NotchAccentColorOption.allCases) { option in
+                                    accentColorButton(for: option)
+                                        .frame(maxWidth: .infinity)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+
+                        settingsGroupedDivider()
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Text(Localization.get("Hover to Open", lang: appLanguage))
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.9))
+                                Spacer()
+                                Text(hoverDelayLabel)
+                                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                                    .foregroundStyle(tint)
+                            }
+
+                            Slider(
+                                value: Binding(
+                                    get: { presentationModel.hoverOpenDelaySeconds },
+                                    set: { presentationModel.setHoverOpenDelay(seconds: $0) }
+                                ),
+                                in: 0.05...1.0,
+                                step: 0.05
+                            )
+                            .tint(tint)
+                        }
+
+                        settingsGroupedDivider()
+
+                        Toggle(isOn: Binding(
+                            get: { presentationModel.hideInFullscreen },
+                            set: { presentationModel.setHideInFullscreen($0) }
+                        )) {
+                            Text(Localization.get("Hide in Fullscreen", lang: appLanguage))
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.9))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .toggleStyle(NotchSwitchStyle(tint: tint))
                         .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .toggleStyle(NotchSwitchStyle(tint: tint))
-                .frame(maxWidth: .infinity, alignment: .leading)
+                    }
             }
+            .padding(.horizontal, 13)
 
             StandardActionButton(
                 title: Localization.get("Quit Notch", lang: appLanguage),
@@ -1053,181 +1165,40 @@ struct GlobalSettingsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var geminiSettingsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            settingsSectionCard(
-                title: Localization.get("Connection Method", lang: appLanguage),
-                subtitle: Localization.get("Most people should use Notch Account. API key mode is best for advanced setups.", lang: appLanguage)
-            ) {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(spacing: 8) {
-                        ForEach(GeminiLiveConnectionMethod.allCases) { method in
-                            Button {
-                                gemini.selectedConnectionMethod = method
-                            } label: {
-                                Text(method.title)
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundStyle(
-                                        gemini.selectedConnectionMethod == method
-                                            ? .black.opacity(0.85)
-                                            : .white.opacity(0.82)
-                                    )
-                                    .padding(.horizontal, 12)
-                                    .frame(height: StandardButtonMetrics.height)
-                                    .frame(maxWidth: .infinity)
-                                    .background(
-                                        Capsule()
-                                            .fill(
-                                                gemini.selectedConnectionMethod == method
-                                                    ? tint
-                                                    : Color.white.opacity(0.08)
-                                            )
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-
-                    if isUsingAPIKey {
-                        settingsInputCard {
-                            SecureField("AIza...", text: $gemini.apiKeyText)
-                                .textFieldStyle(.plain)
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.white)
-                        }
-
-                        HStack(spacing: 8) {
-                            StandardActionButton(
-                                title: Localization.get("Save API key", lang: appLanguage),
-                                icon: "key.fill",
-                                tint: tint,
-                                variant: .primary,
-                                isDisabled: !canSaveConnection,
-                                fillsAvailableWidth: true
-                            ) {
-                                Task { await gemini.saveAPIKey() }
-                            }
-                        }
-
-                        Text(Localization.get("This key is stored locally on your Mac and used directly by Notch.", lang: appLanguage))
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.48))
-                            .fixedSize(horizontal: false, vertical: true)
-                    } else {
-                        HStack(spacing: 10) {
-                            Image(systemName: "person.crop.circle.badge.checkmark")
-                                .font(.system(size: 20, weight: .semibold))
-                                .foregroundStyle(tint)
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(Localization.get("Use your email and password. Notch will handle the secure connection automatically.", lang: appLanguage))
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundStyle(.white.opacity(0.9))
-
-                                Text(Localization.get("No URL or token setup required.", lang: appLanguage))
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(.white.opacity(0.48))
-                            }
-                        }
-                    }
-                }
-            }
-
-            if !isUsingAPIKey {
-                settingsSectionCard {
-                    if let email = gemini.backendSignedInSummary {
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack(spacing: 10) {
-                                Image(systemName: "person.crop.circle.fill")
-                                    .font(.system(size: 22))
-                                    .foregroundStyle(tint)
-
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(email)
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(.white.opacity(0.92))
-
-                                    Text(gemini.statusText)
-                                        .font(.system(size: 11, weight: .medium))
-                                        .foregroundStyle(.white.opacity(0.45))
-                                }
-                            }
-
-                            StandardActionButton(
-                                title: Localization.get("Sign out", lang: appLanguage),
-                                icon: "rectangle.portrait.and.arrow.right",
-                                tint: Color(nsColor: .systemRed).opacity(0.85),
-                                variant: .secondary,
-                                isDisabled: gemini.isSavingAPIKey,
-                                fillsAvailableWidth: true
-                            ) {
-                                Task { await gemini.logoutBackendAccount() }
-                            }
-                        }
-                    } else {
-                        VStack(alignment: .leading, spacing: 12) {
-                            settingsInputCard {
-                                TextField("name@example.com", text: $gemini.backendAuthEmailText)
-                                    .textFieldStyle(.plain)
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundStyle(.white)
-                            }
-
-                            settingsInputCard {
-                                SecureField("Password", text: $gemini.backendAuthPasswordText)
-                                    .textFieldStyle(.plain)
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundStyle(.white)
-                            }
-
-                            HStack(spacing: 8) {
-                                StandardActionButton(
-                                    title: Localization.get("Log in", lang: appLanguage),
-                                    icon: "person.crop.circle.badge.checkmark",
-                                    tint: tint,
-                                    variant: .primary,
-                                    isDisabled: !canSubmitBackendAuth,
-                                    fillsAvailableWidth: true
-                                ) {
-                                    Task { _ = await gemini.loginBackendAccount() }
-                                }
-
-                                StandardActionButton(
-                                    title: Localization.get("Sign up", lang: appLanguage),
-                                    icon: "person.crop.circle.badge.plus",
-                                    tint: tint,
-                                    variant: .secondary,
-                                    isDisabled: !canSubmitBackendAuth,
-                                    fillsAvailableWidth: true
-                                ) {
-                                    Task { _ = await gemini.signupBackendAccount() }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            settingsSectionCard {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(gemini.statusText)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(gemini.lastErrorMessage == nil ? tint : Color(nsColor: .systemOrange))
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    if let error = gemini.lastErrorMessage, !error.isEmpty {
-                        Text(error)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Color(nsColor: .systemRed).opacity(0.9))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-            }
-        }
+    @ViewBuilder
+    private func settingsGroupedDivider() -> some View {
+        Divider()
+            .overlay(Color.white.opacity(0.08))
     }
 
     private var hoverDelayLabel: String {
         String(format: "%.2fs", presentationModel.hoverOpenDelaySeconds)
+    }
+
+    private var accountAvatar: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: gemini.isBackendAuthenticated
+                            ? [tint, tint.opacity(0.68)]
+                            : [Color.white.opacity(0.2), Color.white.opacity(0.08)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 40, height: 40)
+
+            if let initial = gemini.backendSignedInSummary?.trimmingCharacters(in: .whitespacesAndNewlines).first {
+                Text(String(initial).uppercased())
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+            } else {
+                Image(systemName: "person.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.92))
+            }
+        }
     }
 
     private func settingsInputCard<Content: View>(title: String? = nil, @ViewBuilder content: () -> Content) -> some View {
@@ -1253,40 +1224,21 @@ struct GlobalSettingsView: View {
         }
     }
 
-    private func settingsSectionCard<Content: View>(title: String? = nil, subtitle: String? = nil, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if (title != nil && !title!.isEmpty) || (subtitle != nil && !subtitle!.isEmpty) {
-                VStack(alignment: .leading, spacing: 4) {
-                    if let title, !title.isEmpty {
-                        Text(title)
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.95))
-                    }
-
-                    if let subtitle, !subtitle.isEmpty {
-                        Text(subtitle)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.48))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
+    private func settingsInlineInputCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 10)
+            .frame(height: 28)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
             }
-
-            content()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 14)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.055))
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
-        }
     }
-    
+
     private func languageButton(name: String) -> some View {
         StandardActionButton(
             title: name,

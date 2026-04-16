@@ -3,7 +3,7 @@ import Foundation
 import Security
 
 enum GeminiLiveHostedBackend {
-    static let defaultURL = "https://laihieu2714.ddns.net/notch"
+    static let defaultURL = "https://portal-promex04s-projects.vercel.app/api"
 }
 
 enum GeminiLiveInputMode: String, Codable, CaseIterable, Identifiable {
@@ -51,7 +51,7 @@ enum GeminiLiveConnectionMethod: String, Codable, CaseIterable, Identifiable {
         case .userAPIKey:
             return "Use your own Gemini API key to connect directly."
         case .managedServer:
-            return "Use your email and password in the Settings tab to connect across the app."
+            return "Create an account on the web, then sign in to the app with the same email and password."
         }
     }
 

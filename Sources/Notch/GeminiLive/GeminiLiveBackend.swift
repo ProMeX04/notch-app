@@ -62,16 +62,19 @@ struct GeminiLiveSessionTokenRequest: Encodable, Sendable {
 }
 
 struct GeminiLiveBackendAuthUser: Decodable, Equatable, Sendable {
-    let id: Int
+    let id: String
     let email: String
     let name: String?
     let createdAt: String
+    /// Present when the API returns `is_pro` (web subscription / server-side Pro).
+    let isPro: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id
         case email
         case name
         case createdAt = "created_at"
+        case isPro = "is_pro"
     }
 }
 
@@ -86,6 +89,16 @@ struct GeminiLiveBackendAuthTokenResponse: Decodable, Sendable {
         case tokenType = "token_type"
         case expiresAt = "expires_at"
         case user
+    }
+}
+
+struct GeminiLiveBackendWebBridgeResponse: Decodable, Sendable {
+    let bridgeToken: String
+    let expiresAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case bridgeToken = "bridge_token"
+        case expiresAt = "expires_at"
     }
 }
 
@@ -229,9 +242,7 @@ final class GeminiLiveBackendAuthStore {
 
         let name = normalizedValue(env["NOTCH_GEMINI_LIVE_AUTH_NAME"] ?? defaults.string(forKey: lastNameDefaultsKey))
         let expiresAt = normalizedValue(env["NOTCH_GEMINI_LIVE_AUTH_EXPIRES_AT"] ?? defaults.string(forKey: expiresAtDefaultsKey)) ?? ""
-        let userID = env["NOTCH_GEMINI_LIVE_AUTH_USER_ID"].flatMap(Int.init)
-            ?? (defaults.object(forKey: lastUserIDDefaultsKey) as? NSNumber)?.intValue
-            ?? 0
+        let userID = normalizedValue(env["NOTCH_GEMINI_LIVE_AUTH_USER_ID"] ?? defaults.string(forKey: lastUserIDDefaultsKey)) ?? ""
 
         if let expiresDate = ISO8601DateFormatter().date(from: expiresAt), expiresDate <= Date() {
             delete()
@@ -241,7 +252,7 @@ final class GeminiLiveBackendAuthStore {
         return GeminiLiveBackendAuthSession(
             accessToken: token,
             expiresAt: expiresAt,
-            user: GeminiLiveBackendAuthUser(id: userID, email: email, name: name, createdAt: "")
+            user: GeminiLiveBackendAuthUser(id: userID, email: email, name: name, createdAt: "", isPro: nil)
         )
     }
 
@@ -288,7 +299,7 @@ final class GeminiLiveBackendClient: @unchecked Sendable {
     func validate(configuration: GeminiLiveBackendConfiguration) async throws {
         let request = try makeRequest(
             configuration: configuration,
-            path: "v1/gemini-live/health",
+            path: "gemini-live/health",
             method: "GET"
         )
 
@@ -313,7 +324,7 @@ final class GeminiLiveBackendClient: @unchecked Sendable {
     ) async throws -> GeminiLiveEphemeralTokenResponse {
         let request = try makeJSONRequest(
             configuration: configuration,
-            path: "v1/gemini-live/session-token",
+            path: "gemini-live/session-token",
             body: requestBody
         )
 
@@ -339,7 +350,7 @@ final class GeminiLiveBackendClient: @unchecked Sendable {
     ) async throws -> GeminiLiveBackendAuthSession {
         try await authenticate(
             configuration: configuration,
-            path: "v1/auth/signup",
+            path: "auth/register",
             body: GeminiLiveBackendSignupRequest(email: email, password: password, name: normalizedValue(name))
         )
     }
@@ -351,7 +362,7 @@ final class GeminiLiveBackendClient: @unchecked Sendable {
     ) async throws -> GeminiLiveBackendAuthSession {
         try await authenticate(
             configuration: configuration,
-            path: "v1/auth/login",
+            path: "auth/login",
             body: GeminiLiveBackendAuthRequest(email: email, password: password)
         )
     }
@@ -359,7 +370,7 @@ final class GeminiLiveBackendClient: @unchecked Sendable {
     func me(configuration: GeminiLiveBackendConfiguration) async throws -> GeminiLiveBackendAuthUser {
         let request = try makeRequest(
             configuration: configuration,
-            path: "v1/auth/me",
+            path: "auth/me",
             method: "GET"
         )
 
@@ -379,7 +390,7 @@ final class GeminiLiveBackendClient: @unchecked Sendable {
     func logout(configuration: GeminiLiveBackendConfiguration) async throws {
         let request = try makeRequest(
             configuration: configuration,
-            path: "v1/auth/logout",
+            path: "auth/logout",
             method: "POST"
         )
 
@@ -391,6 +402,27 @@ final class GeminiLiveBackendClient: @unchecked Sendable {
         guard (200 ... 299).contains(httpResponse.statusCode) || httpResponse.statusCode == 204 else {
             throw GeminiLiveBackendError.server("Gemini Live server returned HTTP \(httpResponse.statusCode).")
         }
+    }
+
+    func createWebBridgeToken(configuration: GeminiLiveBackendConfiguration) async throws -> GeminiLiveBackendWebBridgeResponse {
+        let request = try makeRequest(
+            configuration: configuration,
+            path: "auth/web-bridge",
+            method: "POST"
+        )
+
+        let (data, response) = try await urlSession.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw GeminiLiveBackendError.invalidResponse
+        }
+
+        try validateHTTPStatus(data: data, response: httpResponse)
+
+        guard let payload = try? jsonDecoder.decode(GeminiLiveBackendWebBridgeResponse.self, from: data) else {
+            throw GeminiLiveBackendError.invalidResponse
+        }
+
+        return payload
     }
 
     private func authenticate<Body: Encodable>(
@@ -448,21 +480,58 @@ final class GeminiLiveBackendClient: @unchecked Sendable {
     }
 
     private func validateHTTPStatus(data: Data, response: HTTPURLResponse) throws {
-        guard !(response.statusCode == 401 || response.statusCode == 403) else {
-            throw GeminiLiveBackendError.unauthorized
-        }
-
         guard (200 ... 299).contains(response.statusCode) else {
-            if let envelope = try? jsonDecoder.decode(ServerErrorEnvelope.self, from: data),
-               !envelope.error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                throw GeminiLiveBackendError.server(envelope.error)
+            if let serverMessage = parsedServerErrorMessage(from: data) {
+                throw GeminiLiveBackendError.server(serverMessage)
             }
+
+            if response.statusCode == 401 || response.statusCode == 403 {
+                throw GeminiLiveBackendError.unauthorized
+            }
+
             throw GeminiLiveBackendError.server("Gemini Live server returned HTTP \(response.statusCode).")
         }
     }
 
+    private func parsedServerErrorMessage(from data: Data) -> String? {
+        if let envelope = try? jsonDecoder.decode(ServerErrorEnvelope.self, from: data),
+           !envelope.error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return envelope.error
+        }
+
+        if let envelope = try? jsonDecoder.decode(FastAPIErrorEnvelope.self, from: data),
+           !envelope.detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return envelope.detail
+        }
+
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let detail = object["detail"] {
+            if let detail = detail as? String,
+               !detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return detail
+            }
+
+            if let detailItems = detail as? [[String: Any]] {
+                let messages = detailItems.compactMap { item -> String? in
+                    guard let message = item["msg"] as? String else { return nil }
+                    let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return trimmed.isEmpty ? nil : trimmed
+                }
+                if !messages.isEmpty {
+                    return messages.joined(separator: "\n")
+                }
+            }
+        }
+
+        return nil
+    }
+
     private struct ServerErrorEnvelope: Decodable {
         let error: String
+    }
+
+    private struct FastAPIErrorEnvelope: Decodable {
+        let detail: String
     }
 
     private func normalizedValue(_ value: String?) -> String? {

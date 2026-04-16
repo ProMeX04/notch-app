@@ -670,7 +670,7 @@ struct GeminiTalkPanelView: View {
                         }
 
                         if let lastErrorMessage = gemini.lastErrorMessage {
-                            Text(lastErrorMessage)
+                            Text(Localization.get(lastErrorMessage, lang: appLanguage))
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(Color.red.opacity(0.92))
                                 .lineLimit(2)

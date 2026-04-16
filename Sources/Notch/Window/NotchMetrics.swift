@@ -2,11 +2,30 @@ import AppKit
 import Foundation
 
 enum NotchMetrics {
-    static let openSize = CGSize(width: 640, height: 190)
+    static let openWidth: CGFloat = 640
+    static let defaultOpenHeight: CGFloat = 190
+    static let settingsOpenHeight: CGFloat = 330
     static let shadowPadding: CGFloat = 20
-    static let windowSize = CGSize(width: openSize.width, height: openSize.height + shadowPadding)
     static let closedCornerRadius: (top: CGFloat, bottom: CGFloat) = (6, 14)
     static let openCornerRadius: (top: CGFloat, bottom: CGFloat) = (19, 24)
+
+    static func openHeight(for panel: NotchPanel) -> CGFloat {
+        switch panel {
+        case .settings:
+            return settingsOpenHeight
+        case .media, .focus, .talk, .shelf:
+            return defaultOpenHeight
+        }
+    }
+
+    static func openSize(for panel: NotchPanel) -> CGSize {
+        CGSize(width: openWidth, height: openHeight(for: panel))
+    }
+
+    static func windowSize(for panel: NotchPanel) -> CGSize {
+        let openSize = openSize(for: panel)
+        return CGSize(width: openSize.width, height: openSize.height + shadowPadding)
+    }
 
     static func baseClosedSize(for screen: NSScreen?) -> CGSize {
         guard let screen else {
@@ -39,9 +58,9 @@ enum NotchMetrics {
         )
     }
 
-    static func frame(on screen: NSScreen?, expanded: Bool, showingLiveActivity: Bool) -> CGRect {
+    static func frame(on screen: NSScreen?, expanded: Bool, showingLiveActivity: Bool, selectedPanel: NotchPanel) -> CGRect {
         let targetScreen = screen ?? NSScreen.main ?? NSScreen.screens.first
-        let size = expanded ? openSize : closedSize(for: targetScreen, showingLiveActivity: showingLiveActivity)
+        let size = expanded ? openSize(for: selectedPanel) : closedSize(for: targetScreen, showingLiveActivity: showingLiveActivity)
 
         guard let targetScreen else {
             return CGRect(origin: .zero, size: size)
@@ -55,8 +74,9 @@ enum NotchMetrics {
         return CGRect(origin: origin, size: size)
     }
 
-    static func windowFrame(on screen: NSScreen?) -> CGRect {
+    static func windowFrame(on screen: NSScreen?, selectedPanel: NotchPanel) -> CGRect {
         let targetScreen = screen ?? NSScreen.main ?? NSScreen.screens.first
+        let windowSize = windowSize(for: selectedPanel)
 
         guard let targetScreen else {
             return CGRect(origin: .zero, size: windowSize)

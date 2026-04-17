@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 
 @MainActor
-enum PomodoroViewModelP0Tests {
+enum PomodoroViewModelTests {
     private static func makeViewModel(
         userDefaults: UserDefaults,
         clock: TestPomodoroClock,
@@ -81,5 +81,88 @@ enum PomodoroViewModelP0Tests {
         try expect(restoredVM.isRunning)
         try expectEqual(restoredVM.completedFocusSessions, 2)
         try expectEqual(restoredVM.remainingSeconds(at: restoredClock.now), 2)
+    }
+
+    static func derivedMinutesReflectSecondOverrides() throws {
+        let vm = makeViewModel(
+            userDefaults: makeIsolatedUserDefaults(label: "overrides"),
+            clock: TestPomodoroClock(now: Date(timeIntervalSince1970: 2_000)),
+            workspaceNotificationCenter: NotificationCenter()
+        )
+        defer { vm.shutdown() }
+
+        vm.updateCurrentDurations(focusSeconds: 95, breakSeconds: 125)
+
+        try expectEqual(vm.focusMinutes, 2)
+        try expectEqual(vm.breakMinutes, 2)
+    }
+
+    static func manualPauseThenSkipDoesNotAutoResume() throws {
+        let clock = TestPomodoroClock(now: Date(timeIntervalSince1970: 3_000))
+        let vm = makeViewModel(
+            userDefaults: makeIsolatedUserDefaults(label: "manual-pause"),
+            clock: clock,
+            workspaceNotificationCenter: NotificationCenter()
+        )
+        defer { vm.shutdown() }
+
+        vm.autoStartBreaks = true
+        vm.updateCurrentDurations(focusSeconds: 5, breakSeconds: 3)
+        vm.start()
+        vm.pause()
+        vm.skipPhase()
+
+        try expectEqual(vm.phase, .shortBreak)
+        try expect(!vm.isRunning, "skip after a manual pause must not auto-resume")
+    }
+
+    static func cycleIndicatorsStayConsistentAcrossEdges() async throws {
+        let clock = TestPomodoroClock(now: Date(timeIntervalSince1970: 4_000))
+        let workspaceNotificationCenter = NotificationCenter()
+        let vm = makeViewModel(
+            userDefaults: makeIsolatedUserDefaults(label: "cycle-indicators"),
+            clock: clock,
+            workspaceNotificationCenter: workspaceNotificationCenter
+        )
+        defer { vm.shutdown() }
+
+        vm.updateCurrentDurations(focusSeconds: 5, breakSeconds: 3)
+        vm.updateSessionsBeforeLongBreak(count: 2)
+
+        try expectEqual(vm.currentFocusSessionIndex, 1)
+        try expectEqual(vm.completedSessionsInCycle, 0)
+
+        vm.start()
+        clock.now = clock.now.addingTimeInterval(6)
+        workspaceNotificationCenter.post(name: NSWorkspace.didWakeNotification, object: nil)
+        try await Task.sleep(for: .milliseconds(50))
+
+        try expectEqual(vm.phase, .shortBreak)
+        try expectEqual(vm.currentFocusSessionIndex, 1)
+        try expectEqual(vm.completedSessionsInCycle, 1)
+
+        clock.now = clock.now.addingTimeInterval(4)
+        workspaceNotificationCenter.post(name: NSWorkspace.didWakeNotification, object: nil)
+        try await Task.sleep(for: .milliseconds(50))
+
+        try expectEqual(vm.phase, .focus)
+        try expectEqual(vm.currentFocusSessionIndex, 2)
+        try expectEqual(vm.completedSessionsInCycle, 1)
+
+        clock.now = clock.now.addingTimeInterval(6)
+        workspaceNotificationCenter.post(name: NSWorkspace.didWakeNotification, object: nil)
+        try await Task.sleep(for: .milliseconds(50))
+
+        try expectEqual(vm.phase, .longBreak)
+        try expectEqual(vm.currentFocusSessionIndex, 2)
+        try expectEqual(vm.completedSessionsInCycle, 2)
+
+        vm.reset()
+        try expectEqual(vm.currentFocusSessionIndex, 1)
+        try expectEqual(vm.completedSessionsInCycle, 0)
+
+        vm.updateSessionsBeforeLongBreak(count: 3)
+        try expectEqual(vm.currentFocusSessionIndex, 1)
+        try expectEqual(vm.completedSessionsInCycle, 0)
     }
 }

@@ -111,6 +111,7 @@ private struct PomodoroRuntimeState: Codable {
     var phaseEndDate: Date?
     var completedFocusSessions: Int
     var recordedFocusSecondsForCurrentPhase: Int
+    var wasManuallyPaused: Bool
 }
 
 @MainActor
@@ -156,6 +157,7 @@ final class PomodoroViewModel: ObservableObject {
     private var sleepWakeCancellables = Set<AnyCancellable>()
     @Published private(set) var completedFocusSessions = 0
     private var recordedFocusSecondsForCurrentPhase = 0
+    private var wasManuallyPaused = false
 
     convenience init(
         userDefaults: UserDefaults = .standard,
@@ -239,11 +241,11 @@ final class PomodoroViewModel: ObservableObject {
     }
 
     var focusMinutes: Int {
-        preset.focusMinutes
+        max(Int((Double(focusDurationSeconds) / 60).rounded()), 1)
     }
 
     var breakMinutes: Int {
-        preset.breakMinutes
+        max(Int((Double(breakDurationSeconds) / 60).rounded()), 1)
     }
 
     var focusDurationSeconds: Int {
@@ -297,6 +299,10 @@ final class PomodoroViewModel: ObservableObject {
         sessionsBeforeLongBreakOverride ?? preset.sessionsBeforeLongBreak
     }
 
+    /// The round indicator is phase-aware:
+    /// - focus shows the currently active session in the cycle
+    /// - breaks show the session that just completed
+    /// - long break pins to the last session in the cycle
     var currentFocusSessionIndex: Int {
         if phase == .longBreak { return sessionsBeforeLongBreak }
         let index = (completedFocusSessions % sessionsBeforeLongBreak)
@@ -309,6 +315,8 @@ final class PomodoroViewModel: ObservableObject {
         }
     }
 
+    /// The session dots show completed focus sessions within the current cycle.
+    /// During a break right after finishing the cycle, the dots stay filled.
     var completedSessionsInCycle: Int {
         if phase == .longBreak { return sessionsBeforeLongBreak }
         let index = completedFocusSessions % sessionsBeforeLongBreak
@@ -336,28 +344,39 @@ final class PomodoroViewModel: ObservableObject {
     }
 
     func toggleRunning() {
-        isRunning ? pause() : start()
-        SoundManager.playNotification()
+        if isRunning {
+            pause()
+        } else {
+            start()
+            SoundManager.playNotification()
+        }
     }
 
     func start() {
-        guard !isRunning else { return }
+        start(force: false)
+    }
 
+    private func start(force: Bool) {
+        guard force || !isRunning else { return }
         hasActiveSession = true
         isRunning = true
+        wasManuallyPaused = false
         evaluateFullscreenState()
         phaseEndDate = nowProvider().addingTimeInterval(TimeInterval(remainingSeconds))
         startPhaseCompletionTask()
         persistRuntimeState()
     }
 
-    func pause() {
+    func pause(manual: Bool = true) {
         guard isRunning else { return }
 
         let now = nowProvider()
         recordCurrentFocusProgressIfNeeded(referenceDate: now)
         remainingSeconds = remainingSeconds(at: now)
         isRunning = false
+        if manual {
+            wasManuallyPaused = true
+        }
         phaseEndDate = nil
         phaseCompletionTask?.cancel()
         phaseCompletionTask = nil
@@ -378,6 +397,7 @@ final class PomodoroViewModel: ObservableObject {
         phase = .focus
         remainingSeconds = duration(for: .focus, preset: preset)
         recordedFocusSecondsForCurrentPhase = 0
+        wasManuallyPaused = false
         persistRuntimeState()
         refreshPhaseReminder()
     }
@@ -407,8 +427,7 @@ final class PomodoroViewModel: ObservableObject {
         hasActiveSession = true
         recordedFocusSecondsForCurrentPhase = 0
         if shouldContinueRunning {
-            isRunning = false
-            start()
+            restartPhase()
         } else {
             isRunning = false
             persistRuntimeState()
@@ -431,6 +450,7 @@ final class PomodoroViewModel: ObservableObject {
         phase = .focus
         remainingSeconds = duration(for: .focus, preset: preset)
         recordedFocusSecondsForCurrentPhase = 0
+        wasManuallyPaused = false
         focusDurationOverrideSeconds = nil
         breakDurationOverrideSeconds = nil
         longBreakDurationOverrideSeconds = nil
@@ -474,7 +494,7 @@ final class PomodoroViewModel: ObservableObject {
             return
         }
 
-        recordCurrentFocusProgressIfNeeded(referenceDate: .now)
+        recordCurrentFocusProgressIfNeeded(referenceDate: nowProvider())
         phaseCompletionTask?.cancel()
         phaseCompletionTask = nil
         phaseEndDate = nil
@@ -488,6 +508,7 @@ final class PomodoroViewModel: ObservableObject {
         longBreakDurationOverrideSeconds = nil
         remainingSeconds = clampedFocusSeconds
         recordedFocusSecondsForCurrentPhase = 0
+        wasManuallyPaused = false
         persistRuntimeState()
     }
 
@@ -577,8 +598,9 @@ final class PomodoroViewModel: ObservableObject {
     }
 
     private func advancePhase(continueRunning: Bool, postTransitionNotification: Bool = false) {
+        let hadActiveSession = hasActiveSession
         if phase == .focus {
-            recordCurrentFocusProgressIfNeeded(referenceDate: .now)
+            recordCurrentFocusProgressIfNeeded(referenceDate: nowProvider())
             completedFocusSessions += 1
             
             // Increment session count for the selected task
@@ -595,19 +617,21 @@ final class PomodoroViewModel: ObservableObject {
 
         remainingSeconds = duration(for: phase, preset: preset)
         phaseEndDate = nil
-        hasActiveSession = continueRunning || hasActiveSession
+        hasActiveSession = continueRunning || hadActiveSession
         recordedFocusSecondsForCurrentPhase = 0
 
         let shouldAutoStart: Bool
         if phase == .focus {
-            shouldAutoStart = autoStartBreaks
-        } else {
             shouldAutoStart = autoStartPomodoros
+        } else {
+            shouldAutoStart = autoStartBreaks
         }
 
-        if continueRunning || shouldAutoStart {
-            isRunning = false
-            start()
+        let shouldContinueIntoNextPhase = continueRunning
+            || (!continueRunning && hadActiveSession && shouldAutoStart && !wasManuallyPaused)
+
+        if shouldContinueIntoNextPhase {
+            restartPhase()
         } else {
             isRunning = false
             persistRuntimeState()
@@ -816,7 +840,8 @@ final class PomodoroViewModel: ObservableObject {
             hasActiveSession: hasActiveSession,
             phaseEndDate: phaseEndDate,
             completedFocusSessions: completedFocusSessions,
-            recordedFocusSecondsForCurrentPhase: recordedFocusSecondsForCurrentPhase
+            recordedFocusSecondsForCurrentPhase: recordedFocusSecondsForCurrentPhase,
+            wasManuallyPaused: wasManuallyPaused
         )
 
         guard let encoded = try? JSONEncoder().encode(snapshot) else { return }
@@ -834,6 +859,7 @@ final class PomodoroViewModel: ObservableObject {
         phase = restoredPhase
         completedFocusSessions = max(snapshot.completedFocusSessions, 0)
         recordedFocusSecondsForCurrentPhase = max(snapshot.recordedFocusSecondsForCurrentPhase, 0)
+        wasManuallyPaused = snapshot.wasManuallyPaused
 
         if snapshot.isRunning, let savedPhaseEndDate = snapshot.phaseEndDate {
             restoreRunningStateFromSnapshot(
@@ -896,6 +922,7 @@ final class PomodoroViewModel: ObservableObject {
         self.recordedFocusSecondsForCurrentPhase = 0
         self.hasActiveSession = true
         self.isRunning = true
+        self.wasManuallyPaused = false
         self.phaseEndDate = restoredPhaseEndDate
         self.remainingSeconds = clampedRemainingSeconds(
             max(Int(ceil(restoredPhaseEndDate.timeIntervalSince(now))), 0),
@@ -975,8 +1002,13 @@ final class PomodoroViewModel: ObservableObject {
         isRunning = false
         hasActiveSession = false
         recordedFocusSecondsForCurrentPhase = 0
+        wasManuallyPaused = false
         remainingSeconds = duration(for: phase, preset: preset)
         persistRuntimeState()
+    }
+
+    private func restartPhase() {
+        start(force: true)
     }
 
     private func clampedRemainingSeconds(_ seconds: Int, for phase: PomodoroPhase, activeSession: Bool) -> Int {

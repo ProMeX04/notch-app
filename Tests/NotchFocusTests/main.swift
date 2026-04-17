@@ -10,11 +10,23 @@ func buildTestCases() -> [TestCase] {
     [
         TestCase(
             name: "focus/wake advances elapsed phase once and stays idempotent",
-            run: PomodoroViewModelP0Tests.wakeAdvancesElapsedPhaseOnce
+            run: PomodoroViewModelTests.wakeAdvancesElapsedPhaseOnce
         ),
         TestCase(
             name: "focus/restore catches up multiple expired phases within limit",
-            run: PomodoroViewModelP0Tests.restoreCatchUpMultipleExpiredPhases
+            run: PomodoroViewModelTests.restoreCatchUpMultipleExpiredPhases
+        ),
+        TestCase(
+            name: "focus/derived minutes reflect second overrides",
+            run: PomodoroViewModelTests.derivedMinutesReflectSecondOverrides
+        ),
+        TestCase(
+            name: "focus/manual pause then skip does not auto resume",
+            run: PomodoroViewModelTests.manualPauseThenSkipDoesNotAutoResume
+        ),
+        TestCase(
+            name: "focus/cycle indicators stay consistent across edges",
+            run: PomodoroViewModelTests.cycleIndicatorsStayConsistentAcrossEdges
         ),
     ]
 }

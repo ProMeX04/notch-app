@@ -61,7 +61,7 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
         notchController.show()
         configureDebugLaunchBehavior(using: notchController)
 
-        Task { await AppStoreSubscriptionManager.shared.refreshEntitlements() }
+        refreshProStatus()
 
         NotificationCenter.default.addObserver(
             self,
@@ -69,6 +69,10 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
             name: NSApplication.didChangeScreenParametersNotification,
             object: nil
         )
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        refreshProStatus()
     }
 
     @objc
@@ -105,6 +109,12 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
     private func activatePrimaryWindow() {
         notchController?.show()
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func refreshProStatus() {
+        Task { @MainActor [weak self] in
+            await self?.geminiLiveViewModel.refreshBackendSubscriptionStatus()
+        }
     }
 }
 

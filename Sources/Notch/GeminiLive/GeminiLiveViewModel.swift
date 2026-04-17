@@ -51,6 +51,7 @@ final class GeminiLiveViewModel: ObservableObject {
     @Published private(set) var isScreenSharingEnabled = false
     @Published private(set) var isModelSpeaking = false
     @Published private(set) var isModelThinking = false
+    @Published private(set) var isMicrophoneLive = false
     @Published private(set) var microphoneInputLevel = 0.0
     @Published private(set) var outputVolume = 1.0
     @Published private(set) var holdToTalkShortcut = HoldToTalkShortcutStore.load()
@@ -119,7 +120,7 @@ final class GeminiLiveViewModel: ObservableObject {
     @Published private(set) var overlayInput = TranscriptOverlayInput.idle
     @Published private(set) var isAutoReconnecting = false
     @Published private(set) var pendingExecApprovals: [ExecApprovalRequest] = []
-    /// True when the user has Pro via StoreKit, server (`is_pro`), or dev bypass.
+    /// True when the user has Pro via the backend (`is_pro`) or dev bypass.
     @Published private(set) var isProUser = false
     private var isProFromBackend = false
     private var toastClearTask: Task<Void, Never>?
@@ -154,6 +155,7 @@ final class GeminiLiveViewModel: ObservableObject {
     private var storedAPIKey: String?
     private var storedBackendConfiguration: GeminiLiveBackendConfiguration?
     private var storedBackendAuthSession: GeminiLiveBackendAuthSession?
+    private var backendAuthRefreshTask: Task<GeminiLiveBackendAuthSession, Error>?
     var onExecApprovalAttentionRequested: (() -> Void)?
     var onOpenAppSettingsRequested: (() -> Void)?
 
@@ -234,6 +236,7 @@ final class GeminiLiveViewModel: ObservableObject {
                 self.connectionState = state
                 if state != .connected {
                     self.isHoldToTalkActive = false
+                    self.isMicrophoneLive = false
                     self.microphoneInputLevel = 0
                     self.isModelThinking = false
                 }
@@ -311,6 +314,19 @@ final class GeminiLiveViewModel: ObservableObject {
                 // Only update if the change is visually meaningful to avoid View invalidate storms
                 guard abs(smoothed - self.microphoneInputLevel) > 0.02 else { return }
                 self.microphoneInputLevel = smoothed
+            }
+        }
+
+        session.onMicrophoneCaptureStateChange = { [weak self] isLive in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isMicrophoneLive = isLive
+
+                guard self.connectionState == .connected else { return }
+                guard self.statusText == self.connectedMicStatusText || self.statusText == self.pendingMicrophoneStatusText else {
+                    return
+                }
+                self.statusText = self.connectedMicStatusText
             }
         }
 
@@ -441,12 +457,6 @@ final class GeminiLiveViewModel: ObservableObject {
             .store(in: &subscriptions)
 
         recomputeProEntitlement()
-        AppStoreSubscriptionManager.shared.$isProEntitled
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.recomputeProEntitlement()
-            }
-            .store(in: &subscriptions)
 
         persistSettings()
 
@@ -456,10 +466,7 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     private func recomputeProEntitlement() {
-        isProUser = NotchProEntitlement.isProUser(
-            storeKitEntitled: AppStoreSubscriptionManager.shared.isProEntitled,
-            backendPro: isProFromBackend
-        )
+        isProUser = NotchProEntitlement.isProUser(backendPro: isProFromBackend)
     }
 
     func openWebAccountSignup() {
@@ -471,12 +478,12 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     func openWebProCheckout() {
-        guard let configuration = configuredBackendUserConfiguration else {
-            NotchWebPortal.openInBrowser(NotchWebPortal.proCheckoutURL())
-            return
-        }
-
         Task {
+            guard let configuration = await self.freshConfiguredBackendUserConfiguration() else {
+                NotchWebPortal.openInBrowser(NotchWebPortal.proCheckoutURL())
+                return
+            }
+
             do {
                 let bridge = try await backendClient.createWebBridgeToken(configuration: configuration)
                 let url = NotchWebPortal.authBridgeURL(token: bridge.bridgeToken)
@@ -492,7 +499,7 @@ final class GeminiLiveViewModel: ObservableObject {
 
     /// Refreshes `is_pro` from `GET /auth/me` after web signup, login, or Pro purchase.
     func refreshBackendSubscriptionStatus() async {
-        guard let configuration = configuredBackendUserConfiguration else {
+        guard let configuration = await freshConfiguredBackendUserConfiguration() else {
             isProFromBackend = false
             recomputeProEntitlement()
             return
@@ -504,9 +511,14 @@ final class GeminiLiveViewModel: ObservableObject {
             recomputeProEntitlement()
         } catch {
             if shouldClearBackendAuthSession(for: error) {
+                logGeminiFailure(
+                    "subscription status refresh rejected the saved session; clearing local auth",
+                    error: error
+                )
                 clearBackendAuthSession()
                 return
             }
+            logGeminiFailure("subscription status refresh failed; keeping previous Pro state", error: error)
             // Keep previous backend Pro flag if the request fails (offline, etc.).
         }
     }
@@ -524,6 +536,14 @@ final class GeminiLiveViewModel: ObservableObject {
         }
     }
 
+    var requiresProForCurrentConnection: Bool {
+        selectedConnectionMethod == .managedServer && hasConfiguredConnection && !isProUser
+    }
+
+    var canStartConnection: Bool {
+        hasConfiguredConnection && !requiresProForCurrentConnection
+    }
+
     var selectedConnectionSetupTitle: String {
         selectedConnectionMethod.setupTitle
     }
@@ -538,6 +558,9 @@ final class GeminiLiveViewModel: ObservableObject {
             }
             if backendAuthorizationToken == nil {
                 return "Sign in to your server account in the Settings tab."
+            }
+            if !isProUser {
+                return "Notch Pro is required before you can connect with your Notch account."
             }
             return "Ready to use your server-managed Gemini session."
         }
@@ -556,7 +579,10 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     var defaultDisconnectedStatusText: String {
-        hasConfiguredConnection ? "Ready to connect to Gemini Live." : selectedConnectionMethod.setupDescription
+        if requiresProForCurrentConnection {
+            return "Notch Pro is required to use the hosted Gemini Live server."
+        }
+        return hasConfiguredConnection ? "Ready to connect to Gemini Live." : selectedConnectionMethod.setupDescription
     }
 
     func openAppSettings() {
@@ -1037,7 +1063,7 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     var isCompactIndicatorAnimated: Bool {
-        connectionState == .connected && effectiveMicrophoneEnabled
+        isActivelyListening
     }
 
     var holdToTalkReadyText: String {
@@ -1046,9 +1072,16 @@ final class GeminiLiveViewModel: ObservableObject {
 
     var connectedMicStatusText: String {
         if inputMode == .pushToTalk {
-            return holdToTalkReadyText
+            return isHoldToTalkActive
+                ? (isMicrophoneLive ? "Listening… Release to send." : pendingMicrophoneStatusText)
+                : holdToTalkReadyText
         }
-        return "Microphone is live."
+        guard isMicrophoneEnabled else { return "Microphone is muted." }
+        return isMicrophoneLive ? "Microphone is live." : pendingMicrophoneStatusText
+    }
+
+    var pendingMicrophoneStatusText: String {
+        "Starting microphone..."
     }
 
     var effectiveMicrophoneEnabled: Bool {
@@ -1058,6 +1091,14 @@ final class GeminiLiveViewModel: ObservableObject {
         case .pushToTalk:
             return isHoldToTalkActive
         }
+    }
+
+    var isActivelyListening: Bool {
+        connectionState == .connected && effectiveMicrophoneEnabled && isMicrophoneLive
+    }
+
+    var connectedPlaceholderText: String {
+        isActivelyListening ? "Gemini is listening..." : connectedMicStatusText
     }
 
     func toggleConnection() {
@@ -1279,7 +1320,21 @@ final class GeminiLiveViewModel: ObservableObject {
         }
     }
 
-    /// Applies an access token obtained in the browser (after web login). Web and the app do not share storage; this links the same session into the Keychain.
+    private struct PortableBackendAuthSession: Decodable {
+        let accessToken: String
+        let expiresAt: String
+        let refreshToken: String?
+        let refreshExpiresAt: String?
+
+        enum CodingKeys: String, CodingKey {
+            case accessToken = "access_token"
+            case expiresAt = "expires_at"
+            case refreshToken = "refresh_token"
+            case refreshExpiresAt = "refresh_expires_at"
+        }
+    }
+
+    /// Applies a browser-issued login token into the app's secure storage.
     func applyWebSessionToken(_ rawToken: String) async -> Bool {
         let token = Self.normalizedPastedAccessToken(rawToken)
         guard !token.isEmpty else {
@@ -1299,18 +1354,21 @@ final class GeminiLiveViewModel: ObservableObject {
         lastErrorMessage = nil
         defer { isSavingAPIKey = false }
 
+        let portableSession = Self.decodedPortableBackendAuthSession(from: token)
+        let accessToken = portableSession?.accessToken ?? token
         let withToken = GeminiLiveBackendConfiguration(
             baseURL: configuration.baseURL,
             clientToken: configuration.clientToken,
-            userAccessToken: token
+            userAccessToken: accessToken
         )
 
         do {
             let user = try await backendClient.me(configuration: withToken)
-            let expiresAt = Self.iso8601ExpiryForPastedSession()
             let session = GeminiLiveBackendAuthSession(
-                accessToken: token,
-                expiresAt: expiresAt,
+                accessToken: accessToken,
+                expiresAt: portableSession?.expiresAt ?? Self.iso8601ExpiryForPastedSession(),
+                refreshToken: portableSession?.refreshToken,
+                refreshExpiresAt: portableSession?.refreshExpiresAt,
                 user: user
             )
             storeBackendAuthSession(session)
@@ -1336,6 +1394,24 @@ final class GeminiLiveViewModel: ObservableObject {
         return t
     }
 
+    private static func decodedPortableBackendAuthSession(from token: String) -> PortableBackendAuthSession? {
+        let prefix = "nts_"
+        guard token.hasPrefix(prefix) else { return nil }
+
+        let encoded = String(token.dropFirst(prefix.count))
+        guard let data = Data(base64Encoded: Self.base64URLToBase64(encoded)) else { return nil }
+        return try? JSONDecoder().decode(PortableBackendAuthSession.self, from: data)
+    }
+
+    private static func base64URLToBase64(_ value: String) -> String {
+        let replaced = value
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let remainder = replaced.count % 4
+        guard remainder != 0 else { return replaced }
+        return replaced + String(repeating: "=", count: 4 - remainder)
+    }
+
     private static func iso8601ExpiryForPastedSession() -> String {
         let date = Date().addingTimeInterval(30 * 24 * 3600)
         let formatter = ISO8601DateFormatter()
@@ -1348,15 +1424,17 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     func logoutBackendAccount() async {
+        let configuration = configuredBackendUserConfiguration
+        let refreshToken = storedBackendAuthSession?.refreshToken
+        let shouldDisconnectManagedSession = selectedConnectionMethod == .managedServer
+            && (connectionState == .connected || connectionState == .connecting)
+
         isSavingAPIKey = true
         defer { isSavingAPIKey = false }
+        lastErrorMessage = nil
 
-        if let configuration = configuredBackendUserConfiguration {
-            do {
-                try await backendClient.logout(configuration: configuration)
-            } catch {
-                lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            }
+        if shouldDisconnectManagedSession {
+            disconnect()
         }
 
         clearBackendAuthSession()
@@ -1364,6 +1442,24 @@ final class GeminiLiveViewModel: ObservableObject {
         statusText = configuredBackendConfiguration == nil
             ? "Gemini Live server saved. Sign in to continue."
             : "Signed out from Gemini Live server."
+
+        guard let configuration else { return }
+        Task.detached(priority: .utility) { [backendClient] in
+            let retryDelays: [Duration] = [.zero, .seconds(2), .seconds(5)]
+
+            for delay in retryDelays {
+                if delay > .zero {
+                    try? await Task.sleep(for: delay)
+                }
+
+                do {
+                    try await backendClient.logout(configuration: configuration, refreshToken: refreshToken)
+                    return
+                } catch {
+                    continue
+                }
+            }
+        }
     }
 
     func connect(clearingTranscripts: Bool = true) {
@@ -1373,6 +1469,7 @@ final class GeminiLiveViewModel: ObservableObject {
                 ? "Gemini API key is missing."
                 : "Gemini Live server is missing."
             statusText = defaultDisconnectedStatusText
+            logConnectBlocked(reason: "missing configuration")
             return
         }
 
@@ -1380,14 +1477,17 @@ final class GeminiLiveViewModel: ObservableObject {
             connectionState = .failed
             lastErrorMessage = "Notch Pro is required to use the hosted Gemini Live server."
             statusText = defaultDisconnectedStatusText
+            logConnectBlocked(reason: "managed server requires Pro")
             return
         }
 
         if clearingTranscripts { clearTranscripts() }
         lastDisconnectWasUserInitiated = false
         connectionState = .connecting
+        isMicrophoneLive = false
         lastErrorMessage = nil
         statusText = "Requesting microphone access..."
+        logConnectAttempt(clearingTranscripts: clearingTranscripts)
 
         requestMicrophoneAccess { [weak self] granted in
             guard let self else { return }
@@ -1396,6 +1496,7 @@ final class GeminiLiveViewModel: ObservableObject {
                     self.connectionState = .failed
                     self.lastErrorMessage = "Microphone access is required for Gemini Live."
                     self.statusText = "Enable microphone access for Notch in System Settings."
+                    NotchLog.gemini.error("Connect failed: microphone permission denied")
                     return
                 }
 
@@ -1430,12 +1531,13 @@ final class GeminiLiveViewModel: ObservableObject {
                 } else {
                     switch self.selectedConnectionMethod {
                     case .managedServer:
-                        guard let configuredBackend = self.configuredBackendConfigurationWithAuth else {
+                        guard let configuredBackend = await self.freshConfiguredBackendUserConfiguration() else {
                             self.connectionState = .failed
                             self.lastErrorMessage = self.configuredBackendConfiguration == nil
                                 ? "Gemini Live server is missing."
                                 : "Please sign in to your Gemini Live server account."
                             self.statusText = self.defaultDisconnectedStatusText
+                            self.logConnectBlocked(reason: "managed server auth missing")
                             return
                         }
 
@@ -1453,7 +1555,13 @@ final class GeminiLiveViewModel: ObservableObject {
                             backendConfiguration = configuredBackend
                         } catch {
                             if self.shouldClearBackendAuthSession(for: error) {
+                                self.logGeminiFailure(
+                                    "session token request rejected the saved session; clearing local auth",
+                                    error: error
+                                )
                                 self.clearBackendAuthSession()
+                            } else {
+                                self.logGeminiFailure("session token request failed", error: error)
                             }
                             self.connectionState = .failed
                             self.lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -1465,6 +1573,7 @@ final class GeminiLiveViewModel: ObservableObject {
                             self.connectionState = .failed
                             self.lastErrorMessage = "Gemini API key is missing."
                             self.statusText = self.defaultDisconnectedStatusText
+                            self.logConnectBlocked(reason: "API key missing")
                             return
                         }
                         connectionCredential = configuredAPIKey
@@ -1519,6 +1628,7 @@ final class GeminiLiveViewModel: ObservableObject {
         lastToolAction = nil
         isModelThinking = false
         isHoldToTalkActive = false
+        isMicrophoneLive = false
         // Transcript có thể rất dài; giữ lại sau khi ngắt kết nối làm RAM không giảm trong Activity Monitor.
         clearTranscripts()
         currentSkillSnapshot = nil
@@ -1837,7 +1947,7 @@ final class GeminiLiveViewModel: ObservableObject {
         isModelSpeaking = false
         session.interruptModelPlayback()
         syncEffectiveMicrophoneState()
-        statusText = "Listening… Release to send."
+        statusText = connectedMicStatusText
     }
 
     func endHoldToTalk() {
@@ -2155,6 +2265,104 @@ final class GeminiLiveViewModel: ObservableObject {
         )
     }
 
+    private func parsedISO8601Date(_ value: String?) -> Date? {
+        guard let value, !value.isEmpty else { return nil }
+        return ISO8601DateFormatter().date(from: value)
+    }
+
+    private func backendAccessTokenNeedsRefresh(_ session: GeminiLiveBackendAuthSession) -> Bool {
+        guard let expiresAt = parsedISO8601Date(session.expiresAt) else { return true }
+        return expiresAt <= Date().addingTimeInterval(5 * 60)
+    }
+
+    private func backendRefreshTokenExpired(_ session: GeminiLiveBackendAuthSession) -> Bool {
+        guard let refreshExpiresAt = session.refreshExpiresAt else { return false }
+        guard let expiresAt = parsedISO8601Date(refreshExpiresAt) else { return true }
+        return expiresAt <= Date()
+    }
+
+    private func loadCurrentBackendAuthSession() -> GeminiLiveBackendAuthSession? {
+        if let storedBackendAuthSession {
+            return storedBackendAuthSession
+        }
+
+        let currentBackendAuthSession = backendAuthStore.read()
+        if let currentBackendAuthSession {
+            storedBackendAuthSession = currentBackendAuthSession
+            backendAuthenticatedEmail = currentBackendAuthSession.user.email
+            backendAuthEmailText = currentBackendAuthSession.user.email
+        }
+        return currentBackendAuthSession
+    }
+
+    private func refreshBackendAuthSessionIfNeeded(forceRefresh: Bool = false) async -> GeminiLiveBackendAuthSession? {
+        guard let session = loadCurrentBackendAuthSession() else { return nil }
+
+        if backendRefreshTokenExpired(session) {
+            clearBackendAuthSession()
+            return nil
+        }
+
+        if !forceRefresh && !backendAccessTokenNeedsRefresh(session) {
+            return session
+        }
+
+        guard let refreshToken = session.refreshToken,
+              !refreshToken.isEmpty,
+              let configuration = configuredBackendConfigurationForAuth else {
+            if let accessExpiry = parsedISO8601Date(session.expiresAt), accessExpiry > Date(), !forceRefresh {
+                return session
+            }
+            clearBackendAuthSession()
+            return nil
+        }
+
+        if let backendAuthRefreshTask {
+            do {
+                let refreshedSession = try await backendAuthRefreshTask.value
+                storeBackendAuthSession(refreshedSession)
+                return refreshedSession
+            } catch {
+                if shouldClearBackendAuthSession(for: error) {
+                    clearBackendAuthSession()
+                }
+                return nil
+            }
+        }
+
+        let task = Task { [backendClient] in
+            try await backendClient.refresh(configuration: configuration, refreshToken: refreshToken)
+        }
+        backendAuthRefreshTask = task
+        defer { backendAuthRefreshTask = nil }
+
+        do {
+            let refreshedSession = try await task.value
+            storeBackendAuthSession(refreshedSession)
+            return refreshedSession
+        } catch {
+            if shouldClearBackendAuthSession(for: error) {
+                clearBackendAuthSession()
+            } else if let accessExpiry = parsedISO8601Date(session.expiresAt), accessExpiry > Date(), !forceRefresh {
+                return session
+            }
+            return nil
+        }
+    }
+
+    private func freshConfiguredBackendUserConfiguration(forceRefresh: Bool = false) async -> GeminiLiveBackendConfiguration? {
+        guard let configuration = configuredBackendConfiguration,
+              let session = await refreshBackendAuthSessionIfNeeded(forceRefresh: forceRefresh) else {
+            return nil
+        }
+
+        return GeminiLiveBackendConfiguration(
+            baseURL: configuration.baseURL,
+            clientToken: nil,
+            userAccessToken: session.accessToken
+        )
+    }
+
     private var backendAuthorizationToken: String? {
         configuredBackendConfigurationWithAuth?.authorizationToken
     }
@@ -2199,6 +2407,8 @@ final class GeminiLiveViewModel: ObservableObject {
 
     private func clearBackendAuthSession() {
         let preservedEmail = draftBackendAuthEmail
+        backendAuthRefreshTask?.cancel()
+        backendAuthRefreshTask = nil
         backendAuthStore.delete()
         if let preservedEmail {
             backendAuthStore.saveLastEmail(preservedEmail)
@@ -2228,6 +2438,23 @@ final class GeminiLiveViewModel: ObservableObject {
         let normalized = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return normalized.contains("invalid or expired session token")
             || normalized.contains("unauthorized")
+    }
+
+    private func logConnectAttempt(clearingTranscripts: Bool) {
+        NotchLog.gemini.notice(
+            "Connect requested: method=\(self.selectedConnectionMethod.rawValue, privacy: .public) auth=\(self.isBackendAuthenticated, privacy: .public) pro=\(self.isProUser, privacy: .public) clearingTranscripts=\(clearingTranscripts, privacy: .public)"
+        )
+    }
+
+    private func logConnectBlocked(reason: String) {
+        NotchLog.gemini.notice(
+            "Connect blocked: reason=\(reason, privacy: .public) method=\(self.selectedConnectionMethod.rawValue, privacy: .public) auth=\(self.isBackendAuthenticated, privacy: .public) pro=\(self.isProUser, privacy: .public)"
+        )
+    }
+
+    private func logGeminiFailure(_ summary: String, error: Error) {
+        let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        NotchLog.gemini.error("\(summary, privacy: .public): \(message, privacy: .public)")
     }
 
     private func shouldRefreshManagedServerCredential(_ configuration: LiveSessionConfiguration) -> Bool {

@@ -22,6 +22,7 @@ struct GeminiLiveBackendConfiguration: Equatable, Sendable {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
+
 }
 
 struct GeminiLiveBackendHealthResponse: Decodable {
@@ -82,12 +83,16 @@ struct GeminiLiveBackendAuthTokenResponse: Decodable, Sendable {
     let accessToken: String
     let tokenType: String
     let expiresAt: String
+    let refreshToken: String
+    let refreshExpiresAt: String
     let user: GeminiLiveBackendAuthUser
 
     enum CodingKeys: String, CodingKey {
         case accessToken = "access_token"
         case tokenType = "token_type"
         case expiresAt = "expires_at"
+        case refreshToken = "refresh_token"
+        case refreshExpiresAt = "refresh_expires_at"
         case user
     }
 }
@@ -105,6 +110,8 @@ struct GeminiLiveBackendWebBridgeResponse: Decodable, Sendable {
 struct GeminiLiveBackendAuthSession: Equatable, Sendable {
     let accessToken: String
     let expiresAt: String
+    let refreshToken: String?
+    let refreshExpiresAt: String?
     let user: GeminiLiveBackendAuthUser
 }
 
@@ -117,6 +124,22 @@ private struct GeminiLiveBackendSignupRequest: Encodable, Sendable {
     let email: String
     let password: String
     let name: String?
+}
+
+private struct GeminiLiveBackendRefreshRequest: Encodable, Sendable {
+    let refreshToken: String
+
+    enum CodingKeys: String, CodingKey {
+        case refreshToken = "refresh_token"
+    }
+}
+
+private struct GeminiLiveBackendLogoutRequest: Encodable, Sendable {
+    let refreshToken: String?
+
+    enum CodingKeys: String, CodingKey {
+        case refreshToken = "refresh_token"
+    }
 }
 
 enum GeminiLiveBackendError: LocalizedError {
@@ -215,43 +238,65 @@ final class GeminiLiveBackendConfigStore {
 
 final class GeminiLiveBackendAuthStore {
     private let defaults: UserDefaults
-    private let tokenStore: GeminiLiveSecretStore
+    private let accessTokenStore: GeminiLiveSecretStore
+    private let refreshTokenStore: GeminiLiveSecretStore
     private let lastEmailDefaultsKey = "dev.notch.gemini-live.backend-auth.last-email"
     private let lastNameDefaultsKey = "dev.notch.gemini-live.backend-auth.last-name"
     private let lastUserIDDefaultsKey = "dev.notch.gemini-live.backend-auth.last-user-id"
     private let expiresAtDefaultsKey = "dev.notch.gemini-live.backend-auth.expires-at"
+    private let refreshExpiresAtDefaultsKey = "dev.notch.gemini-live.backend-auth.refresh-expires-at"
     private let processInfo: ProcessInfo
 
     init(processInfo: ProcessInfo, defaults: UserDefaults = .standard) {
         self.processInfo = processInfo
         self.defaults = defaults
-        tokenStore = GeminiLiveSecretStore(
+        accessTokenStore = GeminiLiveSecretStore(
             processInfo: processInfo,
             developmentFileURL: GeminiLiveStoragePaths.developmentGeminiLiveAuthTokenFile,
             keychainAccount: "GeminiLiveBackendAccessToken"
+        )
+        refreshTokenStore = GeminiLiveSecretStore(
+            processInfo: processInfo,
+            developmentFileURL: GeminiLiveStoragePaths.developmentGeminiLiveRefreshTokenFile,
+            keychainAccount: "GeminiLiveBackendRefreshToken"
         )
     }
 
     func read() -> GeminiLiveBackendAuthSession? {
         let env = processInfo.environment
-        let token = normalizedValue(env["NOTCH_GEMINI_LIVE_ACCESS_TOKEN"] ?? tokenStore.read())
-        guard let token else { return nil }
+        let accessToken = normalizedValue(env["NOTCH_GEMINI_LIVE_ACCESS_TOKEN"] ?? accessTokenStore.read())
+        guard let accessToken else { return nil }
 
         let email = normalizedValue(env["NOTCH_GEMINI_LIVE_AUTH_EMAIL"] ?? defaults.string(forKey: lastEmailDefaultsKey)) ?? ""
         guard !email.isEmpty else { return nil }
 
         let name = normalizedValue(env["NOTCH_GEMINI_LIVE_AUTH_NAME"] ?? defaults.string(forKey: lastNameDefaultsKey))
         let expiresAt = normalizedValue(env["NOTCH_GEMINI_LIVE_AUTH_EXPIRES_AT"] ?? defaults.string(forKey: expiresAtDefaultsKey)) ?? ""
+        let refreshToken = normalizedValue(env["NOTCH_GEMINI_LIVE_REFRESH_TOKEN"] ?? refreshTokenStore.read())
+        let refreshExpiresAt = normalizedValue(
+            env["NOTCH_GEMINI_LIVE_REFRESH_EXPIRES_AT"] ?? defaults.string(forKey: refreshExpiresAtDefaultsKey)
+        )
         let userID = normalizedValue(env["NOTCH_GEMINI_LIVE_AUTH_USER_ID"] ?? defaults.string(forKey: lastUserIDDefaultsKey)) ?? ""
 
-        if let expiresDate = ISO8601DateFormatter().date(from: expiresAt), expiresDate <= Date() {
+        if let refreshExpiresAt,
+           let refreshExpiresDate = ISO8601DateFormatter().date(from: refreshExpiresAt),
+           refreshExpiresDate <= Date() {
+            delete()
+            return nil
+        }
+
+        if refreshToken == nil,
+           let expiresDate = ISO8601DateFormatter().date(from: expiresAt),
+           expiresDate <= Date() {
             delete()
             return nil
         }
 
         return GeminiLiveBackendAuthSession(
-            accessToken: token,
+            accessToken: accessToken,
             expiresAt: expiresAt,
+            refreshToken: refreshToken,
+            refreshExpiresAt: refreshExpiresAt,
             user: GeminiLiveBackendAuthUser(id: userID, email: email, name: name, createdAt: "", isPro: nil)
         )
     }
@@ -262,7 +307,22 @@ final class GeminiLiveBackendAuthStore {
         defaults.set(session.user.name, forKey: lastNameDefaultsKey)
         defaults.set(session.user.id, forKey: lastUserIDDefaultsKey)
         defaults.set(session.expiresAt, forKey: expiresAtDefaultsKey)
-        return tokenStore.save(session.accessToken)
+        if let refreshExpiresAt = session.refreshExpiresAt {
+            defaults.set(refreshExpiresAt, forKey: refreshExpiresAtDefaultsKey)
+        } else {
+            defaults.removeObject(forKey: refreshExpiresAtDefaultsKey)
+        }
+
+        let didSaveAccess = accessTokenStore.save(session.accessToken)
+        let didSaveRefresh: Bool
+        if let refreshToken = session.refreshToken, !refreshToken.isEmpty {
+            didSaveRefresh = refreshTokenStore.save(refreshToken)
+        } else {
+            refreshTokenStore.delete()
+            didSaveRefresh = true
+        }
+
+        return didSaveAccess && didSaveRefresh
     }
 
     func saveLastEmail(_ email: String) {
@@ -278,7 +338,9 @@ final class GeminiLiveBackendAuthStore {
         defaults.removeObject(forKey: lastNameDefaultsKey)
         defaults.removeObject(forKey: lastUserIDDefaultsKey)
         defaults.removeObject(forKey: expiresAtDefaultsKey)
-        tokenStore.delete()
+        defaults.removeObject(forKey: refreshExpiresAtDefaultsKey)
+        accessTokenStore.delete()
+        refreshTokenStore.delete()
     }
 
     private func normalizedValue(_ value: String?) -> String? {
@@ -367,6 +429,17 @@ final class GeminiLiveBackendClient: @unchecked Sendable {
         )
     }
 
+    func refresh(
+        configuration: GeminiLiveBackendConfiguration,
+        refreshToken: String
+    ) async throws -> GeminiLiveBackendAuthSession {
+        try await authenticate(
+            configuration: configuration,
+            path: "auth/refresh",
+            body: GeminiLiveBackendRefreshRequest(refreshToken: refreshToken)
+        )
+    }
+
     func me(configuration: GeminiLiveBackendConfiguration) async throws -> GeminiLiveBackendAuthUser {
         let request = try makeRequest(
             configuration: configuration,
@@ -387,21 +460,19 @@ final class GeminiLiveBackendClient: @unchecked Sendable {
         return user
     }
 
-    func logout(configuration: GeminiLiveBackendConfiguration) async throws {
-        let request = try makeRequest(
+    func logout(configuration: GeminiLiveBackendConfiguration, refreshToken: String?) async throws {
+        let request = try makeJSONRequest(
             configuration: configuration,
             path: "auth/logout",
-            method: "POST"
+            body: GeminiLiveBackendLogoutRequest(refreshToken: normalizedValue(refreshToken))
         )
 
-        let (_, response) = try await urlSession.data(for: request)
+        let (data, response) = try await urlSession.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw GeminiLiveBackendError.invalidResponse
         }
 
-        guard (200 ... 299).contains(httpResponse.statusCode) || httpResponse.statusCode == 204 else {
-            throw GeminiLiveBackendError.server("Gemini Live server returned HTTP \(httpResponse.statusCode).")
-        }
+        try validateHTTPStatus(data: data, response: httpResponse)
     }
 
     func createWebBridgeToken(configuration: GeminiLiveBackendConfiguration) async throws -> GeminiLiveBackendWebBridgeResponse {
@@ -445,8 +516,16 @@ final class GeminiLiveBackendClient: @unchecked Sendable {
         return GeminiLiveBackendAuthSession(
             accessToken: payload.accessToken,
             expiresAt: payload.expiresAt,
+            refreshToken: payload.refreshToken,
+            refreshExpiresAt: payload.refreshExpiresAt,
             user: payload.user
         )
+    }
+
+    private func normalizedValue(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func makeJSONRequest<Body: Encodable>(
@@ -532,11 +611,5 @@ final class GeminiLiveBackendClient: @unchecked Sendable {
 
     private struct FastAPIErrorEnvelope: Decodable {
         let detail: String
-    }
-
-    private func normalizedValue(_ value: String?) -> String? {
-        guard let value else { return nil }
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 }

@@ -1,19 +1,22 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowRight,
+  BrainCircuit,
   Check,
   CreditCard,
+  FolderKanban,
   Loader2,
   LogOut,
-  Mail,
-  Shield,
+  ShieldCheck,
   Sparkles,
   UserRound,
-  Zap,
+  Waves,
 } from 'lucide-react';
+import { PortalLogo } from '@/components/portal/PortalLogo';
+import { authenticatedFetch, signOutImmediately } from '@/lib/portal-auth-client';
 
 type AccountPlan = 'free' | 'pro';
 type AccountMe = {
@@ -23,6 +26,30 @@ type AccountMe = {
   created_at: string;
   is_pro: boolean;
 };
+
+const appCapabilities = [
+  {
+    icon: BrainCircuit,
+    title: 'Gemini Live trong đúng ngữ cảnh',
+    description: 'Giữ trợ lý AI gần thao tác đang làm thay vì tách thành một tab hoặc cửa sổ khác.',
+  },
+  {
+    icon: FolderKanban,
+    title: 'Shelf kéo thả cho file và link',
+    description: 'Thu gom tài liệu đang dùng trong phiên làm việc, đỡ mất thời gian tìm lại.',
+  },
+  {
+    icon: Waves,
+    title: 'Media controls liền mạch',
+    description: 'Đổi bài, theo dõi phát nhạc và giữ nhịp làm việc mà không rời app chính.',
+  },
+];
+
+const premiumFeatures = [
+  'Mở rộng quyền truy cập Gemini Live khi dùng các tính năng AI thời gian thực.',
+  'Ưu tiên các trải nghiệm mới và khu vực thử nghiệm đang được phát triển.',
+  'Quản lý tài khoản và kích hoạt thanh toán VNPAY ngay trong web portal.',
+];
 
 export default function ProPage() {
   const [isLoading, setIsLoading] = useState(false);
@@ -37,23 +64,11 @@ export default function ProPage() {
     let ignore = false;
 
     const hydrateAccount = async () => {
-      const token = localStorage.getItem('notch:accessToken') ?? '';
-      if (!token) {
-        if (!ignore) {
-          setIsAccountLoading(false);
-        }
-        return;
-      }
-
       try {
-        const response = await fetch('/api/auth/me', {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+        const response = await authenticatedFetch('/api/auth/me');
 
         if (!response.ok) {
-          throw new Error('Session expired');
+          throw new Error('Phiên đăng nhập đã hết hạn');
         }
 
         const data = (await response.json()) as AccountMe;
@@ -64,7 +79,7 @@ export default function ProPage() {
         setAccountPlan(data.is_pro ? 'pro' : 'free');
         setCreatedAt(data.created_at);
       } catch {
-        localStorage.removeItem('notch:accessToken');
+        signOutImmediately();
 
         if (!ignore) {
           setAccountEmail('');
@@ -87,612 +102,151 @@ export default function ProPage() {
   }, []);
 
   const title = useMemo(() => {
-    if (accountName.trim()) {
-      return accountName.trim();
-    }
-    if (accountEmail.trim()) {
-      return accountEmail.trim();
-    }
-    return 'Your Notch Account';
+    if (accountName.trim()) return accountName.trim();
+    if (accountEmail.trim()) return accountEmail.trim();
+    return 'Tài khoản Notch của bạn';
   }, [accountEmail, accountName]);
 
   const subtitle = accountEmail.trim()
-    ? 'Your account is connected and ready to use in the Notch app.'
-    : 'Use this page to manage your account and upgrade to Premium when you are ready.';
+    ? 'Tài khoản đã được kết nối và sẵn sàng dùng trong Notch app.'
+    : 'Đăng nhập để tải thông tin tài khoản, gói hiện tại và quyền truy cập trên app.';
+
   const hasAccount = Boolean(accountEmail.trim() || accountName.trim());
   const memberSince = createdAt
-    ? new Intl.DateTimeFormat('en', { month: 'short', year: 'numeric' }).format(new Date(createdAt))
+    ? new Intl.DateTimeFormat('vi-VN', { month: 'long', year: 'numeric' }).format(new Date(createdAt))
     : null;
 
   const handleSubscribe = async () => {
     setIsLoading(true);
     setMsg(null);
-    const token = localStorage.getItem('notch:accessToken') ?? '';
-
-    if (!token) {
-      setMsg({ type: 'err', text: 'Please sign in again before starting VNPAY checkout.' });
-      setIsLoading(false);
-      return;
-    }
 
     try {
-      const response = await fetch('/api/payments/vnpay/create', {
+      const response = await authenticatedFetch('/api/payments/vnpay/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
       });
 
-      const data = await response.json() as { pay_url?: string; detail?: string };
+      const data = (await response.json()) as { pay_url?: string; detail?: string };
       if (!response.ok || !data.pay_url) {
-        throw new Error(data.detail || 'Unable to create VNPAY checkout.');
+        throw new Error(data.detail || 'Không thể tạo phiên thanh toán VNPAY.');
       }
 
       window.location.href = data.pay_url;
     } catch (error) {
       setMsg({
         type: 'err',
-        text: error instanceof Error ? error.message : 'Unable to create VNPAY checkout.',
+        text: error instanceof Error ? error.message : 'Không thể tạo phiên thanh toán VNPAY.',
       });
       setIsLoading(false);
     }
   };
 
   const handleSignOut = async () => {
-    const token = localStorage.getItem('notch:accessToken');
-
-    if (token) {
-      await fetch('/api/auth/logout', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }).catch(() => {});
-    }
-
-    localStorage.removeItem('notch:accessToken');
-    window.location.href = '/login';
+    signOutImmediately();
+    window.location.replace('/login');
   };
 
   return (
-    <div className="account-container">
-      <div className="account-card glass">
-        <div className="account-header">
-          <div className="badge">
-            <UserRound size={14} />
-            <span>Account</span>
-          </div>
-          <h1 className="account-title">Your Notch Account</h1>
-          <p className="account-subtitle">Manage your account and upgrade to Premium from one place.</p>
-        </div>
+    <main className="portal-pro-container">
+      <header className="portal-pro-header">
+        <PortalLogo />
+        <nav className="portal-pro-nav">
+          <Link href="/" className="portal-button-ghost">Trang chủ</Link>
+        </nav>
+      </header>
 
-        <section className="account-summary">
-          <div className="summary-top">
-            <div className="avatar-shell">
-              <UserRound size={26} />
+      <div className="portal-pro-content">
+        <section className="portal-pro-hero">
+          <div className="portal-pro-user-info">
+            <div className="portal-avatar-large">
+              {accountName?.charAt(0) || 'U'}
             </div>
-            <div className="summary-copy">
-              <div className="summary-headline">
-                <h2>{isAccountLoading ? 'Loading account...' : title}</h2>
-                <span className={`plan-pill ${accountPlan === 'pro' ? 'pro' : 'free'}`}>
-                  {accountPlan === 'pro' ? 'Premium' : 'Free'}
-                </span>
-              </div>
-              <p>{isAccountLoading ? 'Checking your current session and loading account details.' : subtitle}</p>
+            <div>
+              <span className="portal-badge-pro">
+                {accountPlan === 'pro' ? 'Premium Member' : 'Free Account'}
+              </span>
+              <h1>{isAccountLoading ? 'Đang tải...' : accountName || 'Người dùng Notch'}</h1>
+              <p className="portal-muted">{accountEmail}</p>
             </div>
           </div>
-
-          <div className="summary-meta">
-            <div className="meta-row">
-              <span>Email</span>
-              <strong>{isAccountLoading ? 'Loading...' : accountEmail || 'No account loaded yet'}</strong>
-            </div>
-            <div className="meta-row">
-              <span>Status</span>
-              <strong>
-                {isAccountLoading ? 'Checking...' : accountPlan === 'pro' ? 'Premium active' : 'Ready to upgrade'}
-              </strong>
-            </div>
-            <div className="meta-row">
-              <span>Member since</span>
-              <strong>{isAccountLoading ? 'Loading...' : memberSince || 'Sign in to load account data'}</strong>
-            </div>
-          </div>
-        </section>
-
-        <section className="upgrade-panel">
-          <div className="upgrade-copy">
-            <div className="badge premium">
-              <Sparkles size={14} />
-              <span>Premium</span>
-            </div>
-            <h3>Upgrade to Premium</h3>
-            <p>Start a VNPAY checkout directly from your account page and unlock the current Pro plan.</p>
-          </div>
-
-          <div className="features-list">
-            <div className="feature-item">
-              <div className="icon-wrap blue"><Zap size={18} /></div>
-              <div className="feature-text">
-                <h4>Unlimited Gemini Live</h4>
-                <p>No more usage limits for real-time AI conversations.</p>
-              </div>
-              <Check size={18} className="check-icon" />
-            </div>
-
-            <div className="feature-item">
-              <div className="icon-wrap purple"><Shield size={18} /></div>
-              <div className="feature-text">
-                <h4>Advanced Privacy</h4>
-                <p>Priority local processing and enhanced data encryption.</p>
-              </div>
-              <Check size={18} className="check-icon" />
-            </div>
-
-            <div className="feature-item">
-              <div className="icon-wrap green"><Sparkles size={18} /></div>
-              <div className="feature-text">
-                <h4>Early Access</h4>
-                <p>Be the first to try new experimental features and tools.</p>
-              </div>
-              <Check size={18} className="check-icon" />
-            </div>
-          </div>
-
-          <div className="pricing-section">
-            <div className="price">
-              <span className="amount">99,000</span>
-              <span className="period">VND</span>
-            </div>
-            <p className="billing-info">Current checkout amount for the web plan.</p>
-          </div>
-
-          {msg && <div className={`message ${msg.type}`}>{msg.text}</div>}
-
-          <div className="actions">
-            <button className="primary-button" onClick={handleSubscribe} disabled={isLoading || accountPlan === 'pro'}>
-              {isLoading ? (
-                <Loader2 className="animate-spin" size={20} />
-              ) : accountPlan === 'pro' ? (
-                <>
-                  <Check size={20} />
-                  <span>Premium Active</span>
-                </>
-              ) : (
-                <>
-                  <CreditCard size={20} />
-                  <span>Pay with VNPAY</span>
-                </>
-              )}
-            </button>
-
-            <button className="secondary-button" onClick={handleSignOut}>
-              <LogOut size={18} />
-              <span>Sign out</span>
-            </button>
-          </div>
-        </section>
-
-        <div className="account-footer">
-          <p>After upgrading, tap <b>Refresh Pro status</b> in the Notch app settings.</p>
-          <div className="links">
-            {hasAccount ? (
-              <Link href="/login">
-                <Mail size={15} />
-                <span>Switch account</span>
-              </Link>
-            ) : (
-              <>
-                <Link href="/login">
-                  <Mail size={15} />
-                  <span>Sign in</span>
-                </Link>
-                <span className="dot">•</span>
-                <Link href="/signup">
-                  <ArrowRight size={15} />
-                  <span>Create account</span>
-                </Link>
-              </>
+          
+          <div className="portal-pro-hero-actions">
+            {accountPlan !== 'pro' && (
+              <button className="portal-button-pro" onClick={handleSubscribe} disabled={isLoading}>
+                {isLoading ? 'Đang chuẩn bị...' : 'Nâng cấp Premium'}
+              </button>
             )}
           </div>
+        </section>
+
+        <div className="portal-pro-grid">
+          <div className="portal-card-pro">
+            <div className="portal-card-pro-header">
+              <UserRound size={20} />
+              <h2>Chi tiết tài khoản</h2>
+            </div>
+            <div className="portal-pro-details">
+              <div className="portal-pro-row">
+                <label>Email liên kết</label>
+                <span>{accountEmail}</span>
+              </div>
+              <div className="portal-pro-row">
+                <label>Ngày tham gia</label>
+                <span>{memberSince}</span>
+              </div>
+              <div className="portal-pro-row">
+                <label>Trạng thái gói</label>
+                <span className={accountPlan === 'pro' ? 'status-pro' : ''}>
+                  {accountPlan === 'pro' ? 'Đã kích hoạt Premium' : 'Đang sử dụng bản miễn phí'}
+                </span>
+              </div>
+
+              <div className="portal-pro-divider" />
+              
+              <button onClick={handleSignOut} className="portal-button-ghost" style={{ justifyContent: 'flex-start', padding: '0', height: 'auto', fontWeight: 600, color: 'var(--muted-strong)' }}>
+                Đăng xuất khỏi thiết bị này
+              </button>
+            </div>
+          </div>
+
+          <div className="portal-card-pro portal-card-dark">
+            <div className="portal-card-pro-header">
+              <Sparkles size={20} color="var(--accent)" />
+              <h2>Quyền lợi Notch Pro</h2>
+            </div>
+            
+            <ul className="portal-pro-features">
+              {premiumFeatures.map((feature) => (
+                <li key={feature}>
+                  <Check size={16} />
+                  {feature}
+                </li>
+              ))}
+            </ul>
+
+            <div className="portal-pro-price-tag">
+              <span className="amount">99,000</span>
+              <span className="currency">VND</span>
+            </div>
+
+            <button 
+              className={`portal-button-upgrade ${accountPlan === 'pro' ? 'is-active' : ''}`}
+              onClick={handleSubscribe}
+              disabled={isLoading || accountPlan === 'pro'}
+            >
+              {accountPlan === 'pro' ? 'Bạn đang là thành viên Pro' : 'Nâng cấp ngay với VNPAY'}
+            </button>
+            
+            {msg && <p className="portal-pro-msg">{msg.text}</p>}
+          </div>
         </div>
+
+        <footer className="portal-pro-footer">
+          <p>Mở Notch app trên Mac và chọn <strong>Refresh Pro status</strong> sau khi thanh toán thành công.</p>
+        </footer>
       </div>
-
-      <style jsx>{`
-        .account-container {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          min-height: 100vh;
-          padding: 24px;
-        }
-
-        .account-card {
-          width: 100%;
-          max-width: 560px;
-          padding: 36px;
-          border-radius: 24px;
-          animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-
-        .account-header {
-          text-align: center;
-          margin-bottom: 28px;
-        }
-
-        .badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 6px 12px;
-          background: rgba(59, 130, 246, 0.1);
-          border: 1px solid rgba(59, 130, 246, 0.18);
-          border-radius: 999px;
-          color: #7dd3fc;
-          font-size: 12px;
-          font-weight: 600;
-          margin-bottom: 16px;
-        }
-
-        .badge.premium {
-          margin-bottom: 14px;
-          background: rgba(168, 85, 247, 0.12);
-          border-color: rgba(168, 85, 247, 0.24);
-          color: #d8b4fe;
-        }
-
-        .account-title {
-          font-size: 32px;
-          font-weight: 700;
-          margin-bottom: 10px;
-          background: linear-gradient(to bottom, #fff, #a1a1aa);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-        }
-
-        .account-subtitle {
-          font-size: 15px;
-          color: var(--muted);
-          line-height: 1.5;
-        }
-
-        .account-summary,
-        .upgrade-panel {
-          border: 1px solid var(--border);
-          background: rgba(255, 255, 255, 0.025);
-          border-radius: 20px;
-          padding: 22px;
-        }
-
-        .account-summary {
-          margin-bottom: 18px;
-        }
-
-        .summary-top {
-          display: flex;
-          gap: 16px;
-          align-items: center;
-          margin-bottom: 18px;
-        }
-
-        .avatar-shell {
-          width: 56px;
-          height: 56px;
-          border-radius: 18px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: linear-gradient(135deg, rgba(59, 130, 246, 0.18), rgba(168, 85, 247, 0.16));
-          color: white;
-          flex-shrink: 0;
-        }
-
-        .summary-copy {
-          min-width: 0;
-          flex: 1;
-        }
-
-        .summary-headline {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          flex-wrap: wrap;
-          margin-bottom: 6px;
-        }
-
-        .summary-headline h2 {
-          font-size: 20px;
-          font-weight: 700;
-          margin: 0;
-          word-break: break-word;
-        }
-
-        .summary-copy p {
-          font-size: 14px;
-          line-height: 1.5;
-          color: var(--muted);
-          margin: 0;
-        }
-
-        .plan-pill {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          min-height: 28px;
-          padding: 0 10px;
-          border-radius: 999px;
-          font-size: 12px;
-          font-weight: 700;
-          letter-spacing: 0.02em;
-        }
-
-        .plan-pill.free {
-          background: rgba(255, 255, 255, 0.06);
-          color: #e4e4e7;
-        }
-
-        .plan-pill.pro {
-          background: rgba(168, 85, 247, 0.14);
-          color: #d8b4fe;
-        }
-
-        .summary-meta {
-          display: grid;
-          gap: 10px;
-        }
-
-        .meta-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 16px;
-          padding: 12px 14px;
-          border-radius: 14px;
-          background: rgba(255, 255, 255, 0.03);
-        }
-
-        .meta-row span {
-          font-size: 13px;
-          color: var(--muted);
-        }
-
-        .meta-row strong {
-          font-size: 13px;
-          color: white;
-          text-align: right;
-          word-break: break-word;
-        }
-
-        .upgrade-copy {
-          margin-bottom: 20px;
-        }
-
-        .upgrade-copy h3 {
-          font-size: 24px;
-          font-weight: 700;
-          margin-bottom: 8px;
-        }
-
-        .upgrade-copy p {
-          font-size: 14px;
-          color: var(--muted);
-          line-height: 1.55;
-        }
-
-        .features-list {
-          display: flex;
-          flex-direction: column;
-          gap: 14px;
-          margin-bottom: 24px;
-        }
-
-        .feature-item {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          padding: 12px;
-          background: rgba(255, 255, 255, 0.02);
-          border: 1px solid var(--border);
-          border-radius: 14px;
-        }
-
-        .icon-wrap {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 36px;
-          height: 36px;
-          border-radius: 10px;
-        }
-
-        .icon-wrap.blue { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
-        .icon-wrap.purple { background: rgba(168, 85, 247, 0.1); color: #a855f7; }
-        .icon-wrap.green { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
-
-        .feature-text {
-          flex: 1;
-        }
-
-        .feature-text h4 {
-          font-size: 14px;
-          font-weight: 600;
-          margin-bottom: 2px;
-        }
-
-        .feature-text p {
-          font-size: 12px;
-          color: var(--muted);
-        }
-
-        .check-icon {
-          color: #22c55e;
-        }
-
-        .pricing-section {
-          text-align: center;
-          padding: 20px;
-          background: rgba(255, 255, 255, 0.02);
-          border-radius: 16px;
-          margin-bottom: 20px;
-        }
-
-        .price {
-          margin-bottom: 4px;
-        }
-
-        .amount {
-          font-size: 36px;
-          font-weight: 800;
-        }
-
-        .period {
-          font-size: 14px;
-          color: var(--muted);
-        }
-
-        .billing-info {
-          font-size: 12px;
-          color: var(--muted);
-        }
-
-        .message {
-          padding: 12px;
-          border-radius: 10px;
-          font-size: 13px;
-          margin-bottom: 20px;
-          text-align: center;
-        }
-
-        .message.err {
-          background: rgba(239, 68, 68, 0.1);
-          border: 1px solid rgba(239, 68, 68, 0.2);
-          color: #ef4444;
-        }
-
-        .message.ok {
-          background: rgba(34, 197, 94, 0.1);
-          border: 1px solid rgba(34, 197, 94, 0.2);
-          color: #22c55e;
-        }
-
-        .actions {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-          margin-bottom: 26px;
-        }
-
-        .primary-button {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 10px;
-          height: 52px;
-          background: white;
-          color: black;
-          border-radius: 12px;
-          font-size: 16px;
-          font-weight: 600;
-          transition: all 0.2s;
-        }
-
-        .primary-button:hover:not(:disabled) {
-          background: #f4f4f5;
-          transform: translateY(-2px);
-          box-shadow: 0 10px 20px -10px rgba(255, 255, 255, 0.2);
-        }
-
-        .primary-button:disabled {
-          opacity: 0.72;
-          cursor: default;
-        }
-
-        .secondary-button {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          height: 48px;
-          background: transparent;
-          border: 1px solid var(--border);
-          color: white;
-          border-radius: 12px;
-          font-size: 14px;
-          font-weight: 500;
-          transition: all 0.2s;
-        }
-
-        .secondary-button:hover {
-          background: var(--surface-hover);
-          border-color: var(--border-hover);
-        }
-
-        .account-footer {
-          text-align: center;
-        }
-
-        .account-footer p {
-          font-size: 13px;
-          color: var(--muted);
-          line-height: 1.5;
-          margin-bottom: 16px;
-        }
-
-        .links {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 12px;
-          font-size: 14px;
-          flex-wrap: wrap;
-        }
-
-        .links a {
-          color: var(--accent);
-          font-weight: 600;
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-        }
-
-        .dot {
-          color: var(--border);
-        }
-
-        .animate-spin {
-          animation: spin 1s linear infinite;
-        }
-
-        @media (max-width: 640px) {
-          .account-card {
-            padding: 24px;
-          }
-
-          .summary-top {
-            align-items: flex-start;
-          }
-
-          .meta-row {
-            flex-direction: column;
-            align-items: flex-start;
-          }
-
-          .meta-row strong {
-            text-align: left;
-          }
-        }
-
-        @keyframes slideUp {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
-    </div>
+    </main>
   );
 }

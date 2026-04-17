@@ -1,13 +1,12 @@
 import { NextResponse } from 'next/server'
 
-import { deleteAuthSession, getAuthenticatedUser } from '@/lib/notch-auth'
+import { revokeAuthSessions } from '@/lib/notch-auth'
 
 export async function POST(req: Request) {
-  const auth = await getAuthenticatedUser(req)
-  if (!auth) {
-    return NextResponse.json({ detail: 'Invalid or expired session token.' }, { status: 401 })
+  const result = await revokeAuthSessions(req)
+  if (!result.hasTokens) {
+    return NextResponse.json({ detail: 'Missing session token.' }, { status: 400 })
   }
 
-  await deleteAuthSession(req)
   return new NextResponse(null, { status: 204 })
 }

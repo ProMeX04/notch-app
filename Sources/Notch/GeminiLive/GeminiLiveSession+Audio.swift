@@ -14,22 +14,12 @@ extension GeminiLiveSession {
                 audioIO.setOutputVolume(outputVolume)
                 outputPrepared = true
 
-                // Start capture early so WebRTC AEC can calibrate the echo path
-                // before the first user turn. processCapturedBuffer already guards
-                // with `hasCompletedSetup`, so no audio will be sent prematurely.
-                if microphoneEnabled {
-                    try audioIO.startCapture { [weak self] buffer in
-                        guard let self else { return }
-                        // Buffer is already cloned by GeminiLiveWebRTCAudioIO — no second clone needed.
-                        self.audioProcessingQueue.async { [weak self] in
-                            guard let self else { return }
-                            if self.inputConverter == nil {
-                                self.inputConverter = AVAudioConverter(from: buffer.format, to: self.inputTargetFormat)
-                            }
-                            self.processCapturedBuffer(buffer)
-                        }
-                    }
-                }
+                // Mic capture is deliberately NOT started here. CoreAudio's
+                // `initAndStartRecording` is the heaviest op in the connect
+                // path; kicking it off before `setupComplete` only wastes
+                // cycles (server hasn't started sending far-end audio yet, so
+                // any AEC "warm-up" has no reference signal). Capture now
+                // starts from `handleSetupComplete` → `startWebRTCMicrophone`.
             } catch {
                 handleFailure(message: error.localizedDescription)
             }
@@ -112,6 +102,7 @@ extension GeminiLiveSession {
 
     func stopMicrophone(notifyModel: Bool) {
         onMicrophoneInputLevel?(0)
+        onMicrophoneCaptureStateChange?(false)
 
         if captureMode == .webRTC {
             webRTCAudioIO?.stopCapture()
@@ -321,6 +312,7 @@ extension GeminiLiveSession {
             if !outputEngine.isRunning {
                 try outputEngine.start()
             }
+            onMicrophoneCaptureStateChange?(true)
         } catch {
             handleFailure(message: "Couldn't start microphone capture: \(error.localizedDescription)")
             return
@@ -335,7 +327,10 @@ extension GeminiLiveSession {
 
         // Capture may already be running (started early in prepareOutputIfNeeded
         // for AEC warm-up). In that case, skip — audio is already flowing.
-        guard !audioIO.isCapturing else { return }
+        guard !audioIO.isCapturing else {
+            onMicrophoneCaptureStateChange?(true)
+            return
+        }
 
         do {
             try audioIO.startCapture { [weak self] buffer in
@@ -349,6 +344,7 @@ extension GeminiLiveSession {
                     self.processCapturedBuffer(buffer)
                 }
             }
+            onMicrophoneCaptureStateChange?(true)
         } catch {
             captureMode = .standard
             onStateChange?(.connected, "WebRTC audio failed. Using standard microphone mode.")
@@ -382,6 +378,7 @@ extension GeminiLiveSession {
 
         do {
             try engine.start()
+            onMicrophoneCaptureStateChange?(true)
         } catch {
             handleFailure(message: "Couldn't start standard microphone capture: \(error.localizedDescription)")
         }

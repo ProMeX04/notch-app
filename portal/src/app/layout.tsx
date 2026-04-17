@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { PortalPendingLogoutFlusher } from "@/components/portal/PortalPendingLogoutFlusher";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -13,8 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Notch Portal | Intelligence at your fingertips",
-  description: "The ultimate productivity companion for your Mac. Focus, work, and collaborate with AI at your fingertips.",
+  title: "Notch | Focus, drag & drop và điều khiển media ngay trên notch",
+  description:
+    "Notch là app notch cho macOS giúp bạn focus với Pomodoro, kéo thả file vào shelf, điều khiển media và dùng Gemini Live trong một giao diện gọn nhẹ.",
 };
 
 export default function RootLayout({
@@ -23,8 +25,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body>{children}</body>
+    <html lang="vi" className={`${geistSans.variable} ${geistMono.variable}`}>
+      <body className="portal-body">
+        <PortalPendingLogoutFlusher />
+        {children}
+      </body>
     </html>
   );
 }

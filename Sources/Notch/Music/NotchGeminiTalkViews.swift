@@ -505,7 +505,7 @@ struct GeminiTalkPanelView: View {
         presentationModel.selectPanel(.settings)
     }
 
-    /// No managed Gemini backend is configured in the notch.
+    /// Setup state shown when Talk is not ready yet (missing API key, server config, or login).
     private var noGeminiKeySetupView: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(gemini.selectedConnectionSetupTitle)
@@ -519,21 +519,31 @@ struct GeminiTalkPanelView: View {
             GeminiActionButton(
                 title: gemini.selectedConnectionManageButtonTitle,
                 icon: "key.fill",
-                tint: statusColor
+                tint: themeAccent
             ) {
                 openSettingsPanel()
             }
             .frame(maxWidth: .infinity)
+        }
+        .padding(.leading, 12)
+        .padding(.top, 8)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
 
-                GeminiActionButton(
-                    title: Localization.get(gemini.connectionButtonTitle, lang: appLanguage),
-                    icon: gemini.connectionButtonIcon,
-                    tint: themeAccent
-                ) {
-                    gemini.toggleConnection()
-                }
-            .disabled(gemini.connectionState == .connecting || !gemini.hasConfiguredAPIKey)
-            .opacity(gemini.hasConfiguredAPIKey ? 1 : 0.45)
+    private var proLockedTalkView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Mua Notch Pro để sử dụng")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.white.opacity(0.62))
+                .fixedSize(horizontal: false, vertical: true)
+
+            GeminiActionButton(
+                title: Localization.get("Buy Notch Pro", lang: appLanguage),
+                icon: "sparkles",
+                tint: themeAccent
+            ) {
+                gemini.openWebProCheckout()
+            }
             .frame(maxWidth: .infinity)
         }
         .padding(.leading, 12)
@@ -565,7 +575,7 @@ struct GeminiTalkPanelView: View {
 
                                 Group {
                                     if gemini.modelTranscript.isEmpty {
-                                        Text(Localization.get("Gemini is listening...", lang: appLanguage))
+                                        Text(Localization.get(gemini.connectedPlaceholderText, lang: appLanguage))
                                             .foregroundStyle(.white.opacity(0.42))
                                     } else {
                                         ProgressiveRevealText(text: gemini.modelTranscript, animateOnAppear: false)
@@ -633,7 +643,9 @@ struct GeminiTalkPanelView: View {
                 } else {
                     // Not connected state
                     VStack(spacing: 10) {
-                        if gemini.hasSavedAPIKey {
+                        if gemini.requiresProForCurrentConnection {
+                            proLockedTalkView
+                        } else if gemini.hasSavedAPIKey {
                             switch setupViewMode {
                             case .home:
                                 setupHomeContent

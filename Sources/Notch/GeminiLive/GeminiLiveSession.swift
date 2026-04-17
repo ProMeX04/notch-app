@@ -77,6 +77,7 @@ final class GeminiLiveSession: @unchecked Sendable {
     var onTurnComplete: (@Sendable () -> Void)?
     var onModelThinkingStateChange: (@Sendable (Bool) -> Void)?
     var onMicrophoneInputLevel: (@Sendable (Double) -> Void)?
+    var onMicrophoneCaptureStateChange: (@Sendable (Bool) -> Void)?
     var onUsageMetadata: (@Sendable (GeminiLiveUsageMetadata) -> Void)?
     var onFunctionStarted: (@Sendable (_ name: String, _ args: [String: Any]) -> Void)?
     var onFunctionExecuted: (@Sendable (_ name: String, _ args: [String: Any], _ result: [String: Any]) -> Void)?
@@ -115,6 +116,11 @@ final class GeminiLiveSession: @unchecked Sendable {
     let sendQueue = DispatchQueue(label: "dev.notch.gemini.send")
     let audioProcessingQueue = DispatchQueue(label: "dev.notch.gemini.capture")
     let playbackQueue = DispatchQueue(label: "dev.notch.gemini.playback")
+    /// Serial queue for all blocking CoreAudio / WebRTC lifecycle work
+    /// (factory init, playout/record start & stop, engine stop, tap removal).
+    /// Keeping these off the caller thread prevents UI stutter when the user
+    /// presses Connect / Disconnect from the main thread.
+    let audioLifecycleQueue = DispatchQueue(label: "dev.notch.gemini.audio-lifecycle", qos: .userInitiated)
 
     let outputEngine = AVAudioEngine()
     let outputPlayer = AVAudioPlayerNode()
@@ -209,6 +215,7 @@ final class GeminiLiveSession: @unchecked Sendable {
         userInitiatedDisconnect = userInitiated
         cancelPendingReconnect()
         onMicrophoneInputLevel?(0)
+        onMicrophoneCaptureStateChange?(false)
         onUsageMetadata?(.zero)
 
         if userInitiated {
@@ -216,13 +223,42 @@ final class GeminiLiveSession: @unchecked Sendable {
             latestSessionHandle = nil
             latestSessionHandleIsResumable = false
             clearPendingExecApprovals()
+            isResumingConnection = false
+            // Fire the disconnected state right away so the UI button/label
+            // updates instantly even if the audio stack is still winding down.
+            onStateChange?(.disconnected, "Disconnected.")
         }
 
-        tearDownConnection()
+        // Cancel the socket synchronously so no more receive/send callbacks
+        // fire against this session, and clear fast state flags.
+        let pendingSocket = socketTask
+        socketTask = nil
+        hasCompletedSetup = false
+        setupCompleteTime = nil
+        cancelAudioCaptureMonitor()
+        resetPlayback()
+        pendingSocket?.cancel(with: .normalClosure, reason: nil)
 
-        if userInitiated {
-            isResumingConnection = false
-            onStateChange?(.disconnected, "Disconnected.")
+        // Heavy CoreAudio / WebRTC teardown goes to the serial queue so the
+        // caller (usually the main thread on user disconnect) never blocks.
+        audioLifecycleQueue.async { [weak self] in
+            guard let self else { return }
+            // If a concurrent startConnection block ran between the sync
+            // `socketTask = nil` above and this point, it may have installed
+            // a fresh socket. Cancel it too while we're still in a
+            // user-initiated disconnect.
+            if self.userInitiatedDisconnect, let lingeringSocket = self.socketTask {
+                self.socketTask = nil
+                lingeringSocket.cancel(with: .normalClosure, reason: nil)
+            }
+            self.stopMicrophone(notifyModel: false)
+            self.teardownMicrophoneCapture()
+            self.webRTCAudioIO?.stop()
+            self.webRTCAudioIO = nil
+            if self.outputEngine.isRunning {
+                self.outputEngine.stop()
+            }
+            self.outputPrepared = false
         }
     }
 
@@ -255,6 +291,7 @@ final class GeminiLiveSession: @unchecked Sendable {
             if enabled {
                 startMicrophone()
             } else {
+                onMicrophoneCaptureStateChange?(false)
                 cancelAudioCaptureMonitor()
                 sendJSONObject([
                     "realtimeInput": [
@@ -409,8 +446,8 @@ final class GeminiLiveSession: @unchecked Sendable {
         displayState: GeminiLiveConnectionState,
         preserveAudioSession: Bool = false
     ) {
-        tearDownConnection(preserveAudioSession: preserveAudioSession)
-
+        // Fast state updates on the caller thread so the UI can reflect
+        // "Connecting..." immediately, before any heavy audio work runs.
         captureMode = .webRTC
         audioChunkCount = 0
         userInitiatedDisconnect = false
@@ -423,14 +460,25 @@ final class GeminiLiveSession: @unchecked Sendable {
             return
         }
 
-        prepareOutputIfNeeded()
-
-        let task = urlSession.webSocketTask(with: request)
-        socketTask = task
-        task.resume()
         onStateChange?(displayState, statusText)
-        receiveNextMessage()
-        sendSetup(using: configuration, displayState: displayState)
+
+        // Dispatch the blocking portion (CoreAudio / WebRTC init, WebSocket
+        // creation, initial setup send) to a serial background queue. The
+        // queue also serializes with teardown so new connects always see
+        // a clean audio stack.
+        audioLifecycleQueue.async { [weak self] in
+            guard let self else { return }
+            guard !self.userInitiatedDisconnect else { return }
+
+            self.tearDownConnection(preserveAudioSession: preserveAudioSession)
+            self.prepareOutputIfNeeded()
+
+            let task = self.urlSession.webSocketTask(with: request)
+            self.socketTask = task
+            task.resume()
+            self.receiveNextMessage()
+            self.sendSetup(using: configuration, displayState: displayState)
+        }
     }
 
     func tearDownConnection(preserveAudioSession: Bool = false) {

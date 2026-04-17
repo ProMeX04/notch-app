@@ -1,11 +1,17 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
+import { PortalLogo } from '@/components/portal/PortalLogo';
+import { storeAuthSession } from '@/lib/portal-auth-client';
 
 type BridgeAuthPayload = {
   access_token: string;
+  expires_at: string;
+  refresh_token: string;
+  refresh_expires_at: string;
   user: {
     email: string;
     name: string | null;
@@ -19,11 +25,17 @@ function isBridgeAuthPayload(value: unknown): value is BridgeAuthPayload {
 
   const candidate = value as {
     access_token?: unknown;
+    expires_at?: unknown;
+    refresh_token?: unknown;
+    refresh_expires_at?: unknown;
     user?: { email?: unknown; name?: unknown; is_pro?: unknown };
   };
 
   return (
     typeof candidate.access_token === 'string' &&
+    typeof candidate.expires_at === 'string' &&
+    typeof candidate.refresh_token === 'string' &&
+    typeof candidate.refresh_expires_at === 'string' &&
     !!candidate.user &&
     typeof candidate.user.email === 'string' &&
     typeof candidate.user.is_pro === 'boolean'
@@ -32,62 +44,30 @@ function isBridgeAuthPayload(value: unknown): value is BridgeAuthPayload {
 
 function BridgeCard({ message }: { message: string }) {
   return (
-    <div className="bridge-container">
-      <div className="bridge-card glass">
-        <Loader2 className="spinner" size={24} />
+    <main className="portal-bridge-page">
+      <div className="portal-loading-card portal-card">
+        <PortalLogo caption="Đăng nhập bảo mật từ Notch app" />
+        <Loader2 className="portal-spinner" size={24} />
         <p>{message}</p>
+        <Link href="/" className="portal-text-link">
+          Quay về trang chủ
+        </Link>
       </div>
-
-      <style jsx>{`
-        .bridge-container {
-          min-height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 24px;
-        }
-
-        .bridge-card {
-          width: 100%;
-          max-width: 420px;
-          padding: 28px;
-          border-radius: 22px;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 14px;
-          text-align: center;
-        }
-
-        .bridge-card p {
-          color: var(--muted);
-          line-height: 1.5;
-        }
-
-        .spinner {
-          animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
-    </div>
+    </main>
   );
 }
 
 function BridgeAuthContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [message, setMessage] = useState('Signing you in from Notch...');
+  const [message, setMessage] = useState('Đang đăng nhập từ Notch app...');
 
   useEffect(() => {
     let ignore = false;
 
     const bridgeToken = searchParams.get('token')?.trim() ?? '';
     if (!bridgeToken) {
-      setMessage('This sign-in link is invalid. Please return to the Notch app and try again.');
+      setMessage('Liên kết đăng nhập không hợp lệ. Vui lòng quay lại Notch app và thử lại.');
       return;
     }
 
@@ -101,22 +81,24 @@ function BridgeAuthContent() {
 
         const data = await response.json();
         if (!response.ok) {
-          const detail = typeof data === 'object' && data && 'detail' in data ? String((data as { detail?: string }).detail ?? '') : '';
-          throw new Error(detail || 'Unable to sign you in.');
+          const detail =
+            typeof data === 'object' && data && 'detail' in data
+              ? String((data as { detail?: string }).detail ?? '')
+              : '';
+          throw new Error(detail || 'Không thể đăng nhập.');
         }
 
         if (!isBridgeAuthPayload(data)) {
-          throw new Error('Unable to sign you in.');
+          throw new Error('Không thể đăng nhập.');
         }
 
         if (ignore) return;
 
-        localStorage.setItem('notch:accessToken', data.access_token);
-
+        storeAuthSession(data);
         router.replace('/pro');
       } catch (error) {
         if (ignore) return;
-        setMessage(error instanceof Error ? error.message : 'Unable to sign you in.');
+        setMessage(error instanceof Error ? error.message : 'Không thể đăng nhập.');
       }
     };
 
@@ -132,7 +114,7 @@ function BridgeAuthContent() {
 
 export default function AuthBridgePage() {
   return (
-    <Suspense fallback={<BridgeCard message="Preparing secure sign-in..." />}>
+    <Suspense fallback={<BridgeCard message="Đang chuẩn bị đăng nhập an toàn..." />}>
       <BridgeAuthContent />
     </Suspense>
   );

@@ -340,7 +340,7 @@ struct CompactTalkView: View {
                 CompactTalkPulseView(
                     tint: accentColor,
                     inputLevel: gemini.microphoneInputLevel,
-                    isListening: gemini.connectionState == .connected && gemini.effectiveMicrophoneEnabled,
+                    isListening: gemini.isActivelyListening,
                     isModelSpeaking: gemini.isModelSpeaking
                 )
                 Spacer(minLength: 0)
@@ -641,6 +641,7 @@ struct Localization {
         "General": ["English": "General", "Tiếng Việt": "Chung"],
         "API Keys": ["English": "API Keys", "Tiếng Việt": "API Key"],
         "Language": ["English": "Language", "Tiếng Việt": "Ngôn ngữ"],
+        "Launch at Login": ["English": "Launch at Login", "Tiếng Việt": "Khởi động cùng máy"],
         "Hover to Open": ["English": "Hover to Open", "Tiếng Việt": "Mở khi rê chuột"],
         "Hover Open Delay": ["English": "Hover Open Delay", "Tiếng Việt": "Độ trễ mở khi rê chuột"],
         "Adjust how long the pointer must stay over the notch before it opens.": ["English": "Adjust how long the pointer must stay over the notch before it opens.", "Tiếng Việt": "Chỉnh thời gian con trỏ cần đứng trên notch trước khi nó mở ra."],
@@ -844,10 +845,6 @@ struct Localization {
         "Sign up": ["English": "Sign up", "Tiếng Việt": "Tạo tài khoản"],
         "Sign out": ["English": "Sign out", "Tiếng Việt": "Đăng xuất"],
         "Open Settings Tab": ["English": "Open Settings Tab", "Tiếng Việt": "Mở tab Cài đặt"],
-        "Subscriptions are billed by Apple. Manage or cancel in System Settings → Apple Account → Subscriptions.": [
-            "English": "Subscriptions are billed by Apple. Manage or cancel in System Settings → Apple Account → Subscriptions.",
-            "Tiếng Việt": "Thanh toán qua Apple. Quản lý hoặc hủy tại Cài đặt Hệ thống → Tài khoản Apple → Đăng ký.",
-        ],
         "Notch Pro is required to use the hosted Gemini Live server.": [
             "English": "Notch Pro is required to use the hosted Gemini Live server.",
             "Tiếng Việt": "Cần Notch Pro để dùng máy chủ Gemini Live được Notch cung cấp.",
@@ -884,17 +881,10 @@ struct Localization {
             "English": "Invalid or expired session token.",
             "Tiếng Việt": "Token không hợp lệ hoặc đã hết hạn.",
         ],
-        "Buy Notch Pro on the web": [
-            "English": "Buy Notch Pro on the web",
-            "Tiếng Việt": "Mua Notch Pro trên web",
-        ],
+        "Buy Notch Pro": ["English": "Buy Notch Pro", "Tiếng Việt": "Mua Notch Pro"],
         "Refresh Pro status": [
             "English": "Refresh Pro status",
             "Tiếng Việt": "Cập nhật trạng thái Pro",
-        ],
-        "You can also subscribe through the Mac App Store.": [
-            "English": "You can also subscribe through the Mac App Store.",
-            "Tiếng Việt": "Bạn cũng có thể đăng ký qua Mac App Store.",
         ],
     ]
 
@@ -911,6 +901,9 @@ struct GlobalSettingsView: View {
     @AppStorage("app_language") private var appLanguage: String = "English"
     @State private var webSessionTokenDraft = ""
     @State private var lastPastedWebSessionToken = ""
+    @State private var launchAtLoginEnabled = false
+    @State private var launchAtLoginError: String?
+    private let launchAtLoginController = LaunchAtLoginController()
 
     private var tint: Color {
         presentationModel.accentColor.ensureMinimumBrightness(factor: 0.78)
@@ -937,6 +930,7 @@ struct GlobalSettingsView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .onAppear(perform: refreshLaunchAtLoginState)
         .onChange(of: webSessionTokenDraft) { _, newValue in
             if newValue != lastPastedWebSessionToken {
                 lastPastedWebSessionToken = ""
@@ -964,21 +958,25 @@ struct GlobalSettingsView: View {
                                     .font(.system(size: 14, weight: .bold))
                                     .foregroundStyle(.white.opacity(0.95))
 
-                                if gemini.isProUser {
-                                    Text("PRO")
-                                        .font(.system(size: 9, weight: .black, design: .rounded))
-                                        .foregroundStyle(.black.opacity(0.85))
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 3)
-                                        .background(
+                                Text(gemini.isProUser ? "PRO" : "FREE")
+                                    .font(.system(size: 9, weight: .black, design: .rounded))
+                                    .foregroundStyle(gemini.isProUser ? .black.opacity(0.85) : .white.opacity(0.92))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(
+                                        Capsule(style: .continuous)
+                                            .fill(
+                                                gemini.isProUser
+                                                    ? Color(nsColor: .systemYellow)
+                                                    : Color.white.opacity(0.14)
+                                            )
+                                    )
+                                    .overlay {
+                                        if !gemini.isProUser {
                                             Capsule(style: .continuous)
-                                                .fill(Color(nsColor: .systemYellow))
-                                        )
-                                } else {
-                                    Text(Localization.get("Not subscribed", lang: appLanguage))
-                                        .font(.system(size: 10, weight: .medium))
-                                        .foregroundStyle(.white.opacity(0.48))
-                                }
+                                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                                        }
+                                    }
                             }
 
                             Button(Localization.get("Sign out", lang: appLanguage)) {
@@ -1033,7 +1031,7 @@ struct GlobalSettingsView: View {
                     if gemini.isBackendAuthenticated && !gemini.isProUser {
                         HStack(spacing: 8) {
                             StandardActionButton(
-                                title: Localization.get("Buy Notch Pro on the web", lang: appLanguage),
+                                title: Localization.get("Buy Notch Pro", lang: appLanguage),
                                 icon: "sparkles",
                                 tint: tint,
                                 variant: .primary
@@ -1147,6 +1145,29 @@ struct GlobalSettingsView: View {
                         }
                         .toggleStyle(NotchSwitchStyle(tint: tint))
                         .frame(maxWidth: .infinity, alignment: .leading)
+
+                        settingsGroupedDivider()
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Toggle(isOn: Binding(
+                                get: { launchAtLoginEnabled },
+                                set: { updateLaunchAtLogin(to: $0) }
+                            )) {
+                                Text(Localization.get("Launch at Login", lang: appLanguage))
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.9))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .toggleStyle(NotchSwitchStyle(tint: tint))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                            if let launchAtLoginError, !launchAtLoginError.isEmpty {
+                                Text(launchAtLoginError)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(Color(nsColor: .systemRed).opacity(0.9))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
                     }
             }
             .padding(.horizontal, 13)
@@ -1174,6 +1195,22 @@ struct GlobalSettingsView: View {
 
     private var hoverDelayLabel: String {
         String(format: "%.2fs", presentationModel.hoverOpenDelaySeconds)
+    }
+
+    private func refreshLaunchAtLoginState() {
+        launchAtLoginController.refreshStatus()
+        launchAtLoginEnabled = launchAtLoginController.isEnabled
+    }
+
+    private func updateLaunchAtLogin(to enabled: Bool) {
+        do {
+            try launchAtLoginController.setEnabled(enabled)
+            launchAtLoginError = nil
+            refreshLaunchAtLoginState()
+        } catch {
+            launchAtLoginError = error.localizedDescription
+            refreshLaunchAtLoginState()
+        }
     }
 
     private var accountAvatar: some View {

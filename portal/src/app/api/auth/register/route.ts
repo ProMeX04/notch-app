@@ -8,7 +8,7 @@ export async function POST(req: Request) {
     const { name, email, password } = await req.json();
 
     if (!email || !password) {
-      return NextResponse.json({ error: 'Missing email or password' }, { status: 400 });
+      return NextResponse.json({ error: 'Vui lòng nhập đầy đủ email và mật khẩu' }, { status: 400 });
     }
 
     const existingUser = await prisma.user.findUnique({
@@ -16,7 +16,7 @@ export async function POST(req: Request) {
     });
 
     if (existingUser) {
-      return NextResponse.json({ error: 'User already exists' }, { status: 400 });
+      return NextResponse.json({ error: 'Email này đã được sử dụng' }, { status: 400 });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -33,6 +33,6 @@ export async function POST(req: Request) {
     return NextResponse.json(payload, { status: 201 });
   } catch (error) {
     console.error('Registration error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Đã có lỗi xảy ra trong quá trình đăng ký' }, { status: 500 });
   }
 }

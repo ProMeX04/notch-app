@@ -8,7 +8,7 @@ export async function POST(req: Request) {
     const { email, password } = await req.json();
 
     if (!email || !password) {
-      return NextResponse.json({ error: 'Missing email or password' }, { status: 400 });
+      return NextResponse.json({ error: 'Vui lòng nhập email và mật khẩu' }, { status: 400 });
     }
 
     const user = await prisma.user.findUnique({
@@ -16,7 +16,7 @@ export async function POST(req: Request) {
     });
 
     if (!user || !user.password) {
-      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
+      return NextResponse.json({ error: 'Email hoặc mật khẩu không chính xác' }, { status: 401 });
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
@@ -29,8 +29,11 @@ export async function POST(req: Request) {
     // For now, we'll just return the user data as a success response
     const payload = await createAuthPayload(user);
     return NextResponse.json(payload);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Login error:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Đã có lỗi xảy ra' },
+      { status: 500 }
+    );
   }
 }

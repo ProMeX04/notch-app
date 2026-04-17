@@ -20,6 +20,10 @@ let package = Package(
             name: "NotchToolParityTests",
             targets: ["NotchToolParityTests"]
         ),
+        .executable(
+            name: "NotchShelfTests",
+            targets: ["NotchShelfTests"]
+        ),
     ],
     dependencies: [
         .package(url: "https://github.com/livekit/webrtc-xcframework.git", exact: "144.7559.02"),
@@ -28,10 +32,19 @@ let package = Package(
         .target(
             name: "NotchTooling"
         ),
+        .target(
+            name: "NotchShelfCore",
+            swiftSettings: [
+                // Allow `@testable import NotchShelfCore` from Notch and NotchShelfTests
+                // in both debug and release builds.
+                .unsafeFlags(["-enable-testing"]),
+            ]
+        ),
         .executableTarget(
             name: "Notch",
             dependencies: [
                 "NotchTooling",
+                "NotchShelfCore",
                 .product(name: "LiveKitWebRTC", package: "webrtc-xcframework"),
             ],
             resources: [
@@ -46,6 +59,10 @@ let package = Package(
         .executableTarget(
             name: "NotchToolParityTests",
             dependencies: ["NotchTooling"]
+        ),
+        .executableTarget(
+            name: "NotchShelfTests",
+            dependencies: ["NotchShelfCore"]
         ),
     ]
 )

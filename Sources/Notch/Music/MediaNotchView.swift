@@ -1,3 +1,4 @@
+@testable import NotchShelfCore
 import SwiftUI
 import UniformTypeIdentifiers
 

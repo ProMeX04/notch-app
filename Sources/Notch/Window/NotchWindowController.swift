@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+@testable import NotchShelfCore
 import SwiftUI
 
 @MainActor

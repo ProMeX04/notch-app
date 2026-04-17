@@ -117,6 +117,21 @@ struct Bookmark: Sendable, Equatable, Codable {
 }
 
 final class NotchShelfPersistenceService {
+    enum LoadResult: Equatable {
+        /// The persistence file does not exist yet. Safe to treat as an empty
+        /// shelf and to write a fresh file.
+        case missing
+        /// The persistence file decoded successfully. The associated array is
+        /// the set of items we could re-hydrate (some records may have been
+        /// dropped if their bookmarks no longer resolve).
+        case loaded([NotchShelfItem])
+        /// The persistence file exists but could not be decoded. The caller
+        /// MUST NOT overwrite the file in this case — otherwise a transient
+        /// read/decode error (or a future schema mismatch) silently destroys
+        /// the user's shelf.
+        case corrupted
+    }
+
     private let fileURL: URL
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -134,13 +149,27 @@ final class NotchShelfPersistenceService {
         )
     }
 
-    func load() -> [NotchShelfItem] {
-        guard let data = try? Data(contentsOf: fileURL),
-              let records = try? decoder.decode([PersistedShelfItem].self, from: data) else {
-            return []
+    func loadResult() -> LoadResult {
+        guard fileManager.fileExists(atPath: fileURL.path) else {
+            return .missing
         }
 
-        return records.compactMap(restoreItem)
+        guard let data = try? Data(contentsOf: fileURL) else {
+            return .corrupted
+        }
+
+        guard let records = try? decoder.decode([PersistedShelfItem].self, from: data) else {
+            return .corrupted
+        }
+
+        return .loaded(records.compactMap(restoreItem))
+    }
+
+    func load() -> [NotchShelfItem] {
+        if case let .loaded(items) = loadResult() {
+            return items
+        }
+        return []
     }
 
     func save(_ items: [NotchShelfItem]) {

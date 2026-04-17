@@ -1,4 +1,5 @@
 import AppKit
+@testable import NotchShelfCore
 import UserNotifications
 
 @MainActor

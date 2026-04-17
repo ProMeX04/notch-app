@@ -200,8 +200,24 @@ final class NotchShelfViewModel: ObservableObject {
     ) {
         self.dropService = dropService
         self.persistenceService = persistenceService
-        self.items = persistenceService.load()
-        persistenceService.save(items)
+
+        switch persistenceService.loadResult() {
+        case .missing:
+            // No file yet — start empty; avoid creating a file until the user
+            // actually puts something on the shelf.
+            self.items = []
+        case let .loaded(items):
+            self.items = items
+            // Re-save to prune records whose bookmarks could not be resolved.
+            // Only do this when we know the file decoded cleanly, otherwise we
+            // would overwrite a file that may still contain recoverable bytes.
+            persistenceService.save(items)
+        case .corrupted:
+            // Preserve the on-disk payload so the user (or a future migration)
+            // can try to recover it. Bug #9: previously we saved `[]` here,
+            // silently destroying the shelf on any transient decode failure.
+            self.items = []
+        }
     }
 
     deinit {
@@ -391,7 +407,7 @@ final class NotchShelfViewModel: ObservableObject {
         debouncedPersist()
     }
 
-    private func merge(_ newItems: [NotchShelfItem]) {
+    func merge(_ newItems: [NotchShelfItem]) {
         let existingKeys = Set(items.map(\.identityKey))
         var seenKeys = existingKeys
         var mergedItems: [NotchShelfItem] = []
@@ -409,8 +425,11 @@ final class NotchShelfViewModel: ObservableObject {
 
         guard !mergedItems.isEmpty else { return }
         items.insert(contentsOf: mergedItems.reversed(), at: 0)
-        if let firstItem = mergedItems.first {
-            selectedItemIDs = [firstItem.id]
+        // Bug #2: select the VISUALLY topmost new item. Because we insert
+        // `mergedItems.reversed()` at index 0, the topmost item on screen is
+        // `mergedItems.last`, not `mergedItems.first`.
+        if let topmostNewItem = mergedItems.last {
+            selectedItemIDs = [topmostNewItem.id]
         }
         debouncedPersist()
     }

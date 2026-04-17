@@ -72,5 +72,10 @@ let package = Package(
             name: "NotchShelfTests",
             dependencies: ["NotchShelfCore"]
         ),
+        .executableTarget(
+            name: "NotchFocusTests",
+            dependencies: ["NotchFocusCore"],
+            path: "Tests/NotchFocusTests"
+        ),
     ]
 )

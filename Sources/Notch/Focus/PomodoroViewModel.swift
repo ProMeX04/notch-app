@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import Combine
 
@@ -143,19 +144,46 @@ final class PomodoroViewModel: ObservableObject {
 
     private var phaseCompletionTask: Task<Void, Never>?
     private var phaseEndDate: Date?
+    private var scheduledPhaseTaskID = UUID()
+    private var isHandlingPhaseCompletion = false
     /// Avoids wiping persisted `selectedTaskId` while assigning `tasks` then `selectedTaskId` during `loadTasks()`.
     private var suppressTaskPersistence = false
     private let userDefaults: UserDefaults
     private let learningStatsStore: LearningStatsStore
+    private let workspaceNotificationCenter: NotificationCenter
+    private let nowProvider: () -> Date
+    private let sleepHandler: @Sendable (TimeInterval) async throws -> Void
+    private var sleepWakeCancellables = Set<AnyCancellable>()
     @Published private(set) var completedFocusSessions = 0
     private var recordedFocusSecondsForCurrentPhase = 0
 
-    init(
+    convenience init(
         userDefaults: UserDefaults = .standard,
         learningStatsStore: LearningStatsStore
     ) {
+        self.init(
+            userDefaults: userDefaults,
+            learningStatsStore: learningStatsStore,
+            workspaceNotificationCenter: NSWorkspace.shared.notificationCenter,
+            nowProvider: { .now },
+            sleepHandler: { duration in
+                try await Task.sleep(for: .seconds(duration))
+            }
+        )
+    }
+
+    init(
+        userDefaults: UserDefaults,
+        learningStatsStore: LearningStatsStore,
+        workspaceNotificationCenter: NotificationCenter,
+        nowProvider: @escaping () -> Date,
+        sleepHandler: @escaping @Sendable (TimeInterval) async throws -> Void
+    ) {
         self.userDefaults = userDefaults
         self.learningStatsStore = learningStatsStore
+        self.workspaceNotificationCenter = workspaceNotificationCenter
+        self.nowProvider = nowProvider
+        self.sleepHandler = sleepHandler
 
         let focusDurationOverrideSeconds = Self.optionalInt(
             forKey: Self.focusDurationOverrideSecondsKey,
@@ -201,6 +229,7 @@ final class PomodoroViewModel: ObservableObject {
         remainingSeconds = focusDurationOverrideSeconds ?? (resolvedPreset.focusMinutes * 60)
         loadTasks()
         restoreRuntimeStateIfAvailable()
+        configureSleepWakeObservers()
         // `phase` may stay `.focus` after restore (no `didSet` fire) — ensure a reminder exists.
         refreshPhaseReminder()
     }
@@ -317,7 +346,7 @@ final class PomodoroViewModel: ObservableObject {
         hasActiveSession = true
         isRunning = true
         evaluateFullscreenState()
-        phaseEndDate = .now.addingTimeInterval(TimeInterval(remainingSeconds))
+        phaseEndDate = nowProvider().addingTimeInterval(TimeInterval(remainingSeconds))
         startPhaseCompletionTask()
         persistRuntimeState()
     }
@@ -325,20 +354,23 @@ final class PomodoroViewModel: ObservableObject {
     func pause() {
         guard isRunning else { return }
 
-        recordCurrentFocusProgressIfNeeded(referenceDate: .now)
-        remainingSeconds = remainingSeconds(at: .now)
+        let now = nowProvider()
+        recordCurrentFocusProgressIfNeeded(referenceDate: now)
+        remainingSeconds = remainingSeconds(at: now)
         isRunning = false
         phaseEndDate = nil
         phaseCompletionTask?.cancel()
         phaseCompletionTask = nil
+        scheduledPhaseTaskID = UUID()
         persistRuntimeState()
     }
 
     func reset() {
-        recordCurrentFocusProgressIfNeeded(referenceDate: .now)
+        recordCurrentFocusProgressIfNeeded(referenceDate: nowProvider())
         phaseCompletionTask?.cancel()
         phaseCompletionTask = nil
         phaseEndDate = nil
+        scheduledPhaseTaskID = UUID()
         isRunning = false
         hasActiveSession = false
         isFullscreenActive = false
@@ -352,10 +384,11 @@ final class PomodoroViewModel: ObservableObject {
 
     func skipPhase() {
         let shouldContinueRunning = isRunning
-        recordCurrentFocusProgressIfNeeded(referenceDate: .now)
+        recordCurrentFocusProgressIfNeeded(referenceDate: nowProvider())
         phaseCompletionTask?.cancel()
         phaseCompletionTask = nil
         phaseEndDate = nil
+        scheduledPhaseTaskID = UUID()
         advancePhase(continueRunning: shouldContinueRunning, postTransitionNotification: true)
         persistRuntimeState()
     }
@@ -363,10 +396,11 @@ final class PomodoroViewModel: ObservableObject {
     func setPhase(_ targetPhase: PomodoroPhase) {
         guard phase != targetPhase else { return }
         let shouldContinueRunning = isRunning
-        recordCurrentFocusProgressIfNeeded(referenceDate: .now)
+        recordCurrentFocusProgressIfNeeded(referenceDate: nowProvider())
         phaseCompletionTask?.cancel()
         phaseCompletionTask = nil
         phaseEndDate = nil
+        scheduledPhaseTaskID = UUID()
         
         phase = targetPhase
         remainingSeconds = duration(for: phase, preset: preset)
@@ -384,12 +418,13 @@ final class PomodoroViewModel: ObservableObject {
     func selectPreset(_ preset: PomodoroPreset) {
         guard self.preset != preset else { return }
 
-        recordCurrentFocusProgressIfNeeded(referenceDate: .now)
+        recordCurrentFocusProgressIfNeeded(referenceDate: nowProvider())
         self.preset = preset
         persistSelectedPresetID()
         phaseCompletionTask?.cancel()
         phaseCompletionTask = nil
         phaseEndDate = nil
+        scheduledPhaseTaskID = UUID()
         isRunning = false
         hasActiveSession = false
         completedFocusSessions = 0
@@ -443,6 +478,7 @@ final class PomodoroViewModel: ObservableObject {
         phaseCompletionTask?.cancel()
         phaseCompletionTask = nil
         phaseEndDate = nil
+        scheduledPhaseTaskID = UUID()
         isRunning = false
         hasActiveSession = false
         completedFocusSessions = 0
@@ -512,11 +548,13 @@ final class PomodoroViewModel: ObservableObject {
     }
 
     func shutdown() {
-        recordCurrentFocusProgressIfNeeded(referenceDate: .now)
+        recordCurrentFocusProgressIfNeeded(referenceDate: nowProvider())
         persistRuntimeState()
         isFullscreenActive = false
         phaseCompletionTask?.cancel()
         phaseCompletionTask = nil
+        scheduledPhaseTaskID = UUID()
+        sleepWakeCancellables.removeAll()
     }
 
     private func refreshPhaseReminder() {
@@ -580,29 +618,113 @@ final class PomodoroViewModel: ObservableObject {
         }
     }
 
+    private func configureSleepWakeObservers() {
+        workspaceNotificationCenter.publisher(for: NSWorkspace.willSleepNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.handleSystemWillSleep()
+            }
+            .store(in: &sleepWakeCancellables)
+
+        workspaceNotificationCenter.publisher(for: NSWorkspace.didWakeNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.handleSystemDidWake()
+            }
+            .store(in: &sleepWakeCancellables)
+    }
+
+    private func handleSystemWillSleep() {
+        guard isRunning else { return }
+        phaseCompletionTask?.cancel()
+        phaseCompletionTask = nil
+    }
+
+    private func handleSystemDidWake() {
+        syncRunningPhaseWithCurrentTime(
+            now: nowProvider(),
+            allowCatchUpTransitions: 1,
+            playCompletionSound: true,
+            postTransitionNotification: true,
+            pauseOnOverflow: false
+        )
+    }
+
     private func startPhaseCompletionTask() {
         phaseCompletionTask?.cancel()
+        phaseCompletionTask = nil
 
-        let duration = remainingSeconds(at: .now)
+        guard isRunning, let phaseEndDate else { return }
+
+        let duration = max(phaseEndDate.timeIntervalSince(nowProvider()), 0)
+        let taskID = UUID()
+        scheduledPhaseTaskID = taskID
 
         phaseCompletionTask = Task { @MainActor [weak self] in
-            guard let self, duration > 0 else { return }
+            guard let self else { return }
 
-            try? await Task.sleep(for: .seconds(duration))
-            guard !Task.isCancelled, self.isRunning else { return }
+            if duration <= 0 {
+                self.handlePhaseCompletionIfNeeded(
+                    expectedPhaseEndDate: phaseEndDate,
+                    expectedTaskID: taskID,
+                    playCompletionSound: true,
+                    postTransitionNotification: true
+                )
+                return
+            }
 
-            let finishedPhase = self.phase
-            self.remainingSeconds = 0
-            
-            switch finishedPhase {
+            do {
+                try await self.sleepHandler(duration)
+            } catch {
+                return
+            }
+
+            guard !Task.isCancelled else { return }
+            self.handlePhaseCompletionIfNeeded(
+                expectedPhaseEndDate: phaseEndDate,
+                expectedTaskID: taskID,
+                playCompletionSound: true,
+                postTransitionNotification: true
+            )
+        }
+    }
+
+    private func handlePhaseCompletionIfNeeded(
+        expectedPhaseEndDate: Date,
+        expectedTaskID: UUID?,
+        playCompletionSound: Bool,
+        postTransitionNotification: Bool
+    ) {
+        guard isRunning, let activePhaseEndDate = phaseEndDate else { return }
+        if let expectedTaskID, scheduledPhaseTaskID != expectedTaskID { return }
+        guard activePhaseEndDate == expectedPhaseEndDate else { return }
+        guard activePhaseEndDate <= nowProvider() else {
+            remainingSeconds = remainingSeconds(at: nowProvider())
+            startPhaseCompletionTask()
+            persistRuntimeState()
+            return
+        }
+        guard !isHandlingPhaseCompletion else { return }
+
+        isHandlingPhaseCompletion = true
+        defer { isHandlingPhaseCompletion = false }
+
+        phaseCompletionTask?.cancel()
+        phaseCompletionTask = nil
+        scheduledPhaseTaskID = UUID()
+        remainingSeconds = 0
+        phaseEndDate = nil
+
+        if playCompletionSound {
+            switch phase {
             case .focus:
                 SoundManager.playFocusComplete()
             case .shortBreak, .longBreak:
                 SoundManager.playBreakComplete()
             }
-
-            self.advancePhase(continueRunning: true, postTransitionNotification: true)
         }
+
+        advancePhase(continueRunning: true, postTransitionNotification: postTransitionNotification)
     }
 
     private func duration(for phase: PomodoroPhase, preset: PomodoroPreset) -> Int {
@@ -689,7 +811,7 @@ final class PomodoroViewModel: ObservableObject {
     private func persistRuntimeState() {
         let snapshot = PomodoroRuntimeState(
             phaseRawValue: phase.rawValue,
-            remainingSeconds: remainingSeconds(at: .now),
+            remainingSeconds: remainingSeconds(at: nowProvider()),
             isRunning: isRunning,
             hasActiveSession: hasActiveSession,
             phaseEndDate: phaseEndDate,
@@ -701,7 +823,8 @@ final class PomodoroViewModel: ObservableObject {
         userDefaults.set(encoded, forKey: Self.runtimeStateDefaultsKey)
     }
 
-    private func restoreRuntimeStateIfAvailable(now: Date = .now) {
+    private func restoreRuntimeStateIfAvailable(now: Date? = nil) {
+        let now = now ?? nowProvider()
         guard let data = userDefaults.data(forKey: Self.runtimeStateDefaultsKey),
               let snapshot = try? JSONDecoder().decode(PomodoroRuntimeState.self, from: data),
               let restoredPhase = PomodoroPhase(rawValue: snapshot.phaseRawValue) else {
@@ -713,7 +836,7 @@ final class PomodoroViewModel: ObservableObject {
         recordedFocusSecondsForCurrentPhase = max(snapshot.recordedFocusSecondsForCurrentPhase, 0)
 
         if snapshot.isRunning, let savedPhaseEndDate = snapshot.phaseEndDate {
-            restorePausedStateFromRunningSnapshot(
+            restoreRunningStateFromSnapshot(
                 from: snapshot,
                 phase: restoredPhase,
                 phaseEndDate: savedPhaseEndDate,
@@ -733,25 +856,126 @@ final class PomodoroViewModel: ObservableObject {
         persistRuntimeState()
     }
 
-    private func restorePausedStateFromRunningSnapshot(
+    private func restoreRunningStateFromSnapshot(
         from snapshot: PomodoroRuntimeState,
         phase: PomodoroPhase,
         phaseEndDate: Date,
         now: Date
     ) {
-        let remainingAtRestore = max(Int(ceil(phaseEndDate.timeIntervalSince(now))), 0)
+        var restoredPhase = phase
+        var restoredCompletedFocusSessions = max(snapshot.completedFocusSessions, 0)
+        var restoredPhaseEndDate = phaseEndDate
+        var transitions = 0
+        var didAdvance = false
 
-        self.phase = phase
-        self.completedFocusSessions = max(snapshot.completedFocusSessions, 0)
-        self.recordedFocusSecondsForCurrentPhase = max(snapshot.recordedFocusSecondsForCurrentPhase, 0)
+        while restoredPhaseEndDate <= now {
+            guard transitions < Self.maximumRestoreCatchUpTransitions else {
+                self.phase = restoredPhase
+                self.completedFocusSessions = restoredCompletedFocusSessions
+                self.recordedFocusSecondsForCurrentPhase = 0
+                applyRestoreOverflowState()
+                postPhaseStartedNotification()
+                return
+            }
+
+            let nextState = restoredTransition(
+                after: restoredPhase,
+                completedFocusSessions: restoredCompletedFocusSessions
+            )
+            restoredPhase = nextState.phase
+            restoredCompletedFocusSessions = nextState.completedFocusSessions
+            restoredPhaseEndDate = restoredPhaseEndDate.addingTimeInterval(
+                TimeInterval(duration(for: restoredPhase, preset: preset))
+            )
+            transitions += 1
+            didAdvance = true
+        }
+
+        self.phase = restoredPhase
+        self.completedFocusSessions = restoredCompletedFocusSessions
+        self.recordedFocusSecondsForCurrentPhase = 0
         self.hasActiveSession = true
-        self.isRunning = false
-        self.phaseEndDate = nil
+        self.isRunning = true
+        self.phaseEndDate = restoredPhaseEndDate
         self.remainingSeconds = clampedRemainingSeconds(
-            remainingAtRestore,
-            for: phase,
+            max(Int(ceil(restoredPhaseEndDate.timeIntervalSince(now))), 0),
+            for: restoredPhase,
             activeSession: true
         )
+        startPhaseCompletionTask()
+        persistRuntimeState()
+
+        if didAdvance {
+            postPhaseStartedNotification()
+        }
+    }
+
+    @discardableResult
+    private func syncRunningPhaseWithCurrentTime(
+        now: Date,
+        allowCatchUpTransitions: Int,
+        playCompletionSound: Bool,
+        postTransitionNotification: Bool,
+        pauseOnOverflow: Bool
+    ) -> Bool {
+        guard isRunning, let activePhaseEndDate = phaseEndDate else { return false }
+
+        if activePhaseEndDate > now {
+            remainingSeconds = clampedRemainingSeconds(
+                max(Int(ceil(activePhaseEndDate.timeIntervalSince(now))), 0),
+                for: phase,
+                activeSession: true
+            )
+            startPhaseCompletionTask()
+            persistRuntimeState()
+            return false
+        }
+
+        var transitions = 0
+        var didAdvance = false
+
+        while isRunning, let currentPhaseEndDate = phaseEndDate, currentPhaseEndDate <= now {
+            if transitions >= allowCatchUpTransitions {
+                if pauseOnOverflow {
+                    applyRestoreOverflowState()
+                    postPhaseStartedNotification()
+                } else {
+                    handlePhaseCompletionIfNeeded(
+                        expectedPhaseEndDate: currentPhaseEndDate,
+                        expectedTaskID: nil,
+                        playCompletionSound: playCompletionSound,
+                        postTransitionNotification: postTransitionNotification
+                    )
+                }
+                return true
+            }
+
+            handlePhaseCompletionIfNeeded(
+                expectedPhaseEndDate: currentPhaseEndDate,
+                expectedTaskID: nil,
+                playCompletionSound: playCompletionSound && transitions == 0,
+                postTransitionNotification: false
+            )
+            transitions += 1
+            didAdvance = true
+        }
+
+        if didAdvance {
+            postPhaseStartedNotification()
+        }
+
+        return didAdvance
+    }
+
+    private func applyRestoreOverflowState() {
+        phaseCompletionTask?.cancel()
+        phaseCompletionTask = nil
+        phaseEndDate = nil
+        scheduledPhaseTaskID = UUID()
+        isRunning = false
+        hasActiveSession = false
+        recordedFocusSecondsForCurrentPhase = 0
+        remainingSeconds = duration(for: phase, preset: preset)
         persistRuntimeState()
     }
 
@@ -762,6 +986,24 @@ final class PomodoroViewModel: ObservableObject {
         }
         return phaseDuration
     }
+
+    private func restoredTransition(
+        after phase: PomodoroPhase,
+        completedFocusSessions: Int
+    ) -> (phase: PomodoroPhase, completedFocusSessions: Int) {
+        switch phase {
+        case .focus:
+            let newCompletedFocusSessions = completedFocusSessions + 1
+            let nextPhase: PomodoroPhase = newCompletedFocusSessions.isMultiple(of: sessionsBeforeLongBreak)
+                ? .longBreak
+                : .shortBreak
+            return (nextPhase, newCompletedFocusSessions)
+        case .shortBreak, .longBreak:
+            return (.focus, completedFocusSessions)
+        }
+    }
+
+    private static let maximumRestoreCatchUpTransitions = 3
 
     private func persistOptionalInt(_ value: Int?, forKey key: String) {
         if let value {

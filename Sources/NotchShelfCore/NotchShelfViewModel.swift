@@ -364,7 +364,10 @@ final class NotchShelfViewModel: ObservableObject {
         guard reorderedItems != items else { return }
 
         items = reorderedItems
-        selectedItemIDs = draggedIDSet
+        // Bug #E: select only IDs that actually map to an item. Using the raw
+        // input set would leak stale UUIDs (items deleted between selection
+        // and drop) into selectedItemIDs, leaving an invisible selection.
+        selectedItemIDs = Set(draggedItems.map(\.id))
         debouncedPersist()
     }
 

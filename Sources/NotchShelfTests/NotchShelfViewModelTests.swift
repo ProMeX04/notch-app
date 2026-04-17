@@ -46,6 +46,50 @@ enum NotchShelfViewModelTests {
         try expectEqual(textValues(vm.items), ["world", "hello"])
     }
 
+    static func merge_addsNewItemsOnTop_preservingExistingOrder() throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+
+        let vm = makeViewModel(dir: dir)
+        vm.merge([textItem("a"), textItem("b")])
+        try expectEqual(textValues(vm.items), ["b", "a"], "precondition")
+
+        vm.merge([textItem("c"), textItem("d")])
+
+        // New batch stacks ABOVE previous items, and existing order is kept.
+        try expectEqual(textValues(vm.items), ["d", "c", "b", "a"])
+        // Selection lands on the visually topmost NEW item (Bug #2 behavior).
+        try expectEqual(vm.selectedItemIDs.count, 1)
+        try expectEqual(vm.selectedItemIDs, Set([vm.items[0].id]))
+    }
+
+    static func merge_dedupsWithinSameBatch() throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+
+        let vm = makeViewModel(dir: dir)
+        // "hello" appears twice in the same drop — only one should land.
+        vm.merge([textItem("hello"), textItem("world"), textItem("hello")])
+
+        try expectEqual(textValues(vm.items), ["world", "hello"])
+    }
+
+    static func merge_allItemsDuplicate_doesNotMutateSelection() throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+
+        let vm = makeViewModel(dir: dir)
+        vm.merge([textItem("a"), textItem("b")])
+        let beforeSelection = vm.selectedItemIDs
+
+        // Dropping only items that duplicate existing identities should be a
+        // no-op for the model state (no ordering changes, no selection jump).
+        vm.merge([textItem("a"), textItem("b")])
+
+        try expectEqual(textValues(vm.items), ["b", "a"])
+        try expectEqual(vm.selectedItemIDs, beforeSelection)
+    }
+
     // MARK: - Bug #2: selection lands on visually bottom new item
 
     /// After dropping multiple new items, the visually-topmost new item
@@ -147,6 +191,29 @@ enum NotchShelfViewModelTests {
 
         try expectEqual(vm.items.map(\.id), [c.id, d.id, b.id, a.id])
         try expectEqual(vm.selectedItemIDs, Set([d.id, b.id]))
+    }
+
+    /// Bug #E: callers may pass a UUID for an item that has been deleted
+    /// between the initial selection and the drop completion. The input set
+    /// must not be trusted as-is — `selectedItemIDs` should only contain IDs
+    /// that map to a real item after the reorder.
+    static func moveItems_staleIDs_doNotLeakIntoSelection() throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+
+        let vm = makeViewModel(dir: dir)
+        vm.merge([textItem("a"), textItem("b"), textItem("c")])
+        // items == [c, b, a]; move `c` to the end together with an unknown id.
+        let c = vm.items[0]
+        let staleID = UUID()
+
+        vm.moveItems(with: [c.id, staleID], to: 3)
+
+        try expectEqual(vm.selectedItemIDs, Set([c.id]))
+        try expect(
+            !vm.selectedItemIDs.contains(staleID),
+            "Selection must not retain UUIDs that no longer map to an item"
+        )
     }
 
     static func moveItems_noOp_forIdenticalOrdering() throws {

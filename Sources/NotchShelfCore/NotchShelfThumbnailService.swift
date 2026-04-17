@@ -5,18 +5,27 @@ import QuickLookThumbnailing
 actor NotchShelfThumbnailService {
     static let shared = NotchShelfThumbnailService()
 
-    private var cache: [String: NSImage] = [:]
-    private var cacheKeys: [String] = []
-    private var pendingRequests: [String: Task<NSImage?, Never>] = [:]
+    // Exposed as internal only for @testable access from NotchShelfTests so
+    // we can seed and observe cache state without doing real file I/O.
+    internal var cache: [String: NSImage] = [:]
+    internal var cacheKeys: [String] = []
+    internal var pendingRequests: [String: Task<NSImage?, Never>] = [:]
     private let generator = QLThumbnailGenerator.shared
 
     /// Maximum number of thumbnails to keep in memory at any time.
-    private let maxCacheEntries = 25
+    internal let maxCacheEntries = 25
+
+    static func cacheKey(for url: URL, size: CGSize) -> String {
+        "\(url.standardizedFileURL.path)_\(Int(size.width))x\(Int(size.height))"
+    }
 
     func thumbnail(for url: URL, size: CGSize) async -> NSImage? {
-        let cacheKey = "\(url.standardizedFileURL.path)_\(Int(size.width))x\(Int(size.height))"
+        let cacheKey = Self.cacheKey(for: url, size: size)
 
         if let cached = cache[cacheKey] {
+            // Bug #D: mark this entry as most-recently-used so the next
+            // eviction pass does not sweep frequently-accessed thumbnails.
+            moveKeyToMRU(cacheKey)
             return cached
         }
 
@@ -44,10 +53,14 @@ actor NotchShelfThumbnailService {
     }
 
     func clearCache(for url: URL) {
-        let cachePrefix = url.standardizedFileURL.path
-        cache = cache.filter { !$0.key.hasPrefix(cachePrefix) }
-        cacheKeys = cacheKeys.filter { !$0.hasPrefix(cachePrefix) }
-        pendingRequests = pendingRequests.filter { !$0.key.hasPrefix(cachePrefix) }
+        // Bug #B: cache keys are of the form "<standardizedPath>_WxH". Using
+        // the bare path as a prefix matches unrelated siblings (e.g.
+        // clearing "/a/b/file" would also wipe "/a/b/file2_100x100"). Appending
+        // "_" pins the match to the full path segment of the requested URL.
+        let exactPrefix = url.standardizedFileURL.path + "_"
+        cache = cache.filter { !$0.key.hasPrefix(exactPrefix) }
+        cacheKeys = cacheKeys.filter { !$0.hasPrefix(exactPrefix) }
+        pendingRequests = pendingRequests.filter { !$0.key.hasPrefix(exactPrefix) }
     }
 
     func clearCache(for urls: [URL]) {
@@ -63,9 +76,13 @@ actor NotchShelfThumbnailService {
     }
 
     /// Evicts the oldest entries when the cache exceeds its limit.
-    private func insertCacheEntry(_ key: String, image: NSImage) {
+    internal func insertCacheEntry(_ key: String, image: NSImage) {
         if cache[key] == nil {
             cacheKeys.append(key)
+        } else {
+            // Already present — refresh recency. Without this the key keeps
+            // its original LRU position even on re-insertion.
+            moveKeyToMRU(key)
         }
         cache[key] = image
 
@@ -77,6 +94,13 @@ actor NotchShelfThumbnailService {
             }
             cacheKeys.removeFirst(entriesToRemove)
         }
+    }
+
+    private func moveKeyToMRU(_ key: String) {
+        guard let index = cacheKeys.firstIndex(of: key) else { return }
+        if index == cacheKeys.count - 1 { return }
+        cacheKeys.remove(at: index)
+        cacheKeys.append(key)
     }
 
     private func generateThumbnail(for url: URL, size: CGSize) async -> NSImage? {

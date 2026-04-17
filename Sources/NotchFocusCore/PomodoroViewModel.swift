@@ -2,14 +2,14 @@ import AppKit
 import SwiftUI
 import Combine
 
-struct FocusTask: Identifiable, Codable, Equatable {
-    let id: UUID
-    var title: String
-    var isCompleted: Bool
-    var completedSessions: Int
-    var createdAt: Date
+package struct FocusTask: Identifiable, Codable, Equatable {
+    package let id: UUID
+    package var title: String
+    package var isCompleted: Bool
+    package var completedSessions: Int
+    package var createdAt: Date
 
-    init(id: UUID = UUID(), title: String, isCompleted: Bool = false, completedSessions: Int = 0, createdAt: Date = .now) {
+    package init(id: UUID = UUID(), title: String, isCompleted: Bool = false, completedSessions: Int = 0, createdAt: Date = .now) {
         self.id = id
         self.title = title
         self.isCompleted = isCompleted
@@ -18,12 +18,12 @@ struct FocusTask: Identifiable, Codable, Equatable {
     }
 }
 
-enum PomodoroPhase: String {
+package enum PomodoroPhase: String {
     case focus = "Focus"
     case shortBreak = "Short Break"
     case longBreak = "Long Break"
 
-    var symbolName: String {
+    package var symbolName: String {
         switch self {
         case .focus:
             return "timer"
@@ -34,7 +34,7 @@ enum PomodoroPhase: String {
         }
     }
 
-    var accentColor: NSColor {
+    package var accentColor: NSColor {
         switch self {
         case .focus:
             // Brighter, lighter red (more towards salmon/neon)
@@ -48,31 +48,31 @@ enum PomodoroPhase: String {
         }
     }
 
-    var accentSwiftUIColor: Color {
+    package var accentSwiftUIColor: Color {
         Color(nsColor: accentColor)
     }
 }
 
-enum PomodoroFocusMode: String, CaseIterable, Codable {
+package enum PomodoroFocusMode: String, CaseIterable, Codable {
     case off = "Off"
     case zen = "Zen"
     case strict = "Strict"
 }
 
-struct PomodoroPreset: Identifiable, Codable, Equatable {
-    var id: String
-    var title: String
-    var focusMinutes: Int
-    var breakMinutes: Int
-    var longBreakMinutes: Int
-    var sessionsBeforeLongBreak: Int = 4
-    var isCustom: Bool
+package struct PomodoroPreset: Identifiable, Codable, Equatable {
+    package var id: String
+    package var title: String
+    package var focusMinutes: Int
+    package var breakMinutes: Int
+    package var longBreakMinutes: Int
+    package var sessionsBeforeLongBreak: Int = 4
+    package var isCustom: Bool
 
-    var chipTitle: String {
+    package var chipTitle: String {
         "\(focusMinutes)/\(breakMinutes)"
     }
 
-    static let sprint = PomodoroPreset(
+    package static let sprint = PomodoroPreset(
         id: "sprint",
         title: "Sprint",
         focusMinutes: 15,
@@ -81,7 +81,7 @@ struct PomodoroPreset: Identifiable, Codable, Equatable {
         isCustom: false
     )
 
-    static let classic = PomodoroPreset(
+    package static let classic = PomodoroPreset(
         id: "classic",
         title: "Classic",
         focusMinutes: 25,
@@ -90,7 +90,7 @@ struct PomodoroPreset: Identifiable, Codable, Equatable {
         isCustom: false
     )
 
-    static let deep = PomodoroPreset(
+    package static let deep = PomodoroPreset(
         id: "deep",
         title: "Deep",
         focusMinutes: 50,
@@ -99,8 +99,8 @@ struct PomodoroPreset: Identifiable, Codable, Equatable {
         isCustom: false
     )
 
-    static let builtInPresets = [sprint, classic, deep]
-    static let defaultCustomPresets = [
+    package static let builtInPresets = [sprint, classic, deep]
+    package static let defaultCustomPresets = [
         PomodoroPreset(id: "custom-1", title: "Custom 1", focusMinutes: 20, breakMinutes: 5, longBreakMinutes: 15, isCustom: true),
         PomodoroPreset(id: "custom-2", title: "Custom 2", focusMinutes: 45, breakMinutes: 10, longBreakMinutes: 20, isCustom: true),
         PomodoroPreset(id: "custom-3", title: "Custom 3", focusMinutes: 90, breakMinutes: 15, longBreakMinutes: 30, isCustom: true),
@@ -119,33 +119,33 @@ private struct PomodoroRuntimeState: Codable {
 }
 
 @MainActor
-final class PomodoroViewModel: ObservableObject {
-    @Published private(set) var phase: PomodoroPhase = .focus {
+package final class PomodoroViewModel: ObservableObject {
+    @Published package private(set) var phase: PomodoroPhase = .focus {
         didSet {
             refreshPhaseReminder()
         }
     }
-    @Published private(set) var preset: PomodoroPreset
-    @Published private(set) var customPresets: [PomodoroPreset]
-    @Published private(set) var remainingSeconds: Int
-    @Published private(set) var isRunning = false
-    @Published private(set) var hasActiveSession = false
-    @Published var autoStartBreaks: Bool { didSet { persistSettings() } }
-    @Published var autoStartPomodoros: Bool { didSet { persistSettings() } }
-    @Published var tasks: [FocusTask] = [] { didSet { persistTasks() } }
-    @Published var selectedTaskId: UUID? = nil { didSet { persistTasks() } }
+    @Published package private(set) var preset: PomodoroPreset
+    @Published package private(set) var customPresets: [PomodoroPreset]
+    @Published package private(set) var remainingSeconds: Int
+    @Published package private(set) var isRunning = false
+    @Published package private(set) var hasActiveSession = false
+    @Published package var autoStartBreaks: Bool { didSet { persistSettings() } }
+    @Published package var autoStartPomodoros: Bool { didSet { persistSettings() } }
+    @Published package var tasks: [FocusTask] = [] { didSet { persistTasks() } }
+    @Published package var selectedTaskId: UUID? = nil { didSet { persistTasks() } }
     
-    var currentTask: String {
+    package var currentTask: String {
         tasks.first(where: { $0.id == selectedTaskId })?.title ?? ""
     }
-    @Published private(set) var focusDurationOverrideSeconds: Int? { didSet { persistSettings() } }
-    @Published private(set) var breakDurationOverrideSeconds: Int? { didSet { persistSettings() } }
-    @Published private(set) var longBreakDurationOverrideSeconds: Int? { didSet { persistSettings() } }
-    @Published private(set) var sessionsBeforeLongBreakOverride: Int? { didSet { persistSettings() } }
-    @Published private(set) var focusMode: PomodoroFocusMode { didSet { persistSettings() } }
-    @Published private(set) var isFullscreenActive = false
+    @Published package private(set) var focusDurationOverrideSeconds: Int? { didSet { persistSettings() } }
+    @Published package private(set) var breakDurationOverrideSeconds: Int? { didSet { persistSettings() } }
+    @Published package private(set) var longBreakDurationOverrideSeconds: Int? { didSet { persistSettings() } }
+    @Published package private(set) var sessionsBeforeLongBreakOverride: Int? { didSet { persistSettings() } }
+    @Published package private(set) var focusMode: PomodoroFocusMode { didSet { persistSettings() } }
+    @Published package private(set) var isFullscreenActive = false
     /// Matches `MotivationalQuotes` for the current phase — also used for system notifications when a phase begins (timer or skip).
-    @Published private(set) var phaseReminder: MotivationalQuote = MotivationalQuote(text: "", author: "")
+    @Published package private(set) var phaseReminder: MotivationalQuote = MotivationalQuote(text: "", author: "")
 
     private var phaseCompletionTask: Task<Void, Never>?
     private var phaseEndDate: Date?
@@ -156,6 +156,8 @@ final class PomodoroViewModel: ObservableObject {
     private let userDefaults: UserDefaults
     private let learningStatsRecorder: LearningStatsRecording
     private let appLanguageProvider: AppLanguageProvider
+    private let soundPlayer: PomodoroSoundPlaying
+    private let notificationPoster: PomodoroNotificationPosting
     private let workspaceNotificationCenter: NotificationCenter
     private let nowProvider: () -> Date
     private let sleepHandler: @Sendable (TimeInterval) async throws -> Void
@@ -165,31 +167,16 @@ final class PomodoroViewModel: ObservableObject {
     private var settingsPersistenceTask: Task<Void, Never>?
     private var runtimePersistenceTask: Task<Void, Never>?
     private var tasksPersistenceTask: Task<Void, Never>?
-    @Published private(set) var completedFocusSessions = 0
+    @Published package private(set) var completedFocusSessions = 0
     private var recordedFocusSecondsForCurrentPhase = 0
     private var wasManuallyPaused = false
 
-    convenience init(
-        userDefaults: UserDefaults = .standard,
-        learningStatsStore: LearningStatsStore
-    ) {
-        self.init(
-            userDefaults: userDefaults,
-            learningStatsRecorder: learningStatsStore,
-            appLanguageProvider: AppLanguageProvider(userDefaults: userDefaults),
-            workspaceNotificationCenter: NSWorkspace.shared.notificationCenter,
-            nowProvider: { .now },
-            sleepHandler: { duration in
-                try await Task.sleep(for: .seconds(duration))
-            },
-            persistenceDelay: .milliseconds(250)
-        )
-    }
-
-    init(
+    package init(
         userDefaults: UserDefaults,
         learningStatsRecorder: LearningStatsRecording,
         appLanguageProvider: AppLanguageProvider,
+        soundPlayer: PomodoroSoundPlaying = NoopPomodoroSoundPlayer(),
+        notificationPoster: PomodoroNotificationPosting = NoopPomodoroNotificationPoster(),
         workspaceNotificationCenter: NotificationCenter,
         nowProvider: @escaping () -> Date,
         sleepHandler: @escaping @Sendable (TimeInterval) async throws -> Void,
@@ -198,6 +185,8 @@ final class PomodoroViewModel: ObservableObject {
         self.userDefaults = userDefaults
         self.learningStatsRecorder = learningStatsRecorder
         self.appLanguageProvider = appLanguageProvider
+        self.soundPlayer = soundPlayer
+        self.notificationPoster = notificationPoster
         self.workspaceNotificationCenter = workspaceNotificationCenter
         self.nowProvider = nowProvider
         self.sleepHandler = sleepHandler
@@ -253,35 +242,35 @@ final class PomodoroViewModel: ObservableObject {
         refreshPhaseReminder()
     }
 
-    var languageProvider: AppLanguageProvider {
+    package var languageProvider: AppLanguageProvider {
         appLanguageProvider
     }
 
-    var availablePresets: [PomodoroPreset] {
+    package var availablePresets: [PomodoroPreset] {
         PomodoroPreset.builtInPresets + customPresets
     }
 
-    var focusMinutes: Int {
+    package var focusMinutes: Int {
         max(Int((Double(focusDurationSeconds) / 60).rounded()), 1)
     }
 
-    var breakMinutes: Int {
+    package var breakMinutes: Int {
         max(Int((Double(breakDurationSeconds) / 60).rounded()), 1)
     }
 
-    var focusDurationSeconds: Int {
+    package var focusDurationSeconds: Int {
         focusDurationOverrideSeconds ?? (preset.focusMinutes * 60)
     }
 
-    var breakDurationSeconds: Int {
+    package var breakDurationSeconds: Int {
         breakDurationOverrideSeconds ?? (preset.breakMinutes * 60)
     }
 
-    var longBreakDurationSeconds: Int {
+    package var longBreakDurationSeconds: Int {
         longBreakDurationOverrideSeconds ?? (preset.longBreakMinutes * 60)
     }
 
-    var actionTitle: String {
+    package var actionTitle: String {
         if isRunning {
             return "Pause"
         }
@@ -289,7 +278,7 @@ final class PomodoroViewModel: ObservableObject {
         return hasActiveSession ? "Resume" : "Start"
     }
 
-    var statusLine: String {
+    package var statusLine: String {
         if isRunning {
             return phase == .focus ? "Stay locked in" : "Take a quick breather"
         }
@@ -311,12 +300,12 @@ final class PomodoroViewModel: ObservableObject {
         return "Ready for your \(durationText) \(phase.rawValue) session"
     }
 
-    var nextPhaseLine: String {
+    package var nextPhaseLine: String {
         let nextPhase = nextPhase(after: phase)
         return "Up next: \(nextPhase.rawValue) \(DurationParser.displayString(for: duration(for: nextPhase, preset: preset)))"
     }
 
-    var sessionsBeforeLongBreak: Int {
+    package var sessionsBeforeLongBreak: Int {
         sessionsBeforeLongBreakOverride ?? preset.sessionsBeforeLongBreak
     }
 
@@ -324,7 +313,7 @@ final class PomodoroViewModel: ObservableObject {
     /// - focus shows the currently active session in the cycle
     /// - breaks show the session that just completed
     /// - long break pins to the last session in the cycle
-    var currentFocusSessionIndex: Int {
+    package var currentFocusSessionIndex: Int {
         if phase == .longBreak { return sessionsBeforeLongBreak }
         let index = (completedFocusSessions % sessionsBeforeLongBreak)
         if phase == .focus {
@@ -338,7 +327,7 @@ final class PomodoroViewModel: ObservableObject {
 
     /// The session dots show completed focus sessions within the current cycle.
     /// During a break right after finishing the cycle, the dots stay filled.
-    var completedSessionsInCycle: Int {
+    package var completedSessionsInCycle: Int {
         if phase == .longBreak { return sessionsBeforeLongBreak }
         let index = completedFocusSessions % sessionsBeforeLongBreak
         // If we finished a session (it's a break phase) and it happened to be a multiple,
@@ -349,7 +338,7 @@ final class PomodoroViewModel: ObservableObject {
         return index
     }
 
-    func remainingSeconds(at date: Date = .now) -> Int {
+    package func remainingSeconds(at date: Date = .now) -> Int {
         guard isRunning, let phaseEndDate else {
             return remainingSeconds
         }
@@ -357,23 +346,23 @@ final class PomodoroViewModel: ObservableObject {
         return max(Int(ceil(phaseEndDate.timeIntervalSince(date))), 0)
     }
 
-    func remainingText(at date: Date = .now) -> String {
+    package func remainingText(at date: Date = .now) -> String {
         let remainingSeconds = remainingSeconds(at: date)
         let minutes = remainingSeconds / 60
         let seconds = remainingSeconds % 60
         return String(format: "%02d:%02d", minutes, seconds)
     }
 
-    func toggleRunning() {
+    package func toggleRunning() {
         if isRunning {
             pause()
         } else {
             start()
-            SoundManager.playNotification()
+            soundPlayer.playNotification()
         }
     }
 
-    func start() {
+    package func start() {
         start(force: false)
     }
 
@@ -388,7 +377,7 @@ final class PomodoroViewModel: ObservableObject {
         persistRuntimeState()
     }
 
-    func pause(manual: Bool = true) {
+    package func pause(manual: Bool = true) {
         guard isRunning else { return }
 
         let now = nowProvider()
@@ -405,7 +394,7 @@ final class PomodoroViewModel: ObservableObject {
         persistRuntimeState()
     }
 
-    func reset() {
+    package func reset() {
         recordCurrentFocusProgressIfNeeded(referenceDate: nowProvider())
         phaseCompletionTask?.cancel()
         phaseCompletionTask = nil
@@ -423,7 +412,7 @@ final class PomodoroViewModel: ObservableObject {
         refreshPhaseReminder()
     }
 
-    func skipPhase() {
+    package func skipPhase() {
         let shouldContinueRunning = isRunning
         recordCurrentFocusProgressIfNeeded(referenceDate: nowProvider())
         phaseCompletionTask?.cancel()
@@ -434,7 +423,7 @@ final class PomodoroViewModel: ObservableObject {
         persistRuntimeState()
     }
 
-    func setPhase(_ targetPhase: PomodoroPhase) {
+    package func setPhase(_ targetPhase: PomodoroPhase) {
         guard phase != targetPhase else { return }
         let shouldContinueRunning = isRunning
         recordCurrentFocusProgressIfNeeded(referenceDate: nowProvider())
@@ -455,7 +444,7 @@ final class PomodoroViewModel: ObservableObject {
         }
     }
 
-    func selectPreset(_ preset: PomodoroPreset) {
+    package func selectPreset(_ preset: PomodoroPreset) {
         guard self.preset != preset else { return }
 
         recordCurrentFocusProgressIfNeeded(referenceDate: nowProvider())
@@ -479,7 +468,7 @@ final class PomodoroViewModel: ObservableObject {
         refreshPhaseReminder()
     }
 
-    func updateCurrentDurations(focusMinutes: Int, breakMinutes: Int) {
+    package func updateCurrentDurations(focusMinutes: Int, breakMinutes: Int) {
         let clampedFocusMinutes = max(5, min(focusMinutes, 180))
         let clampedBreakMinutes = max(1, min(breakMinutes, 60))
 
@@ -507,7 +496,7 @@ final class PomodoroViewModel: ObservableObject {
         selectPreset(updatedPreset)
     }
 
-    func updateCurrentDurations(focusSeconds: Int, breakSeconds: Int) {
+    package func updateCurrentDurations(focusSeconds: Int, breakSeconds: Int) {
         let clampedFocusSeconds = max(1, min(focusSeconds, 180 * 60))
         let clampedBreakSeconds = max(1, min(breakSeconds, 60 * 60))
 
@@ -533,7 +522,7 @@ final class PomodoroViewModel: ObservableObject {
         persistRuntimeState()
     }
 
-    func updateLongBreakDuration(minutes: Int) {
+    package func updateLongBreakDuration(minutes: Int) {
         let clamped = max(1, min(minutes, 60))
         let newSeconds = clamped * 60
         guard longBreakDurationSeconds != newSeconds else { return }
@@ -545,7 +534,7 @@ final class PomodoroViewModel: ObservableObject {
         persistRuntimeState()
     }
 
-    func updateLongBreakDuration(seconds: Int) {
+    package func updateLongBreakDuration(seconds: Int) {
         let clamped = max(1, min(seconds, 60 * 60))
         guard longBreakDurationSeconds != clamped else { return }
         longBreakDurationOverrideSeconds = clamped
@@ -555,14 +544,14 @@ final class PomodoroViewModel: ObservableObject {
         persistRuntimeState()
     }
 
-    func updateSessionsBeforeLongBreak(count: Int) {
+    package func updateSessionsBeforeLongBreak(count: Int) {
         let clamped = max(1, min(count, 12))
         guard sessionsBeforeLongBreakOverride != clamped else { return }
         sessionsBeforeLongBreakOverride = clamped
         persistRuntimeState()
     }
 
-    func setFocusMode(_ mode: PomodoroFocusMode) {
+    package func setFocusMode(_ mode: PomodoroFocusMode) {
         guard focusMode != mode else { return }
         focusMode = mode
         isFullscreenActive = false
@@ -582,14 +571,14 @@ final class PomodoroViewModel: ObservableObject {
         }
     }
 
-    func exitFullscreen() {
+    package func exitFullscreen() {
         isFullscreenActive = false
         if isRunning {
             pause()
         }
     }
 
-    func shutdown() {
+    package func shutdown() {
         recordCurrentFocusProgressIfNeeded(referenceDate: nowProvider())
         flushPendingPersistence()
         persistSettingsImmediately()
@@ -609,16 +598,10 @@ final class PomodoroViewModel: ObservableObject {
     }
 
     private func postPhaseStartedNotification() {
-        let lang = appLanguageProvider.currentLanguage
-        let title = Localization.get(phase.rawValue, lang: lang)
-        var body = phaseReminder.text
-        if !phaseReminder.author.isEmpty {
-            body += "\n" + phaseReminder.author
-        }
-        AppNotificationManager.sendNotification(
-            title: title,
-            body: body,
-            identifier: "notch.pomodoro.phase-start.\(UUID().uuidString)"
+        notificationPoster.postPhaseStarted(
+            phase: phase,
+            reminder: phaseReminder,
+            language: appLanguageProvider.currentLanguage
         )
     }
 
@@ -632,7 +615,6 @@ final class PomodoroViewModel: ObservableObject {
             if let selectedId = selectedTaskId,
                let index = tasks.firstIndex(where: { $0.id == selectedId }) {
                 tasks[index].completedSessions += 1
-                persistTasks()
             }
             
             phase = nextBreakPhase
@@ -777,9 +759,9 @@ final class PomodoroViewModel: ObservableObject {
         if playCompletionSound {
             switch phase {
             case .focus:
-                SoundManager.playFocusComplete()
+                soundPlayer.playFocusComplete()
             case .shortBreak, .longBreak:
-                SoundManager.playBreakComplete()
+                soundPlayer.playBreakComplete()
             }
         }
 
@@ -953,7 +935,6 @@ final class PomodoroViewModel: ObservableObject {
                 self.completedFocusSessions = restoredCompletedFocusSessions
                 self.recordedFocusSecondsForCurrentPhase = 0
                 applyRestoreOverflowState()
-                postPhaseStartedNotification()
                 return
             }
 

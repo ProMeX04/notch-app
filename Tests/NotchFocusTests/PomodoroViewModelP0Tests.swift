@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import NotchFocusCore
 
 @MainActor
 enum PomodoroViewModelTests {
@@ -8,12 +9,14 @@ enum PomodoroViewModelTests {
         clock: TestPomodoroClock,
         workspaceNotificationCenter: NotificationCenter
     ) -> PomodoroViewModel {
-        let stats = LearningStatsStore(userDefaults: makeIsolatedUserDefaults(label: "learning-stats"))
+        let stats = TestLearningStatsRecorder()
         let languageProvider = AppLanguageProvider(userDefaults: userDefaults)
         return PomodoroViewModel(
             userDefaults: userDefaults,
             learningStatsRecorder: stats,
             appLanguageProvider: languageProvider,
+            soundPlayer: TestPomodoroSoundPlayer(),
+            notificationPoster: TestPomodoroNotificationPoster(),
             workspaceNotificationCenter: workspaceNotificationCenter,
             nowProvider: { clock.now },
             sleepHandler: { _ in

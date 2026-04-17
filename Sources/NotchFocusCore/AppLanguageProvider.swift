@@ -2,15 +2,15 @@ import Combine
 import Foundation
 
 @MainActor
-final class AppLanguageProvider: ObservableObject {
-    static let storageKey = "app_language"
+package final class AppLanguageProvider: ObservableObject {
+    package static let storageKey = "app_language"
 
-    @Published private(set) var currentLanguage: String
+    @Published package private(set) var currentLanguage: String
 
     private let userDefaults: UserDefaults
     private var cancellables = Set<AnyCancellable>()
 
-    init(
+    package init(
         userDefaults: UserDefaults = .standard,
         notificationCenter: NotificationCenter = .default
     ) {
@@ -25,7 +25,7 @@ final class AppLanguageProvider: ObservableObject {
             .store(in: &cancellables)
     }
 
-    func refresh() {
+    package func refresh() {
         let resolvedLanguage = userDefaults.string(forKey: Self.storageKey) ?? "English"
         guard currentLanguage != resolvedLanguage else { return }
         currentLanguage = resolvedLanguage

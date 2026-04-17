@@ -12,6 +12,10 @@ let package = Package(
             name: "NotchTooling",
             targets: ["NotchTooling"]
         ),
+        .library(
+            name: "NotchFocusCore",
+            targets: ["NotchFocusCore"]
+        ),
         .executable(
             name: "Notch",
             targets: ["Notch"]
@@ -33,6 +37,9 @@ let package = Package(
             name: "NotchTooling"
         ),
         .target(
+            name: "NotchFocusCore"
+        ),
+        .target(
             name: "NotchShelfCore",
             swiftSettings: [
                 // Allow `@testable import NotchShelfCore` from Notch and NotchShelfTests
@@ -44,6 +51,7 @@ let package = Package(
             name: "Notch",
             dependencies: [
                 "NotchTooling",
+                "NotchFocusCore",
                 "NotchShelfCore",
                 .product(name: "LiveKitWebRTC", package: "webrtc-xcframework"),
             ],

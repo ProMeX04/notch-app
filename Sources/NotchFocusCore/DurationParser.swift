@@ -15,12 +15,12 @@ import Foundation
 ///   - "1.5h"         → fractional hours (= 90 min)
 ///
 /// Returns `nil` if nothing useful could be parsed.
-enum DurationParser {
-    static func parse(_ input: String) -> Int? {
+package enum DurationParser {
+    package static func parse(_ input: String) -> Int? {
         parse(input, colonContext: .legacy)
     }
 
-    static func parse(_ input: String, colonContext: ColonFormatContext) -> Int? {
+    package static func parse(_ input: String, colonContext: ColonFormatContext) -> Int? {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
@@ -40,7 +40,7 @@ enum DurationParser {
 
     // MARK: - Colon format
 
-    enum ColonFormatContext {
+    package enum ColonFormatContext {
         /// Preserves the existing interpretation:
         /// - 2 parts => mm:ss
         /// - 3 parts => h:mm:ss
@@ -121,7 +121,7 @@ enum DurationParser {
     // MARK: - Human-readable summary
 
     /// Returns a short display string like "1h 30m" or "45s" for a given second count.
-    static func displayString(for totalSeconds: Int) -> String {
+    package static func displayString(for totalSeconds: Int) -> String {
         guard totalSeconds > 0 else { return "0s" }
 
         let d = totalSeconds / 86400

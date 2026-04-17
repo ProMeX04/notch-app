@@ -1,4 +1,5 @@
 import AppKit
+import NotchFocusCore
 @testable import NotchShelfCore
 import UserNotifications
 
@@ -9,19 +10,9 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
     private var holdToTalkHotkeyManager: HoldToTalkHotkeyManager?
     private let singleInstanceCoordinator = SingleInstanceCoordinator()
     let geminiLiveViewModel = GeminiLiveViewModel()
-    lazy var appLanguageProvider = AppLanguageProvider()
     lazy var learningStatsStore = LearningStatsStore()
     lazy var playbackViewModel = MediaProbeViewModel()
-    lazy var pomodoroViewModel = PomodoroViewModel(
-        userDefaults: .standard,
-        learningStatsRecorder: learningStatsStore,
-        appLanguageProvider: appLanguageProvider,
-        workspaceNotificationCenter: NSWorkspace.shared.notificationCenter,
-        nowProvider: { .now },
-        sleepHandler: { duration in
-            try await Task.sleep(for: .seconds(duration))
-        }
-    )
+    lazy var pomodoroViewModel = PomodoroViewModel(learningStatsStore: learningStatsStore)
     lazy var shelfViewModel = NotchShelfViewModel()
     lazy var presentationModel = NotchPresentationModel()
 

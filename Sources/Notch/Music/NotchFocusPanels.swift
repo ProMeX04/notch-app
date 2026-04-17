@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import NotchFocusCore
 
 private enum FocusMetrics {
     static let clockHeight: CGFloat = 84

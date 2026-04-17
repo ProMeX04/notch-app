@@ -1,4 +1,5 @@
 import AppKit
+import NotchFocusCore
 @testable import NotchShelfCore
 import SwiftUI
 

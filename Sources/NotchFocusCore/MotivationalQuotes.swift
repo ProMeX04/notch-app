@@ -1,11 +1,11 @@
 import Foundation
 
-struct MotivationalQuote {
-    let text: String
-    let author: String
+package struct MotivationalQuote {
+    package let text: String
+    package let author: String
 }
 
-struct MotivationalQuotes {
+package struct MotivationalQuotes {
     // Format: ["en": quote, "vi": quote, "author": name]
     private static let focusReminders: [[String: String]] = [
         ["en": "The secret of getting ahead is getting started.", "vi": "Bí quyết tiến lên phía trước là bắt đầu.", "author": "Mark Twain"],
@@ -79,7 +79,7 @@ struct MotivationalQuotes {
         ["en": "Early to bed and early to rise, makes a man healthy, wealthy and wise.", "vi": "Ngủ sớm dậy sớm giúp con người khỏe mạnh, thịnh vượng và khôn ngoan.", "author": "Benjamin Franklin"],
     ]
 
-    static func getRandom(for phase: PomodoroPhase, lang: String) -> MotivationalQuote {
+    package static func getRandom(for phase: PomodoroPhase, lang: String) -> MotivationalQuote {
         let pool = phase == .focus ? focusReminders : breakReminders
         let entry = (pool.randomElement() ?? pool[0])
         let isVietnamese = lang == "Tiếng Việt"

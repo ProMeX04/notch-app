@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import NotchFocusCore
 import SwiftUI
 
 private struct PomodoroFullscreenView: View {

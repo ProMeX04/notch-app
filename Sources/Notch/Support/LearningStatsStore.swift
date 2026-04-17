@@ -1,23 +1,11 @@
 import Foundation
-
-enum LearningActivitySource: String, Codable, CaseIterable {
-    case pomodoro
-
-    var title: String {
-        "Pomodoro"
-    }
-}
+import NotchFocusCore
 
 struct LearningSessionEntry: Identifiable, Codable, Equatable {
     let id: UUID
     let source: LearningActivitySource
     let seconds: Int
     let createdAt: Date
-}
-
-@MainActor
-protocol LearningStatsRecording: AnyObject {
-    func record(seconds: Int, source: LearningActivitySource)
 }
 
 @MainActor

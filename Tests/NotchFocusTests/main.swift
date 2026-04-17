@@ -1,4 +1,5 @@
 import Foundation
+import NotchFocusCore
 
 struct TestCase {
     let name: String

@@ -89,10 +89,14 @@ extension GeminiLiveSession {
 
         let offset = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["offset"])
         let limit = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["limit"])
-        notifyFunctionStarted(name: name, args: args)
-        let result = executeReadFile(path: path, offset: offset, limit: limit)
-        notifyFunctionExecuted(name: name, args: args, result: result)
-        sendFunctionResponse(id: id, name: name, result: result)
+        let sendableArgs = SendableToolArgs(args: args)
+        toolExecutionQueue.async { [weak self] in
+            guard let self else { return }
+            self.notifyFunctionStarted(name: name, args: sendableArgs.args)
+            let result = self.executeReadFile(path: path, offset: offset, limit: limit)
+            self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
+            self.sendFunctionResponse(id: id, name: name, result: result)
+        }
     }
 
     private func handleWriteCall(id: String, call: [String: Any]) {
@@ -109,10 +113,14 @@ extension GeminiLiveSession {
             return
         }
 
-        notifyFunctionStarted(name: name, args: args)
-        let result = executeWriteFile(path: path, content: content)
-        notifyFunctionExecuted(name: name, args: args, result: result)
-        sendFunctionResponse(id: id, name: name, result: result)
+        let sendableArgs = SendableToolArgs(args: args)
+        toolExecutionQueue.async { [weak self] in
+            guard let self else { return }
+            self.notifyFunctionStarted(name: name, args: sendableArgs.args)
+            let result = self.executeWriteFile(path: path, content: content)
+            self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
+            self.sendFunctionResponse(id: id, name: name, result: result)
+        }
     }
 
     private func handleLsCall(id: String, call: [String: Any]) {
@@ -122,10 +130,14 @@ extension GeminiLiveSession {
 
         let path = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["path"])
         let limit = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["limit"])
-        notifyFunctionStarted(name: name, args: args)
-        let result = executeLs(path: path, limit: limit)
-        notifyFunctionExecuted(name: name, args: args, result: result)
-        sendFunctionResponse(id: id, name: name, result: result)
+        let sendableArgs = SendableToolArgs(args: args)
+        toolExecutionQueue.async { [weak self] in
+            guard let self else { return }
+            self.notifyFunctionStarted(name: name, args: sendableArgs.args)
+            let result = self.executeLs(path: path, limit: limit)
+            self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
+            self.sendFunctionResponse(id: id, name: name, result: result)
+        }
     }
 
     private func handleFindCall(id: String, call: [String: Any]) {
@@ -143,10 +155,14 @@ extension GeminiLiveSession {
 
         let path = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["path"])
         let limit = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["limit"])
-        notifyFunctionStarted(name: name, args: args)
-        let result = executeFind(pattern: pattern, path: path, limit: limit)
-        notifyFunctionExecuted(name: name, args: args, result: result)
-        sendFunctionResponse(id: id, name: name, result: result)
+        let sendableArgs = SendableToolArgs(args: args)
+        toolExecutionQueue.async { [weak self] in
+            guard let self else { return }
+            self.notifyFunctionStarted(name: name, args: sendableArgs.args)
+            let result = self.executeFind(pattern: pattern, path: path, limit: limit)
+            self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
+            self.sendFunctionResponse(id: id, name: name, result: result)
+        }
     }
 
     private func handleGrepCall(id: String, call: [String: Any]) {
@@ -168,18 +184,22 @@ extension GeminiLiveSession {
         let literal = GeminiToolArgumentNormalizer.boolValue(in: args, keys: ["literal"]) ?? false
         let context = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["context"]) ?? 0
         let limit = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["limit"]) ?? 100
-        notifyFunctionStarted(name: name, args: args)
-        let result = executeGrep(
-            pattern: pattern,
-            path: path,
-            glob: glob,
-            ignoreCase: ignoreCase,
-            literal: literal,
-            context: context,
-            limit: limit
-        )
-        notifyFunctionExecuted(name: name, args: args, result: result)
-        sendFunctionResponse(id: id, name: name, result: result)
+        let sendableArgs = SendableToolArgs(args: args)
+        toolExecutionQueue.async { [weak self] in
+            guard let self else { return }
+            self.notifyFunctionStarted(name: name, args: sendableArgs.args)
+            let result = self.executeGrep(
+                pattern: pattern,
+                path: path,
+                glob: glob,
+                ignoreCase: ignoreCase,
+                literal: literal,
+                context: context,
+                limit: limit
+            )
+            self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
+            self.sendFunctionResponse(id: id, name: name, result: result)
+        }
     }
 
     private func handleEditCall(id: String, call: [String: Any]) {
@@ -205,10 +225,14 @@ extension GeminiLiveSession {
             return
         }
 
-        notifyFunctionStarted(name: name, args: args)
-        let result = executeEditFile(path: path, edits: edits)
-        notifyFunctionExecuted(name: name, args: args, result: result)
-        sendFunctionResponse(id: id, name: name, result: result)
+        let sendableArgs = SendableToolArgs(args: args)
+        toolExecutionQueue.async { [weak self] in
+            guard let self else { return }
+            self.notifyFunctionStarted(name: name, args: sendableArgs.args)
+            let result = self.executeEditFile(path: path, edits: edits)
+            self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
+            self.sendFunctionResponse(id: id, name: name, result: result)
+        }
     }
 
     func approveExecCall(toolCallID: String) {

@@ -427,7 +427,7 @@ enum GeminiAgentAvatarStoreError: LocalizedError {
     }
 }
 
-final class GeminiAgentAvatarStore {
+final class GeminiAgentAvatarStore: @unchecked Sendable {
     private let fileManager: FileManager
     private let avatarsDirectory: URL
 

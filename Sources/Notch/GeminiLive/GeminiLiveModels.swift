@@ -1,5 +1,4 @@
 import AppKit
-import Combine
 import Foundation
 import SwiftUI
 
@@ -306,6 +305,7 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         "headphones",
         "globe"
     ]
+    private static let sharedAvatarStore = GeminiAgentAvatarStore()
 
     let id: String
     var title: String
@@ -415,7 +415,7 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
     }
 
     var resolvedAvatarImageURL: URL? {
-        GeminiAgentAvatarStore().imageURL(for: avatarImageFilename)
+        Self.sharedAvatarStore.imageURL(for: avatarImageFilename)
     }
 
     static let defaultPreset = GeminiSystemPromptPreset(

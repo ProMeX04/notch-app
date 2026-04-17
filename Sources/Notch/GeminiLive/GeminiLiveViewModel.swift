@@ -9,12 +9,6 @@ import UniformTypeIdentifiers
 
 @MainActor
 final class GeminiLiveViewModel: ObservableObject {
-    enum ScreenShareMode {
-        case fullScreen
-        case selectedRegion
-        case appWindow
-    }
-
     enum TranscriptOverlayMode {
         case hidden
         case autoHide
@@ -45,6 +39,8 @@ final class GeminiLiveViewModel: ObservableObject {
     @Published var backendAuthEmailText: String
     @Published var backendAuthPasswordText: String = ""
     @Published private(set) var backendAuthenticatedEmail: String?
+    @Published private(set) var isBackendAuthenticated = false
+    @Published private(set) var backendSignedInSummary: String?
     @Published var userProfileContent: String = ""
     @Published var memoryContent: String = ""
 
@@ -120,9 +116,10 @@ final class GeminiLiveViewModel: ObservableObject {
     @Published private(set) var overlayInput = TranscriptOverlayInput.idle
     @Published private(set) var isAutoReconnecting = false
     @Published private(set) var pendingExecApprovals: [ExecApprovalRequest] = []
+    @Published private(set) var screenShareMode: ScreenShareMode = .fullScreen
+    @Published private(set) var isProFromBackend = false
     /// True when the user has Pro via the backend (`is_pro`) or dev bypass.
     @Published private(set) var isProUser = false
-    private var isProFromBackend = false
     private var toastClearTask: Task<Void, Never>?
     private var reconnectTask: Task<Void, Never>?
     private var reconnectAttempt = 0
@@ -130,20 +127,14 @@ final class GeminiLiveViewModel: ObservableObject {
     private var subscriptions = Set<AnyCancellable>()
     private var lastDisconnectWasUserInitiated = false
     private var pendingTurnSeparator = false
-    private var screenCaptureTask: Task<Void, Never>?
-    private let screenRegionSelectionController = ScreenRegionSelectionController()
-    private let windowShareSelectionController = WindowShareSelectionController()
-    private let screenShareHighlightController = ScreenShareHighlightController()
-    private var screenShareMode: ScreenShareMode = .fullScreen
-    private var screenShareRegion: CGRect?
-    private var screenShareFilter: SCContentFilter?
-    private let session: GeminiLiveSession
+    let screenShare = ScreenShareCoordinator()
+    let backend: BackendAccountCoordinator
+    let session: GeminiLiveSession
     private let keyStore: GeminiLiveAPIKeyStore
     private let backendConfigStore: GeminiLiveBackendConfigStore
-    private let backendAuthStore: GeminiLiveBackendAuthStore
     private let backendClient: GeminiLiveBackendClient
     private let settingsStore: GeminiLiveSettingsStore
-    private let execApprovalStore: GeminiLiveExecApprovalStore
+    let execApprovals: ExecApprovalCoordinator
     private let agentAvatarStore: GeminiAgentAvatarStore
     private let skillStore: SkillStore
     private let skillPackageService: SkillPackageService
@@ -154,23 +145,23 @@ final class GeminiLiveViewModel: ObservableObject {
 
     private var storedAPIKey: String?
     private var storedBackendConfiguration: GeminiLiveBackendConfiguration?
-    private var storedBackendAuthSession: GeminiLiveBackendAuthSession?
-    private var backendAuthRefreshTask: Task<GeminiLiveBackendAuthSession, Error>?
     var onExecApprovalAttentionRequested: (() -> Void)?
     var onOpenAppSettingsRequested: (() -> Void)?
-
-    var currentPendingExecApproval: ExecApprovalRequest? {
-        pendingExecApprovals.first
-    }
 
     init(processInfo: ProcessInfo = .processInfo, session: GeminiLiveSession = GeminiLiveSession()) {
         self.session = session
         keyStore = GeminiLiveAPIKeyStore(processInfo: processInfo)
         backendConfigStore = GeminiLiveBackendConfigStore(processInfo: processInfo)
-        backendAuthStore = GeminiLiveBackendAuthStore(processInfo: processInfo)
+        let backendAuthStore = GeminiLiveBackendAuthStore(processInfo: processInfo)
         backendClient = GeminiLiveBackendClient()
+        backend = BackendAccountCoordinator(
+            client: backendClient,
+            configStore: backendConfigStore,
+            authStore: backendAuthStore
+        )
         settingsStore = GeminiLiveSettingsStore()
-        execApprovalStore = GeminiLiveExecApprovalStore()
+        let execApprovalStore = GeminiLiveExecApprovalStore()
+        execApprovals = ExecApprovalCoordinator(store: execApprovalStore)
         agentAvatarStore = GeminiAgentAvatarStore()
         skillStore = SkillStore()
         skillPackageService = SkillPackageService(skillStore: skillStore)
@@ -198,10 +189,8 @@ final class GeminiLiveViewModel: ObservableObject {
         let normalizedCurrentGeminiKey = (currentGeminiKey?.isEmpty == false) ? currentGeminiKey : nil
         storedAPIKey = normalizedCurrentGeminiKey
         apiKeyText = normalizedCurrentGeminiKey ?? ""
-        let backendAuthSession = backendAuthStore.read()
-        storedBackendAuthSession = backendAuthSession
-        backendAuthEmailText = backendAuthSession?.user.email ?? backendAuthStore.readLastEmail()
-        backendAuthenticatedEmail = backendAuthSession?.user.email
+        backendAuthEmailText = backend.authenticatedEmail ?? backend.lastKnownEmail
+        backendAuthenticatedEmail = backend.authenticatedEmail
 
         if let storedBackend = backendConfigStore.read() {
             storedBackendConfiguration = storedBackend
@@ -229,6 +218,68 @@ final class GeminiLiveViewModel: ObservableObject {
         normalizeEnabledSkillNames()
         syncEnabledSkillNamesToActivePreset()
         session.setOutputVolume(outputVolume)
+        execApprovals.$pending.assign(to: &$pendingExecApprovals)
+        execApprovals.onApprove = { [weak self] toolCallID in
+            self?.session.approveExecCall(toolCallID: toolCallID)
+        }
+        execApprovals.onDeny = { [weak self] toolCallID in
+            self?.session.denyExecCall(toolCallID: toolCallID)
+        }
+        backend.$isAuthenticated.assign(to: &$isBackendAuthenticated)
+        backend.$signedInSummary.assign(to: &$backendSignedInSummary)
+        backend.$authenticatedEmail.assign(to: &$backendAuthenticatedEmail)
+        backend.$isProFromBackend.assign(to: &$isProFromBackend)
+        backend.onAuthChanged = { [weak self] in
+            self?.syncConfiguredConnectionState()
+        }
+        backend.onProChanged = { [weak self] _ in
+            self?.recomputeProEntitlement()
+        }
+        backend.onStatusChange = { [weak self] message in
+            guard let self, let message else { return }
+            self.statusText = message
+        }
+        backend.onErrorChange = { [weak self] message in
+            self?.lastErrorMessage = message
+        }
+        backend.onSavingStateChange = { [weak self] isSaving in
+            self?.isSavingAPIKey = isSaving
+        }
+        backend.onAuthEmailChange = { [weak self] email in
+            self?.backendAuthEmailText = email
+        }
+        backend.currentDraftEmailProvider = { [weak self] in
+            self?.draftBackendAuthEmail
+        }
+        backend.ensureConfigurationForAuth = { [weak self] in
+            await self?.ensureBackendConfigurationForAuth()
+        }
+        backend.currentConfigurationProvider = { [weak self] in
+            self?.configuredBackendConfiguration
+        }
+        backend.shouldDisconnectManagedSession = { [weak self] in
+            guard let self else { return false }
+            return self.selectedConnectionMethod == .managedServer
+                && (self.connectionState == .connected || self.connectionState == .connecting)
+        }
+        backend.disconnectManagedSession = { [weak self] in
+            self?.disconnect()
+        }
+        screenShare.$isActive.assign(to: &$isScreenSharingEnabled)
+        screenShare.$mode.assign(to: &$screenShareMode)
+        screenShare.onFrameCaptured = { [weak self] data in
+            self?.session.sendScreenFrame(data)
+        }
+        screenShare.onStatusChange = { [weak self] message in
+            guard let self, let message else { return }
+            self.statusText = message
+        }
+        screenShare.onErrorMessageChange = { [weak self] message in
+            self?.lastErrorMessage = message
+        }
+        screenShare.connectionStateProvider = { [weak self] in
+            self?.connectionState ?? .disconnected
+        }
 
         session.onStateChange = { [weak self] state, message in
             DispatchQueue.main.async {
@@ -402,26 +453,7 @@ final class GeminiLiveViewModel: ObservableObject {
                 }
             }
         }
-
-        session.onShouldAutoApproveExec = { [execApprovalStore] command, workingDirectory in
-            execApprovalStore.isApproved(command: command, workingDirectory: workingDirectory)
-        }
-
-        session.onExecApprovalRequested = { [weak self] request in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                if !self.pendingExecApprovals.contains(where: { $0.toolCallID == request.toolCallID }) {
-                    self.pendingExecApprovals.append(request)
-                }
-                self.postToolAction(
-                    label: "Command approval needed",
-                    icon: "terminal",
-                    showsInOverlay: false,
-                    autoClearAfter: nil
-                )
-                self.onExecApprovalAttentionRequested?()
-            }
-        }
+        configureExecApprovalCallbacks()
 
         // Derive overlayInput from all relevant publishers so observers subscribe to one source.
         Publishers.CombineLatest(
@@ -478,49 +510,12 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     func openWebProCheckout() {
-        Task {
-            guard let configuration = await self.freshConfiguredBackendUserConfiguration() else {
-                NotchWebPortal.openInBrowser(NotchWebPortal.proCheckoutURL())
-                return
-            }
-
-            do {
-                let bridge = try await backendClient.createWebBridgeToken(configuration: configuration)
-                let url = NotchWebPortal.authBridgeURL(token: bridge.bridgeToken)
-                NotchWebPortal.openInBrowser(url)
-            } catch {
-                await MainActor.run {
-                    self.lastErrorMessage = error.localizedDescription
-                }
-                NotchWebPortal.openInBrowser(NotchWebPortal.proCheckoutURL())
-            }
-        }
+        backend.openWebProCheckout()
     }
 
     /// Refreshes `is_pro` from `GET /auth/me` after web signup, login, or Pro purchase.
     func refreshBackendSubscriptionStatus() async {
-        guard let configuration = await freshConfiguredBackendUserConfiguration() else {
-            isProFromBackend = false
-            recomputeProEntitlement()
-            return
-        }
-
-        do {
-            let user = try await backendClient.me(configuration: configuration)
-            isProFromBackend = user.isPro ?? false
-            recomputeProEntitlement()
-        } catch {
-            if shouldClearBackendAuthSession(for: error) {
-                logGeminiFailure(
-                    "subscription status refresh rejected the saved session; clearing local auth",
-                    error: error
-                )
-                clearBackendAuthSession()
-                return
-            }
-            logGeminiFailure("subscription status refresh failed; keeping previous Pro state", error: error)
-            // Keep previous backend Pro flag if the request fails (offline, etc.).
-        }
+        await backend.refreshSubscriptionStatus()
     }
 
     var hasConfiguredAPIKey: Bool {
@@ -532,7 +527,7 @@ final class GeminiLiveViewModel: ObservableObject {
         case .userAPIKey:
             return configuredAPIKey != nil
         case .managedServer:
-            return configuredBackendConfiguration != nil && backendAuthorizationToken != nil
+            return configuredBackendConfiguration != nil && backend.authorizationToken != nil
         }
     }
 
@@ -556,7 +551,7 @@ final class GeminiLiveViewModel: ObservableObject {
             if configuredBackendConfiguration == nil {
                 return "Configure the backend URL first in the Settings tab."
             }
-            if backendAuthorizationToken == nil {
+            if backend.authorizationToken == nil {
                 return "Sign in to your server account in the Settings tab."
             }
             if !isProUser {
@@ -568,14 +563,6 @@ final class GeminiLiveViewModel: ObservableObject {
 
     var selectedConnectionManageButtonTitle: String {
         selectedConnectionMethod.manageButtonTitle
-    }
-
-    var isBackendAuthenticated: Bool {
-        storedBackendAuthSession != nil
-    }
-
-    var backendSignedInSummary: String? {
-        backendAuthenticatedEmail
     }
 
     var defaultDisconnectedStatusText: String {
@@ -1037,30 +1024,13 @@ final class GeminiLiveViewModel: ObservableObject {
         connectionState.accentColor
     }
 
-    var screenSharingLabel: String {
-        if isWindowScreenSharing {
-            return "App"
-        }
-        return isRegionScreenSharing ? "Region" : "Screen"
-    }
+    var screenSharingLabel: String { isWindowScreenSharing ? "App" : isRegionScreenSharing ? "Region" : "Screen" }
 
-    var screenSharingIcon: String {
-        if isWindowScreenSharing {
-            return "macwindow"
-        }
-        if isRegionScreenSharing {
-            return "crop"
-        }
-        return isScreenSharingEnabled ? "eye.fill" : "eye"
-    }
+    var screenSharingIcon: String { isWindowScreenSharing ? "macwindow" : isRegionScreenSharing ? "crop" : (isScreenSharingEnabled ? "eye.fill" : "eye") }
 
-    var isRegionScreenSharing: Bool {
-        isScreenSharingEnabled && screenShareMode == .selectedRegion
-    }
+    var isRegionScreenSharing: Bool { isScreenSharingEnabled && screenShareMode == .selectedRegion }
 
-    var isWindowScreenSharing: Bool {
-        isScreenSharingEnabled && screenShareMode == .appWindow
-    }
+    var isWindowScreenSharing: Bool { isScreenSharingEnabled && screenShareMode == .appWindow }
 
     var isCompactIndicatorAnimated: Bool {
         isActivelyListening
@@ -1145,7 +1115,7 @@ final class GeminiLiveViewModel: ObservableObject {
             let normalizedConfiguration = GeminiLiveBackendConfiguration(
                 baseURL: normalizedURL.path.isEmpty ? normalizedURL.appendingPathComponent("") : normalizedURL,
                 clientToken: draftBackendClientToken,
-                userAccessToken: storedBackendAuthSession?.accessToken
+                userAccessToken: backend.currentAccessToken
             )
             do {
                 try await backendClient.validate(configuration: normalizedConfiguration)
@@ -1230,236 +1200,36 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     func signupBackendAccount() async -> Bool {
-        guard let configuration = await ensureBackendConfigurationForAuth() else {
-            lastErrorMessage = "Gemini Live server URL is missing."
-            statusText = "Check the connection and try again."
-            return false
-        }
-        guard let email = draftBackendAuthEmail else {
-            lastErrorMessage = "Email is missing."
-            statusText = "Enter your email, then try again."
-            return false
-        }
-        guard let password = draftBackendAuthPassword else {
-            lastErrorMessage = "Password is missing."
-            statusText = "Enter your password, then try again."
-            return false
-        }
-        guard password.count >= 8 else {
-            lastErrorMessage = "Password must be at least 8 characters."
-            statusText = "Use a longer password, then try again."
-            return false
-        }
-
-        isSavingAPIKey = true
-        lastErrorMessage = nil
-        statusText = "Creating your server account..."
-        defer { isSavingAPIKey = false }
-        backendAuthStore.saveLastEmail(email)
-
-        do {
-            let session = try await backendClient.signup(
-                configuration: configuration,
-                email: email,
-                password: password,
-                name: nil
-            )
-            storeBackendAuthSession(session)
-            backendAuthPasswordText = ""
-            statusText = defaultDisconnectedStatusText
-            return true
-        } catch {
-            lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            statusText = "Couldn't create your server account."
-            return false
-        }
+        let success = await backend.signup(
+            email: draftBackendAuthEmail ?? "",
+            password: draftBackendAuthPassword ?? "",
+            name: nil
+        )
+        guard success else { return false }
+        backendAuthPasswordText = ""
+        statusText = defaultDisconnectedStatusText
+        return true
     }
 
     func loginBackendAccount() async -> Bool {
-        guard let configuration = await ensureBackendConfigurationForAuth() else {
-            lastErrorMessage = "Gemini Live server URL is missing."
-            statusText = "Check the connection and try again."
-            return false
-        }
-        guard let email = draftBackendAuthEmail else {
-            lastErrorMessage = "Email is missing."
-            statusText = "Enter your email, then try again."
-            return false
-        }
-        guard let password = draftBackendAuthPassword else {
-            lastErrorMessage = "Password is missing."
-            statusText = "Enter your password, then try again."
-            return false
-        }
-        guard password.count >= 8 else {
-            lastErrorMessage = "Password must be at least 8 characters."
-            statusText = "Use a longer password, then try again."
-            return false
-        }
-
-        isSavingAPIKey = true
-        lastErrorMessage = nil
-        statusText = "Signing in to Gemini Live server..."
-        defer { isSavingAPIKey = false }
-        backendAuthStore.saveLastEmail(email)
-
-        do {
-            let session = try await backendClient.login(
-                configuration: configuration,
-                email: email,
-                password: password
-            )
-            storeBackendAuthSession(session)
-            backendAuthPasswordText = ""
-            statusText = defaultDisconnectedStatusText
-            return true
-        } catch {
-            lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            statusText = "Couldn't sign in to Gemini Live server."
-            return false
-        }
-    }
-
-    private struct PortableBackendAuthSession: Decodable {
-        let accessToken: String
-        let expiresAt: String
-        let refreshToken: String?
-        let refreshExpiresAt: String?
-
-        enum CodingKeys: String, CodingKey {
-            case accessToken = "access_token"
-            case expiresAt = "expires_at"
-            case refreshToken = "refresh_token"
-            case refreshExpiresAt = "refresh_expires_at"
-        }
+        let success = await backend.login(
+            email: draftBackendAuthEmail ?? "",
+            password: draftBackendAuthPassword ?? ""
+        )
+        guard success else { return false }
+        backendAuthPasswordText = ""
+        statusText = defaultDisconnectedStatusText
+        return true
     }
 
     /// Applies a browser-issued login token into the app's secure storage.
     func applyWebSessionToken(_ rawToken: String) async -> Bool {
-        let token = Self.normalizedPastedAccessToken(rawToken)
-        guard !token.isEmpty else {
-            lastErrorMessage = "Session token is empty."
-            return false
-        }
-        guard await ensureBackendConfigurationForAuth() != nil else {
-            lastErrorMessage = "Gemini Live server URL is missing."
-            return false
-        }
-        guard let configuration = configuredBackendConfiguration else {
-            lastErrorMessage = "Gemini Live server URL is missing."
-            return false
-        }
-
-        isSavingAPIKey = true
-        lastErrorMessage = nil
-        defer { isSavingAPIKey = false }
-
-        let portableSession = Self.decodedPortableBackendAuthSession(from: token)
-        let accessToken = portableSession?.accessToken ?? token
-        let withToken = GeminiLiveBackendConfiguration(
-            baseURL: configuration.baseURL,
-            clientToken: configuration.clientToken,
-            userAccessToken: accessToken
-        )
-
-        do {
-            let user = try await backendClient.me(configuration: withToken)
-            let session = GeminiLiveBackendAuthSession(
-                accessToken: accessToken,
-                expiresAt: portableSession?.expiresAt ?? Self.iso8601ExpiryForPastedSession(),
-                refreshToken: portableSession?.refreshToken,
-                refreshExpiresAt: portableSession?.refreshExpiresAt,
-                user: user
-            )
-            storeBackendAuthSession(session)
-            await refreshBackendSubscriptionStatus()
-            return true
-        } catch {
-            lastErrorMessage = "Invalid or expired session token."
-            return false
-        }
-    }
-
-    /// Strips accidental `Bearer ` prefix and surrounding quotes from pasted tokens.
-    private static func normalizedPastedAccessToken(_ raw: String) -> String {
-        var t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty else { return "" }
-        let prefix = "Bearer "
-        if t.lowercased().hasPrefix(prefix.lowercased()) {
-            t = String(t.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        if (t.hasPrefix("\"") && t.hasSuffix("\"") && t.count >= 2) || (t.hasPrefix("'") && t.hasSuffix("'") && t.count >= 2) {
-            t = String(t.dropFirst().dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        return t
-    }
-
-    private static func decodedPortableBackendAuthSession(from token: String) -> PortableBackendAuthSession? {
-        let prefix = "nts_"
-        guard token.hasPrefix(prefix) else { return nil }
-
-        let encoded = String(token.dropFirst(prefix.count))
-        guard let data = Data(base64Encoded: Self.base64URLToBase64(encoded)) else { return nil }
-        return try? JSONDecoder().decode(PortableBackendAuthSession.self, from: data)
-    }
-
-    private static func base64URLToBase64(_ value: String) -> String {
-        let replaced = value
-            .replacingOccurrences(of: "-", with: "+")
-            .replacingOccurrences(of: "_", with: "/")
-        let remainder = replaced.count % 4
-        guard remainder != 0 else { return replaced }
-        return replaced + String(repeating: "=", count: 4 - remainder)
-    }
-
-    private static func iso8601ExpiryForPastedSession() -> String {
-        let date = Date().addingTimeInterval(30 * 24 * 3600)
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        var s = formatter.string(from: date)
-        if s.hasSuffix("+00:00") {
-            s = String(s.dropLast(6)) + "Z"
-        }
-        return s
+        await backend.applyWebSessionToken(rawToken)
     }
 
     func logoutBackendAccount() async {
-        let configuration = configuredBackendUserConfiguration
-        let refreshToken = storedBackendAuthSession?.refreshToken
-        let shouldDisconnectManagedSession = selectedConnectionMethod == .managedServer
-            && (connectionState == .connected || connectionState == .connecting)
-
-        isSavingAPIKey = true
-        defer { isSavingAPIKey = false }
-        lastErrorMessage = nil
-
-        if shouldDisconnectManagedSession {
-            disconnect()
-        }
-
-        clearBackendAuthSession()
+        await backend.logout()
         backendAuthPasswordText = ""
-        statusText = configuredBackendConfiguration == nil
-            ? "Gemini Live server saved. Sign in to continue."
-            : "Signed out from Gemini Live server."
-
-        guard let configuration else { return }
-        Task.detached(priority: .utility) { [backendClient] in
-            let retryDelays: [Duration] = [.zero, .seconds(2), .seconds(5)]
-
-            for delay in retryDelays {
-                if delay > .zero {
-                    try? await Task.sleep(for: delay)
-                }
-
-                do {
-                    try await backendClient.logout(configuration: configuration, refreshToken: refreshToken)
-                    return
-                } catch {
-                    continue
-                }
-            }
-        }
     }
 
     func connect(clearingTranscripts: Bool = true) {
@@ -1531,7 +1301,7 @@ final class GeminiLiveViewModel: ObservableObject {
                 } else {
                     switch self.selectedConnectionMethod {
                     case .managedServer:
-                        guard let configuredBackend = await self.freshConfiguredBackendUserConfiguration() else {
+                        guard let configuredBackend = await self.backend.freshConfiguredBackendUserConfiguration() else {
                             self.connectionState = .failed
                             self.lastErrorMessage = self.configuredBackendConfiguration == nil
                                 ? "Gemini Live server is missing."
@@ -1554,12 +1324,12 @@ final class GeminiLiveViewModel: ObservableObject {
                             restAPIKey = nil
                             backendConfiguration = configuredBackend
                         } catch {
-                            if self.shouldClearBackendAuthSession(for: error) {
+                            if self.backend.shouldClearBackendAuthSession(for: error) {
                                 self.logGeminiFailure(
                                     "session token request rejected the saved session; clearing local auth",
                                     error: error
                                 )
-                                self.clearBackendAuthSession()
+                                self.backend.clearBackendAuthSession()
                             } else {
                                 self.logGeminiFailure("session token request failed", error: error)
                             }
@@ -1621,8 +1391,8 @@ final class GeminiLiveViewModel: ObservableObject {
     func disconnect() {
         lastDisconnectWasUserInitiated = true
         cancelReconnect()
-        stopScreenCapture()
-        pendingExecApprovals.removeAll()
+        screenShare.stop()
+        execApprovals.clearAll()
         toastClearTask?.cancel()
         toastClearTask = nil
         lastToolAction = nil
@@ -1667,230 +1437,19 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     func startFullScreenSharing() {
-        guard ensureScreenCapturePermission() else { return }
-        screenRegionSelectionController.cancelSelection(notify: false)
-        windowShareSelectionController.cancelSelection(notify: false)
-        screenShareMode = .fullScreen
-        screenShareRegion = nil
-        screenShareFilter = nil
-        screenShareHighlightController.hide()
-        beginScreenCapture(statusMessage: "Sharing full screen.")
+        screenShare.startFullScreen()
     }
 
     func startRegionScreenSharing() {
-        guard ensureScreenCapturePermission() else { return }
-        let wasSharing = isScreenSharingEnabled
-        let previousMode = screenShareMode
-        let previousRegion = screenShareRegion
-        let previousFilter = screenShareFilter
-
-        pauseScreenCapture()
-        isScreenSharingEnabled = false
-        screenShareHighlightController.hide()
-        statusText = "Drag to select a screen region. Press Esc to cancel."
-
-        screenRegionSelectionController.beginSelection { [weak self] rect in
-            guard let self else { return }
-
-            guard let rect, rect.width >= 12, rect.height >= 12 else {
-                if wasSharing {
-                    self.screenShareMode = previousMode
-                    self.screenShareRegion = previousRegion
-                    self.screenShareFilter = previousFilter
-                    self.beginScreenCapture(statusMessage: self.statusMessage(for: previousMode, selectedFilter: previousFilter))
-                } else if self.connectionState == .connected || self.connectionState == .connecting {
-                    self.statusText = "Region selection cancelled."
-                }
-                return
-            }
-
-            self.screenShareMode = .selectedRegion
-            self.screenShareRegion = rect.integral
-            self.screenShareFilter = nil
-            self.updateScreenShareHighlight()
-            self.beginScreenCapture(statusMessage: "Sharing selected region.")
-        }
+        screenShare.startRegion()
     }
 
     func startWindowSharing() {
-        guard ensureScreenCapturePermission() else { return }
-        let wasSharing = isScreenSharingEnabled
-        let previousMode = screenShareMode
-        let previousRegion = screenShareRegion
-        let previousFilter = screenShareFilter
-
-        pauseScreenCapture()
-        isScreenSharingEnabled = false
-        screenShareHighlightController.hide()
-        statusText = "Choose an app or window to share."
-
-        windowShareSelectionController.beginSelection { [weak self] selectedFilter in
-            guard let self else { return }
-
-            guard let selectedFilter else {
-                if wasSharing {
-                    self.screenShareMode = previousMode
-                    self.screenShareRegion = previousRegion
-                    self.screenShareFilter = previousFilter
-                    self.beginScreenCapture(statusMessage: self.statusMessage(for: previousMode, selectedFilter: previousFilter))
-                } else if self.connectionState == .connected || self.connectionState == .connecting {
-                    self.statusText = "App or window selection cancelled."
-                }
-                return
-            }
-
-            self.screenShareMode = .appWindow
-            self.screenShareRegion = nil
-            self.screenShareFilter = selectedFilter
-            self.updateScreenShareHighlight()
-            self.beginScreenCapture(statusMessage: self.statusMessage(for: .appWindow, selectedFilter: selectedFilter))
-        }
+        screenShare.startWindow()
     }
 
     func stopScreenSharing() {
-        stopScreenCapture()
-        if connectionState == .connected || connectionState == .connecting {
-            statusText = "Screen sharing stopped."
-        }
-    }
-
-    private func beginScreenCapture(statusMessage: String) {
-        pauseScreenCapture()
-        isScreenSharingEnabled = true
-        statusText = statusMessage
-
-        let captureSession = session
-        updateScreenShareHighlight()
-
-        screenCaptureTask = Task { @MainActor [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1.5))
-                guard !Task.isCancelled else { break }
-                guard let self else { break }
-
-                guard let jpeg = await self.captureAndEncodeScreen(
-                    region: self.screenShareRegion, 
-                    contentFilter: self.screenShareFilter
-                ) else { continue }
-
-                self.updateScreenShareHighlight()
-                captureSession.sendScreenFrame(jpeg)
-            }
-        }
-    }
-
-    private func ensureScreenCapturePermission() -> Bool {
-        if CGPreflightScreenCaptureAccess() {
-            return true
-        }
-
-        let granted = CGRequestScreenCaptureAccess()
-        if granted {
-            return true
-        }
-
-        lastErrorMessage = "Screen Recording permission is required to share your screen."
-        statusText = "Allow Screen Recording for Notch, then try again."
-        return false
-    }
-
-    private func pauseScreenCapture() {
-        screenCaptureTask?.cancel()
-        screenCaptureTask = nil
-        isScreenSharingEnabled = false
-    }
-
-    private func stopScreenCapture() {
-        screenRegionSelectionController.cancelSelection(notify: false)
-        windowShareSelectionController.cancelSelection(notify: false)
-        pauseScreenCapture()
-        screenShareHighlightController.hide()
-    }
-
-    private func updateScreenShareHighlight() {
-        guard isScreenSharingEnabled || screenShareMode != .fullScreen else {
-            screenShareHighlightController.hide()
-            return
-        }
-
-        switch screenShareMode {
-        case .fullScreen:
-            screenShareHighlightController.hide()
-        case .selectedRegion:
-            guard let screenShareRegion else {
-                screenShareHighlightController.hide()
-                return
-            }
-            screenShareHighlightController.show(rect: screenShareRegion)
-        case .appWindow:
-            screenShareHighlightController.hide()
-        }
-    }
-
-    private func captureAndEncodeScreen(region: CGRect?, contentFilter: SCContentFilter?) async -> Data? {
-        if #available(macOS 14.0, *), let contentFilter {
-            return await captureAndEncodeSharedContent(contentFilter)
-        }
-
-        return await captureAndEncodeDisplayRegion(region)
-    }
-
-    private func captureAndEncodeDisplayRegion(_ region: CGRect?) async -> Data? {
-        let captureRect = region ?? NSScreen.main.map { screen in
-            CGRect(
-                x: screen.frame.origin.x,
-                y: screen.frame.origin.y,
-                width: screen.frame.width,
-                height: screen.frame.height
-            )
-        } ?? CGRect.infinite
-
-        return await Task.detached(priority: .userInitiated) {
-            guard let fullImage = CGWindowListCreateImage(
-                captureRect, .optionAll, kCGNullWindowID, [.boundsIgnoreFraming]
-            ) else { return nil }
-            return Self.encodeJPEG(from: fullImage)
-        }.value
-    }
-
-    private nonisolated static let jpegContext = CIContext(options: [.useSoftwareRenderer: false])
-
-    private nonisolated static func encodeJPEG(from fullImage: CGImage) -> Data? {
-        let maxWidth: CGFloat = 1280
-        let originalWidth = CGFloat(fullImage.width)
-        let scale = min(1.0, maxWidth / originalWidth)
-        
-        let ciImage = CIImage(cgImage: fullImage).transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        return jpegContext.jpegRepresentation(of: ciImage, colorSpace: colorSpace, options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.6])
-    }
-
-    @available(macOS 14.0, *)
-    private func captureAndEncodeSharedContent(_ contentFilter: SCContentFilter) async -> Data? {
-        let contentInfo = SCShareableContent.info(for: contentFilter)
-        let contentRect = contentInfo.contentRect.standardized
-        guard contentRect.width > 0, contentRect.height > 0 else { return nil }
-
-        let streamConfiguration = SCStreamConfiguration()
-        let pixelScale = CGFloat(max(contentInfo.pointPixelScale, 1))
-        streamConfiguration.width = max(Int((contentRect.width * pixelScale).rounded(.up)), 1)
-        streamConfiguration.height = max(Int((contentRect.height * pixelScale).rounded(.up)), 1)
-        streamConfiguration.showsCursor = false
-
-        let image = await withCheckedContinuation { (continuation: CheckedContinuation<CGImage?, Never>) in
-            SCScreenshotManager.captureImage(contentFilter: contentFilter, configuration: streamConfiguration) { image, error in
-                guard error == nil else {
-                    continuation.resume(returning: nil)
-                    return
-                }
-                continuation.resume(returning: image)
-            }
-        }
-
-        guard let image else { return nil }
-        return await Task.detached(priority: .userInitiated) {
-            Self.encodeJPEG(from: image)
-        }.value
+        screenShare.stop()
     }
 
     func toggleMicrophone() {
@@ -2004,61 +1563,11 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     func shutdown() {
-        currentSkillSnapshot = nil
-        pendingExecApprovals.removeAll()
-        isModelThinking = false
+        disconnect()
+        execApprovals.clearAll()
         subscriptions.removeAll()
-        screenRegionSelectionController.cancelSelection(notify: false)
-        windowShareSelectionController.cancelSelection(notify: false)
-        session.disconnect(userInitiated: true)
-    }
-
-    private func statusMessage(for mode: ScreenShareMode, selectedFilter: SCContentFilter?) -> String {
-        switch mode {
-        case .fullScreen:
-            return "Sharing full screen."
-        case .selectedRegion:
-            return "Sharing selected region."
-        case .appWindow:
-            guard let selectedFilter else {
-                return "Sharing selected app or window."
-            }
-            let style = SCShareableContent.info(for: selectedFilter).style
-            switch style {
-            case .application:
-                return "Sharing selected app."
-            case .window:
-                return "Sharing selected window."
-            default:
-                return "Sharing selected content."
-            }
-        }
-    }
-
-    func approveCurrentExecApprovalOnce() {
-        guard let request = currentPendingExecApproval else { return }
-        pendingExecApprovals.removeAll { $0.toolCallID == request.toolCallID }
-        session.approveExecCall(toolCallID: request.toolCallID)
-    }
-
-    func approveCurrentExecApprovalExact() {
-        guard let request = currentPendingExecApproval else { return }
-        execApprovalStore.approveExact(command: request.command, workingDirectory: request.workingDirectory)
-        pendingExecApprovals.removeAll { $0.toolCallID == request.toolCallID }
-        session.approveExecCall(toolCallID: request.toolCallID)
-    }
-
-    func approveCurrentExecApprovalFamily() {
-        guard let request = currentPendingExecApproval else { return }
-        execApprovalStore.approveFamily(command: request.command, workingDirectory: request.workingDirectory)
-        pendingExecApprovals.removeAll { $0.toolCallID == request.toolCallID }
-        session.approveExecCall(toolCallID: request.toolCallID)
-    }
-
-    func denyCurrentExecApproval() {
-        guard let request = currentPendingExecApproval else { return }
-        pendingExecApprovals.removeAll { $0.toolCallID == request.toolCallID }
-        session.denyExecCall(toolCallID: request.toolCallID)
+        backend.shutdown()
+        screenShare.stop()
     }
 
     func importSkill() {
@@ -2138,10 +1647,8 @@ final class GeminiLiveViewModel: ObservableObject {
         let currentGeminiKey = currentStoredGeminiKey()
         storedAPIKey = currentGeminiKey
         apiKeyText = currentGeminiKey ?? ""
-        let currentBackendAuthSession = backendAuthStore.read()
-        storedBackendAuthSession = currentBackendAuthSession
-        backendAuthenticatedEmail = currentBackendAuthSession?.user.email
-        backendAuthEmailText = currentBackendAuthSession?.user.email ?? backendAuthStore.readLastEmail()
+        backend.reloadCurrentAuth()
+        backendAuthEmailText = backend.authenticatedEmail ?? backend.lastKnownEmail
         syncConfiguredConnectionState(updateStatus: connectionState != .connected && connectionState != .connecting)
     }
 
@@ -2227,144 +1734,12 @@ final class GeminiLiveViewModel: ObservableObject {
         storedBackendConfiguration ?? backendConfigStore.read()
     }
 
-    private var configuredBackendConfigurationForAuth: GeminiLiveBackendConfiguration? {
-        guard let configuration = configuredBackendConfiguration else { return nil }
-        return GeminiLiveBackendConfiguration(
-            baseURL: configuration.baseURL,
-            clientToken: configuration.clientToken,
-            userAccessToken: nil
-        )
-    }
-
     private var needsBackendConfigurationSave: Bool {
         guard let draftBackendURL else { return configuredBackendConfiguration == nil }
         guard let configuration = configuredBackendConfiguration else { return true }
 
         return configuration.displayURL != draftBackendURL
             || configuration.clientToken != draftBackendClientToken
-    }
-
-    private var configuredBackendConfigurationWithAuth: GeminiLiveBackendConfiguration? {
-        guard let configuration = configuredBackendConfiguration else { return nil }
-        return GeminiLiveBackendConfiguration(
-            baseURL: configuration.baseURL,
-            clientToken: configuration.clientToken,
-            userAccessToken: storedBackendAuthSession?.accessToken
-        )
-    }
-
-    private var configuredBackendUserConfiguration: GeminiLiveBackendConfiguration? {
-        guard let configuration = configuredBackendConfiguration,
-              let session = storedBackendAuthSession else {
-            return nil
-        }
-        return GeminiLiveBackendConfiguration(
-            baseURL: configuration.baseURL,
-            clientToken: nil,
-            userAccessToken: session.accessToken
-        )
-    }
-
-    private func parsedISO8601Date(_ value: String?) -> Date? {
-        guard let value, !value.isEmpty else { return nil }
-        return ISO8601DateFormatter().date(from: value)
-    }
-
-    private func backendAccessTokenNeedsRefresh(_ session: GeminiLiveBackendAuthSession) -> Bool {
-        guard let expiresAt = parsedISO8601Date(session.expiresAt) else { return true }
-        return expiresAt <= Date().addingTimeInterval(5 * 60)
-    }
-
-    private func backendRefreshTokenExpired(_ session: GeminiLiveBackendAuthSession) -> Bool {
-        guard let refreshExpiresAt = session.refreshExpiresAt else { return false }
-        guard let expiresAt = parsedISO8601Date(refreshExpiresAt) else { return true }
-        return expiresAt <= Date()
-    }
-
-    private func loadCurrentBackendAuthSession() -> GeminiLiveBackendAuthSession? {
-        if let storedBackendAuthSession {
-            return storedBackendAuthSession
-        }
-
-        let currentBackendAuthSession = backendAuthStore.read()
-        if let currentBackendAuthSession {
-            storedBackendAuthSession = currentBackendAuthSession
-            backendAuthenticatedEmail = currentBackendAuthSession.user.email
-            backendAuthEmailText = currentBackendAuthSession.user.email
-        }
-        return currentBackendAuthSession
-    }
-
-    private func refreshBackendAuthSessionIfNeeded(forceRefresh: Bool = false) async -> GeminiLiveBackendAuthSession? {
-        guard let session = loadCurrentBackendAuthSession() else { return nil }
-
-        if backendRefreshTokenExpired(session) {
-            clearBackendAuthSession()
-            return nil
-        }
-
-        if !forceRefresh && !backendAccessTokenNeedsRefresh(session) {
-            return session
-        }
-
-        guard let refreshToken = session.refreshToken,
-              !refreshToken.isEmpty,
-              let configuration = configuredBackendConfigurationForAuth else {
-            if let accessExpiry = parsedISO8601Date(session.expiresAt), accessExpiry > Date(), !forceRefresh {
-                return session
-            }
-            clearBackendAuthSession()
-            return nil
-        }
-
-        if let backendAuthRefreshTask {
-            do {
-                let refreshedSession = try await backendAuthRefreshTask.value
-                storeBackendAuthSession(refreshedSession)
-                return refreshedSession
-            } catch {
-                if shouldClearBackendAuthSession(for: error) {
-                    clearBackendAuthSession()
-                }
-                return nil
-            }
-        }
-
-        let task = Task { [backendClient] in
-            try await backendClient.refresh(configuration: configuration, refreshToken: refreshToken)
-        }
-        backendAuthRefreshTask = task
-        defer { backendAuthRefreshTask = nil }
-
-        do {
-            let refreshedSession = try await task.value
-            storeBackendAuthSession(refreshedSession)
-            return refreshedSession
-        } catch {
-            if shouldClearBackendAuthSession(for: error) {
-                clearBackendAuthSession()
-            } else if let accessExpiry = parsedISO8601Date(session.expiresAt), accessExpiry > Date(), !forceRefresh {
-                return session
-            }
-            return nil
-        }
-    }
-
-    private func freshConfiguredBackendUserConfiguration(forceRefresh: Bool = false) async -> GeminiLiveBackendConfiguration? {
-        guard let configuration = configuredBackendConfiguration,
-              let session = await refreshBackendAuthSessionIfNeeded(forceRefresh: forceRefresh) else {
-            return nil
-        }
-
-        return GeminiLiveBackendConfiguration(
-            baseURL: configuration.baseURL,
-            clientToken: nil,
-            userAccessToken: session.accessToken
-        )
-    }
-
-    private var backendAuthorizationToken: String? {
-        configuredBackendConfigurationWithAuth?.authorizationToken
     }
 
     private var configuredAPIKey: String? {
@@ -2390,54 +1765,12 @@ final class GeminiLiveViewModel: ObservableObject {
             guard didSave else { return nil }
         }
 
-        return configuredBackendConfigurationForAuth
-    }
-
-    private func storeBackendAuthSession(_ session: GeminiLiveBackendAuthSession) {
-        _ = backendAuthStore.save(session)
-        storedBackendAuthSession = session
-        backendAuthenticatedEmail = session.user.email
-        backendAuthEmailText = session.user.email
-        backendAuthStore.saveLastEmail(session.user.email)
-        lastErrorMessage = nil
-        isProFromBackend = session.user.isPro ?? false
-        recomputeProEntitlement()
-        syncConfiguredConnectionState()
-    }
-
-    private func clearBackendAuthSession() {
-        let preservedEmail = draftBackendAuthEmail
-        backendAuthRefreshTask?.cancel()
-        backendAuthRefreshTask = nil
-        backendAuthStore.delete()
-        if let preservedEmail {
-            backendAuthStore.saveLastEmail(preservedEmail)
-        }
-        storedBackendAuthSession = nil
-        backendAuthenticatedEmail = nil
-        isProFromBackend = false
-        recomputeProEntitlement()
-        syncConfiguredConnectionState()
-    }
-
-    private func shouldClearBackendAuthSession(for error: Error) -> Bool {
-        if let backendError = error as? GeminiLiveBackendError {
-            switch backendError {
-            case .unauthorized:
-                return true
-            case let .server(message):
-                let normalized = message.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                return normalized.contains("invalid or expired session token")
-                    || normalized.contains("session token")
-                    || normalized.contains("unauthorized")
-            default:
-                return false
-            }
-        }
-
-        let normalized = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return normalized.contains("invalid or expired session token")
-            || normalized.contains("unauthorized")
+        guard let configuration = configuredBackendConfiguration else { return nil }
+        return GeminiLiveBackendConfiguration(
+            baseURL: configuration.baseURL,
+            clientToken: configuration.clientToken,
+            userAccessToken: nil
+        )
     }
 
     private func logConnectAttempt(clearingTranscripts: Bool) {

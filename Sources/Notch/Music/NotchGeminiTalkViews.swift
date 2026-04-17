@@ -207,60 +207,201 @@ private struct GeminiAgentCommonSettingsContent: View {
     }
 }
 
-struct GeminiTalkPanelView: View {
+private struct GeminiTalkPromptEditorView: View {
     @ObservedObject var gemini: GeminiLiveViewModel
-    @ObservedObject var headerAccessoryController: NotchHeaderAccessoryController
-    @ObservedObject var presentationModel: NotchPresentationModel
-    
-    @AppStorage("app_language") private var appLanguage: String = "English"
-    @AppStorage(NotchAccentColorOption.storageKey) private var accentColorID: String = NotchAccentColorOption.defaultOption.rawValue
-    @State private var setupViewMode: GeminiSetupViewMode = .home
-    @State private var settingsTab: GeminiAgentSettingsTab = .prompt
-    @State private var holdShortcut = HoldToTalkShortcutStore.load()
-    @State private var promptEditorMode: GeminiPromptEditorMode?
-    @State private var promptDraftTitle = ""
-    @State private var promptDraftContent = ""
-    @State private var agentNameDraft = ""
-    @FocusState private var isAgentNameFieldFocused: Bool
-    @State private var headerRefreshTask: Task<Void, Never>?
+    @Binding var title: String
+    @Binding var content: String
+    let isEditing: Bool
+    let onDone: () -> Void
 
-    private func scheduleHeaderRefresh() {
-        headerRefreshTask?.cancel()
-        headerRefreshTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(16))
-            guard !Task.isCancelled else { return }
-            refreshHeaderAccessory()
+    var body: some View {
+        GeminiPromptEditorCard(
+            title: $title,
+            content: $content,
+            isEditing: isEditing,
+            onDone: onDone
+        )
+    }
+}
+
+private struct GeminiTalkConnectedView: View {
+    @ObservedObject var gemini: GeminiLiveViewModel
+    @ObservedObject var presentationModel: NotchPresentationModel
+    let appLanguage: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 6) {
+                    if !gemini.userTranscript.isEmpty {
+                        Text(gemini.userTranscript)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.65))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                    }
+
+                    Group {
+                        if gemini.modelTranscript.isEmpty {
+                            Text(Localization.get(gemini.connectedPlaceholderText, lang: appLanguage))
+                                .foregroundStyle(.white.opacity(0.42))
+                        } else {
+                            ProgressiveRevealText(text: gemini.modelTranscript, animateOnAppear: false)
+                                .foregroundStyle(.white.opacity(0.92))
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .font(.system(size: 13, weight: .medium))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            if gemini.isAutoReconnecting {
+                HStack(spacing: 5) {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                        .frame(width: 14, height: 14)
+                    Text(gemini.statusText)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color(nsColor: .systemYellow).ensureMinimumBrightness(factor: 0.72))
+                }
+            }
+
+            if let toolAction = gemini.lastToolAction {
+                HStack(spacing: 7) {
+                    Image(systemName: toolAction.icon)
+                        .font(.system(size: 11, weight: .semibold))
+                    Text(toolAction.label)
+                        .font(.system(size: 11, weight: .semibold))
+                        .lineLimit(1)
+                }
+                .foregroundStyle(.white.opacity(0.7))
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            HStack(alignment: .center, spacing: 6) {
+                GeminiInputModeMenu(gemini: gemini, presentationModel: presentationModel)
+                GeminiScreenShareMenu(gemini: gemini, presentationModel: presentationModel)
+                GeminiTranscriptModeToggle(gemini: gemini, presentationModel: presentationModel)
+                GeminiControlToggle(
+                    icon: gemini.showLiveChatInput ? "keyboard.fill" : "keyboard",
+                    label: Localization.get("Type", lang: appLanguage),
+                    isActive: gemini.showLiveChatInput,
+                    action: { gemini.showLiveChatInput.toggle() }
+                )
+                GeminiOutputVolumeControl(
+                    value: Binding(
+                        get: { gemini.outputVolume },
+                        set: { gemini.setOutputVolume($0) }
+                    )
+                )
+
+                Spacer()
+
+                GeminiControlToggle(
+                    icon: "phone.down.fill",
+                    label: Localization.get("End", lang: appLanguage),
+                    isActive: true,
+                    isDestructive: true,
+                    action: { gemini.disconnect() }
+                )
+            }
+        }
+    }
+}
+
+private struct GeminiTalkProLockedView: View {
+    @ObservedObject var gemini: GeminiLiveViewModel
+    let appLanguage: String
+    let themeAccent: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Mua Notch Pro để sử dụng")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.white.opacity(0.62))
+                .fixedSize(horizontal: false, vertical: true)
+
+            GeminiActionButton(
+                title: Localization.get("Buy Notch Pro", lang: appLanguage),
+                icon: "sparkles",
+                tint: themeAccent
+            ) {
+                gemini.openWebProCheckout()
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .padding(.leading, 12)
+        .padding(.top, 8)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+}
+
+private struct GeminiTalkDisconnectedHomeView: View {
+    @ObservedObject var gemini: GeminiLiveViewModel
+    @Binding var setupViewMode: GeminiSetupViewMode
+    @Binding var settingsTab: GeminiAgentSettingsTab
+    @Binding var holdShortcut: HoldToTalkShortcut
+    @Binding var agentNameDraft: String
+    let isAgentNameFieldFocused: FocusState<Bool>.Binding
+    let appLanguage: String
+    let themeAccent: Color
+    let statusColor: Color
+    let selectedAgentAvatarSymbolName: String
+    let selectedAgentAvatarImageURL: URL?
+    let openSettingsPanel: () -> Void
+    let beginCreatingAgent: () -> Void
+    let beginEditingSelectedPrompt: () -> Void
+    let beginEditingUserProfile: () -> Void
+    let beginEditingMemory: () -> Void
+    let requestDeleteSelectedPrompt: () -> Void
+    let saveAgentNameDraft: () -> Void
+    let chooseSelectedSystemPromptAvatarImage: () -> Void
+    let clearSelectedSystemPromptAvatarImage: () -> Void
+
+    private var sortedSystemPromptPresets: [GeminiSystemPromptPreset] {
+        gemini.systemPromptPresets.sorted { a, b in
+            let dateA = a.lastUsedAt ?? Date.distantPast
+            let dateB = b.lastUsedAt ?? Date.distantPast
+            if dateA != dateB {
+                return dateA > dateB
+            }
+            return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
         }
     }
 
-    private var statusColor: Color {
-        Color(nsColor: gemini.connectionState.accentColor).ensureMinimumBrightness(factor: 0.72)
+    var body: some View {
+        VStack(spacing: 10) {
+            if gemini.hasSavedAPIKey {
+                switch setupViewMode {
+                case .home:
+                    setupHomeContent
+                case .agentSelection:
+                    agentSelectionView
+                case .agentSettings:
+                    agentSettingsView
+                }
+            } else {
+                noGeminiKeySetupView
+            }
+
+            if let lastErrorMessage = gemini.lastErrorMessage {
+                Text(Localization.get(lastErrorMessage, lang: appLanguage))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.red.opacity(0.92))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+            } else if gemini.isSavingAPIKey {
+                Text(gemini.statusText)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.62))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+            }
+        }
     }
 
-    private var themeAccent: Color {
-        themedNotchAccentColor(from: accentColorID)
-    }
-
-    private var selectedPromptBinding: Binding<String> {
-        Binding(
-            get: { gemini.selectedSystemPromptID },
-            set: { gemini.selectSystemPrompt(id: $0) }
-        )
-    }
-
-    private var isPromptEditorPresented: Bool {
-        promptEditorMode != nil
-    }
-
-    private var selectedAgentAvatarSymbolName: String {
-        gemini.selectedSystemPromptAvatarSymbolName
-    }
-
-    private var selectedAgentAvatarImageURL: URL? {
-        gemini.selectedSystemPromptAvatarImageURL
-    }
-
-    @ViewBuilder
     private var setupHomeContent: some View {
         HStack(alignment: .top, spacing: 28) {
             VStack(spacing: 2) {
@@ -363,6 +504,233 @@ struct GeminiTalkPanelView: View {
         }
         .padding(.leading, 12)
         .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var noGeminiKeySetupView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(gemini.selectedConnectionSetupTitle)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.88))
+            Text(gemini.selectedConnectionSetupDescription)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.white.opacity(0.52))
+                .fixedSize(horizontal: false, vertical: true)
+
+            GeminiActionButton(
+                title: gemini.selectedConnectionManageButtonTitle,
+                icon: "key.fill",
+                tint: themeAccent
+            ) {
+                openSettingsPanel()
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .padding(.leading, 12)
+        .padding(.top, 8)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var agentSettingsView: some View {
+        HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(GeminiAgentSettingsTab.allCases) { tab in
+                    Button {
+                        settingsTab = tab
+                    } label: {
+                        Text(Localization.get(tab.rawValue, lang: appLanguage))
+                            .font(StandardButtonMetrics.font)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.65)
+                            .foregroundStyle(settingsTab == tab ? .black.opacity(0.85) : .white.opacity(0.85))
+                            .padding(.horizontal, 7)
+                            .frame(maxWidth: .infinity, minHeight: StandardButtonMetrics.height, alignment: .leading)
+                            .background(
+                                Group {
+                                    if settingsTab == tab {
+                                        StandardPrimaryPillChrome(tint: themeAccent)
+                                    } else {
+                                        Capsule().fill(Color.white.opacity(0.1))
+                                    }
+                                }
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                StandardActionButton(
+                    title: Localization.get("Done", lang: appLanguage),
+                    tint: themeAccent,
+                    variant: .primary,
+                    fillsAvailableWidth: true
+                ) {
+                    setupViewMode = .home
+                }
+            }
+            .frame(width: 92, alignment: .top)
+
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 8) {
+                    switch settingsTab {
+                    case .common:
+                        GeminiAgentCommonSettingsContent(
+                            gemini: gemini,
+                            holdShortcut: $holdShortcut,
+                            themeAccent: themeAccent,
+                            openSettings: openSettingsPanel
+                        )
+
+                    case .prompt:
+                        VStack(alignment: .leading, spacing: 8) {
+                            GeminiAgentSummaryCard(
+                                statusColor: statusColor,
+                                name: $agentNameDraft,
+                                avatarSymbolName: selectedAgentAvatarSymbolName,
+                                avatarImageURL: selectedAgentAvatarImageURL,
+                                nameFieldFocus: isAgentNameFieldFocused,
+                                onSubmitName: saveAgentNameDraft,
+                                onChooseAvatar: chooseSelectedSystemPromptAvatarImage,
+                                onClearAvatar: clearSelectedSystemPromptAvatarImage
+                            )
+
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 8) {
+                                    GeminiPillButton(
+                                        title: Localization.get("System Prompt", lang: appLanguage),
+                                        icon: "pencil",
+                                        tint: themeAccent,
+                                        fillsAvailableWidth: true
+                                    ) {
+                                        beginEditingSelectedPrompt()
+                                    }
+
+                                    GeminiPillButton(
+                                        title: Localization.get("User Profile", lang: appLanguage),
+                                        icon: "person.text.rectangle",
+                                        tint: themeAccent,
+                                        fillsAvailableWidth: true
+                                    ) {
+                                        beginEditingUserProfile()
+                                    }
+                                }
+
+                                HStack(spacing: 8) {
+                                    GeminiPillButton(
+                                        title: Localization.get("Memory", lang: appLanguage),
+                                        icon: "bookmark.fill",
+                                        tint: themeAccent,
+                                        fillsAvailableWidth: true
+                                    ) {
+                                        beginEditingMemory()
+                                    }
+
+                                    GeminiPillButton(
+                                        title: Localization.get("Delete", lang: appLanguage),
+                                        icon: "trash",
+                                        tint: Color(nsColor: .systemRed).opacity(0.8),
+                                        isDisabled: !gemini.canDeleteSelectedSystemPrompt,
+                                        fillsAvailableWidth: true
+                                    ) {
+                                        requestDeleteSelectedPrompt()
+                                    }
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    case .tools:
+                        GeminiToolsPicker(
+                            selection: $gemini.enabledTools,
+                            isDisabled: !gemini.canManageSkills
+                        )
+
+                    case .skills:
+                        GeminiSkillsPicker(
+                            installedSkills: gemini.installedSkills,
+                            userSkillNames: Set(gemini.userInstalledSkills.map(\.metadata.name)),
+                            selection: $gemini.enabledSkillNames,
+                            isDisabled: !gemini.canManageSkills,
+                            onImport: { gemini.importSkill() },
+                            onDeleteName: { gemini.deleteSkill(named: $0) }
+                        )
+                    }
+                }
+                .padding(.trailing, 4)
+            }
+        }
+    }
+
+    private var agentSelectionView: some View {
+        GeminiAgentSelectionView(
+            prompts: sortedSystemPromptPresets,
+            selectedID: gemini.selectedSystemPromptID,
+            statusColor: statusColor,
+            onSelect: { id in
+                gemini.selectSystemPrompt(id: id)
+                setupViewMode = .home
+            },
+            onCreate: {
+                beginCreatingAgent()
+            },
+            onDone: {
+                setupViewMode = .home
+            }
+        )
+        .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity), removal: .move(edge: .leading).combined(with: .opacity)))
+    }
+}
+
+struct GeminiTalkPanelView: View {
+    @ObservedObject var gemini: GeminiLiveViewModel
+    @ObservedObject var headerAccessoryController: NotchHeaderAccessoryController
+    @ObservedObject var presentationModel: NotchPresentationModel
+    
+    @AppStorage("app_language") private var appLanguage: String = "English"
+    @AppStorage(NotchAccentColorOption.storageKey) private var accentColorID: String = NotchAccentColorOption.defaultOption.rawValue
+    @State private var setupViewMode: GeminiSetupViewMode = .home
+    @State private var settingsTab: GeminiAgentSettingsTab = .prompt
+    @State private var holdShortcut = HoldToTalkShortcutStore.load()
+    @State private var promptEditorMode: GeminiPromptEditorMode?
+    @State private var promptDraftTitle = ""
+    @State private var promptDraftContent = ""
+    @State private var agentNameDraft = ""
+    @FocusState private var isAgentNameFieldFocused: Bool
+    @State private var headerRefreshTask: Task<Void, Never>?
+
+    private func scheduleHeaderRefresh() {
+        headerRefreshTask?.cancel()
+        headerRefreshTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(16))
+            guard !Task.isCancelled else { return }
+            refreshHeaderAccessory()
+        }
+    }
+
+    private var statusColor: Color {
+        Color(nsColor: gemini.connectionState.accentColor).ensureMinimumBrightness(factor: 0.72)
+    }
+
+    private var themeAccent: Color {
+        themedNotchAccentColor(from: accentColorID)
+    }
+
+    private var selectedPromptBinding: Binding<String> {
+        Binding(
+            get: { gemini.selectedSystemPromptID },
+            set: { gemini.selectSystemPrompt(id: $0) }
+        )
+    }
+
+    private var isPromptEditorPresented: Bool {
+        promptEditorMode != nil
+    }
+
+    private var selectedAgentAvatarSymbolName: String {
+        gemini.selectedSystemPromptAvatarSymbolName
+    }
+
+    private var selectedAgentAvatarImageURL: URL? {
+        gemini.selectedSystemPromptAvatarImageURL
     }
 
     @ViewBuilder
@@ -483,21 +851,6 @@ struct GeminiTalkPanelView: View {
     }
 
     private func refreshHeaderAccessory() {
-        if isPromptEditorPresented {
-            headerAccessoryController.clear()
-            return
-        }
-
-        guard gemini.connectionState != .connected else {
-            headerAccessoryController.clear()
-            return
-        }
-
-        if setupViewMode == .agentSettings || setupViewMode == .agentSelection {
-            headerAccessoryController.clear()
-            return
-        }
-
         headerAccessoryController.clear()
     }
 
@@ -505,198 +858,57 @@ struct GeminiTalkPanelView: View {
         presentationModel.selectPanel(.settings)
     }
 
-    /// Setup state shown when Talk is not ready yet (missing API key, server config, or login).
-    private var noGeminiKeySetupView: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(gemini.selectedConnectionSetupTitle)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.88))
-            Text(gemini.selectedConnectionSetupDescription)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.52))
-                .fixedSize(horizontal: false, vertical: true)
-
-            GeminiActionButton(
-                title: gemini.selectedConnectionManageButtonTitle,
-                icon: "key.fill",
-                tint: themeAccent
-            ) {
-                openSettingsPanel()
-            }
-            .frame(maxWidth: .infinity)
+    @ViewBuilder
+    private var panelContent: some View {
+        if isPromptEditorPresented {
+            GeminiTalkPromptEditorView(
+                gemini: gemini,
+                title: $promptDraftTitle,
+                content: $promptDraftContent,
+                isEditing: isEditingExistingPrompt,
+                onDone: savePromptDraft
+            )
+        } else if gemini.connectionState == .connected {
+            GeminiTalkConnectedView(
+                gemini: gemini,
+                presentationModel: presentationModel,
+                appLanguage: appLanguage
+            )
+        } else if gemini.requiresProForCurrentConnection {
+            GeminiTalkProLockedView(
+                gemini: gemini,
+                appLanguage: appLanguage,
+                themeAccent: themeAccent
+            )
+        } else {
+            GeminiTalkDisconnectedHomeView(
+                gemini: gemini,
+                setupViewMode: $setupViewMode,
+                settingsTab: $settingsTab,
+                holdShortcut: $holdShortcut,
+                agentNameDraft: $agentNameDraft,
+                isAgentNameFieldFocused: $isAgentNameFieldFocused,
+                appLanguage: appLanguage,
+                themeAccent: themeAccent,
+                statusColor: statusColor,
+                selectedAgentAvatarSymbolName: selectedAgentAvatarSymbolName,
+                selectedAgentAvatarImageURL: selectedAgentAvatarImageURL,
+                openSettingsPanel: openSettingsPanel,
+                beginCreatingAgent: beginCreatingAgent,
+                beginEditingSelectedPrompt: beginEditingSelectedPrompt,
+                beginEditingUserProfile: beginEditingUserProfile,
+                beginEditingMemory: beginEditingMemory,
+                requestDeleteSelectedPrompt: requestDeleteSelectedPrompt,
+                saveAgentNameDraft: saveAgentNameDraft,
+                chooseSelectedSystemPromptAvatarImage: { gemini.chooseSelectedSystemPromptAvatarImage() },
+                clearSelectedSystemPromptAvatarImage: { gemini.clearSelectedSystemPromptAvatarImage() }
+            )
         }
-        .padding(.leading, 12)
-        .padding(.top, 8)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-
-    private var proLockedTalkView: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Mua Notch Pro để sử dụng")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.62))
-                .fixedSize(horizontal: false, vertical: true)
-
-            GeminiActionButton(
-                title: Localization.get("Buy Notch Pro", lang: appLanguage),
-                icon: "sparkles",
-                tint: themeAccent
-            ) {
-                gemini.openWebProCheckout()
-            }
-            .frame(maxWidth: .infinity)
-        }
-        .padding(.leading, 12)
-        .padding(.top, 8)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     var body: some View {
         VStack(spacing: 8) {
-            Group {
-                if isPromptEditorPresented {
-                    GeminiPromptEditorCard(
-                        title: $promptDraftTitle,
-                        content: $promptDraftContent,
-                        isEditing: isEditingExistingPrompt,
-                        onDone: savePromptDraft
-                    )
-                } else if gemini.connectionState == .connected {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ScrollView(.vertical, showsIndicators: false) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                if !gemini.userTranscript.isEmpty {
-                                    Text(gemini.userTranscript)
-                                        .font(.system(size: 13, weight: .medium))
-                                        .foregroundStyle(.white.opacity(0.65))
-                                        .textSelection(.enabled)
-                                        .frame(maxWidth: .infinity, alignment: .trailing)
-                                }
-
-                                Group {
-                                    if gemini.modelTranscript.isEmpty {
-                                        Text(Localization.get(gemini.connectedPlaceholderText, lang: appLanguage))
-                                            .foregroundStyle(.white.opacity(0.42))
-                                    } else {
-                                        ProgressiveRevealText(text: gemini.modelTranscript, animateOnAppear: false)
-                                            .foregroundStyle(.white.opacity(0.92))
-                                            .textSelection(.enabled)
-                                    }
-                                }
-                                .font(.system(size: 13, weight: .medium))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-
-                        if gemini.isAutoReconnecting {
-                            HStack(spacing: 5) {
-                                ProgressView()
-                                    .scaleEffect(0.6)
-                                    .frame(width: 14, height: 14)
-                                Text(gemini.statusText)
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(Color(nsColor: .systemYellow).ensureMinimumBrightness(factor: 0.72))
-                            }
-                        }
-
-                        if let toolAction = gemini.lastToolAction {
-                            HStack(spacing: 7) {
-                                Image(systemName: toolAction.icon)
-                                    .font(.system(size: 11, weight: .semibold))
-                                Text(toolAction.label)
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .lineLimit(1)
-                            }
-                            .foregroundStyle(.white.opacity(0.7))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-
-                            HStack(alignment: .center, spacing: 6) {
-                            GeminiInputModeMenu(gemini: gemini, presentationModel: presentationModel)
-                            GeminiScreenShareMenu(gemini: gemini, presentationModel: presentationModel)
-                            GeminiTranscriptModeToggle(gemini: gemini, presentationModel: presentationModel)
-                            GeminiControlToggle(
-                                icon: gemini.showLiveChatInput ? "keyboard.fill" : "keyboard",
-                                label: Localization.get("Type", lang: appLanguage),
-                                isActive: gemini.showLiveChatInput,
-                                action: { gemini.showLiveChatInput.toggle() }
-                            )
-                            GeminiOutputVolumeControl(
-                                value: Binding(
-                                    get: { gemini.outputVolume },
-                                    set: { gemini.setOutputVolume($0) }
-                                )
-                            )
-
-                            Spacer()
-
-                            GeminiControlToggle(
-                                icon: "phone.down.fill",
-                                label: Localization.get("End", lang: appLanguage),
-                                isActive: true,
-                                isDestructive: true,
-                                action: { gemini.disconnect() }
-                            )
-                        }
-                    }
-                } else {
-                    // Not connected state
-                    VStack(spacing: 10) {
-                        if gemini.requiresProForCurrentConnection {
-                            proLockedTalkView
-                        } else if gemini.hasSavedAPIKey {
-                            switch setupViewMode {
-                            case .home:
-                                setupHomeContent
-
-                            case .agentSelection:
-                                GeminiAgentSelectionView(
-                                    prompts: gemini.systemPromptPresets.sorted { a, b in
-                                        let dateA = a.lastUsedAt ?? Date.distantPast
-                                        let dateB = b.lastUsedAt ?? Date.distantPast
-                                        if dateA != dateB {
-                                            return dateA > dateB
-                                        }
-                                        return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
-                                    },
-                                    selectedID: gemini.selectedSystemPromptID,
-                                    statusColor: statusColor,
-                                    onSelect: { id in
-                                        gemini.selectSystemPrompt(id: id)
-                                        setupViewMode = .home
-                                    },
-                                    onCreate: {
-                                        beginCreatingAgent()
-                                    },
-                                    onDone: {
-                                        setupViewMode = .home
-                                    }
-                                )
-                                .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity), removal: .move(edge: .leading).combined(with: .opacity)))
-                            case .agentSettings:
-                                agentSettingsView
-                            }
-                        } else {
-                            noGeminiKeySetupView
-                        }
-
-                        if let lastErrorMessage = gemini.lastErrorMessage {
-                            Text(Localization.get(lastErrorMessage, lang: appLanguage))
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(Color.red.opacity(0.92))
-                                .lineLimit(2)
-                                .multilineTextAlignment(.center)
-                        } else if gemini.isSavingAPIKey {
-                            Text(gemini.statusText)
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.62))
-                                .lineLimit(2)
-                                .multilineTextAlignment(.center)
-                        }
-                    }
-                }
-            }
+            panelContent
             .padding(.bottom, gemini.connectionState == .connected ? 4 : 10)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
@@ -734,167 +946,6 @@ struct GeminiTalkPanelView: View {
             headerRefreshTask?.cancel()
             headerAccessoryController.clear()
         }
-    }
-
-    @ViewBuilder
-    private var agentSettingsView: some View {
-        let vm = gemini
-        HStack(alignment: .top, spacing: 16) {
-            // Sidebar
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(GeminiAgentSettingsTab.allCases) { tab in
-                    Button {
-                        settingsTab = tab
-                    } label: {
-                        Text(Localization.get(tab.rawValue, lang: appLanguage))
-                            .font(StandardButtonMetrics.font)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.65)
-                            .foregroundStyle(settingsTab == tab ? .black.opacity(0.85) : .white.opacity(0.85))
-                            .padding(.horizontal, 7)
-                            .frame(maxWidth: .infinity, minHeight: StandardButtonMetrics.height, alignment: .leading)
-                            .background(
-                                Group {
-                                    if settingsTab == tab {
-                                        StandardPrimaryPillChrome(tint: themeAccent)
-                                    } else {
-                                        Capsule().fill(Color.white.opacity(0.1))
-                                    }
-                                }
-                            )
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                StandardActionButton(
-                    title: Localization.get("Done", lang: appLanguage),
-                    tint: themeAccent,
-                    variant: .primary,
-                    fillsAvailableWidth: true
-                ) {
-                    setupViewMode = .home
-                }
-            }
-            .frame(width: 92, alignment: .top)
-
-            // Content
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 8) {
-                    switch settingsTab {
-                    case .common:
-                        GeminiAgentCommonSettingsContent(
-                            gemini: vm,
-                            holdShortcut: $holdShortcut,
-                            themeAccent: themeAccent,
-                            openSettings: openSettingsPanel
-                        )
-
-                    case .prompt:
-                        VStack(alignment: .leading, spacing: 8) {
-                            GeminiAgentSummaryCard(
-                                statusColor: statusColor,
-                                name: $agentNameDraft,
-                                avatarSymbolName: selectedAgentAvatarSymbolName,
-                                avatarImageURL: selectedAgentAvatarImageURL,
-                                nameFieldFocus: $isAgentNameFieldFocused,
-                                onSubmitName: saveAgentNameDraft,
-                                onChooseAvatar: { vm.chooseSelectedSystemPromptAvatarImage() },
-                                onClearAvatar: { vm.clearSelectedSystemPromptAvatarImage() }
-                            )
-
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack(spacing: 8) {
-                                    GeminiPillButton(
-                                        title: Localization.get("System Prompt", lang: appLanguage),
-                                        icon: "pencil",
-                                        tint: themeAccent,
-                                        fillsAvailableWidth: true
-                                    ) {
-                                        beginEditingSelectedPrompt()
-                                    }
-
-                                    GeminiPillButton(
-                                        title: Localization.get("User Profile", lang: appLanguage),
-                                        icon: "person.text.rectangle",
-                                        tint: themeAccent,
-                                        fillsAvailableWidth: true
-                                    ) {
-                                        beginEditingUserProfile()
-                                    }
-                                }
-
-                                HStack(spacing: 8) {
-                                    GeminiPillButton(
-                                        title: Localization.get("Memory", lang: appLanguage),
-                                        icon: "bookmark.fill",
-                                        tint: themeAccent,
-                                        fillsAvailableWidth: true
-                                    ) {
-                                        beginEditingMemory()
-                                    }
-
-                                    GeminiPillButton(
-                                        title: Localization.get("Delete", lang: appLanguage),
-                                        icon: "trash",
-                                        tint: Color(nsColor: .systemRed).opacity(0.8),
-                                        isDisabled: !vm.canDeleteSelectedSystemPrompt,
-                                        fillsAvailableWidth: true
-                                    ) {
-                                        requestDeleteSelectedPrompt()
-                                    }
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    case .tools:
-                        GeminiToolsPicker(
-                            selection: $gemini.enabledTools,
-                            isDisabled: !vm.canManageSkills
-                        )
-
-                    case .skills:
-                        GeminiSkillsPicker(
-                            installedSkills: vm.installedSkills,
-                            userSkillNames: Set(vm.userInstalledSkills.map(\.metadata.name)),
-                            selection: $gemini.enabledSkillNames,
-                            isDisabled: !vm.canManageSkills,
-                            onImport: { vm.importSkill() },
-                            onDeleteName: { vm.deleteSkill(named: $0) }
-                        )
-                    }
-                }
-                .padding(.trailing, 4)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var agentSelectionView: some View {
-        GeminiAgentSelectionView(
-            prompts: gemini.systemPromptPresets.sorted { a, b in
-                let dateA = a.lastUsedAt ?? Date.distantPast
-                let dateB = b.lastUsedAt ?? Date.distantPast
-                if dateA != dateB {
-                    return dateA > dateB
-                }
-                return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
-            },
-            selectedID: gemini.selectedSystemPromptID,
-            statusColor: statusColor,
-            onSelect: { id in
-                gemini.selectSystemPrompt(id: id)
-                setupViewMode = .home
-            },
-            onCreate: {
-                beginCreatingAgent()
-            },
-            onDone: {
-                setupViewMode = .home
-            }
-        )
-        .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity), removal: .move(edge: .leading).combined(with: .opacity)))
     }
 }
 

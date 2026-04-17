@@ -11,21 +11,6 @@ private final class GeminiLiveChatKeyPanel: NSPanel {
 
 // MARK: - Drag handle (reliable on floating panels)
 
-private struct VisualEffectView: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.blendingMode = .behindWindow
-        view.state = .active
-        view.material = .menu
-        view.wantsLayer = true
-        view.layer?.cornerRadius = 16
-        view.layer?.cornerCurve = .continuous
-        view.layer?.masksToBounds = true
-        return view
-    }
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
-}
-
 private struct GeminiLiveChatInputContentView: View {
     @ObservedObject var gemini: GeminiLiveViewModel
     @State private var draft = ""

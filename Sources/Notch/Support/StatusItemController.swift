@@ -717,7 +717,10 @@ struct TaskPopoverView: View {
             .padding(16)
         }
         .frame(width: 320, height: 380)
-        .background(VisualEffectView(material: .underWindowBackground, blendingMode: .withinWindow).ignoresSafeArea())
+        .background(
+            VisualEffectView(material: .underWindowBackground, blendingMode: .withinWindow, cornerRadius: 0)
+                .ignoresSafeArea()
+        )
     }
 
     private func taskSectionHeader(_ title: String) -> some View {
@@ -828,23 +831,5 @@ struct TaskPopoverView: View {
             }
             newTaskTitle = ""
         }
-    }
-}
-
-private struct VisualEffectView: NSViewRepresentable {
-    let material: NSVisualEffectView.Material
-    let blendingMode: NSVisualEffectView.BlendingMode
-    
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = material
-        view.blendingMode = blendingMode
-        view.state = .active
-        return view
-    }
-    
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
-        nsView.material = material
-        nsView.blendingMode = blendingMode
     }
 }

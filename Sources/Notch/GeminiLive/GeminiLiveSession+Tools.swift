@@ -250,25 +250,6 @@ extension GeminiLiveSession {
         let endIndex = value.index(value.startIndex, offsetBy: limit)
         return String(value[..<endIndex]) + "\n...[truncated]"
     }
-
-    private func resolvedWorkspaceToolPath(_ rawPath: String, directoryHint: Bool? = nil) -> URL? {
-        GeminiLiveStoragePaths.prepare(fileManager: .default)
-        return GeminiLiveStoragePaths.resolvedWorkspacePath(from: rawPath, directoryHint: directoryHint)
-    }
-
-    private func workspacePathErrorResult(path: String) -> [String: Any] {
-        [
-            "success": false,
-            "error": "Path must stay inside ~/.notch/workspace: \(path)"
-        ]
-    }
-
-    private func readPathErrorResult(path: String) -> [String: Any] {
-        [
-            "success": false,
-            "error": "Read path must stay inside ~/.notch/workspace or match a built-in skill location: \(path)"
-        ]
-    }
 }
 
 private struct ProcessResult {

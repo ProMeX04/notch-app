@@ -70,6 +70,11 @@ struct GeminiLiveUsageMetadata: Sendable {
 final class GeminiLiveSession: @unchecked Sendable {
     static let defaultContextWindowTargetTokens = 25_000
     static let defaultContextWindowTriggerTokens = 65_000
+    private static let maxReconnectDelay: TimeInterval = 30.0
+    private static let baseReconnectDelay: TimeInterval = 0.5
+    private static let pingInterval: DispatchTimeInterval = .seconds(20)
+    private static let pingTimeout: TimeInterval = 10.0
+    private static let heartbeatWatchdogInterval: TimeInterval = 40.0
 
     var onStateChange: (@Sendable (GeminiLiveConnectionState, String?) -> Void)?
     var onUserTranscript: (@Sendable (String) -> Void)?
@@ -114,6 +119,7 @@ final class GeminiLiveSession: @unchecked Sendable {
     /// Shared ephemeral session for Brave search and other tool HTTP.
     let toolHTTPURLSession = URLSession(configuration: .ephemeral)
     let sendQueue = DispatchQueue(label: "dev.notch.gemini.send")
+    let toolExecutionQueue = DispatchQueue(label: "dev.notch.gemini.tool-execution", qos: .userInitiated)
     let audioProcessingQueue = DispatchQueue(label: "dev.notch.gemini.capture")
     let playbackQueue = DispatchQueue(label: "dev.notch.gemini.playback")
     /// Serial queue for all blocking CoreAudio / WebRTC lifecycle work
@@ -129,10 +135,11 @@ final class GeminiLiveSession: @unchecked Sendable {
         sampleRate: 24_000,
         channels: 1,
         interleaved: false
-    )!
+    )
 
     var standardInputEngine: AVAudioEngine?
     var inputConverter: AVAudioConverter?
+    var audioConversionConsecutiveFailures = 0
     var microphoneTapInstalled = false
     var captureMode: GeminiLiveCaptureMode = .standard
     var webRTCAudioIO: GeminiLiveWebRTCAudioIO?
@@ -143,7 +150,7 @@ final class GeminiLiveSession: @unchecked Sendable {
         sampleRate: 16_000,
         channels: 1,
         interleaved: false
-    )!
+    )
 
     var socketTask: URLSessionWebSocketTask?
     var enabledTools: Set<GeminiTool> = GeminiTool.coreToolSet
@@ -159,6 +166,10 @@ final class GeminiLiveSession: @unchecked Sendable {
     var latestSessionHandle: String?
     var latestSessionHandleIsResumable = false
     var pendingReconnectWorkItem: DispatchWorkItem?
+    private var pingTimer: DispatchSourceTimer?
+    private var lastMessageReceivedAt: Date?
+    private var reconnectAttemptCount = 0
+    private var hasLoggedUnstableConnection = false
     private let execApprovalQueue = DispatchQueue(label: "dev.notch.gemini.exec-approval")
     private var pendingExecApprovalsByID: [String: PendingExecApprovalCall] = [:]
 
@@ -214,6 +225,7 @@ final class GeminiLiveSession: @unchecked Sendable {
     func disconnect(userInitiated: Bool) {
         userInitiatedDisconnect = userInitiated
         cancelPendingReconnect()
+        stopHeartbeat()
         onMicrophoneInputLevel?(0)
         onMicrophoneCaptureStateChange?(false)
         onUsageMetadata?(.zero)
@@ -222,6 +234,8 @@ final class GeminiLiveSession: @unchecked Sendable {
             currentConfiguration = nil
             latestSessionHandle = nil
             latestSessionHandleIsResumable = false
+            reconnectAttemptCount = 0
+            hasLoggedUnstableConnection = false
             clearPendingExecApprovals()
             isResumingConnection = false
             // Fire the disconnected state right away so the UI button/label
@@ -482,6 +496,7 @@ final class GeminiLiveSession: @unchecked Sendable {
     }
 
     func tearDownConnection(preserveAudioSession: Bool = false) {
+        stopHeartbeat()
         hasCompletedSetup = false
         setupCompleteTime = nil
         cancelAudioCaptureMonitor()
@@ -562,6 +577,118 @@ final class GeminiLiveSession: @unchecked Sendable {
         onStateChange?(displayState, statusText)
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
         return true
+    }
+
+    private func nextReconnectDelay() -> TimeInterval {
+        let exp = min(Self.maxReconnectDelay, Self.baseReconnectDelay * pow(2.0, Double(reconnectAttemptCount)))
+        let jitter = exp < Self.maxReconnectDelay ? Double.random(in: 0..<(exp * 0.3)) : 0
+        return min(Self.maxReconnectDelay, exp + jitter)
+    }
+
+    private func reconnectStatusText() -> String {
+        latestSessionHandle != nil ? "Resuming Gemini Live session..." : "Reconnecting to Gemini Live..."
+    }
+
+    func resetReconnectBackoff() {
+        reconnectAttemptCount = 0
+        hasLoggedUnstableConnection = false
+    }
+
+    func beginHeartbeatAfterSetup() {
+        resetReconnectBackoff()
+        lastMessageReceivedAt = Date()
+        startHeartbeat()
+    }
+
+    @discardableResult
+    private func scheduleTransportReconnect(
+        hadCompletedSetup: Bool,
+        preserveAudioSession: Bool
+    ) -> Bool {
+        let delay = nextReconnectDelay()
+        reconnectAttemptCount += 1
+
+        if delay >= Self.maxReconnectDelay, reconnectAttemptCount >= 10, !hasLoggedUnstableConnection {
+            hasLoggedUnstableConnection = true
+            NotchLog.gemini.error(
+                "Gemini Live connection unstable: reconnect backoff capped at \(Self.maxReconnectDelay, privacy: .public)s."
+            )
+        }
+
+        return scheduleAutomaticReconnect(
+            after: delay,
+            statusText: reconnectStatusText(),
+            preserveConnectedState: hadCompletedSetup,
+            allowFreshReconnectWithoutHandle: !hadCompletedSetup,
+            preserveAudioSession: preserveAudioSession
+        )
+    }
+
+    private func handleSocketTransportFailure(message: String, hadCompletedSetup: Bool) {
+        let shouldPreserveAudioSession = hadCompletedSetup && captureMode == .webRTC
+        tearDownConnection(preserveAudioSession: shouldPreserveAudioSession)
+        if pendingReconnectWorkItem != nil {
+            cancelPendingReconnect()
+        }
+
+        if scheduleTransportReconnect(
+            hadCompletedSetup: hadCompletedSetup,
+            preserveAudioSession: shouldPreserveAudioSession
+        ) {
+            return
+        }
+
+        handleFailure(message: message, preserveAudioSession: shouldPreserveAudioSession)
+    }
+
+    private func startHeartbeat() {
+        stopHeartbeat()
+        guard hasCompletedSetup else { return }
+
+        let timer = DispatchSource.makeTimerSource(queue: sendQueue)
+        timer.schedule(deadline: .now() + Self.pingInterval, repeating: Self.pingInterval)
+        timer.setEventHandler { [weak self] in
+            guard let self, self.hasCompletedSetup, let socketTask = self.socketTask else { return }
+
+            let now = Date()
+            if let lastMessageReceivedAt = self.lastMessageReceivedAt,
+               now.timeIntervalSince(lastMessageReceivedAt) > Self.heartbeatWatchdogInterval {
+                NotchLog.gemini.debug(
+                    "Gemini Live heartbeat detected a stale connection after \(Int(now.timeIntervalSince(lastMessageReceivedAt)), privacy: .public)s without inbound traffic."
+                )
+                self.handleSocketTransportFailure(
+                    message: "Gemini Live connection became unresponsive.",
+                    hadCompletedSetup: self.hasCompletedSetup
+                )
+                return
+            }
+
+            socketTask.sendPing { error in
+                guard self.socketTask === socketTask else { return }
+
+                if let error {
+                    NotchLog.gemini.debug(
+                        "Gemini Live heartbeat ping failed: \(error.localizedDescription, privacy: .public)"
+                    )
+                    self.handleSocketTransportFailure(
+                        message: "Gemini Live heartbeat failed: \(error.localizedDescription)",
+                        hadCompletedSetup: self.hasCompletedSetup
+                    )
+                    return
+                }
+
+                self.lastMessageReceivedAt = Date()
+            }
+        }
+
+        pingTimer = timer
+        timer.resume()
+    }
+
+    private func stopHeartbeat() {
+        pingTimer?.cancel()
+        pingTimer = nil
+        lastMessageReceivedAt = nil
     }
 
     func parseGoAwayTimeLeft(_ rawValue: String?) -> TimeInterval? {
@@ -651,23 +778,9 @@ final class GeminiLiveSession: @unchecked Sendable {
 
                     if let error {
                         let hadCompletedSetup = self.hasCompletedSetup
-                        let shouldPreserveAudioSession = hadCompletedSetup && self.captureMode == .webRTC
-                        self.tearDownConnection(preserveAudioSession: shouldPreserveAudioSession)
-
-                        if self.scheduleAutomaticReconnect(
-                            after: 0.1,
-                            statusText: self.latestSessionHandle != nil ? "Resuming Gemini Live session..." : "Reconnecting to Gemini Live...",
-                            preserveConnectedState: hadCompletedSetup,
-                            allowFreshReconnectWithoutHandle: !hadCompletedSetup,
-                            preserveAudioSession: shouldPreserveAudioSession
-                        ) {
-                            onCompletion?(false)
-                            return
-                        }
-
-                        self.handleFailure(
+                        self.handleSocketTransportFailure(
                             message: "Gemini Live send failed: \(error.localizedDescription)",
-                            preserveAudioSession: hadCompletedSetup && self.captureMode == .webRTC
+                            hadCompletedSetup: hadCompletedSetup
                         )
                         onCompletion?(false)
                     } else {
@@ -696,36 +809,9 @@ final class GeminiLiveSession: @unchecked Sendable {
             switch result {
             case let .failure(error):
                 guard !self.userInitiatedDisconnect else { return }
-
-                let hadCompletedSetup = self.hasCompletedSetup
-                let shouldPreserveAudioSession = hadCompletedSetup && self.captureMode == .webRTC
-                self.tearDownConnection(preserveAudioSession: shouldPreserveAudioSession)
-
-                if self.pendingReconnectWorkItem != nil {
-                    self.cancelPendingReconnect()
-                    _ = self.scheduleAutomaticReconnect(
-                        after: 0.1,
-                        statusText: self.latestSessionHandle != nil ? "Resuming Gemini Live session..." : "Reconnecting to Gemini Live...",
-                        preserveConnectedState: hadCompletedSetup,
-                        allowFreshReconnectWithoutHandle: !hadCompletedSetup,
-                        preserveAudioSession: shouldPreserveAudioSession
-                    )
-                    return
-                }
-
-                if self.scheduleAutomaticReconnect(
-                    after: 0.35,
-                    statusText: self.latestSessionHandle != nil ? "Resuming Gemini Live session..." : "Reconnecting to Gemini Live...",
-                    preserveConnectedState: hadCompletedSetup,
-                    allowFreshReconnectWithoutHandle: !hadCompletedSetup,
-                    preserveAudioSession: shouldPreserveAudioSession
-                ) {
-                    return
-                }
-
-                self.handleFailure(
+                self.handleSocketTransportFailure(
                     message: "Gemini Live disconnected: \(error.localizedDescription)",
-                    preserveAudioSession: hadCompletedSetup && self.captureMode == .webRTC
+                    hadCompletedSetup: self.hasCompletedSetup
                 )
             case let .success(message):
                 self.handleMessage(message)
@@ -736,6 +822,7 @@ final class GeminiLiveSession: @unchecked Sendable {
 
     func handleMessage(_ message: URLSessionWebSocketTask.Message) {
         autoreleasepool {
+            lastMessageReceivedAt = Date()
             let rawData: Data?
 
             switch message {
@@ -744,6 +831,7 @@ final class GeminiLiveSession: @unchecked Sendable {
             case let .data(data):
                 rawData = data
             @unknown default:
+                NotchLog.gemini.debug("Gemini Live received an unknown WebSocket message type.")
                 rawData = nil
             }
 
@@ -751,6 +839,12 @@ final class GeminiLiveSession: @unchecked Sendable {
                 let rawData,
                 let object = try? JSONSerialization.jsonObject(with: rawData) as? [String: Any]
             else {
+                let previewLimit = 200
+                let previewData = rawData?.prefix(previewLimit) ?? Data()
+                let preview = String(decoding: previewData, as: UTF8.self)
+                NotchLog.gemini.debug(
+                    "Gemini Live dropped an unparseable message: bytes=\(rawData?.count ?? 0, privacy: .public) preview=\(preview, privacy: .private(mask: .hash))"
+                )
                 return
             }
 

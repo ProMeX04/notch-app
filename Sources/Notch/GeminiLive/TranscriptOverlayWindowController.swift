@@ -4,34 +4,37 @@ import SwiftUI
 
 // MARK: - SwiftUI View
 
-private struct VisualEffectView: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.blendingMode = .behindWindow
-        view.state = .active
-        view.material = .menu
-        view.wantsLayer = true
-        view.layer?.cornerRadius = 16
-        view.layer?.cornerCurve = .continuous
-        view.layer?.masksToBounds = true
-        return view
+@MainActor
+final class TranscriptOverlayModel: ObservableObject {
+    @Published var input: TranscriptOverlayInput?
+    @Published var isVisible: Bool = false
+
+    var modelText: String {
+        guard let input, input.subsEnabled else { return "" }
+        return input.modelText
     }
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
+
+    var isModelSpeaking: Bool {
+        guard let input else { return false }
+        return input.isModelSpeaking && input.subsEnabled
+    }
+
+    var toolAction: ToolActionToast? {
+        input?.toolAction
+    }
 }
 
 private struct TranscriptOverlayView: View {
-    let modelText: String
-    let isModelSpeaking: Bool
-    let toolAction: ToolActionToast?
+    @ObservedObject var model: TranscriptOverlayModel
 
     var body: some View {
         VStack(alignment: .center, spacing: 10) {
-            if !modelText.isEmpty || isModelSpeaking {
+            if (model.isVisible && !model.modelText.isEmpty) || model.isModelSpeaking {
                 HStack(alignment: .bottom, spacing: 8) {
-                    if !modelText.isEmpty {
-                        NotchMarkdownView(text: modelText, isUser: false, widthMode: .hugContent(maxWidth: 480))
+                    if !model.modelText.isEmpty {
+                        NotchMarkdownView(text: model.modelText, isUser: false, widthMode: .hugContent(maxWidth: 480))
                     }
-                    if isModelSpeaking {
+                    if model.isModelSpeaking {
                         CaptionTypingDots()
                     }
                 }
@@ -45,9 +48,9 @@ private struct TranscriptOverlayView: View {
                                 .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
                         }
                 }
-                .animation(.spring(response: 0.38, dampingFraction: 0.82), value: modelText)
+                .animation(.spring(response: 0.38, dampingFraction: 0.82), value: model.modelText)
             }
-            if let toolAction {
+            if let toolAction = model.toolAction {
                 ToolStatusLine(action: toolAction)
             }
         }
@@ -101,6 +104,7 @@ private struct ToolStatusLine: View {
 final class TranscriptOverlayWindowController {
     private var panel: NSPanel?
     private var hostingView: NSHostingView<TranscriptOverlayView>?
+    private let model = TranscriptOverlayModel()
     private var cancellables = Set<AnyCancellable>()
     private var hideTask: Task<Void, Never>?
     private var hideDebounceWorkItem: DispatchWorkItem?
@@ -136,6 +140,8 @@ final class TranscriptOverlayWindowController {
     func observe(gemini: GeminiLiveViewModel) {
         self.gemini = gemini
         suppressedTranscriptKey = nil
+        model.input = nil
+        model.isVisible = false
         cancellables.removeAll()
 
         gemini.$overlayInput
@@ -168,6 +174,8 @@ final class TranscriptOverlayWindowController {
     func stopObserving() {
         gemini = nil
         cancellables.removeAll()
+        model.input = nil
+        model.isVisible = false
         hide(animated: true)
     }
 
@@ -182,7 +190,9 @@ final class TranscriptOverlayWindowController {
             return
         }
         suppressedTranscriptKey = nil
-        showOrUpdate(with: input)
+        model.input = input
+        model.isVisible = true
+        showOrUpdate()
         scheduleAutoHide(isModelSpeaking: input.isModelSpeaking)
     }
 
@@ -200,16 +210,8 @@ final class TranscriptOverlayWindowController {
         return CGRect(x: x, y: y, width: panelWidth, height: maxPanelHeight)
     }
 
-    private func showOrUpdate(with input: TranscriptOverlayInput) {
-        let newView = TranscriptOverlayView(
-            modelText: input.subsEnabled ? input.modelText : "",
-            isModelSpeaking: input.isModelSpeaking && input.subsEnabled,
-            toolAction: input.toolAction
-        )
-
-        // If panel already exists, just update content
+    private func showOrUpdate() {
         if let panel, let hv = hostingView {
-            hv.rootView = newView
             let targetFrame = panelFrame(on: screen())
             panel.setFrame(targetFrame, display: true)
             hv.frame = CGRect(origin: .zero, size: targetFrame.size)
@@ -235,7 +237,7 @@ final class TranscriptOverlayWindowController {
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         panel.alphaValue = 0
 
-        let hv = NSHostingView(rootView: newView)
+        let hv = NSHostingView(rootView: TranscriptOverlayView(model: model))
         hv.frame = CGRect(origin: .zero, size: frame.size)
         hv.autoresizingMask = [.width, .height]
         panel.contentView = hv
@@ -262,6 +264,7 @@ final class TranscriptOverlayWindowController {
         hideTask?.cancel()
         hideDebounceWorkItem?.cancel()
         hideDebounceWorkItem = nil
+        model.isVisible = false
         guard let panel else { return }
         if animated {
             NSAnimationContext.runAnimationGroup({ ctx in
@@ -270,12 +273,14 @@ final class TranscriptOverlayWindowController {
             }, completionHandler: { [weak self] in
                 Task { @MainActor in
                     panel.orderOut(nil)
+                    self?.model.input = nil
                     self?.panel = nil
                     self?.hostingView = nil
                 }
             })
         } else {
             panel.orderOut(nil)
+            model.input = nil
             self.panel = nil
             self.hostingView = nil
         }

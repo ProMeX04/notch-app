@@ -26,6 +26,11 @@ extension GeminiLiveSession {
             return
         }
 
+        guard let outputFormat else {
+            handleFailure(message: "Couldn't create the Gemini Live output audio format.")
+            return
+        }
+
         outputEngine.attach(outputPlayer)
         outputEngine.connect(outputPlayer, to: outputEngine.mainMixerNode, format: outputFormat)
         outputPlayer.volume = outputVolume
@@ -42,10 +47,14 @@ extension GeminiLiveSession {
 
         playbackQueue.async { [weak self] in
             guard let self else { return }
+            guard let outputFormat = self.outputFormat else {
+                self.handleFailure(message: "Couldn't create the Gemini Live output audio format.")
+                return
+            }
 
             let frameCount = AVAudioFrameCount(data.count / MemoryLayout<Int16>.size)
             guard frameCount > 0 else { return }
-            guard let buffer = AVAudioPCMBuffer(pcmFormat: self.outputFormat, frameCapacity: frameCount) else {
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: frameCount) else {
                 return
             }
 
@@ -89,6 +98,7 @@ extension GeminiLiveSession {
         guard setupCompleteTime != nil else { return }
         prepareOutputIfNeeded()
         audioChunkCount = 0
+        audioConversionConsecutiveFailures = 0
 
         switch captureMode {
         case .webRTC:
@@ -133,6 +143,10 @@ extension GeminiLiveSession {
         guard microphoneEnabled else { return }
         guard socketTask != nil else { return }
         guard let setupTime = setupCompleteTime, Date().timeIntervalSince(setupTime) > 0.5 else { return }
+        guard let inputTargetFormat else {
+            handleFailure(message: "Couldn't create the Gemini Live input audio format.")
+            return
+        }
         
         // Keep mic capture active during the model's first playback turn so
         // barge-in stays responsive; WebRTC AEC warm-up is handled elsewhere.
@@ -160,9 +174,17 @@ extension GeminiLiveSession {
         }
 
         if let error {
+            audioConversionConsecutiveFailures += 1
+            inputConverter = nil
+            NotchLog.gemini.debug(
+                "Gemini Live audio conversion failed: consecutiveFailures=\(self.audioConversionConsecutiveFailures, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
+            guard audioConversionConsecutiveFailures >= 5 else { return }
             handleFailure(message: "Gemini Live audio conversion failed: \(error.localizedDescription)")
             return
         }
+
+        audioConversionConsecutiveFailures = 0
 
         guard status == .haveData || status == .inputRanDry else { return }
         guard outputBuffer.frameLength > 0 else { return }
@@ -231,6 +253,7 @@ extension GeminiLiveSession {
         }
         standardInputEngine = nil
         inputConverter = nil
+        audioConversionConsecutiveFailures = 0
     }
 
     private func publishMicrophoneInputLevel(from channelData: UnsafeMutablePointer<Int16>, frameCount: Int) {
@@ -256,6 +279,7 @@ extension GeminiLiveSession {
 
         hasCompletedSetup = true
         setupCompleteTime = Date()
+        beginHeartbeatAfterSetup()
         let statusMessage = isResumingConnection ? "Gemini Live resumed." : "Gemini Live is ready."
         isResumingConnection = false
         onStateChange?(.connected, statusMessage)
@@ -286,6 +310,11 @@ extension GeminiLiveSession {
             return
         }
 
+        guard let inputTargetFormat else {
+            handleFailure(message: "Couldn't create the Gemini Live input audio format.")
+            return
+        }
+
         let inputNode = outputEngine.inputNode
         let inputFormat = inputNode.inputFormat(forBus: 0)
         inputConverter = AVAudioConverter(from: inputFormat, to: inputTargetFormat)
@@ -299,7 +328,15 @@ extension GeminiLiveSession {
                 guard let self, let clonedBuffer = GeminiPCMBufferCloner.clone(buffer) else { return }
 
                 self.audioProcessingQueue.async { [weak self] in
-                    self?.processCapturedBuffer(clonedBuffer)
+                    guard let self else { return }
+                    guard let inputTargetFormat = self.inputTargetFormat else {
+                        self.handleFailure(message: "Couldn't create the Gemini Live input audio format.")
+                        return
+                    }
+                    if self.inputConverter == nil {
+                        self.inputConverter = AVAudioConverter(from: clonedBuffer.format, to: inputTargetFormat)
+                    }
+                    self.processCapturedBuffer(clonedBuffer)
                 }
             }
             microphoneTapInstalled = true
@@ -338,8 +375,12 @@ extension GeminiLiveSession {
                 // Buffer is already cloned by GeminiLiveWebRTCAudioIO — no second clone needed.
                 self.audioProcessingQueue.async { [weak self] in
                     guard let self else { return }
+                    guard let inputTargetFormat = self.inputTargetFormat else {
+                        self.handleFailure(message: "Couldn't create the Gemini Live input audio format.")
+                        return
+                    }
                     if self.inputConverter == nil {
-                        self.inputConverter = AVAudioConverter(from: buffer.format, to: self.inputTargetFormat)
+                        self.inputConverter = AVAudioConverter(from: buffer.format, to: inputTargetFormat)
                     }
                     self.processCapturedBuffer(buffer)
                 }
@@ -353,6 +394,11 @@ extension GeminiLiveSession {
     }
 
     func startStandardMicrophone() {
+        guard let inputTargetFormat else {
+            handleFailure(message: "Couldn't create the Gemini Live input audio format.")
+            return
+        }
+
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
         let inputFormat = inputNode.inputFormat(forBus: 0)
@@ -367,7 +413,11 @@ extension GeminiLiveSession {
                 guard let self, let clonedBuffer = GeminiPCMBufferCloner.clone(buffer) else { return }
 
                 self.audioProcessingQueue.async { [weak self] in
-                    self?.processCapturedBuffer(clonedBuffer)
+                    guard let self else { return }
+                    if self.inputConverter == nil {
+                        self.inputConverter = AVAudioConverter(from: clonedBuffer.format, to: inputTargetFormat)
+                    }
+                    self.processCapturedBuffer(clonedBuffer)
                 }
             }
             microphoneTapInstalled = true
@@ -402,7 +452,7 @@ extension GeminiLiveSession {
         }
 
         audioCaptureMonitorWorkItem = workItem
-        sendQueue.asyncAfter(deadline: .now() + 2.0, execute: workItem)
+        audioLifecycleQueue.asyncAfter(deadline: .now() + 2.0, execute: workItem)
     }
 
     func cancelAudioCaptureMonitor() {

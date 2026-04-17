@@ -9,18 +9,23 @@ import Foundation
 ///   - "1d"           → 1 day (24h)
 ///   - "1h30m"        → 1h 30m
 ///   - "1d 2h 30m"    → combined
-///   - "1:30:00"      → h:mm:ss or mm:ss
+///   - "1:30:00"      → h:mm:ss
+///   - "1:30"         → mm:ss by default, or h:mm in `.minutesScale` context
 ///   - "90"           → plain number = minutes
 ///   - "1.5h"         → fractional hours (= 90 min)
 ///
 /// Returns `nil` if nothing useful could be parsed.
 enum DurationParser {
     static func parse(_ input: String) -> Int? {
+        parse(input, colonContext: .legacy)
+    }
+
+    static func parse(_ input: String, colonContext: ColonFormatContext) -> Int? {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
-        // Try colon-separated format first: [h:]mm:ss or h:mm
-        if let colon = parseColonFormat(trimmed) { return colon }
+        // Try colon-separated format first.
+        if let colon = parseColonFormat(trimmed, context: colonContext) { return colon }
 
         // Try unit-based parsing
         if let units = parseUnitFormat(trimmed) { return units }
@@ -35,14 +40,35 @@ enum DurationParser {
 
     // MARK: - Colon format
 
-    private static func parseColonFormat(_ s: String) -> Int? {
+    enum ColonFormatContext {
+        /// Preserves the existing interpretation:
+        /// - 2 parts => mm:ss
+        /// - 3 parts => h:mm:ss
+        case legacy
+        /// For minute-scale inputs, two-part values that look like a clock
+        /// (for example `1:30` or `2:05`) are treated as h:mm when the hour
+        /// part is `< 24` and the minute part is `< 60`.
+        case minutesScale
+    }
+
+    private static func parseColonFormat(
+        _ s: String,
+        context: ColonFormatContext = .legacy
+    ) -> Int? {
         let parts = s.split(separator: ":").map { String($0) }
         guard parts.count >= 2, parts.count <= 3 else { return nil }
         guard parts.allSatisfy({ Double($0) != nil }) else { return nil }
 
         let nums = parts.compactMap { Double($0) }
         switch nums.count {
-        case 2: // mm:ss
+        case 2:
+            if context == .minutesScale,
+               nums[0] >= 0,
+               nums[0] < 24,
+               nums[1] >= 0,
+               nums[1] < 60 {
+                return Int(nums[0] * 3600 + nums[1] * 60)
+            }
             return Int(nums[0] * 60 + nums[1])
         case 3: // h:mm:ss
             return Int(nums[0] * 3600 + nums[1] * 60 + nums[2])

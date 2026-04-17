@@ -47,6 +47,10 @@ enum PomodoroPhase: String {
             return NSColor(red: 110/255, green: 190/255, blue: 255/255, alpha: 1)
         }
     }
+
+    var accentSwiftUIColor: Color {
+        Color(nsColor: accentColor)
+    }
 }
 
 enum PomodoroFocusMode: String, CaseIterable, Codable {
@@ -150,11 +154,17 @@ final class PomodoroViewModel: ObservableObject {
     /// Avoids wiping persisted `selectedTaskId` while assigning `tasks` then `selectedTaskId` during `loadTasks()`.
     private var suppressTaskPersistence = false
     private let userDefaults: UserDefaults
-    private let learningStatsStore: LearningStatsStore
+    private let learningStatsRecorder: LearningStatsRecording
+    private let appLanguageProvider: AppLanguageProvider
     private let workspaceNotificationCenter: NotificationCenter
     private let nowProvider: () -> Date
     private let sleepHandler: @Sendable (TimeInterval) async throws -> Void
+    private let persistenceDelay: Duration
     private var sleepWakeCancellables = Set<AnyCancellable>()
+    private var providerCancellables = Set<AnyCancellable>()
+    private var settingsPersistenceTask: Task<Void, Never>?
+    private var runtimePersistenceTask: Task<Void, Never>?
+    private var tasksPersistenceTask: Task<Void, Never>?
     @Published private(set) var completedFocusSessions = 0
     private var recordedFocusSecondsForCurrentPhase = 0
     private var wasManuallyPaused = false
@@ -165,27 +175,33 @@ final class PomodoroViewModel: ObservableObject {
     ) {
         self.init(
             userDefaults: userDefaults,
-            learningStatsStore: learningStatsStore,
+            learningStatsRecorder: learningStatsStore,
+            appLanguageProvider: AppLanguageProvider(userDefaults: userDefaults),
             workspaceNotificationCenter: NSWorkspace.shared.notificationCenter,
             nowProvider: { .now },
             sleepHandler: { duration in
                 try await Task.sleep(for: .seconds(duration))
-            }
+            },
+            persistenceDelay: .milliseconds(250)
         )
     }
 
     init(
         userDefaults: UserDefaults,
-        learningStatsStore: LearningStatsStore,
+        learningStatsRecorder: LearningStatsRecording,
+        appLanguageProvider: AppLanguageProvider,
         workspaceNotificationCenter: NotificationCenter,
         nowProvider: @escaping () -> Date,
-        sleepHandler: @escaping @Sendable (TimeInterval) async throws -> Void
+        sleepHandler: @escaping @Sendable (TimeInterval) async throws -> Void,
+        persistenceDelay: Duration = .milliseconds(250)
     ) {
         self.userDefaults = userDefaults
-        self.learningStatsStore = learningStatsStore
+        self.learningStatsRecorder = learningStatsRecorder
+        self.appLanguageProvider = appLanguageProvider
         self.workspaceNotificationCenter = workspaceNotificationCenter
         self.nowProvider = nowProvider
         self.sleepHandler = sleepHandler
+        self.persistenceDelay = persistenceDelay
 
         let focusDurationOverrideSeconds = Self.optionalInt(
             forKey: Self.focusDurationOverrideSecondsKey,
@@ -232,8 +248,13 @@ final class PomodoroViewModel: ObservableObject {
         loadTasks()
         restoreRuntimeStateIfAvailable()
         configureSleepWakeObservers()
+        configureLanguageObserver()
         // `phase` may stay `.focus` after restore (no `didSet` fire) — ensure a reminder exists.
         refreshPhaseReminder()
+    }
+
+    var languageProvider: AppLanguageProvider {
+        appLanguageProvider
     }
 
     var availablePresets: [PomodoroPreset] {
@@ -570,21 +591,25 @@ final class PomodoroViewModel: ObservableObject {
 
     func shutdown() {
         recordCurrentFocusProgressIfNeeded(referenceDate: nowProvider())
-        persistRuntimeState()
+        flushPendingPersistence()
+        persistSettingsImmediately()
+        persistRuntimeStateImmediately()
+        persistTasksImmediately()
         isFullscreenActive = false
         phaseCompletionTask?.cancel()
         phaseCompletionTask = nil
         scheduledPhaseTaskID = UUID()
         sleepWakeCancellables.removeAll()
+        providerCancellables.removeAll()
     }
 
     private func refreshPhaseReminder() {
-        let lang = UserDefaults.standard.string(forKey: "app_language") ?? "English"
+        let lang = appLanguageProvider.currentLanguage
         phaseReminder = MotivationalQuotes.getRandom(for: phase, lang: lang)
     }
 
     private func postPhaseStartedNotification() {
-        let lang = UserDefaults.standard.string(forKey: "app_language") ?? "English"
+        let lang = appLanguageProvider.currentLanguage
         let title = Localization.get(phase.rawValue, lang: lang)
         var body = phaseReminder.text
         if !phaseReminder.author.isEmpty {
@@ -656,6 +681,16 @@ final class PomodoroViewModel: ObservableObject {
                 self?.handleSystemDidWake()
             }
             .store(in: &sleepWakeCancellables)
+    }
+
+    private func configureLanguageObserver() {
+        appLanguageProvider.$currentLanguage
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.refreshPhaseReminder()
+            }
+            .store(in: &providerCancellables)
     }
 
     private func handleSystemWillSleep() {
@@ -783,7 +818,7 @@ final class PomodoroViewModel: ObservableObject {
         let delta = elapsedFocusSeconds - recordedFocusSecondsForCurrentPhase
         guard delta > 0 else { return }
 
-        learningStatsStore.record(seconds: delta, source: .pomodoro)
+        learningStatsRecorder.record(seconds: delta, source: .pomodoro)
         recordedFocusSecondsForCurrentPhase += delta
     }
 
@@ -823,6 +858,15 @@ final class PomodoroViewModel: ObservableObject {
     }
 
     private func persistSettings() {
+        schedulePersistence(
+            task: &settingsPersistenceTask,
+            operation: { [weak self] in
+                self?.persistSettingsImmediately()
+            }
+        )
+    }
+
+    private func persistSettingsImmediately() {
         userDefaults.set(autoStartBreaks, forKey: Self.autoStartBreaksKey)
         userDefaults.set(autoStartPomodoros, forKey: Self.autoStartPomodorosKey)
         userDefaults.set(focusMode.rawValue, forKey: Self.focusModeKey)
@@ -833,6 +877,15 @@ final class PomodoroViewModel: ObservableObject {
     }
 
     private func persistRuntimeState() {
+        schedulePersistence(
+            task: &runtimePersistenceTask,
+            operation: { [weak self] in
+                self?.persistRuntimeStateImmediately()
+            }
+        )
+    }
+
+    private func persistRuntimeStateImmediately() {
         let snapshot = PomodoroRuntimeState(
             phaseRawValue: phase.rawValue,
             remainingSeconds: remainingSeconds(at: nowProvider()),
@@ -1066,6 +1119,15 @@ final class PomodoroViewModel: ObservableObject {
 
     private func persistTasks() {
         guard !suppressTaskPersistence else { return }
+        schedulePersistence(
+            task: &tasksPersistenceTask,
+            operation: { [weak self] in
+                self?.persistTasksImmediately()
+            }
+        )
+    }
+
+    private func persistTasksImmediately() {
         if let encoded = try? JSONEncoder().encode(tasks) {
             userDefaults.set(encoded, forKey: Self.tasksKey)
         }
@@ -1073,6 +1135,37 @@ final class PomodoroViewModel: ObservableObject {
             userDefaults.set(id.uuidString, forKey: Self.selectedTaskIdKey)
         } else {
             userDefaults.removeObject(forKey: Self.selectedTaskIdKey)
+        }
+    }
+
+    private func flushPendingPersistence() {
+        settingsPersistenceTask?.cancel()
+        runtimePersistenceTask?.cancel()
+        tasksPersistenceTask?.cancel()
+        settingsPersistenceTask = nil
+        runtimePersistenceTask = nil
+        tasksPersistenceTask = nil
+    }
+
+    private func schedulePersistence(
+        task: inout Task<Void, Never>?,
+        operation: @escaping @MainActor () -> Void
+    ) {
+        task?.cancel()
+        guard persistenceDelay > .zero else {
+            operation()
+            return
+        }
+
+        let delay = persistenceDelay
+        task = Task { @MainActor in
+            do {
+                try await Task.sleep(for: delay)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            operation()
         }
     }
 

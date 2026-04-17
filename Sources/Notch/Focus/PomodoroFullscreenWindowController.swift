@@ -5,14 +5,15 @@ import SwiftUI
 private struct PomodoroFullscreenView: View {
     @ObservedObject var pomodoro: PomodoroViewModel
     @ObservedObject var learningStats: LearningStatsStore
-    @AppStorage("app_language") private var appLanguage: String = "English"
+    @ObservedObject var appLanguageProvider: AppLanguageProvider
 
     @State private var backgroundPulse = false
     @State private var floatingOffset: CGFloat = 0
-    @State private var currentEntry = MotivationalQuote(text: "", author: "")
 
     var body: some View {
         let phase = pomodoro.phase
+        let appLanguage = appLanguageProvider.currentLanguage
+        let currentEntry = pomodoro.phaseReminder
 
         // Premium Color Palette
         let gradientColors: [Color] = {
@@ -148,19 +149,6 @@ private struct PomodoroFullscreenView: View {
                     .padding(.bottom, 60)
             }
         }
-        .onAppear {
-            if currentEntry.text.isEmpty {
-                currentEntry = MotivationalQuotes.getRandom(for: pomodoro.phase, lang: appLanguage)
-            }
-        }
-        .onChange(of: pomodoro.phase) { _, newPhase in
-            withAnimation(.smooth) {
-                currentEntry = MotivationalQuotes.getRandom(for: newPhase, lang: appLanguage)
-            }
-        }
-        .onChange(of: appLanguage) { _, _ in
-            currentEntry = MotivationalQuotes.getRandom(for: pomodoro.phase, lang: appLanguage)
-        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
     }
@@ -216,13 +204,13 @@ final class PomodoroFullscreenWindowController {
     private weak var preferredScreen: NSScreen?
     private weak var pomodoro: PomodoroViewModel?
     private weak var learningStats: LearningStatsStore?
+    private var screenParametersObserver: NSObjectProtocol?
+    private var keyEventMonitor: Any?
+    private var fullscreenSafetyTask: Task<Void, Never>?
 
     func setPreferredScreen(_ newScreen: NSScreen?) {
         preferredScreen = newScreen
-        guard let panel else { return }
-        let targetFrame = screen().frame
-        panel.setFrame(targetFrame, display: true)
-        hostingView?.frame = CGRect(origin: .zero, size: targetFrame.size)
+        updatePanelFrameForCurrentScreen()
     }
 
     func observe(pomodoro: PomodoroViewModel, stats: LearningStatsStore) {
@@ -246,6 +234,10 @@ final class PomodoroFullscreenWindowController {
     func stopObserving() {
         pomodoro = nil
         cancellables.removeAll()
+        removeScreenParametersObserver()
+        removeKeyEventMonitor()
+        fullscreenSafetyTask?.cancel()
+        fullscreenSafetyTask = nil
         hideFullscreen()
     }
 
@@ -255,9 +247,16 @@ final class PomodoroFullscreenWindowController {
 
     private func showFullscreen() {
         guard let pomodoro, let learningStats else { return }
+        installScreenParametersObserverIfNeeded()
+        installEscapeKeyMonitorIfNeeded()
+        scheduleFullscreenSafetyAutoHide(for: pomodoro)
 
         if let panel, let hv = hostingView {
-            hv.rootView = PomodoroFullscreenView(pomodoro: pomodoro, learningStats: learningStats)
+            hv.rootView = PomodoroFullscreenView(
+                pomodoro: pomodoro,
+                learningStats: learningStats,
+                appLanguageProvider: pomodoro.languageProvider
+            )
             let frame = screen().frame
             panel.setFrame(frame, display: true)
             hv.frame = CGRect(origin: .zero, size: frame.size)
@@ -280,7 +279,13 @@ final class PomodoroFullscreenWindowController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.alphaValue = 0
 
-        let hv = NSHostingView(rootView: PomodoroFullscreenView(pomodoro: pomodoro, learningStats: learningStats))
+        let hv = NSHostingView(
+            rootView: PomodoroFullscreenView(
+                pomodoro: pomodoro,
+                learningStats: learningStats,
+                appLanguageProvider: pomodoro.languageProvider
+            )
+        )
         hv.frame = CGRect(origin: .zero, size: frame.size)
         hv.autoresizingMask = [.width, .height]
         panel.contentView = hv
@@ -305,15 +310,86 @@ final class PomodoroFullscreenWindowController {
 
     private func hideFullscreen() {
         guard let panel else { return }
+        fullscreenSafetyTask?.cancel()
+        fullscreenSafetyTask = nil
+        removeKeyEventMonitor()
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.25
             panel.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
-            Task { @MainActor in
+            MainActor.assumeIsolated {
                 panel.orderOut(nil)
                 self?.panel = nil
                 self?.hostingView = nil
             }
         })
     }
+
+    private func updatePanelFrameForCurrentScreen() {
+        guard let panel else { return }
+        let targetFrame = screen().frame
+        panel.setFrame(targetFrame, display: true)
+        hostingView?.frame = CGRect(origin: .zero, size: targetFrame.size)
+    }
+
+    private func installScreenParametersObserverIfNeeded() {
+        guard screenParametersObserver == nil else { return }
+        screenParametersObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.updatePanelFrameForCurrentScreen()
+            }
+        }
+    }
+
+    private func removeScreenParametersObserver() {
+        guard let screenParametersObserver else { return }
+        NotificationCenter.default.removeObserver(screenParametersObserver)
+        self.screenParametersObserver = nil
+    }
+
+    private func installEscapeKeyMonitorIfNeeded() {
+        guard keyEventMonitor == nil else { return }
+        keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard
+                let self,
+                event.keyCode == 53,
+                self.canExitFullscreenUsingEscape
+            else {
+                return event
+            }
+
+            self.pomodoro?.exitFullscreen()
+            return nil
+        }
+    }
+
+    private func removeKeyEventMonitor() {
+        guard let keyEventMonitor else { return }
+        NSEvent.removeMonitor(keyEventMonitor)
+        self.keyEventMonitor = nil
+    }
+
+    private var canExitFullscreenUsingEscape: Bool {
+        guard let pomodoro else { return false }
+        return !(pomodoro.focusMode == .strict && pomodoro.phase == .focus)
+    }
+
+    private func scheduleFullscreenSafetyAutoHide(for pomodoro: PomodoroViewModel) {
+        fullscreenSafetyTask?.cancel()
+        fullscreenSafetyTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: Self.maximumContinuousFullscreenDuration)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            self?.pomodoro?.exitFullscreen()
+        }
+    }
+
+    private static let maximumContinuousFullscreenDuration: Duration = .seconds(6 * 60 * 60)
 }

@@ -28,6 +28,22 @@ func buildTestCases() -> [TestCase] {
             name: "focus/cycle indicators stay consistent across edges",
             run: PomodoroViewModelTests.cycleIndicatorsStayConsistentAcrossEdges
         ),
+        TestCase(
+            name: "focus/running restore keeps active timer",
+            run: PomodoroViewModelTests.runningRestoreKeepsActiveTimer
+        ),
+        TestCase(
+            name: "focus/paused restore keeps session paused",
+            run: PomodoroViewModelTests.pausedRestoreKeepsSessionPaused
+        ),
+        TestCase(
+            name: "focus/select preset clears duration overrides",
+            run: PomodoroViewModelTests.selectPresetClearsDurationOverrides
+        ),
+        TestCase(
+            name: "focus/duration parser supports minute scale clock context",
+            run: PomodoroViewModelTests.durationParserSupportsMinuteScaleClockContext
+        ),
     ]
 }
 

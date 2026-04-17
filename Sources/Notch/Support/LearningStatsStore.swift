@@ -16,7 +16,12 @@ struct LearningSessionEntry: Identifiable, Codable, Equatable {
 }
 
 @MainActor
-final class LearningStatsStore: ObservableObject {
+protocol LearningStatsRecording: AnyObject {
+    func record(seconds: Int, source: LearningActivitySource)
+}
+
+@MainActor
+final class LearningStatsStore: ObservableObject, LearningStatsRecording {
     @Published private(set) var entries: [LearningSessionEntry]
 
     private let userDefaults: UserDefaults

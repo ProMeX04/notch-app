@@ -31,7 +31,7 @@ struct PomodoroPanelView: View {
     }
 
     private var displayedTint: Color {
-        Color(nsColor: displayedPhase.accentColor).ensureMinimumBrightness(factor: 0.72)
+        displayedPhase.accentSwiftUIColor.ensureMinimumBrightness(factor: 0.72)
     }
 
     private var interfaceTint: Color {
@@ -264,7 +264,7 @@ struct PomodoroIconView: View {
     let displayedPhase: PomodoroPhase
 
     private var accentColor: Color {
-        Color(nsColor: displayedPhase.accentColor).ensureMinimumBrightness(factor: 0.72)
+        displayedPhase.accentSwiftUIColor.ensureMinimumBrightness(factor: 0.72)
     }
 
     var body: some View {

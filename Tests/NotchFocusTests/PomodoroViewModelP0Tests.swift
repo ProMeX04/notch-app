@@ -9,14 +9,17 @@ enum PomodoroViewModelTests {
         workspaceNotificationCenter: NotificationCenter
     ) -> PomodoroViewModel {
         let stats = LearningStatsStore(userDefaults: makeIsolatedUserDefaults(label: "learning-stats"))
+        let languageProvider = AppLanguageProvider(userDefaults: userDefaults)
         return PomodoroViewModel(
             userDefaults: userDefaults,
-            learningStatsStore: stats,
+            learningStatsRecorder: stats,
+            appLanguageProvider: languageProvider,
             workspaceNotificationCenter: workspaceNotificationCenter,
             nowProvider: { clock.now },
             sleepHandler: { _ in
                 try await Task.sleep(for: .seconds(3600))
-            }
+            },
+            persistenceDelay: .zero
         )
     }
 
@@ -164,5 +167,93 @@ enum PomodoroViewModelTests {
         vm.updateSessionsBeforeLongBreak(count: 3)
         try expectEqual(vm.currentFocusSessionIndex, 1)
         try expectEqual(vm.completedSessionsInCycle, 0)
+    }
+
+    static func runningRestoreKeepsActiveTimer() throws {
+        let baseTime = Date(timeIntervalSince1970: 6_000)
+        let userDefaults = makeIsolatedUserDefaults(label: "running-restore")
+
+        do {
+            let liveClock = TestPomodoroClock(now: baseTime)
+            let originalVM = makeViewModel(
+                userDefaults: userDefaults,
+                clock: liveClock,
+                workspaceNotificationCenter: NotificationCenter()
+            )
+            originalVM.updateCurrentDurations(focusSeconds: 5, breakSeconds: 3)
+            originalVM.start()
+            originalVM.shutdown()
+        }
+
+        let restoredClock = TestPomodoroClock(now: baseTime.addingTimeInterval(2))
+        let restoredVM = makeViewModel(
+            userDefaults: userDefaults,
+            clock: restoredClock,
+            workspaceNotificationCenter: NotificationCenter()
+        )
+        defer { restoredVM.shutdown() }
+
+        try expect(restoredVM.isRunning)
+        try expectEqual(restoredVM.phase, .focus)
+        try expectEqual(restoredVM.remainingSeconds(at: restoredClock.now), 3)
+    }
+
+    static func pausedRestoreKeepsSessionPaused() throws {
+        let baseTime = Date(timeIntervalSince1970: 7_000)
+        let userDefaults = makeIsolatedUserDefaults(label: "paused-restore")
+        let liveClock = TestPomodoroClock(now: baseTime)
+
+        do {
+            let originalVM = makeViewModel(
+                userDefaults: userDefaults,
+                clock: liveClock,
+                workspaceNotificationCenter: NotificationCenter()
+            )
+            originalVM.updateCurrentDurations(focusSeconds: 5, breakSeconds: 3)
+            originalVM.start()
+            liveClock.now = baseTime.addingTimeInterval(2)
+            originalVM.pause()
+            originalVM.shutdown()
+        }
+
+        let restoredClock = TestPomodoroClock(now: baseTime.addingTimeInterval(20))
+        let restoredVM = makeViewModel(
+            userDefaults: userDefaults,
+            clock: restoredClock,
+            workspaceNotificationCenter: NotificationCenter()
+        )
+        defer { restoredVM.shutdown() }
+
+        try expect(!restoredVM.isRunning)
+        try expect(restoredVM.hasActiveSession)
+        try expectEqual(restoredVM.phase, .focus)
+        try expectEqual(restoredVM.remainingSeconds, 3)
+    }
+
+    static func selectPresetClearsDurationOverrides() throws {
+        let vm = makeViewModel(
+            userDefaults: makeIsolatedUserDefaults(label: "preset-reset"),
+            clock: TestPomodoroClock(now: Date(timeIntervalSince1970: 8_000)),
+            workspaceNotificationCenter: NotificationCenter()
+        )
+        defer { vm.shutdown() }
+
+        vm.updateCurrentDurations(focusSeconds: 95, breakSeconds: 125)
+        vm.updateLongBreakDuration(seconds: 99)
+        vm.selectPreset(.sprint)
+
+        try expectEqual(vm.focusDurationOverrideSeconds, nil)
+        try expectEqual(vm.breakDurationOverrideSeconds, nil)
+        try expectEqual(vm.longBreakDurationOverrideSeconds, nil)
+        try expectEqual(vm.focusDurationSeconds, PomodoroPreset.sprint.focusMinutes * 60)
+        try expectEqual(vm.breakDurationSeconds, PomodoroPreset.sprint.breakMinutes * 60)
+    }
+
+    static func durationParserSupportsMinuteScaleClockContext() throws {
+        try expectEqual(DurationParser.parse("1:30"), 90)
+        try expectEqual(
+            DurationParser.parse("1:30", colonContext: .minutesScale),
+            5_400
+        )
     }
 }

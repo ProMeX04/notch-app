@@ -1,5 +1,14 @@
 import SwiftUI
 import Charts
+
+private enum FocusMetrics {
+    static let clockHeight: CGFloat = 84
+    static let iconButtonSize: CGFloat = 56
+    static let columnWidth: CGFloat = 124
+    static let columnHeight: CGFloat = 78
+    static let clockFontSize: CGFloat = 78
+}
+
 struct PomodoroPanelView: View {
     @ObservedObject var pomodoro: PomodoroViewModel
     @ObservedObject var learningStats: LearningStatsStore
@@ -7,6 +16,7 @@ struct PomodoroPanelView: View {
     @State private var idleEditorPhase: PomodoroPhase = .focus
     @State private var isShowingSettings: Bool = false
     @State private var isShowingStats: Bool = false
+    @State private var isShowingResetConfirmation: Bool = false
     
     @AppStorage("app_language") private var appLanguage: String = "English"
     @AppStorage(NotchAccentColorOption.storageKey) private var accentColorID: String = NotchAccentColorOption.defaultOption.rawValue
@@ -38,29 +48,26 @@ struct PomodoroPanelView: View {
         NotchAccentColorOption.resolve(rawValue: accentColorID).color.ensureMinimumBrightness(factor: 0.78)
     }
 
-    private var pomodoroClockContent: AnyView {
+    @ViewBuilder
+    private var pomodoroClockContent: some View {
         if pomodoro.hasActiveSession {
-            return AnyView(
-                FocusClockSlot(yOffset: -2) {
-                    PomodoroTimeText(
-                        pomodoro: pomodoro,
-                        size: 78,
-                        weight: .bold
-                    )
-                    .foregroundStyle(displayedTint)
-                }
-            )
+            FocusClockSlot(yOffset: -2) {
+                PomodoroTimeText(
+                    pomodoro: pomodoro,
+                    size: FocusMetrics.clockFontSize,
+                    weight: .bold
+                )
+                .foregroundStyle(displayedTint)
+            }
         } else {
-            return AnyView(
-                FocusClockSlot(yOffset: -2) {
-                    StaticTimeText(
-                        seconds: idleDisplayedSeconds,
-                        size: 78,
-                        weight: .bold
-                    )
-                    .foregroundStyle(displayedTint)
-                }
-            )
+            FocusClockSlot(yOffset: -2) {
+                StaticTimeText(
+                    seconds: idleDisplayedSeconds,
+                    size: FocusMetrics.clockFontSize,
+                    weight: .bold
+                )
+                .foregroundStyle(displayedTint)
+            }
         }
     }
 
@@ -96,13 +103,7 @@ struct PomodoroPanelView: View {
                             .padding(.top, -2)
                         }
 
-                        FocusClockControl(
-                            tint: displayedTint,
-                            showsAdjusters: false,
-                            clockAction: nil,
-                            onDecrease: { },
-                            onIncrease: { }
-                        ) {
+                        FocusClockFace(action: nil) {
                             pomodoroClockContent
                         }
                     }
@@ -143,7 +144,11 @@ struct PomodoroPanelView: View {
                                 variant: .primary,
                                 fillsAvailableWidth: true
                             ) {
-                                pomodoro.reset()
+                                if pomodoro.hasActiveSession {
+                                    isShowingResetConfirmation = true
+                                } else {
+                                    pomodoro.reset()
+                                }
                             }
                         }
                         .fixedSize(horizontal: true, vertical: false)
@@ -216,6 +221,14 @@ struct PomodoroPanelView: View {
                 idleEditorPhase = .focus
             }
         }
+        .alert(Localization.get("Reset", lang: appLanguage), isPresented: $isShowingResetConfirmation) {
+            Button(Localization.get("Cancel", lang: appLanguage), role: .cancel) {}
+            Button(Localization.get("Reset", lang: appLanguage), role: .destructive) {
+                pomodoro.reset()
+            }
+        } message: {
+            Text(Localization.get("Current focus session will be cleared. Continue?", lang: appLanguage))
+        }
     }
 
     /// Chọn Off / Zen / Strict — compact, không prefix "Mode:"; chỉ hiện khi timer không chạy (idle / tạm dừng).
@@ -236,26 +249,6 @@ struct PomodoroPanelView: View {
             .standardPrimaryPillLabelStyle(tint: interfaceTint, fillsWidth: true)
         }
         .buttonStyle(.plain)
-    }
-
-    private func adjustIdleDuration(by direction: Int) {
-        guard !pomodoro.hasActiveSession else { return }
-
-        switch idleEditorPhase {
-        case .focus:
-            pomodoro.updateCurrentDurations(
-                focusMinutes: pomodoro.focusMinutes + (direction * 5),
-                breakMinutes: pomodoro.breakMinutes
-            )
-        case .shortBreak:
-            pomodoro.updateCurrentDurations(
-                focusMinutes: pomodoro.focusMinutes,
-                breakMinutes: pomodoro.breakMinutes + direction
-            )
-        case .longBreak:
-            let currentLongBreakMinutes = pomodoro.longBreakDurationSeconds / 60
-            pomodoro.updateLongBreakDuration(minutes: currentLongBreakMinutes + (direction * 5))
-        }
     }
 }
 
@@ -290,7 +283,7 @@ struct PomodoroIconView: View {
             }
             .padding(10)
         }
-        .frame(width: 56, height: 56)
+        .frame(width: FocusMetrics.iconButtonSize, height: FocusMetrics.iconButtonSize)
     }
 }
 
@@ -334,63 +327,19 @@ struct FocusClockSlot<Content: View>: View {
 
     var body: some View {
         content
-            .frame(height: 84, alignment: .center)
+            .frame(height: FocusMetrics.clockHeight, alignment: .center)
             .offset(y: yOffset)
-    }
-}
-
-struct FocusClockControl<ClockContent: View>: View {
-    let tint: Color
-    let showsAdjusters: Bool
-    let clockAction: (() -> Void)?
-    let onDecrease: () -> Void
-    let onIncrease: () -> Void
-    private let clockContent: ClockContent
-
-    init(
-        tint: Color,
-        showsAdjusters: Bool,
-        clockAction: (() -> Void)? = nil,
-        onDecrease: @escaping () -> Void,
-        onIncrease: @escaping () -> Void,
-        @ViewBuilder clock: () -> ClockContent
-    ) {
-        self.tint = tint
-        self.showsAdjusters = showsAdjusters
-        self.clockAction = clockAction
-        self.onDecrease = onDecrease
-        self.onIncrease = onIncrease
-        self.clockContent = clock()
-    }
-
-    var body: some View {
-        HStack(spacing: 8) {
-            FocusClockAdjustButton(
-                icon: "minus",
-                tint: tint,
-                isVisible: showsAdjusters,
-                action: onDecrease
-            )
-
-            FocusClockFace(
-                action: clockAction,
-                content: clockContent
-            )
-
-            FocusClockAdjustButton(
-                icon: "plus",
-                tint: tint,
-                isVisible: showsAdjusters,
-                action: onIncrease
-            )
-        }
-        .frame(height: 84, alignment: .center)
     }
 }
 
 struct FocusClockFace<Content: View>: View {
     let action: (() -> Void)?
-    let content: Content
+    private let content: Content
+
+    init(action: (() -> Void)? = nil, @ViewBuilder content: () -> Content) {
+        self.action = action
+        self.content = content()
+    }
 
     var body: some View {
         Group {
@@ -405,40 +354,6 @@ struct FocusClockFace<Content: View>: View {
         }
     }
 }
-
-struct FocusClockAdjustButton: View {
-    let icon: String
-    let tint: Color
-    let isVisible: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Group {
-            if isVisible {
-                Button(action: action) {
-                    Image(systemName: icon)
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: StandardButtonMetrics.height, height: StandardButtonMetrics.height)
-                        .background(
-                            Circle()
-                                .fill(.white.opacity(0.12))
-                        )
-                        .overlay {
-                            Circle()
-                                .stroke(.white.opacity(0.2), lineWidth: 1)
-                        }
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            } else {
-                Color.clear
-                    .frame(width: StandardButtonMetrics.height, height: StandardButtonMetrics.height)
-            }
-        }
-    }
-}
-
 
 struct FocusClockColumn<ClockContent: View, Accessory: View>: View {
     private let clock: ClockContent
@@ -457,9 +372,9 @@ struct FocusClockColumn<ClockContent: View, Accessory: View>: View {
             clock
 
             accessory
-                .frame(width: 124, height: 18, alignment: .center)
+                .frame(width: FocusMetrics.columnWidth, height: 18, alignment: .center)
         }
-        .frame(width: 124, height: 78, alignment: .topLeading)
+        .frame(width: FocusMetrics.columnWidth, height: FocusMetrics.columnHeight, alignment: .topLeading)
     }
 }
 
@@ -494,7 +409,7 @@ struct PomodoroPresetSelectorView: View {
                 )
             }
         }
-        .frame(width: 124, alignment: .leading)
+        .frame(width: FocusMetrics.columnWidth, alignment: .leading)
     }
 }
 

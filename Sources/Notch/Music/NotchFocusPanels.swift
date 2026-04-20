@@ -14,7 +14,6 @@ struct PomodoroPanelView: View {
     @ObservedObject var pomodoro: PomodoroViewModel
     @ObservedObject var learningStats: LearningStatsStore
     @ObservedObject var presentationModel: NotchPresentationModel
-    @State private var idleEditorPhase: PomodoroPhase = .focus
     @State private var isShowingSettings: Bool = false
     @State private var isShowingStats: Bool = false
     @State private var isShowingResetConfirmation: Bool = false
@@ -26,50 +25,19 @@ struct PomodoroPanelView: View {
         isShowingSettings || isShowingStats
     }
 
-    private var displayedPhase: PomodoroPhase {
-        pomodoro.hasActiveSession ? pomodoro.phase : idleEditorPhase
-    }
-
-    private var idleDisplayedSeconds: Int {
-        switch idleEditorPhase {
-        case .focus:
-            return pomodoro.focusDurationSeconds
-        case .shortBreak:
-            return pomodoro.breakDurationSeconds
-        case .longBreak:
-            return pomodoro.longBreakDurationSeconds
-        }
-    }
-
     private var displayedTint: Color {
-        displayedPhase.accentSwiftUIColor.ensureMinimumBrightness(factor: 0.72)
+        pomodoro.phase.accentSwiftUIColor.ensureMinimumBrightness(factor: 0.72)
     }
 
     private var interfaceTint: Color {
         NotchAccentColorOption.resolve(rawValue: accentColorID).color.ensureMinimumBrightness(factor: 0.78)
     }
 
-    @ViewBuilder
-    private var pomodoroClockContent: some View {
-        if pomodoro.hasActiveSession {
-            FocusClockSlot(yOffset: -2) {
-                PomodoroTimeText(
-                    pomodoro: pomodoro,
-                    size: FocusMetrics.clockFontSize,
-                    weight: .bold
-                )
-                .foregroundStyle(displayedTint)
-            }
-        } else {
-            FocusClockSlot(yOffset: -2) {
-                StaticTimeText(
-                    seconds: idleDisplayedSeconds,
-                    size: FocusMetrics.clockFontSize,
-                    weight: .bold
-                )
-                .foregroundStyle(displayedTint)
-            }
+    private var dockState: PomodoroPanelDock.State {
+        if pomodoro.isRunning {
+            return .running
         }
+        return pomodoro.hasActiveSession ? .paused : .idle
     }
 
     var body: some View {
@@ -81,129 +49,52 @@ struct PomodoroPanelView: View {
                 PomodoroStatsView(learningStats: learningStats, isPresented: $isShowingStats, tint: interfaceTint)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             } else {
-                ZStack {
-                    // Center area
-                    VStack(spacing: 8) {
-                        Text(Localization.get(displayedPhase.rawValue, lang: appLanguage))
-                            .font(.system(size: 13, weight: .black, design: .rounded))
-                            .foregroundStyle(displayedTint)
+                VStack(spacing: PomodoroPanelMetrics.contentSpacing) {
+                    PomodoroPanelHeader(pomodoro: pomodoro, tint: displayedTint)
 
-                        if pomodoro.hasActiveSession {
-                            HStack(spacing: 8) {
-                                PomodoroSessionDotsView(
-                                    current: pomodoro.completedSessionsInCycle,
-                                    total: pomodoro.sessionsBeforeLongBreak,
-                                    isFocus: pomodoro.phase == .focus,
-                                    tint: displayedTint
-                                )
-                                
-                                Text("\(Localization.get("Round", lang: appLanguage)) \(pomodoro.currentFocusSessionIndex)/\(pomodoro.sessionsBeforeLongBreak)")
-                                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                                    .foregroundStyle(displayedTint)
+                    PomodoroPanelTimer(pomodoro: pomodoro, tint: displayedTint)
+
+                    PomodoroPanelTaskChip(pomodoro: pomodoro, tint: displayedTint)
+
+                    PomodoroPanelDock(
+                        state: dockState,
+                        phaseTint: displayedTint,
+                        interfaceTint: interfaceTint,
+                        onPrimaryAction: {
+                            pomodoro.toggleRunning()
+                        },
+                        onReset: {
+                            if pomodoro.hasActiveSession {
+                                isShowingResetConfirmation = true
+                            } else {
+                                pomodoro.reset()
                             }
-                            .padding(.top, -2)
+                        },
+                        onStats: {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                                isShowingStats = true
+                            }
+                        },
+                        onSettings: {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                                isShowingSettings = true
+                            }
+                        },
+                        onSkip: {
+                            pomodoro.skipPhase()
                         }
-
-                        FocusClockFace(action: nil) {
-                            pomodoroClockContent
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .allowsHitTesting(true)
-
-                    // Left overlay
-                    HStack(spacing: 8) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            StandardActionButton(
-                                title: Localization.get("Stats", lang: appLanguage),
-                                icon: "chart.bar.xaxis",
-                                tint: interfaceTint,
-                                variant: .primary,
-                                fillsAvailableWidth: true
-                            ) {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                                    isShowingStats = true
-                                }
-                            }
-
-                            StandardActionButton(
-                                title: Localization.get("Settings", lang: appLanguage),
-                                icon: "slider.horizontal.3",
-                                tint: interfaceTint,
-                                variant: .primary,
-                                fillsAvailableWidth: true
-                            ) {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                                    isShowingSettings = true
-                                }
-                            }
-
-                            StandardActionButton(
-                                title: Localization.get("Reset", lang: appLanguage),
-                                icon: "arrow.counterclockwise",
-                                tint: interfaceTint,
-                                variant: .primary,
-                                fillsAvailableWidth: true
-                            ) {
-                                if pomodoro.hasActiveSession {
-                                    isShowingResetConfirmation = true
-                                } else {
-                                    pomodoro.reset()
-                                }
-                            }
-                        }
-                        .fixedSize(horizontal: true, vertical: false)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 12)
-                    .frame(maxWidth: .infinity)
-                    .allowsHitTesting(true)
-
-                    // Right overlay
-                    HStack(spacing: 8) {
-                        Spacer()
-                        VStack(spacing: 6) {
-                            if !pomodoro.isRunning {
-                                focusModeMenu
-                            }
-
-                            if pomodoro.isRunning {
-                                StandardActionButton(
-                                    title: Localization.get("Skip", lang: appLanguage),
-                                    icon: "forward.end.fill",
-                                    tint: displayedTint,
-                                    variant: .primary,
-                                    fillsAvailableWidth: true
-                                ) {
-                                    pomodoro.skipPhase()
-                                }
-                            }
-
-                            StandardActionButton(
-                                title: Localization.get(pomodoro.isRunning ? "Pause" : "Start", lang: appLanguage),
-                                icon: pomodoro.isRunning ? "pause.fill" : "play.fill",
-                                tint: interfaceTint,
-                                variant: .primary,
-                                fillsAvailableWidth: true
-                            ) {
-                                pomodoro.toggleRunning()
-                            }
-                        }
-                        .fixedSize(horizontal: true, vertical: false)
-                    }
-                    .padding(.horizontal, 12)
-                    .frame(maxWidth: .infinity)
-                    .allowsHitTesting(true)
+                    )
                 }
-                .offset(y: 8)
+                .frame(maxWidth: .infinity, alignment: .center)
                 .transition(.opacity)
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, PomodoroPanelMetrics.horizontalPadding)
+        .padding(.vertical, PomodoroPanelMetrics.verticalPadding)
         .frame(
             maxWidth: .infinity,
-            minHeight: isShowingSettings ? 160 : 100,
-            maxHeight: isShowingSettings ? 340 : (isShowingStats ? 175 : 160),
+            minHeight: isShowingSettings ? 160 : 120,
+            maxHeight: isShowingSettings ? 340 : (isShowingStats ? 175 : 210),
             alignment: .center
         )
         .background(showsOverlayPanel ? Color.black : Color.clear)
@@ -217,11 +108,6 @@ struct PomodoroPanelView: View {
         .onDisappear {
             presentationModel.isFocusOverlayPresented = false
         }
-        .onChange(of: pomodoro.hasActiveSession) { _, hasActiveSession in
-            if !hasActiveSession {
-                idleEditorPhase = .focus
-            }
-        }
         .alert(Localization.get("Reset", lang: appLanguage), isPresented: $isShowingResetConfirmation) {
             Button(Localization.get("Cancel", lang: appLanguage), role: .cancel) {}
             Button(Localization.get("Reset", lang: appLanguage), role: .destructive) {
@@ -230,26 +116,6 @@ struct PomodoroPanelView: View {
         } message: {
             Text(Localization.get("Current focus session will be cleared. Continue?", lang: appLanguage))
         }
-    }
-
-    /// Chọn Off / Zen / Strict — compact, không prefix "Mode:"; chỉ hiện khi timer không chạy (idle / tạm dừng).
-    private var focusModeMenu: some View {
-        Menu {
-            ForEach(PomodoroFocusMode.allCases, id: \.self) { mode in
-                Button(Localization.get(mode.rawValue, lang: appLanguage)) {
-                    pomodoro.setFocusMode(mode)
-                }
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "rectangle.split.2x1")
-                Text(Localization.get(pomodoro.focusMode.rawValue, lang: appLanguage))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.65)
-            }
-            .standardPrimaryPillLabelStyle(tint: interfaceTint, fillsWidth: true)
-        }
-        .buttonStyle(.plain)
     }
 }
 

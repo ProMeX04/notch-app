@@ -122,6 +122,28 @@ enum PomodoroViewModelTests {
         try expect(!vm.isRunning, "skip after a manual pause must not auto-resume")
     }
 
+    static func pausePreservesRemainingSecondsWithoutFullscreenSideEffects() throws {
+        let clock = TestPomodoroClock(now: Date(timeIntervalSince1970: 3_500))
+        let vm = makeViewModel(
+            userDefaults: makeIsolatedUserDefaults(label: "pause-preserves-remaining"),
+            clock: clock,
+            workspaceNotificationCenter: NotificationCenter()
+        )
+        defer { vm.shutdown() }
+
+        vm.updateCurrentDurations(focusSeconds: 5, breakSeconds: 3)
+        vm.start()
+        clock.now = clock.now.addingTimeInterval(2)
+
+        vm.pause()
+
+        try expectEqual(vm.phase, .focus)
+        try expect(!vm.isRunning)
+        try expect(vm.hasActiveSession)
+        try expectEqual(vm.remainingSeconds, 3)
+        try expectEqual(vm.completedFocusSessions, 0)
+    }
+
     static func cycleIndicatorsStayConsistentAcrossEdges() async throws {
         let clock = TestPomodoroClock(now: Date(timeIntervalSince1970: 4_000))
         let workspaceNotificationCenter = NotificationCenter()
@@ -250,6 +272,33 @@ enum PomodoroViewModelTests {
         try expectEqual(vm.longBreakDurationOverrideSeconds, nil)
         try expectEqual(vm.focusDurationSeconds, PomodoroPreset.sprint.focusMinutes * 60)
         try expectEqual(vm.breakDurationSeconds, PomodoroPreset.sprint.breakMinutes * 60)
+    }
+
+    static func resetReturnsToIdleFocusBaseline() throws {
+        let clock = TestPomodoroClock(now: Date(timeIntervalSince1970: 8_500))
+        let vm = makeViewModel(
+            userDefaults: makeIsolatedUserDefaults(label: "reset-idle-baseline"),
+            clock: clock,
+            workspaceNotificationCenter: NotificationCenter()
+        )
+        defer { vm.shutdown() }
+
+        vm.updateCurrentDurations(focusSeconds: 5, breakSeconds: 3)
+        vm.start()
+        clock.now = clock.now.addingTimeInterval(2)
+        vm.pause()
+        vm.setPhase(.shortBreak)
+        vm.start()
+
+        vm.reset()
+
+        try expectEqual(vm.phase, .focus)
+        try expect(!vm.isRunning)
+        try expect(!vm.hasActiveSession)
+        try expectEqual(vm.remainingSeconds, vm.focusDurationSeconds)
+        try expectEqual(vm.completedFocusSessions, 0)
+        try expectEqual(vm.currentFocusSessionIndex, 1)
+        try expectEqual(vm.completedSessionsInCycle, 0)
     }
 
     static func durationParserSupportsMinuteScaleClockContext() throws {

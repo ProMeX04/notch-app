@@ -26,6 +26,10 @@ func buildTestCases() -> [TestCase] {
             run: PomodoroViewModelTests.manualPauseThenSkipDoesNotAutoResume
         ),
         TestCase(
+            name: "focus/pause preserves remaining seconds without fullscreen side effects",
+            run: PomodoroViewModelTests.pausePreservesRemainingSecondsWithoutFullscreenSideEffects
+        ),
+        TestCase(
             name: "focus/cycle indicators stay consistent across edges",
             run: PomodoroViewModelTests.cycleIndicatorsStayConsistentAcrossEdges
         ),
@@ -40,6 +44,10 @@ func buildTestCases() -> [TestCase] {
         TestCase(
             name: "focus/select preset clears duration overrides",
             run: PomodoroViewModelTests.selectPresetClearsDurationOverrides
+        ),
+        TestCase(
+            name: "focus/reset returns to idle focus baseline",
+            run: PomodoroViewModelTests.resetReturnsToIdleFocusBaseline
         ),
         TestCase(
             name: "focus/duration parser supports minute scale clock context",

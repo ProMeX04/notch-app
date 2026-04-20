@@ -19,7 +19,6 @@ final class NotchWindowController {
     private let transcriptOverlay = TranscriptOverlayWindowController()
     private let liveChatInputPanel = GeminiLiveChatInputWindowController()
     private let geminiExecApprovalPanel = GeminiExecApprovalPanelController()
-    private let pomodoroFullscreenOverlay = PomodoroFullscreenWindowController()
 
     private(set) var isVisible = true
 
@@ -89,22 +88,12 @@ final class NotchWindowController {
             }
             .store(in: &cancellables)
 
-        pomodoroViewModel.$isFullscreenActive
-            .removeDuplicates()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] isFullscreenActive in
-                self?.syncVisibilityForPomodoroFullscreen(isFullscreenActive)
-            }
-            .store(in: &cancellables)
-
         transcriptOverlay.setPreferredScreen(initialScreen)
         transcriptOverlay.observe(gemini: geminiLiveViewModel)
         liveChatInputPanel.setPreferredScreen(initialScreen)
         liveChatInputPanel.observe(gemini: geminiLiveViewModel)
         geminiExecApprovalPanel.setPreferredScreen(initialScreen)
         geminiExecApprovalPanel.observe(gemini: geminiLiveViewModel)
-        pomodoroFullscreenOverlay.setPreferredScreen(initialScreen)
-        pomodoroFullscreenOverlay.observe(pomodoro: pomodoroViewModel, stats: learningStatsStore)
         geminiLiveViewModel.onExecApprovalAttentionRequested = { [weak self] in
             self?.presentExecApproval()
         }
@@ -122,26 +111,6 @@ final class NotchWindowController {
     func hide() {
         isVisible = false
         window.orderOut(nil)
-    }
-
-    private func syncVisibilityForPomodoroFullscreen(_ isFullscreenActive: Bool) {
-        if isFullscreenActive {
-            applyWindowVisibility(false)
-            return
-        }
-
-        guard isVisible else { return }
-        applyWindowVisibility(true)
-    }
-
-    private func applyWindowVisibility(_ visible: Bool) {
-        guard visible else {
-            window.orderOut(nil)
-            return
-        }
-
-        updateWindowFrame(animated: false)
-        window.orderFrontRegardless()
     }
 
     func toggleVisibility() {
@@ -171,7 +140,6 @@ final class NotchWindowController {
         transcriptOverlay.stopObserving()
         liveChatInputPanel.stopObserving()
         geminiExecApprovalPanel.stopObserving()
-        pomodoroFullscreenOverlay.stopObserving()
         geminiLiveViewModel.onExecApprovalAttentionRequested = nil
         geminiLiveViewModel.onOpenAppSettingsRequested = nil
         shelfViewModel.shutdown()
@@ -428,7 +396,6 @@ final class NotchWindowController {
         hostingView.frame = CGRect(origin: .zero, size: NotchMetrics.windowSize(for: presentationModel.selectedPanel))
         transcriptOverlay.setPreferredScreen(currentScreen)
         liveChatInputPanel.setPreferredScreen(currentScreen)
-        pomodoroFullscreenOverlay.setPreferredScreen(currentScreen)
 
         if isVisible {
             window.orderFrontRegardless()

@@ -2,11 +2,11 @@ import SwiftUI
 import NotchFocusCore
 
 enum PomodoroPanelMetrics {
-    static let horizontalPadding: CGFloat = 18
-    static let verticalPadding: CGFloat = 14
-    static let contentSpacing: CGFloat = 14
-    static let timerFontSize: CGFloat = 78
-    static let taskFontSize: CGFloat = 22
+    static let horizontalPadding: CGFloat = 16
+    static let verticalPadding: CGFloat = 8
+    static let contentSpacing: CGFloat = 8
+    static let timerFontSize: CGFloat = 58
+    static let taskFontSize: CGFloat = 16
 }
 
 struct PomodoroPanelHeader: View {
@@ -16,11 +16,11 @@ struct PomodoroPanelHeader: View {
     @AppStorage("app_language") private var appLanguage: String = "English"
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 4) {
             Text(Localization.get(pomodoro.phase.rawValue, lang: appLanguage))
-                .font(.system(size: 12, weight: .black, design: .rounded))
+                .font(.system(size: 10, weight: .black, design: .rounded))
                 .foregroundStyle(tint)
-                .tracking(1.5)
+                .tracking(1.0)
 
             if pomodoro.hasActiveSession {
                 HStack(spacing: 8) {
@@ -32,7 +32,7 @@ struct PomodoroPanelHeader: View {
                     )
 
                     Text("\(Localization.get("Round", lang: appLanguage)) \(pomodoro.currentFocusSessionIndex)/\(pomodoro.sessionsBeforeLongBreak)")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .font(.system(size: 8, weight: .bold, design: .rounded))
                         .foregroundStyle(tint.opacity(0.82))
                 }
             }
@@ -69,29 +69,29 @@ struct PomodoroPanelTaskChip: View {
         if !pomodoro.currentTask.isEmpty {
             VStack(spacing: 6) {
                 Text(Localization.get("Focusing on", lang: appLanguage).uppercased())
-                    .font(.system(size: 10, weight: .black))
+                    .font(.system(size: 9, weight: .black))
                     .foregroundStyle(tint.opacity(0.7))
-                    .tracking(3)
+                    .tracking(2.5)
 
                 HStack(spacing: 8) {
                     Image(systemName: "checklist")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(tint)
 
-                    Text(pomodoro.currentTask)
-                        .font(.system(size: PomodoroPanelMetrics.taskFontSize, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                Text(pomodoro.currentTask)
+                    .font(.system(size: PomodoroPanelMetrics.taskFontSize, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 10)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 5)
                 .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
                         .fill(.white.opacity(0.05))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
                         .stroke(.white.opacity(0.1), lineWidth: 0.5)
                 )
             }

@@ -6,3 +6,5 @@ tools/__pycache__/
 tools/gemini_search_report_*.html
 tools/grounding_rendered_content_preview.html
 AppIcon.iconset/
+.superpowers/
+.worktrees/

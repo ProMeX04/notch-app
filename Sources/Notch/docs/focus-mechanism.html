@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Vì sao Focus trong Notch hữu ích — Pomodoro &amp; toàn màn hình</title>
+  <title>Vì sao Focus trong Notch hữu ích — Pomodoro theo trạng thái</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@450&display=swap" rel="stylesheet" />
@@ -493,7 +493,7 @@
           <h3>Gợi ý chọn preset</h3>
           <ul class="clean">
             <li>Việc bị cắt ngang thường xuyên → Sprint hoặc Classic: giúp bạn vẫn đạt được “chuỗi” hoàn thành.</li>
-            <li>Cần khoảng lặng dài → Deep + chế độ toàn màn hình (mục dưới): giảm kích thích từ desktop.</li>
+            <li>Cần khoảng lặng dài → Deep + trạng thái Running gọn nhẹ: giữ trọng tâm trong notch, ít bị kéo ra ngoài nhịp.</li>
             <li>Nhịp riêng của team hoặc bản thân → chỉnh phút/giây; bạn điều chỉnh để cảm thấy bền, không phải để “đúng lý thuyết”.</li>
           </ul>
         </div>
@@ -501,29 +501,30 @@
 
       <section id="modes" data-index="04">
         <div class="section-inner reveal">
-          <h2>Không gian làm việc: ít xao nhãng hơn, nghỉ “thật” hơn</h2>
+          <h2>Trạng thái Focus: Running, Paused, Idle</h2>
           <p>
-            Một phần lớn mệt mỏi đến từ việc <strong style="color:var(--text)">nhìn chằm chằm màn hình</strong> và bị kéo bởi tab, thông báo, cửa sổ khác.
-            Lớp toàn màn hình trong Notch không “phép màu”, nhưng giúp giảm tải kích thích — bạn tự chọn mức: nhẹ nhàng, chìm đắm, hay nhắc nhở khi nghỉ.
+            Focus trong Notch không cần một lớp phủ riêng. Mọi thứ xoay quanh ba trạng thái rõ ràng:
+            <strong style="color:var(--text)">Running</strong> khi timer đang chạy, <strong style="color:var(--text)">Paused</strong> khi tạm ngưng nhưng vẫn giữ phiên, và <strong style="color:var(--text)">Idle</strong> khi chưa bắt đầu.
+            Cách này giữ giao diện gọn trong notch, dễ đọc, và không kéo bạn ra khỏi không gian làm việc hiện tại.
           </p>
           <div class="modes">
-            <div class="mode off">
-              <h4>Off</h4>
-              <p><strong style="color:var(--text)">Lợi ích:</strong> gọn gàng, không che màn hình — phù hợp khi bạn chỉ cần đồng hồ trong notch và không muốn thay đổi thói quen thị giác.</p>
+            <div class="mode running">
+              <h4>Running</h4>
+              <p><strong style="color:var(--text)">Lợi ích:</strong> đồng hồ đếm ngược, câu nhắc và task đang focus nằm ngay trong notch; bạn chỉ cần nhìn một chỗ để giữ nhịp.</p>
             </div>
-            <div class="mode zen">
-              <h4>Zen</h4>
-              <p><strong style="color:var(--text)">Lợi ích:</strong> khi phiên chạy, bạn có một không gian tối, đồng hồ lớn và câu động viên theo pha — dễ “ở lại” với việc đang làm, không bị kéo sang thứ khác.</p>
+            <div class="mode paused">
+              <h4>Paused</h4>
+              <p><strong style="color:var(--text)">Lợi ích:</strong> phiên vẫn được giữ lại để quay về đúng chỗ sau khi bị gián đoạn; bạn có thể resume, reset, xem stats hoặc chỉnh lại hướng đi.</p>
             </div>
-            <div class="mode strict">
-              <h4>Strict</h4>
-              <p><strong style="color:var(--text)">Lợi ích:</strong> toàn màn hình nhấn mạnh lúc <em>nghỉ</em> — nhắc bạn thực sự rời mắt khỏi công việc; nhiều người hay bỏ qua nghỉ nên kiệt sức dần, chứ không phải vì không chăm.</p>
+            <div class="mode idle">
+              <h4>Idle</h4>
+              <p><strong style="color:var(--text)">Lợi ích:</strong> trạng thái trước khi bắt đầu giúp bạn chọn đúng phiên, đúng task, đúng nhịp; không có áp lực phải “vào chế độ” ngay lập tức.</p>
             </div>
           </div>
           <h3>An toàn khi thoát</h3>
           <p>
-            Đóng lớp phủ sẽ <strong style="color:var(--text)">tạm dừng</strong> timer — tránh cảnh “đã thoát mà đồng hồ vẫn chạy nền”.
-            Đổi chế độ Focus khi đang chạy cũng tạm dừng để bạn chuyển cấu hình rõ ràng, không bất ngờ.
+            Khi bạn tạm dừng hoặc reset, timer dừng đúng chỗ để tránh trạng thái mơ hồ.
+            Chuyển sang một cấu hình mới khi đang chạy cũng dừng trước, rồi mới tiếp tục theo thiết lập mới.
           </p>
         </div>
       </section>
@@ -561,7 +562,7 @@
           <h2>Bạn đạt được gì khi dùng đúng cách</h2>
           <ul class="clean">
             <li><strong style="color:var(--text)">Một nhiệm vụ rõ ràng mỗi phiên</strong> — giảm cảm giác “làm loãng” vì não không phải quản lý danh sách việc trong lúc đếm.</li>
-            <li><strong style="color:var(--text)">Nghỉ thật sự</strong> — với Strict hoặc thói quen tự chủ động, bạn phục hồi thể và mắt; tránh biến nghỉ thành thêm một “phiên làm việc khác” trên màn hình.</li>
+            <li><strong style="color:var(--text)">Nghỉ thật sự</strong> — với trạng thái Paused hoặc thói quen tự chủ động, bạn phục hồi thể và mắt; tránh biến nghỉ thành thêm một “phiên làm việc khác” trong cùng nhịp.</li>
             <li><strong style="color:var(--text)">Auto-start có chủ đích</strong> — khi bật, bạn ít bị “đứt đà” giữa các pha; khi tắt, bạn giữ quyền kiểm soát — phù hợp ngày họp nhiều hoặc ngày cần chuỗi deep work liền mạch.</li>
             <li><strong style="color:var(--text)">Preset khớp loại công việc</strong> — bạn tận dụng tối đa từng khối thời gian: việc ngắn không bị “kéo dài giả tạo”, việc sâu không bị cắt vụn vì chọn nhịp sai.</li>
             <li><strong style="color:var(--text)">Theo dõi xu hướng</strong> — số liệu biến cảm giác “mình có cố không?” thành “mình đang duy trì được bao nhiêu focus thật” — cơ sở để điều chỉnh, không phải tự trách.</li>

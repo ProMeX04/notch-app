@@ -35,6 +35,8 @@ enum NotchCommandRouter {
                 try handleFocus(action: action, queryItems: queryItems, controller: controller)
             case "media":
                 try handleMedia(action: action, queryItems: queryItems, controller: controller)
+            case "oauth":
+                try handleOAuth(url: url, action: action, controller: controller)
             default:
                 throw NotchCommandError.unsupportedCommand(url.absoluteString)
             }
@@ -214,6 +216,15 @@ enum NotchCommandRouter {
             controller.setMediaVolume(level)
         default:
             throw NotchCommandError.invalidAction("media", action)
+        }
+    }
+
+    private static func handleOAuth(url: URL, action: String, controller: NotchWindowController) throws {
+        switch action {
+        case "callback":
+            controller.geminiLiveViewModel.handleBackendOAuthCallback(url)
+        default:
+            throw NotchCommandError.invalidAction("oauth", action)
         }
     }
 

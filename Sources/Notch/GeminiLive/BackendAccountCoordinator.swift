@@ -1,7 +1,30 @@
+import CryptoKit
 import Foundation
+
+enum BackendAuthResetReason: Equatable {
+    case unauthorized
+    case invalidSession
+    case invalidRefreshToken
+    case expiredSession
+}
+
+enum BackendAuthFailure: Equatable {
+    case unauthorized
+    case server(message: String, resetReason: BackendAuthResetReason?)
+    case other(message: String)
+}
+
+enum BackendAuthPhase: Equatable {
+    case signedOut
+    case signingIn
+    case authenticated(GeminiLiveBackendAuthSession)
+    case refreshing(GeminiLiveBackendAuthSession)
+    case failed(BackendAuthFailure)
+}
 
 @MainActor
 final class BackendAccountCoordinator: ObservableObject {
+    @Published private(set) var authPhase: BackendAuthPhase = .signedOut
     @Published private(set) var isAuthenticated = false
     @Published private(set) var signedInSummary: String?
     @Published private(set) var authenticatedEmail: String?
@@ -14,6 +37,7 @@ final class BackendAccountCoordinator: ObservableObject {
     private var storedAuthSession: GeminiLiveBackendAuthSession?
     private var authRefreshTask: Task<GeminiLiveBackendAuthSession, Error>?
     private var logoutRetryTask: Task<Void, Never>?
+    private var pendingOAuthFlow: PendingOAuthFlow?
 
     var onAuthChanged: (@MainActor () -> Void)?
     var onProChanged: (@MainActor (Bool) -> Void)?
@@ -39,7 +63,7 @@ final class BackendAccountCoordinator: ObservableObject {
     }
 
     var currentAccessToken: String? {
-        storedAuthSession?.accessToken
+        currentAuthSession?.accessToken
     }
 
     var lastKnownEmail: String {
@@ -47,140 +71,69 @@ final class BackendAccountCoordinator: ObservableObject {
     }
 
     var authorizationToken: String? {
-        configuredBackendConfigurationWithAuth?.authorizationToken
+        currentAccessToken
     }
 
-    func signup(email: String, password: String, name: String?) async -> Bool {
-        guard let configuration = await ensureResolvedConfigurationForAuth() else {
-            setLastError("Gemini Live server URL is missing.")
-            setStatus("Check the connection and try again.")
-            return false
-        }
-        guard !email.isEmpty else {
-            setLastError("Email is missing.")
-            setStatus("Enter your email, then try again.")
-            return false
-        }
-        guard !password.isEmpty else {
-            setLastError("Password is missing.")
-            setStatus("Enter your password, then try again.")
-            return false
-        }
-        guard password.count >= 8 else {
-            setLastError("Password must be at least 8 characters.")
-            setStatus("Use a longer password, then try again.")
-            return false
-        }
+    var shouldShowAuthError: Bool {
+        if case .failed = authPhase { return true }
+        return false
+    }
 
-        setSaving(true)
-        setLastError(nil)
-        setStatus("Creating your server account...")
-        defer { setSaving(false) }
-        authStore.saveLastEmail(email)
-
-        do {
-            let session = try await client.signup(
-                configuration: configuration,
-                email: email,
-                password: password,
-                name: name
-            )
-            storeBackendAuthSession(session)
-            setStatus(nil)
-            return true
-        } catch {
-            setLastError((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
-            setStatus("Couldn't create your server account.")
-            return false
+    var authPhaseDescription: String? {
+        switch authPhase {
+        case .signedOut:
+            return nil
+        case .signingIn:
+            return "Signing in"
+        case let .authenticated(session), let .refreshing(session):
+            return session.user.email
+        case let .failed(failure):
+            switch failure {
+            case .unauthorized:
+                return "Unauthorized"
+            case let .server(message, _):
+                return message
+            case let .other(message):
+                return message
+            }
         }
     }
 
-    func login(email: String, password: String) async -> Bool {
-        guard let configuration = await ensureResolvedConfigurationForAuth() else {
-            setLastError("Gemini Live server URL is missing.")
-            setStatus("Check the connection and try again.")
-            return false
-        }
-        guard !email.isEmpty else {
-            setLastError("Email is missing.")
-            setStatus("Enter your email, then try again.")
-            return false
-        }
-        guard !password.isEmpty else {
-            setLastError("Password is missing.")
-            setStatus("Enter your password, then try again.")
-            return false
-        }
-        guard password.count >= 8 else {
-            setLastError("Password must be at least 8 characters.")
-            setStatus("Use a longer password, then try again.")
-            return false
-        }
-
-        setSaving(true)
-        setLastError(nil)
-        setStatus("Signing in to Gemini Live server...")
-        defer { setSaving(false) }
-        authStore.saveLastEmail(email)
-
-        do {
-            let session = try await client.login(
-                configuration: configuration,
-                email: email,
-                password: password
-            )
-            storeBackendAuthSession(session)
-            setStatus(nil)
-            return true
-        } catch {
-            setLastError((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
-            setStatus("Couldn't sign in to Gemini Live server.")
-            return false
-        }
+    var isAuthRefreshInFlight: Bool {
+        if case .refreshing = authPhase { return true }
+        return false
     }
 
-    func applyWebSessionToken(_ rawToken: String) async -> Bool {
-        let token = Self.normalizedPastedAccessToken(rawToken)
-        guard !token.isEmpty else {
-            setLastError("Session token is empty.")
-            return false
-        }
-        guard await ensureResolvedConfigurationForAuth() != nil else {
-            setLastError("Gemini Live server URL is missing.")
-            return false
-        }
-        guard let configuration = configuredBackendConfiguration else {
-            setLastError("Gemini Live server URL is missing.")
-            return false
-        }
+    var isSigningIn: Bool {
+        if case .signingIn = authPhase { return true }
+        return false
+    }
 
-        setSaving(true)
-        setLastError(nil)
-        defer { setSaving(false) }
+    var currentAuthFailure: BackendAuthFailure? {
+        if case let .failed(failure) = authPhase { return failure }
+        return nil
+    }
 
-        let portableSession = Self.decodedPortableBackendAuthSession(from: token)
-        let accessToken = portableSession?.accessToken ?? token
-        let withToken = GeminiLiveBackendConfiguration(
-            baseURL: configuration.baseURL,
-            clientToken: configuration.clientToken,
-            userAccessToken: accessToken
-        )
+    var currentResetReason: BackendAuthResetReason? {
+        if case let .failed(failure) = authPhase {
+            switch failure {
+            case .unauthorized:
+                return .unauthorized
+            case let .server(_, resetReason):
+                return resetReason
+            case .other:
+                return nil
+            }
+        }
+        return nil
+    }
 
-        do {
-            let user = try await client.me(configuration: withToken)
-            let session = GeminiLiveBackendAuthSession(
-                accessToken: accessToken,
-                expiresAt: portableSession?.expiresAt ?? Self.iso8601ExpiryForPastedSession(),
-                refreshToken: portableSession?.refreshToken,
-                refreshExpiresAt: portableSession?.refreshExpiresAt,
-                user: user
-            )
-            storeBackendAuthSession(session)
-            await refreshSubscriptionStatus()
-            return true
-        } catch {
-            setLastError("Invalid or expired session token.")
-            return false
+    private var currentAuthSession: GeminiLiveBackendAuthSession? {
+        switch authPhase {
+        case let .authenticated(session), let .refreshing(session):
+            return session
+        default:
+            return storedAuthSession
         }
     }
 
@@ -205,12 +158,8 @@ final class BackendAccountCoordinator: ObservableObject {
         logoutRetryTask?.cancel()
         logoutRetryTask = Task.detached(priority: .utility) { [client] in
             let retryDelays: [Duration] = [.zero, .seconds(2), .seconds(5)]
-
             for delay in retryDelays {
-                if delay > .zero {
-                    try? await Task.sleep(for: delay)
-                }
-
+                if delay > .zero { try? await Task.sleep(for: delay) }
                 do {
                     try await client.logout(configuration: configuration, refreshToken: refreshToken)
                     return
@@ -221,41 +170,131 @@ final class BackendAccountCoordinator: ObservableObject {
         }
     }
 
-    func refreshSubscriptionStatus() async {
-        guard let configuration = await freshConfiguredBackendUserConfiguration() else {
-            setProFromBackend(false)
+    func refreshSubscriptionStatus(forceRefresh: Bool = false) async {
+        guard let configuration = await freshConfiguredBackendUserConfiguration(forceRefresh: forceRefresh) else {
+            if storedAuthSession == nil {
+                setProFromBackend(false)
+            }
             return
         }
 
         do {
             let user = try await client.me(configuration: configuration)
-            setProFromBackend(user.isPro ?? false)
+            syncAuthenticatedUser(user)
+            setLastError(nil)
         } catch {
             if shouldClearBackendAuthSession(for: error) {
                 clearBackendAuthSession()
+            }
+        }
+    }
+
+    func openWebAccountLogin() {
+        Task {
+            guard let configuration = await ensureResolvedConfigurationForAuth() else {
+                setLastError("Gemini Live server URL is missing.")
+                setStatus("Check the connection and try again.")
+                NotchWebPortal.openInBrowser(NotchWebPortal.loginURL())
                 return
             }
-            // Keep previous backend Pro flag if the request fails (offline, etc.).
+
+            let device = GeminiLiveBackendDeviceContext.currentMac()
+            let oauthFlow = Self.makePendingOAuthFlow(device: device)
+            cancelPendingOAuthLogin()
+            pendingOAuthFlow = oauthFlow
+            setSaving(true)
+            setAuthPhase(.signingIn)
+            setLastError(nil)
+            setStatus("Continue signing in from your browser...")
+
+            _ = configuration
+            let url = NotchWebPortal.oauthAuthorizeURL(
+                clientID: oauthFlow.authorizationRequest.clientID,
+                redirectURI: oauthFlow.authorizationRequest.redirectURI,
+                state: oauthFlow.authorizationRequest.state,
+                codeChallenge: oauthFlow.authorizationRequest.codeChallenge
+            )
+            NotchWebPortal.openInBrowser(url)
         }
     }
 
     func openWebProCheckout() {
+        NotchWebPortal.openInBrowser(NotchWebPortal.proCheckoutURL())
+    }
+
+    func handleOAuthCallbackURL(_ url: URL) {
         Task {
-            guard let configuration = await self.freshConfiguredBackendUserConfiguration() else {
-                NotchWebPortal.openInBrowser(NotchWebPortal.proCheckoutURL())
+            guard let activeOAuthFlow = pendingOAuthFlow else {
+                setLastError("Browser sign-in expired. Please try again.")
+                setStatus("Browser sign-in expired. Try again.")
                 return
             }
 
-            do {
-                let bridge = try await client.createWebBridgeToken(configuration: configuration)
-                let url = NotchWebPortal.authBridgeURL(token: bridge.bridgeToken)
-                NotchWebPortal.openInBrowser(url)
-            } catch {
-                await MainActor.run {
-                    self.setLastError(error.localizedDescription)
-                }
-                NotchWebPortal.openInBrowser(NotchWebPortal.proCheckoutURL())
+            guard let configuration = await ensureResolvedConfigurationForAuth() else {
+                cancelPendingOAuthLogin()
+                setLastError("Gemini Live server URL is missing.")
+                setStatus("Check the connection and try again.")
+                return
             }
+
+            guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+                cancelPendingOAuthLogin()
+                applyAuthFailure(message: "Invalid OAuth callback.")
+                setStatus("Couldn't finish browser sign-in.")
+                return
+            }
+
+            let queryItems = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+
+            if let error = queryItems["error"]?.trimmingCharacters(in: .whitespacesAndNewlines), !error.isEmpty {
+                cancelPendingOAuthLogin()
+                let description = queryItems["error_description"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+                applyAuthFailure(message: description?.isEmpty == false ? description! : "Browser sign-in was cancelled.")
+                setStatus("Browser sign-in was cancelled.")
+                return
+            }
+
+            let returnedState = queryItems["state"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard returnedState == activeOAuthFlow.authorizationRequest.state else {
+                cancelPendingOAuthLogin()
+                applyAuthFailure(message: "Invalid OAuth state.")
+                setStatus("Couldn't verify browser sign-in.")
+                return
+            }
+
+            let code = queryItems["code"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !code.isEmpty else {
+                cancelPendingOAuthLogin()
+                applyAuthFailure(message: "Missing OAuth authorization code.")
+                setStatus("Couldn't finish browser sign-in.")
+                return
+            }
+
+            setSaving(true)
+            setLastError(nil)
+            setStatus("Finishing secure sign-in...")
+            setAuthPhase(.signingIn)
+            updatePublishedAuthState()
+
+            do {
+                let session = try await client.exchangeOAuthAuthorizationCode(
+                    configuration: configuration,
+                    code: code,
+                    codeVerifier: activeOAuthFlow.codeVerifier,
+                    authorizationRequest: activeOAuthFlow.authorizationRequest,
+                    device: activeOAuthFlow.device
+                )
+                pendingOAuthFlow = nil
+                storeBackendAuthSession(session)
+                await refreshSubscriptionStatus()
+                setStatus(nil)
+            } catch {
+                cancelPendingOAuthLogin()
+                applyAuthFailure(error)
+                setStatus("Couldn't finish browser sign-in.")
+            }
+
+            setSaving(false)
         }
     }
 
@@ -280,34 +319,20 @@ final class BackendAccountCoordinator: ObservableObject {
         let preservedEmail = currentDraftEmailProvider?()
         authRefreshTask?.cancel()
         authRefreshTask = nil
+        cancelPendingOAuthLogin()
         authStore.delete()
         if let preservedEmail {
             authStore.saveLastEmail(preservedEmail)
         }
         storedAuthSession = nil
+        setAuthPhase(.signedOut)
         updatePublishedAuthState()
         setProFromBackend(false)
         onAuthChanged?()
     }
 
     func shouldClearBackendAuthSession(for error: Error) -> Bool {
-        if let backendError = error as? GeminiLiveBackendError {
-            switch backendError {
-            case .unauthorized:
-                return true
-            case let .server(message):
-                let normalized = message.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                return normalized.contains("invalid or expired session token")
-                    || normalized.contains("session token")
-                    || normalized.contains("unauthorized")
-            default:
-                return false
-            }
-        }
-
-        let description = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return description.contains("invalid or expired session token")
-            || description.contains("unauthorized")
+        classifiedFailure(for: error)?.resetReason != nil
     }
 
     func shutdown() {
@@ -315,6 +340,7 @@ final class BackendAccountCoordinator: ObservableObject {
         authRefreshTask = nil
         logoutRetryTask?.cancel()
         logoutRetryTask = nil
+        cancelPendingOAuthLogin()
     }
 
     private var configuredBackendConfiguration: GeminiLiveBackendConfiguration? {
@@ -323,32 +349,12 @@ final class BackendAccountCoordinator: ObservableObject {
 
     private var configuredBackendConfigurationForAuth: GeminiLiveBackendConfiguration? {
         guard let configuration = configuredBackendConfiguration else { return nil }
-        return GeminiLiveBackendConfiguration(
-            baseURL: configuration.baseURL,
-            clientToken: configuration.clientToken,
-            userAccessToken: nil
-        )
-    }
-
-    private var configuredBackendConfigurationWithAuth: GeminiLiveBackendConfiguration? {
-        guard let configuration = configuredBackendConfiguration else { return nil }
-        return GeminiLiveBackendConfiguration(
-            baseURL: configuration.baseURL,
-            clientToken: configuration.clientToken,
-            userAccessToken: storedAuthSession?.accessToken
-        )
+        return GeminiLiveBackendConfiguration(baseURL: configuration.baseURL, clientToken: configuration.clientToken, userAccessToken: nil)
     }
 
     private var configuredBackendUserConfiguration: GeminiLiveBackendConfiguration? {
-        guard let configuration = configuredBackendConfiguration,
-              let session = storedAuthSession else {
-            return nil
-        }
-        return GeminiLiveBackendConfiguration(
-            baseURL: configuration.baseURL,
-            clientToken: nil,
-            userAccessToken: session.accessToken
-        )
+        guard let configuration = configuredBackendConfiguration, let session = storedAuthSession else { return nil }
+        return GeminiLiveBackendConfiguration(baseURL: configuration.baseURL, clientToken: nil, userAccessToken: session.accessToken)
     }
 
     private func ensureResolvedConfigurationForAuth() async -> GeminiLiveBackendConfiguration? {
@@ -360,7 +366,10 @@ final class BackendAccountCoordinator: ObservableObject {
 
     private func parsedISO8601Date(_ value: String?) -> Date? {
         guard let value, !value.isEmpty else { return nil }
-        return ISO8601DateFormatter().date(from: value)
+        let formatter = ISO8601DateFormatter()
+        if let date = formatter.date(from: value) { return date }
+        formatter.formatOptions.insert(.withFractionalSeconds)
+        return formatter.date(from: value)
     }
 
     private func backendAccessTokenNeedsRefresh(_ session: GeminiLiveBackendAuthSession) -> Bool {
@@ -374,23 +383,116 @@ final class BackendAccountCoordinator: ObservableObject {
         return expiresAt <= Date()
     }
 
-    private func loadCurrentAuth() {
-        storedAuthSession = authStore.read()
-        updatePublishedAuthState()
-        setProFromBackend(storedAuthSession?.user.isPro ?? false)
+    private func shouldKeepUsingCurrentSession(_ session: GeminiLiveBackendAuthSession, forceRefresh: Bool) -> Bool {
+        guard let accessExpiry = parsedISO8601Date(session.expiresAt) else { return false }
+        return accessExpiry > Date() && !forceRefresh
     }
 
-    private func refreshBackendAuthSessionIfNeeded(forceRefresh: Bool = false) async -> GeminiLiveBackendAuthSession? {
-        guard let session = storedAuthSession ?? authStore.read() else {
+    private func prepareRefreshCandidate() -> GeminiLiveBackendAuthSession? {
+        if let storedAuthSession { return storedAuthSession }
+        guard let restoredSession = authStore.read() else {
             storedAuthSession = nil
+            setAuthPhase(.signedOut)
             updatePublishedAuthState()
             return nil
         }
+        storedAuthSession = restoredSession
+        setAuthPhase(.authenticated(restoredSession))
+        updatePublishedAuthState()
+        return restoredSession
+    }
 
-        if storedAuthSession == nil {
-            storedAuthSession = session
-            updatePublishedAuthState()
+    private func refreshRequestContext(
+        for session: GeminiLiveBackendAuthSession,
+        forceRefresh: Bool
+    ) -> (refreshToken: String, configuration: GeminiLiveBackendConfiguration)? {
+        guard let refreshToken = session.refreshToken,
+              !refreshToken.isEmpty,
+              let configuration = configuredBackendConfigurationForAuth else {
+            if shouldKeepUsingCurrentSession(session, forceRefresh: forceRefresh) {
+                return nil
+            }
+            clearBackendAuthSession()
+            return nil
         }
+        return (refreshToken, configuration)
+    }
+
+    private func beginRefreshFlow(for session: GeminiLiveBackendAuthSession) {
+        setAuthPhase(.refreshing(session))
+        updatePublishedAuthState()
+    }
+
+    private func executeRefreshTask(
+        configuration: GeminiLiveBackendConfiguration,
+        refreshToken: String
+    ) -> Task<GeminiLiveBackendAuthSession, Error> {
+        Task { [client] in
+            try await client.refresh(
+                configuration: configuration,
+                refreshToken: refreshToken,
+                device: .currentMac(trustDevice: false)
+            )
+        }
+    }
+
+    private func handleRefreshError(
+        _ error: Error,
+        fallback session: GeminiLiveBackendAuthSession,
+        forceRefresh: Bool
+    ) -> GeminiLiveBackendAuthSession? {
+        if shouldClearBackendAuthSession(for: error) {
+            clearBackendAuthSession()
+            return nil
+        }
+        if shouldKeepUsingCurrentSession(session, forceRefresh: forceRefresh) {
+            setAuthPhase(.authenticated(session))
+            updatePublishedAuthState()
+            return session
+        }
+        applyAuthFailure(error)
+        return nil
+    }
+
+    private func awaitRefreshTask(
+        _ task: Task<GeminiLiveBackendAuthSession, Error>,
+        fallback session: GeminiLiveBackendAuthSession,
+        forceRefresh: Bool,
+        shouldStoreResult: Bool
+    ) async -> GeminiLiveBackendAuthSession? {
+        do {
+            let refreshedSession = try await task.value
+            if shouldStoreResult {
+                storeBackendAuthSession(refreshedSession)
+            }
+            return refreshedSession
+        } catch {
+            return handleRefreshError(error, fallback: session, forceRefresh: forceRefresh)
+        }
+    }
+
+    private func runRefresh(
+        for session: GeminiLiveBackendAuthSession,
+        forceRefresh: Bool
+    ) async -> GeminiLiveBackendAuthSession? {
+        guard let context = refreshRequestContext(for: session, forceRefresh: forceRefresh) else {
+            return shouldKeepUsingCurrentSession(session, forceRefresh: forceRefresh) ? session : nil
+        }
+
+        beginRefreshFlow(for: session)
+
+        if let authRefreshTask {
+            return await awaitRefreshTask(authRefreshTask, fallback: session, forceRefresh: forceRefresh, shouldStoreResult: true)
+        }
+
+        let task = executeRefreshTask(configuration: context.configuration, refreshToken: context.refreshToken)
+        authRefreshTask = task
+        defer { authRefreshTask = nil }
+        return await awaitRefreshTask(task, fallback: session, forceRefresh: forceRefresh, shouldStoreResult: true)
+    }
+
+    private func refreshBackendAuthSessionIfNeeded(forceRefresh: Bool = false) async -> GeminiLiveBackendAuthSession? {
+        guard let session = prepareRefreshCandidate() else { return nil }
 
         if backendRefreshTokenExpired(session) {
             clearBackendAuthSession()
@@ -401,72 +503,140 @@ final class BackendAccountCoordinator: ObservableObject {
             return session
         }
 
-        guard let refreshToken = session.refreshToken,
-              !refreshToken.isEmpty,
-              let configuration = configuredBackendConfigurationForAuth else {
-            if let accessExpiry = parsedISO8601Date(session.expiresAt), accessExpiry > Date(), !forceRefresh {
-                return session
+        return await runRefresh(for: session, forceRefresh: forceRefresh)
+    }
+
+    private func loadCurrentAuth() {
+        storedAuthSession = authStore.read()
+        if let session = storedAuthSession {
+            setAuthPhase(.authenticated(session))
+        } else {
+            setAuthPhase(.signedOut)
+        }
+        updatePublishedAuthState()
+        setProFromBackend(storedAuthSession?.user.isPro ?? false)
+    }
+
+    private func setAuthPhase(_ phase: BackendAuthPhase) {
+        authPhase = phase
+    }
+
+    private func classifiedFailure(for error: Error) -> (message: String, resetReason: BackendAuthResetReason?)? {
+        if let backendError = error as? GeminiLiveBackendError {
+            switch backendError {
+            case .unauthorized:
+                return (backendError.errorDescription ?? error.localizedDescription, .unauthorized)
+            case let .server(message):
+                return (message, authResetReason(for: message))
+            default:
+                return (backendError.errorDescription ?? error.localizedDescription, nil)
             }
-            clearBackendAuthSession()
-            return nil
         }
 
-        if let authRefreshTask {
-            do {
-                let refreshedSession = try await authRefreshTask.value
-                storeBackendAuthSession(refreshedSession)
-                return refreshedSession
-            } catch {
-                if shouldClearBackendAuthSession(for: error) {
-                    clearBackendAuthSession()
-                }
-                return nil
-            }
-        }
+        let message = error.localizedDescription
+        let resetReason = authResetReason(for: message)
+        return message.isEmpty ? nil : (message, resetReason)
+    }
 
-        let task = Task { [client] in
-            try await client.refresh(configuration: configuration, refreshToken: refreshToken)
+    private func authFailure(for error: Error) -> BackendAuthFailure {
+        guard let failure = classifiedFailure(for: error) else {
+            return .other(message: error.localizedDescription)
         }
-        authRefreshTask = task
-        defer { authRefreshTask = nil }
+        if failure.resetReason == .unauthorized { return .unauthorized }
+        if let resetReason = failure.resetReason {
+            return .server(message: failure.message, resetReason: resetReason)
+        }
+        return .other(message: failure.message)
+    }
 
-        do {
-            let refreshedSession = try await task.value
-            storeBackendAuthSession(refreshedSession)
-            return refreshedSession
-        } catch {
-            if shouldClearBackendAuthSession(for: error) {
-                clearBackendAuthSession()
-            } else if let accessExpiry = parsedISO8601Date(session.expiresAt), accessExpiry > Date(), !forceRefresh {
-                return session
-            }
-            return nil
+    private func applyAuthFailure(_ error: Error) {
+        setAuthPhase(.failed(authFailure(for: error)))
+        setLastError((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
+        updatePublishedAuthState()
+    }
+
+    private func applyAuthFailure(message: String) {
+        setAuthPhase(.failed(.other(message: message)))
+        setLastError(message)
+        updatePublishedAuthState()
+    }
+
+    private func authResetReason(for message: String) -> BackendAuthResetReason? {
+        let normalized = message.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return nil }
+        if normalized.contains("invalid refresh token") || normalized.contains("refresh token expired") {
+            return .invalidRefreshToken
         }
+        if normalized.contains("jwt expired") || normalized.contains("token has expired") || normalized.contains("token expired") || normalized.contains("expired session") || normalized.contains("expired token") {
+            return .expiredSession
+        }
+        if normalized.contains("invalid or expired session token") || normalized.contains("invalid session") || normalized.contains("session token") || normalized.contains("invalid token") {
+            return .invalidSession
+        }
+        if normalized.contains("unauthorized") {
+            return .unauthorized
+        }
+        return nil
     }
 
     private func storeBackendAuthSession(_ session: GeminiLiveBackendAuthSession) {
+        cancelPendingOAuthLogin(resetSaving: false)
         _ = authStore.save(session)
         storedAuthSession = session
         authStore.saveLastEmail(session.user.email)
         onAuthEmailChange?(session.user.email)
         setLastError(nil)
+        setAuthPhase(.authenticated(session))
         updatePublishedAuthState()
         setProFromBackend(session.user.isPro ?? false)
         onAuthChanged?()
     }
 
     private func updatePublishedAuthState() {
-        authenticatedEmail = storedAuthSession?.user.email
-        signedInSummary = authenticatedEmail
-        isAuthenticated = storedAuthSession != nil
+        switch authPhase {
+        case let .authenticated(session), let .refreshing(session):
+            authenticatedEmail = session.user.email
+            signedInSummary = session.user.email
+            isAuthenticated = true
+        case .signingIn, .failed, .signedOut:
+            authenticatedEmail = storedAuthSession?.user.email
+            signedInSummary = storedAuthSession?.user.email
+            isAuthenticated = storedAuthSession != nil
+        }
+    }
+
+    private func syncAuthenticatedUser(_ user: GeminiLiveBackendAuthUser) {
+        guard let existingSession = storedAuthSession else {
+            setProFromBackend(user.isPro ?? false)
+            return
+        }
+
+        let updatedSession = GeminiLiveBackendAuthSession(
+            accessToken: existingSession.accessToken,
+            expiresAt: existingSession.expiresAt,
+            refreshToken: existingSession.refreshToken,
+            refreshExpiresAt: existingSession.refreshExpiresAt,
+            user: user
+        )
+
+        storedAuthSession = updatedSession
+        _ = authStore.save(updatedSession)
+
+        switch authPhase {
+        case .authenticated, .refreshing:
+            setAuthPhase(.authenticated(updatedSession))
+        case .signingIn, .failed, .signedOut:
+            break
+        }
+
+        updatePublishedAuthState()
+        setProFromBackend(user.isPro ?? false)
     }
 
     private func setProFromBackend(_ newValue: Bool) {
         let didChange = isProFromBackend != newValue
         isProFromBackend = newValue
-        if didChange {
-            onProChanged?(newValue)
-        }
+        if didChange { onProChanged?(newValue) }
     }
 
     private func setStatus(_ message: String?) {
@@ -482,59 +652,38 @@ final class BackendAccountCoordinator: ObservableObject {
         onSavingStateChange?(isSaving)
     }
 
-    private struct PortableBackendAuthSession: Decodable {
-        let accessToken: String
-        let expiresAt: String
-        let refreshToken: String?
-        let refreshExpiresAt: String?
-
-        enum CodingKeys: String, CodingKey {
-            case accessToken = "access_token"
-            case expiresAt = "expires_at"
-            case refreshToken = "refresh_token"
-            case refreshExpiresAt = "refresh_expires_at"
-        }
+    private func cancelPendingOAuthLogin(resetSaving: Bool = true) {
+        pendingOAuthFlow = nil
+        if resetSaving { setSaving(false) }
     }
 
-    private static func normalizedPastedAccessToken(_ raw: String) -> String {
-        var t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty else { return "" }
-        let prefix = "Bearer "
-        if t.lowercased().hasPrefix(prefix.lowercased()) {
-            t = String(t.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        if (t.hasPrefix("\"") && t.hasSuffix("\"") && t.count >= 2) || (t.hasPrefix("'") && t.hasSuffix("'") && t.count >= 2) {
-            t = String(t.dropFirst().dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        return t
+    private struct PendingOAuthFlow {
+        let authorizationRequest: GeminiLiveBackendOAuthAuthorizationRequest
+        let codeVerifier: String
+        let device: GeminiLiveBackendDeviceContext
     }
 
-    private static func decodedPortableBackendAuthSession(from token: String) -> PortableBackendAuthSession? {
-        let prefix = "nts_"
-        guard token.hasPrefix(prefix) else { return nil }
+    private static func makePendingOAuthFlow(device: GeminiLiveBackendDeviceContext) -> PendingOAuthFlow {
+        let state = randomBase64URLString(byteCount: 32)
+        let codeVerifier = randomBase64URLString(byteCount: 48)
+        let challengeData = Data(SHA256.hash(data: Data(codeVerifier.utf8)))
+        let codeChallenge = challengeData.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
 
-        let encoded = String(token.dropFirst(prefix.count))
-        guard let data = Data(base64Encoded: Self.base64URLToBase64(encoded)) else { return nil }
-        return try? JSONDecoder().decode(PortableBackendAuthSession.self, from: data)
+        return PendingOAuthFlow(
+            authorizationRequest: GeminiLiveBackendOAuthAuthorizationRequest(state: state, codeChallenge: codeChallenge),
+            codeVerifier: codeVerifier,
+            device: device
+        )
     }
 
-    private static func base64URLToBase64(_ value: String) -> String {
-        let replaced = value
-            .replacingOccurrences(of: "-", with: "+")
-            .replacingOccurrences(of: "_", with: "/")
-        let remainder = replaced.count % 4
-        guard remainder != 0 else { return replaced }
-        return replaced + String(repeating: "=", count: 4 - remainder)
-    }
-
-    private static func iso8601ExpiryForPastedSession() -> String {
-        let date = Date().addingTimeInterval(30 * 24 * 3600)
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        var s = formatter.string(from: date)
-        if s.hasSuffix("+00:00") {
-            s = String(s.dropLast(6)) + "Z"
-        }
-        return s
+    private static func randomBase64URLString(byteCount: Int) -> String {
+        let bytes = (0 ..< byteCount).map { _ in UInt8.random(in: .min ... .max) }
+        return Data(bytes).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
     }
 }

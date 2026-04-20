@@ -171,10 +171,34 @@ export async function processVNPayResult(rawPayload: URLSearchParams | Record<st
   })
 
   if (isSuccess) {
-    await prisma.user.update({
-      where: { id: transaction.userId },
-      data: { isPro: true },
-    })
+    if (transaction.userId) {
+      await prisma.user.update({
+        where: { id: transaction.userId },
+        data: { isPro: true },
+      })
+    } else if (transaction.guestEmail) {
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          email: {
+            equals: transaction.guestEmail,
+            mode: 'insensitive',
+          },
+        },
+      })
+
+      if (existingUser) {
+        await prisma.$transaction([
+          prisma.paymentTransaction.update({
+            where: { id: transaction.id },
+            data: { userId: existingUser.id },
+          }),
+          prisma.user.update({
+            where: { id: existingUser.id },
+            data: { isPro: true },
+          }),
+        ])
+      }
+    }
   }
 
   return {

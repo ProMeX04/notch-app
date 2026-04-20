@@ -161,10 +161,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         shelfItem.state = windowController.presentationModel.selectedPanel == .shelf ? .on : .off
         launchAtLoginItem.state = launchAtLoginController.isEnabled ? .on : .off
 
-        switch windowController.geminiLiveViewModel.connectionState {
-        case .connected, .connecting:
+        if windowController.geminiLiveViewModel.canDisconnectSession {
             toggleTalkItem.title = "Disconnect Gemini Live"
-        case .disconnected, .failed:
+        } else {
             toggleTalkItem.title = "Connect Gemini Live"
         }
         toggleTalkItem.isEnabled = true

@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { Check, ArrowRight, Sparkles, Zap, Shield, Globe, Cpu } from 'lucide-react';
+import { Check, ArrowRight } from 'lucide-react';
 import { PortalLogo } from '@/components/portal/PortalLogo';
+import { usePortalAuth } from '@/components/portal/PortalAuthProvider';
 
 const features = [
   { name: 'Gemini Live AI', free: false, pro: true, desc: 'Tích hợp AI thời gian thực trực tiếp vào Notch.' },
@@ -14,6 +15,12 @@ const features = [
 ];
 
 export default function PricingPage() {
+  const { isAuthenticated, user } = usePortalAuth();
+  const primaryHref = isAuthenticated ? '/pro' : '/signup';
+  const primaryLabel = isAuthenticated ? 'Mở portal' : 'Bắt đầu miễn phí';
+  const secondaryHref = isAuthenticated ? '/pro' : '/login';
+  const secondaryLabel = isAuthenticated ? (user?.name?.trim() || 'Tài khoản') : 'Đăng nhập';
+
   return (
     <main className="portal-pricing-page" style={{ position: 'relative', overflow: 'hidden' }}>
       <div className="portal-bg-mesh" />
@@ -21,8 +28,8 @@ export default function PricingPage() {
         <PortalLogo />
         <nav className="portal-pricing-nav">
           <Link href="/" className="portal-text-link">Sản phẩm</Link>
-          <Link href="/login" className="portal-button-ghost">Đăng nhập</Link>
-          <Link href="/signup" className="portal-button">Bắt đầu miễn phí</Link>
+          <Link href={secondaryHref} className="portal-button-ghost">{secondaryLabel}</Link>
+          <Link href={primaryHref} className="portal-button">{primaryLabel}</Link>
         </nav>
       </header>
 
@@ -49,8 +56,8 @@ export default function PricingPage() {
             <li className="disabled"><Check size={18} /> Gemini Live AI</li>
             <li className="disabled"><Check size={18} /> Custom Animations</li>
           </ul>
-          <Link href="/signup" className="portal-button-secondary-large">
-            Bắt đầu ngay
+          <Link href={primaryHref} className="portal-button-secondary-large">
+            {isAuthenticated ? 'Mở portal' : 'Bắt đầu ngay'}
           </Link>
         </div>
 
@@ -73,8 +80,8 @@ export default function PricingPage() {
             <li><Check size={18} /> Ưu tiên cập nhật tính năng</li>
             <li><Check size={18} /> Đồng bộ Cloud không giới hạn</li>
           </ul>
-          <Link href="/upgrade" className="portal-button-primary-large">
-            Nâng cấp lên Pro
+          <Link href={primaryHref} className="portal-button-primary-large">
+            {isAuthenticated ? 'Vào portal để nâng cấp' : 'Tạo tài khoản để nâng cấp'}
             <ArrowRight size={18} />
           </Link>
         </div>

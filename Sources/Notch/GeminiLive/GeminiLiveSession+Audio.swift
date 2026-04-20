@@ -110,6 +110,44 @@ extension GeminiLiveSession {
         }
     }
 
+    func startPrewarmedMicrophoneIfNeeded() {
+        guard !microphoneEnabled else { return }
+        guard setupCompleteTime != nil else { return }
+        guard microphonePrewarmingEnabled else { return }
+        guard captureMode == .webRTC else { return }
+
+        let audioIO = webRTCAudioIO ?? GeminiLiveWebRTCAudioIO()
+        webRTCAudioIO = audioIO
+
+        guard !audioIO.isCapturing else {
+            audioIO.setMicrophoneMuted(true)
+            onMicrophoneCaptureStateChange?(true)
+            return
+        }
+
+        do {
+            try audioIO.startCapture(muted: true) { [weak self] buffer in
+                guard let self else { return }
+                self.audioProcessingQueue.async { [weak self] in
+                    guard let self else { return }
+                    guard let inputTargetFormat = self.inputTargetFormat else {
+                        self.handleFailure(message: "Couldn't create the Gemini Live input audio format.")
+                        return
+                    }
+                    if self.inputConverter == nil {
+                        self.inputConverter = AVAudioConverter(from: buffer.format, to: inputTargetFormat)
+                    }
+                    self.processCapturedBuffer(buffer)
+                }
+            }
+            onMicrophoneCaptureStateChange?(true)
+        } catch {
+            NotchLog.gemini.debug(
+                "Gemini Live prewarm skipped: \(error.localizedDescription, privacy: .public)"
+            )
+        }
+    }
+
     func stopMicrophone(notifyModel: Bool) {
         onMicrophoneInputLevel?(0)
         onMicrophoneCaptureStateChange?(false)
@@ -237,6 +275,7 @@ extension GeminiLiveSession {
         cancelPendingReconnect()
         tearDownConnection(preserveAudioSession: preserveAudioSession)
         isResumingConnection = false
+        onReconnectStateChange?(.none)
         onStateChange?(.failed, message)
     }
 
@@ -282,10 +321,13 @@ extension GeminiLiveSession {
         beginHeartbeatAfterSetup()
         let statusMessage = isResumingConnection ? "Gemini Live resumed." : "Gemini Live is ready."
         isResumingConnection = false
+        onReconnectStateChange?(.none)
         onStateChange?(.connected, statusMessage)
 
         if microphoneEnabled {
             startMicrophone()
+        } else if microphonePrewarmingEnabled {
+            startPrewarmedMicrophoneIfNeeded()
         }
     }
 

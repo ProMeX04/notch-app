@@ -83,6 +83,7 @@ final class GeminiLiveSession: @unchecked Sendable {
     var onModelThinkingStateChange: (@Sendable (Bool) -> Void)?
     var onMicrophoneInputLevel: (@Sendable (Double) -> Void)?
     var onMicrophoneCaptureStateChange: (@Sendable (Bool) -> Void)?
+    var onReconnectStateChange: (@Sendable (GeminiLiveReconnectState) -> Void)?
     var onUsageMetadata: (@Sendable (GeminiLiveUsageMetadata) -> Void)?
     var onFunctionStarted: (@Sendable (_ name: String, _ args: [String: Any]) -> Void)?
     var onFunctionExecuted: (@Sendable (_ name: String, _ args: [String: Any], _ result: [String: Any]) -> Void)?
@@ -155,6 +156,7 @@ final class GeminiLiveSession: @unchecked Sendable {
     var socketTask: URLSessionWebSocketTask?
     var enabledTools: Set<GeminiTool> = GeminiTool.coreToolSet
     var microphoneEnabled = false
+    var microphonePrewarmingEnabled = false
     var outputVolume: Float = 1
     var outputPrepared = false
     var allowModelAudioPlayback = true
@@ -177,6 +179,11 @@ final class GeminiLiveSession: @unchecked Sendable {
         disconnect(userInitiated: true)
     }
 
+    var isLocalWebRTCMicrophoneCaptureActive: Bool {
+        captureMode == .webRTC &&
+            webRTCAudioIO?.isCapturing == true
+    }
+
     func connect(
         connectionCredential: String,
         restAPIKey: String? = nil,
@@ -184,6 +191,7 @@ final class GeminiLiveSession: @unchecked Sendable {
         model: String,
         systemPrompt: String?,
         microphoneEnabled: Bool,
+        microphonePrewarmingEnabled: Bool = false,
         thinkingBudget: Int,
         voiceName: String = "Kore",
         enabledTools: Set<GeminiTool> = GeminiTool.coreToolSet,
@@ -194,6 +202,7 @@ final class GeminiLiveSession: @unchecked Sendable {
 
         self.enabledTools = enabledTools
         self.microphoneEnabled = microphoneEnabled
+        self.microphonePrewarmingEnabled = microphonePrewarmingEnabled
         onUsageMetadata?(.zero)
 
         if !resumeSession {
@@ -226,6 +235,7 @@ final class GeminiLiveSession: @unchecked Sendable {
         userInitiatedDisconnect = userInitiated
         cancelPendingReconnect()
         stopHeartbeat()
+        onReconnectStateChange?(.none)
         onMicrophoneInputLevel?(0)
         onMicrophoneCaptureStateChange?(false)
         onUsageMetadata?(.zero)
@@ -299,28 +309,65 @@ final class GeminiLiveSession: @unchecked Sendable {
 
         guard socketTask != nil else { return }
 
-        if captureMode == .webRTC, let webRTCAudioIO {
-            webRTCAudioIO.setMicrophoneMuted(!enabled)
+        // Starting/stopping CoreAudio or WebRTC capture can block briefly.
+        // Run the heavy lifecycle work off the caller thread so mic toggles
+        // from SwiftUI controls do not hitch the notch animation.
+        audioLifecycleQueue.async { [weak self] in
+            guard let self else { return }
+            guard self.socketTask != nil else { return }
+            guard self.microphoneEnabled == enabled else { return }
+
+            if self.captureMode == .webRTC, let webRTCAudioIO = self.webRTCAudioIO {
+                if enabled {
+                    webRTCAudioIO.setMicrophoneMuted(false)
+                    self.startMicrophone()
+                } else {
+                    self.cancelAudioCaptureMonitor()
+                    self.sendJSONObject([
+                        "realtimeInput": [
+                            "audioStreamEnd": true,
+                        ],
+                    ])
+                    if self.microphonePrewarmingEnabled {
+                        self.startPrewarmedMicrophoneIfNeeded()
+                    } else {
+                        self.onMicrophoneCaptureStateChange?(false)
+                        webRTCAudioIO.stopCapture()
+                    }
+                }
+                return
+            }
 
             if enabled {
-                startMicrophone()
+                self.startMicrophone()
             } else {
-                onMicrophoneCaptureStateChange?(false)
-                cancelAudioCaptureMonitor()
-                sendJSONObject([
-                    "realtimeInput": [
-                        "audioStreamEnd": true,
-                    ],
-                ])
+                self.stopMicrophone(notifyModel: true)
+                self.cancelAudioCaptureMonitor()
             }
-            return
         }
+    }
 
-        if enabled {
-            startMicrophone()
-        } else {
-            stopMicrophone(notifyModel: true)
-            cancelAudioCaptureMonitor()
+    func setMicrophonePrewarmingEnabled(_ enabled: Bool) {
+        microphonePrewarmingEnabled = enabled
+
+        guard socketTask != nil else { return }
+
+        audioLifecycleQueue.async { [weak self] in
+            guard let self else { return }
+            guard self.socketTask != nil else { return }
+            guard self.microphonePrewarmingEnabled == enabled else { return }
+            guard self.setupCompleteTime != nil else { return }
+            guard self.captureMode == .webRTC else { return }
+
+            if enabled {
+                guard !self.microphoneEnabled else { return }
+                self.startPrewarmedMicrophoneIfNeeded()
+            } else {
+                guard !self.microphoneEnabled else { return }
+                guard let audioIO = self.webRTCAudioIO, audioIO.isCapturing else { return }
+                audioIO.stopCapture()
+                self.onMicrophoneCaptureStateChange?(false)
+            }
         }
     }
 
@@ -530,6 +577,19 @@ final class GeminiLiveSession: @unchecked Sendable {
         pendingReconnectWorkItem = nil
     }
 
+    func stopPreservedAudioSession() {
+        cancelPendingReconnect()
+        stopHeartbeat()
+        isResumingConnection = false
+        onReconnectStateChange?(.none)
+        onMicrophoneInputLevel?(0)
+        onMicrophoneCaptureStateChange?(false)
+
+        audioLifecycleQueue.async { [weak self] in
+            self?.tearDownConnection(preserveAudioSession: false)
+        }
+    }
+
     @discardableResult
     func scheduleAutomaticReconnect(
         after delay: TimeInterval,
@@ -560,6 +620,7 @@ final class GeminiLiveSession: @unchecked Sendable {
         }
 
         let displayState: GeminiLiveConnectionState = preserveConnectedState ? .connected : .connecting
+        let reconnectState: GeminiLiveReconnectState = requireSafeResumptionHandle ? .sessionRefresh : .transport
         let workItem = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.pendingReconnectWorkItem = nil
@@ -574,6 +635,7 @@ final class GeminiLiveSession: @unchecked Sendable {
         }
 
         pendingReconnectWorkItem = workItem
+        onReconnectStateChange?(reconnectState)
         onStateChange?(displayState, statusText)
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
         return true

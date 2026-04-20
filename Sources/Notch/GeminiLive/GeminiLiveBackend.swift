@@ -97,16 +97,6 @@ struct GeminiLiveBackendAuthTokenResponse: Decodable, Sendable {
     }
 }
 
-struct GeminiLiveBackendWebBridgeResponse: Decodable, Sendable {
-    let bridgeToken: String
-    let expiresAt: String
-
-    enum CodingKeys: String, CodingKey {
-        case bridgeToken = "bridge_token"
-        case expiresAt = "expires_at"
-    }
-}
-
 struct GeminiLiveBackendAuthSession: Equatable, Sendable {
     let accessToken: String
     let expiresAt: String
@@ -115,22 +105,141 @@ struct GeminiLiveBackendAuthSession: Equatable, Sendable {
     let user: GeminiLiveBackendAuthUser
 }
 
+struct GeminiLiveBackendOAuthAuthorizationRequest: Equatable, Sendable {
+    static let nativeClientID = "notch-desktop"
+    static let redirectURI = "notch://oauth/callback"
+
+    let clientID: String
+    let redirectURI: String
+    let state: String
+    let codeChallenge: String
+    let codeChallengeMethod: String
+
+    init(
+        clientID: String = Self.nativeClientID,
+        redirectURI: String = Self.redirectURI,
+        state: String,
+        codeChallenge: String,
+        codeChallengeMethod: String = "S256"
+    ) {
+        self.clientID = clientID
+        self.redirectURI = redirectURI
+        self.state = state
+        self.codeChallenge = codeChallenge
+        self.codeChallengeMethod = codeChallengeMethod
+    }
+}
+
+struct GeminiLiveBackendDeviceContext: Encodable, Equatable, Sendable {
+    let deviceID: String
+    let deviceName: String
+    let platform: String
+    let trustDevice: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case deviceID = "device_id"
+        case deviceName = "device_name"
+        case platform
+        case trustDevice = "trust_device"
+    }
+
+    static func currentMac(trustDevice: Bool = true) -> GeminiLiveBackendDeviceContext {
+        let defaults = UserDefaults.standard
+        let storageKey = "dev.notch.gemini-live.device-id"
+        let existing = defaults.string(forKey: storageKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let deviceID = (existing?.isEmpty == false ? existing : nil) ?? UUID().uuidString
+        defaults.set(deviceID, forKey: storageKey)
+
+        let localizedName = Host.current().localizedName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hostName = ProcessInfo.processInfo.hostName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedName = (localizedName?.isEmpty == false ? localizedName : nil)
+            ?? (hostName.isEmpty ? nil : hostName)
+            ?? "This Mac"
+
+        return GeminiLiveBackendDeviceContext(
+            deviceID: deviceID,
+            deviceName: resolvedName,
+            platform: "macOS",
+            trustDevice: trustDevice
+        )
+    }
+}
+
 private struct GeminiLiveBackendAuthRequest: Encodable, Sendable {
     let email: String
     let password: String
+    let deviceID: String
+    let deviceName: String
+    let platform: String
+    let trustDevice: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case email
+        case password
+        case deviceID = "device_id"
+        case deviceName = "device_name"
+        case platform
+        case trustDevice = "trust_device"
+    }
 }
 
 private struct GeminiLiveBackendSignupRequest: Encodable, Sendable {
     let email: String
     let password: String
     let name: String?
+    let deviceID: String
+    let deviceName: String
+    let platform: String
+    let trustDevice: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case email
+        case password
+        case name
+        case deviceID = "device_id"
+        case deviceName = "device_name"
+        case platform
+        case trustDevice = "trust_device"
+    }
 }
 
 private struct GeminiLiveBackendRefreshRequest: Encodable, Sendable {
     let refreshToken: String
+    let deviceID: String
+    let deviceName: String
+    let platform: String
+    let trustDevice: Bool
 
     enum CodingKeys: String, CodingKey {
         case refreshToken = "refresh_token"
+        case deviceID = "device_id"
+        case deviceName = "device_name"
+        case platform
+        case trustDevice = "trust_device"
+    }
+}
+
+private struct GeminiLiveBackendOAuthCodeExchangeRequest: Encodable, Sendable {
+    let grantType: String
+    let clientID: String
+    let redirectURI: String
+    let code: String
+    let codeVerifier: String
+    let deviceID: String
+    let deviceName: String
+    let platform: String
+    let trustDevice: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case grantType = "grant_type"
+        case clientID = "client_id"
+        case redirectURI = "redirect_uri"
+        case code
+        case codeVerifier = "code_verifier"
+        case deviceID = "device_id"
+        case deviceName = "device_name"
+        case platform
+        case trustDevice = "trust_device"
     }
 }
 
@@ -243,6 +352,7 @@ final class GeminiLiveBackendAuthStore {
     private let lastEmailDefaultsKey = "dev.notch.gemini-live.backend-auth.last-email"
     private let lastNameDefaultsKey = "dev.notch.gemini-live.backend-auth.last-name"
     private let lastUserIDDefaultsKey = "dev.notch.gemini-live.backend-auth.last-user-id"
+    private let lastIsProDefaultsKey = "dev.notch.gemini-live.backend-auth.last-is-pro"
     private let expiresAtDefaultsKey = "dev.notch.gemini-live.backend-auth.expires-at"
     private let refreshExpiresAtDefaultsKey = "dev.notch.gemini-live.backend-auth.refresh-expires-at"
     private let processInfo: ProcessInfo
@@ -277,16 +387,22 @@ final class GeminiLiveBackendAuthStore {
             env["NOTCH_GEMINI_LIVE_REFRESH_EXPIRES_AT"] ?? defaults.string(forKey: refreshExpiresAtDefaultsKey)
         )
         let userID = normalizedValue(env["NOTCH_GEMINI_LIVE_AUTH_USER_ID"] ?? defaults.string(forKey: lastUserIDDefaultsKey)) ?? ""
+        let isPro = env["NOTCH_GEMINI_LIVE_AUTH_IS_PRO"].flatMap { value -> Bool? in
+            let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if ["1", "true", "yes"].contains(normalized) { return true }
+            if ["0", "false", "no"].contains(normalized) { return false }
+            return nil
+        } ?? (defaults.object(forKey: lastIsProDefaultsKey) as? Bool)
 
         if let refreshExpiresAt,
-           let refreshExpiresDate = ISO8601DateFormatter().date(from: refreshExpiresAt),
+           let refreshExpiresDate = Self.parseISO8601(refreshExpiresAt),
            refreshExpiresDate <= Date() {
             delete()
             return nil
         }
 
         if refreshToken == nil,
-           let expiresDate = ISO8601DateFormatter().date(from: expiresAt),
+           let expiresDate = Self.parseISO8601(expiresAt),
            expiresDate <= Date() {
             delete()
             return nil
@@ -297,7 +413,7 @@ final class GeminiLiveBackendAuthStore {
             expiresAt: expiresAt,
             refreshToken: refreshToken,
             refreshExpiresAt: refreshExpiresAt,
-            user: GeminiLiveBackendAuthUser(id: userID, email: email, name: name, createdAt: "", isPro: nil)
+            user: GeminiLiveBackendAuthUser(id: userID, email: email, name: name, createdAt: "", isPro: isPro)
         )
     }
 
@@ -306,6 +422,7 @@ final class GeminiLiveBackendAuthStore {
         defaults.set(session.user.email, forKey: lastEmailDefaultsKey)
         defaults.set(session.user.name, forKey: lastNameDefaultsKey)
         defaults.set(session.user.id, forKey: lastUserIDDefaultsKey)
+        defaults.set(session.user.isPro ?? false, forKey: lastIsProDefaultsKey)
         defaults.set(session.expiresAt, forKey: expiresAtDefaultsKey)
         if let refreshExpiresAt = session.refreshExpiresAt {
             defaults.set(refreshExpiresAt, forKey: refreshExpiresAtDefaultsKey)
@@ -337,6 +454,7 @@ final class GeminiLiveBackendAuthStore {
         defaults.removeObject(forKey: lastEmailDefaultsKey)
         defaults.removeObject(forKey: lastNameDefaultsKey)
         defaults.removeObject(forKey: lastUserIDDefaultsKey)
+        defaults.removeObject(forKey: lastIsProDefaultsKey)
         defaults.removeObject(forKey: expiresAtDefaultsKey)
         defaults.removeObject(forKey: refreshExpiresAtDefaultsKey)
         accessTokenStore.delete()
@@ -347,6 +465,15 @@ final class GeminiLiveBackendAuthStore {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func parseISO8601(_ value: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        if let date = formatter.date(from: value) {
+            return date
+        }
+        formatter.formatOptions.insert(.withFractionalSeconds)
+        return formatter.date(from: value)
     }
 }
 
@@ -408,35 +535,83 @@ final class GeminiLiveBackendClient: @unchecked Sendable {
         configuration: GeminiLiveBackendConfiguration,
         email: String,
         password: String,
-        name: String?
+        name: String?,
+        device: GeminiLiveBackendDeviceContext = .currentMac()
     ) async throws -> GeminiLiveBackendAuthSession {
         try await authenticate(
             configuration: configuration,
             path: "auth/register",
-            body: GeminiLiveBackendSignupRequest(email: email, password: password, name: normalizedValue(name))
+            body: GeminiLiveBackendSignupRequest(
+                email: email,
+                password: password,
+                name: normalizedValue(name),
+                deviceID: device.deviceID,
+                deviceName: device.deviceName,
+                platform: device.platform,
+                trustDevice: device.trustDevice
+            )
         )
     }
 
     func login(
         configuration: GeminiLiveBackendConfiguration,
         email: String,
-        password: String
+        password: String,
+        device: GeminiLiveBackendDeviceContext = .currentMac()
     ) async throws -> GeminiLiveBackendAuthSession {
         try await authenticate(
             configuration: configuration,
             path: "auth/login",
-            body: GeminiLiveBackendAuthRequest(email: email, password: password)
+            body: GeminiLiveBackendAuthRequest(
+                email: email,
+                password: password,
+                deviceID: device.deviceID,
+                deviceName: device.deviceName,
+                platform: device.platform,
+                trustDevice: device.trustDevice
+            )
         )
     }
 
     func refresh(
         configuration: GeminiLiveBackendConfiguration,
-        refreshToken: String
+        refreshToken: String,
+        device: GeminiLiveBackendDeviceContext = .currentMac(trustDevice: false)
     ) async throws -> GeminiLiveBackendAuthSession {
         try await authenticate(
             configuration: configuration,
             path: "auth/refresh",
-            body: GeminiLiveBackendRefreshRequest(refreshToken: refreshToken)
+            body: GeminiLiveBackendRefreshRequest(
+                refreshToken: refreshToken,
+                deviceID: device.deviceID,
+                deviceName: device.deviceName,
+                platform: device.platform,
+                trustDevice: device.trustDevice
+            )
+        )
+    }
+
+    func exchangeOAuthAuthorizationCode(
+        configuration: GeminiLiveBackendConfiguration,
+        code: String,
+        codeVerifier: String,
+        authorizationRequest: GeminiLiveBackendOAuthAuthorizationRequest,
+        device: GeminiLiveBackendDeviceContext = .currentMac()
+    ) async throws -> GeminiLiveBackendAuthSession {
+        try await authenticate(
+            configuration: configuration,
+            path: "oauth/token",
+            body: GeminiLiveBackendOAuthCodeExchangeRequest(
+                grantType: "authorization_code",
+                clientID: authorizationRequest.clientID,
+                redirectURI: authorizationRequest.redirectURI,
+                code: code,
+                codeVerifier: codeVerifier,
+                deviceID: device.deviceID,
+                deviceName: device.deviceName,
+                platform: device.platform,
+                trustDevice: device.trustDevice
+            )
         )
     }
 
@@ -473,27 +648,6 @@ final class GeminiLiveBackendClient: @unchecked Sendable {
         }
 
         try validateHTTPStatus(data: data, response: httpResponse)
-    }
-
-    func createWebBridgeToken(configuration: GeminiLiveBackendConfiguration) async throws -> GeminiLiveBackendWebBridgeResponse {
-        let request = try makeRequest(
-            configuration: configuration,
-            path: "auth/web-bridge",
-            method: "POST"
-        )
-
-        let (data, response) = try await urlSession.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw GeminiLiveBackendError.invalidResponse
-        }
-
-        try validateHTTPStatus(data: data, response: httpResponse)
-
-        guard let payload = try? jsonDecoder.decode(GeminiLiveBackendWebBridgeResponse.self, from: data) else {
-            throw GeminiLiveBackendError.invalidResponse
-        }
-
-        return payload
     }
 
     private func authenticate<Body: Encodable>(
@@ -546,10 +700,16 @@ final class GeminiLiveBackendClient: @unchecked Sendable {
     ) throws -> URLRequest {
         let trimmedPath = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let url = configuration.baseURL.appendingPathComponent(trimmedPath)
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
         request.httpMethod = method
         request.timeoutInterval = 15
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        request.setValue("no-cache", forHTTPHeaderField: "Pragma")
+        request.setValue(
+            GeminiLiveBackendDeviceContext.currentMac(trustDevice: false).deviceID,
+            forHTTPHeaderField: "X-Notch-Device-Id"
+        )
 
         if let token = configuration.authorizationToken, !token.isEmpty {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

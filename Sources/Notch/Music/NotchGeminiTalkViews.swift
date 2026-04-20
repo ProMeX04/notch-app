@@ -51,6 +51,155 @@ private enum GeminiAgentSettingsTab: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+private struct GeminiAgentSettingsSidebarLabel: View {
+    let title: String
+    let isSelected: Bool
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Capsule()
+                .fill(isSelected ? tint : Color.white.opacity(0.14))
+                .frame(width: 3, height: 18)
+
+            Text(title)
+                .font(.system(size: 11, weight: isSelected ? .bold : .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+                .foregroundStyle(isSelected ? .white.opacity(0.96) : .white.opacity(0.62))
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isSelected ? tint.opacity(0.16) : Color.clear)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(isSelected ? tint.opacity(0.35) : Color.clear, lineWidth: 1)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+private struct GeminiTalkPanelCard<Content: View>: View {
+    let tint: Color?
+    let content: Content
+
+    init(
+        tint: Color? = nil,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.tint = tint
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.085),
+                                Color.white.opacity(0.045)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(tint?.opacity(0.28) ?? Color.white.opacity(0.08), lineWidth: 1)
+            }
+    }
+}
+
+private struct GeminiTalkStateBadge: View {
+    let title: String
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(tint)
+                .frame(width: 7, height: 7)
+            Text(title)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.white.opacity(0.88))
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(
+            Capsule()
+                .fill(tint.opacity(0.16))
+        )
+        .overlay {
+            Capsule()
+                .stroke(tint.opacity(0.28), lineWidth: 1)
+        }
+    }
+}
+
+private struct GeminiTalkMetricChip: View {
+    let icon: String
+    let value: String
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(tint)
+            Text(value)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.white.opacity(0.84))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            Capsule()
+                .fill(Color.white.opacity(0.06))
+        )
+        .overlay {
+            Capsule()
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        }
+    }
+}
+
+private struct GeminiTalkToolToastChip: View {
+    let icon: String
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .bold))
+            Text(label)
+                .font(.system(size: 10, weight: .semibold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(.white.opacity(0.76))
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(
+            Capsule()
+                .fill(Color.white.opacity(0.06))
+        )
+        .overlay {
+            Capsule()
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        }
+    }
+}
+
 private struct GeminiAgentCommonSettingsContent: View {
     @ObservedObject var gemini: GeminiLiveViewModel
     @Binding var holdShortcut: HoldToTalkShortcut
@@ -130,7 +279,7 @@ private struct GeminiAgentCommonSettingsContent: View {
                                 .foregroundStyle(.white.opacity(0.32))
                                 .frame(width: 55, alignment: .leading)
 
-                            Text(gemini.backendSignedInSummary.map { "Signed in as \($0)" } ?? "Sign in required")
+                            Text(gemini.backendSignedInSummary.map { "Signed in as \($0)" } ?? gemini.backendAuthFailureMessage ?? "Sign in required")
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(gemini.isBackendAuthenticated ? .white.opacity(0.88) : .white.opacity(0.5))
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -280,32 +429,31 @@ private struct GeminiTalkConnectedView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            HStack(alignment: .center, spacing: 6) {
-                GeminiInputModeMenu(gemini: gemini, presentationModel: presentationModel)
-                GeminiScreenShareMenu(gemini: gemini, presentationModel: presentationModel)
-                GeminiTranscriptModeToggle(gemini: gemini, presentationModel: presentationModel)
-                GeminiControlToggle(
-                    icon: gemini.showLiveChatInput ? "keyboard.fill" : "keyboard",
-                    label: Localization.get("Type", lang: appLanguage),
-                    isActive: gemini.showLiveChatInput,
-                    action: { gemini.showLiveChatInput.toggle() }
-                )
-                GeminiOutputVolumeControl(
-                    value: Binding(
-                        get: { gemini.outputVolume },
-                        set: { gemini.setOutputVolume($0) }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .center, spacing: 6) {
+                    GeminiInputModeMenu(gemini: gemini, presentationModel: presentationModel)
+                    GeminiScreenShareMenu(gemini: gemini, presentationModel: presentationModel)
+                    GeminiTranscriptModeToggle(gemini: gemini, presentationModel: presentationModel)
+                    GeminiControlToggle(
+                        icon: gemini.showLiveChatInput ? "keyboard.fill" : "keyboard",
+                        label: Localization.get("Type", lang: appLanguage),
+                        isActive: gemini.showLiveChatInput,
+                        action: { gemini.showLiveChatInput.toggle() }
                     )
-                )
-
-                Spacer()
-
-                GeminiControlToggle(
-                    icon: "phone.down.fill",
-                    label: Localization.get("End", lang: appLanguage),
-                    isActive: true,
-                    isDestructive: true,
-                    action: { gemini.disconnect() }
-                )
+                    GeminiOutputVolumeControl(
+                        value: Binding(
+                            get: { gemini.outputVolume },
+                            set: { gemini.setOutputVolume($0) }
+                        )
+                    )
+                    GeminiControlToggle(
+                        icon: "phone.down.fill",
+                        label: Localization.get("End", lang: appLanguage),
+                        isActive: true,
+                        isDestructive: true,
+                        action: { gemini.disconnect() }
+                    )
+                }
             }
         }
     }
@@ -317,23 +465,31 @@ private struct GeminiTalkProLockedView: View {
     let themeAccent: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Mua Notch Pro để sử dụng")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.62))
-                .fixedSize(horizontal: false, vertical: true)
-
-            GeminiActionButton(
-                title: Localization.get("Buy Notch Pro", lang: appLanguage),
-                icon: "sparkles",
-                tint: themeAccent
-            ) {
-                gemini.openWebProCheckout()
+        GeminiTalkPanelCard(tint: themeAccent) {
+            HStack(spacing: 14) {
+                GeminiTalkStateBadge(
+                    title: Localization.get("Talk", lang: appLanguage),
+                    tint: themeAccent
+                )
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(Localization.get("Notch Pro is required to use Talk.", lang: appLanguage))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.88))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(Localization.get("Buy Notch Pro", lang: appLanguage))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.48))
+                }
+                Spacer(minLength: 0)
+                GeminiActionButton(
+                    title: Localization.get("Buy Notch Pro", lang: appLanguage),
+                    icon: "sparkles",
+                    tint: themeAccent
+                ) {
+                    gemini.openWebProCheckout()
+                }
             }
-            .frame(maxWidth: .infinity)
         }
-        .padding(.leading, 12)
-        .padding(.top, 8)
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 }
@@ -392,167 +548,162 @@ private struct GeminiTalkDisconnectedHomeView: View {
                     .foregroundStyle(Color.red.opacity(0.92))
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
-            } else if gemini.isSavingAPIKey {
-                Text(gemini.statusText)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.62))
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
             }
         }
     }
 
     private var setupHomeContent: some View {
-        HStack(alignment: .top, spacing: 28) {
-            VStack(spacing: 2) {
-                Button {
-                    setupViewMode = .agentSelection
-                } label: {
-                    GeminiAgentHomeAvatarFigure(
-                        statusColor: statusColor,
-                        avatarSymbolName: selectedAgentAvatarSymbolName,
-                        avatarImageURL: selectedAgentAvatarImageURL
-                    )
-                }
-                .buttonStyle(.plain)
+        HStack(alignment: .top, spacing: 10) {
+            GeminiTalkPanelCard(tint: statusColor) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .center, spacing: 10) {
+                        Button {
+                            setupViewMode = .agentSelection
+                        } label: {
+                            GeminiAgentHomeAvatarFigure(
+                                statusColor: statusColor,
+                                avatarSymbolName: selectedAgentAvatarSymbolName,
+                                avatarImageURL: selectedAgentAvatarImageURL
+                            )
+                        }
+                        .buttonStyle(.plain)
 
-                Text(formattedAgentDisplayName(gemini.selectedSystemPromptPreset.title))
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.88))
-                    .lineLimit(2)
-                    .truncationMode(.tail)
-                    .minimumScaleFactor(0.9)
-                    .multilineTextAlignment(.center)
-                    .frame(width: 136)
-                    .frame(minHeight: 28, alignment: .top)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(formattedAgentDisplayName(gemini.selectedSystemPromptPreset.title))
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.92))
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.82)
+
+                            VStack(alignment: .leading, spacing: 5) {
+                                GeminiTalkMetricChip(
+                                    icon: "hammer.fill",
+                                    value: "\(gemini.enabledTools.count) \(Localization.get("Tools", lang: appLanguage))",
+                                    tint: themeAccent
+                                )
+                                GeminiTalkMetricChip(
+                                    icon: "sparkles",
+                                    value: "\(gemini.enabledSkillNames.count) \(Localization.get("Skills", lang: appLanguage))",
+                                    tint: themeAccent
+                                )
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
             }
-            .frame(width: 130)
+            .frame(width: 254, alignment: .topLeading)
 
-            VStack(spacing: 12) {
-                HStack(spacing: 18) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "hammer.fill")
-                            .foregroundStyle(themeAccent)
-                        Text("\(gemini.enabledTools.count) \(Localization.get("Tools", lang: appLanguage))")
+            VStack(spacing: 8) {
+                GeminiTalkPanelCard {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Session")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.46))
+
+                        HStack(spacing: 8) {
+                            GeminiPillPicker(
+                                title: "",
+                                icon: "cpu",
+                                tint: themeAccent,
+                                selection: $gemini.selectedModel,
+                                displayText: \.displayName
+                            )
+
+                            GeminiPillPicker(
+                                title: "",
+                                icon: "waveform",
+                                tint: themeAccent,
+                                selection: $gemini.selectedVoice
+                            )
+
+                            GeminiPillPicker(
+                                title: "",
+                                icon: "sparkles",
+                                tint: themeAccent,
+                                selection: $gemini.thinkingLevel
+                            )
+                        }
                     }
-                    HStack(spacing: 6) {
-                        Image(systemName: "sparkles")
-                            .foregroundStyle(themeAccent)
-                        Text("\(gemini.enabledSkillNames.count) \(Localization.get("Skills", lang: appLanguage))")
-                    }
-                    Spacer(minLength: 0)
                 }
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(.white.opacity(0.9))
-                .padding(.top, 2)
-                .padding(.bottom, 4)
 
-                VStack(spacing: 8) {
-                    HStack(spacing: 8) {
-                        GeminiPillPicker(
-                            title: "",
-                            icon: "cpu",
-                            tint: themeAccent,
-                            selection: $gemini.selectedModel,
-                            displayText: \.displayName
-                        )
-
-                        GeminiPillPicker(
-                            title: "",
-                            icon: "waveform",
-                            tint: themeAccent,
-                            selection: $gemini.selectedVoice
-                        )
-
-                        GeminiPillPicker(
-                            title: "",
-                            icon: "gearshape.2.fill",
-                            tint: themeAccent,
-                            selection: $gemini.thinkingLevel
-                        )
-                    }
-
+                GeminiTalkPanelCard(tint: themeAccent) {
                     HStack(spacing: 8) {
                         GeminiPillButton(
                             title: Localization.get("Settings", lang: appLanguage),
                             icon: "slider.horizontal.3",
-                            tint: themeAccent
+                            tint: themeAccent,
+                            fillsAvailableWidth: true
                         ) {
                             setupViewMode = .agentSettings
                         }
 
                         GeminiPillButton(
-                            title: gemini.connectionState == .connecting
+                            title: gemini.lifecycleState.isBusy
                                 ? Localization.get("Cancel", lang: appLanguage)
                                 : Localization.get(gemini.connectionButtonTitle, lang: appLanguage),
-                            icon: gemini.connectionState == .connecting
+                            icon: gemini.lifecycleState.isBusy
                                 ? "xmark.circle.fill"
                                 : gemini.connectionButtonIcon,
-                            tint: gemini.connectionState == .connecting
+                            tint: gemini.lifecycleState.isBusy
                                 ? Color(nsColor: .systemRed)
-                                : themeAccent
+                                : themeAccent,
+                            fillsAvailableWidth: true
                         ) {
                             gemini.toggleConnection()
                         }
                     }
                 }
             }
-            .padding(.top, 6)
-            .frame(maxWidth: .infinity)
-
-            Spacer(minLength: 0)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .padding(.leading, 12)
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private var noGeminiKeySetupView: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(gemini.selectedConnectionSetupTitle)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.88))
-            Text(gemini.selectedConnectionSetupDescription)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.52))
-                .fixedSize(horizontal: false, vertical: true)
+        GeminiTalkPanelCard(tint: themeAccent) {
+            HStack(spacing: 14) {
+                GeminiTalkStateBadge(
+                    title: "Gemini",
+                    tint: themeAccent
+                )
 
-            GeminiActionButton(
-                title: gemini.selectedConnectionManageButtonTitle,
-                icon: "key.fill",
-                tint: themeAccent
-            ) {
-                openSettingsPanel()
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(gemini.selectedConnectionSetupTitle)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.9))
+                    Text(gemini.selectedConnectionSetupDescription)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.52))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+
+                GeminiActionButton(
+                    title: gemini.selectedConnectionManageButtonTitle,
+                    icon: "key.fill",
+                    tint: themeAccent
+                ) {
+                    openSettingsPanel()
+                }
             }
-            .frame(maxWidth: .infinity)
         }
-        .padding(.leading, 12)
-        .padding(.top, 8)
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private var agentSettingsView: some View {
         HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 2) {
                 ForEach(GeminiAgentSettingsTab.allCases) { tab in
                     Button {
                         settingsTab = tab
                     } label: {
-                        Text(Localization.get(tab.rawValue, lang: appLanguage))
-                            .font(StandardButtonMetrics.font)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.65)
-                            .foregroundStyle(settingsTab == tab ? .black.opacity(0.85) : .white.opacity(0.85))
-                            .padding(.horizontal, 7)
-                            .frame(maxWidth: .infinity, minHeight: StandardButtonMetrics.height, alignment: .leading)
-                            .background(
-                                Group {
-                                    if settingsTab == tab {
-                                        StandardPrimaryPillChrome(tint: themeAccent)
-                                    } else {
-                                        Capsule().fill(Color.white.opacity(0.1))
-                                    }
-                                }
-                            )
+                        GeminiAgentSettingsSidebarLabel(
+                            title: Localization.get(tab.rawValue, lang: appLanguage),
+                            isSelected: settingsTab == tab,
+                            tint: themeAccent
+                        )
                     }
                     .buttonStyle(.plain)
                 }
@@ -565,8 +716,9 @@ private struct GeminiTalkDisconnectedHomeView: View {
                 ) {
                     setupViewMode = .home
                 }
+                .padding(.top, 6)
             }
-            .frame(width: 92, alignment: .top)
+            .frame(width: 132, alignment: .top)
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -707,7 +859,7 @@ struct GeminiTalkPanelView: View {
     }
 
     private var statusColor: Color {
-        Color(nsColor: gemini.connectionState.accentColor).ensureMinimumBrightness(factor: 0.72)
+        Color(nsColor: gemini.effectiveConnectionState.accentColor).ensureMinimumBrightness(factor: 0.72)
     }
 
     private var themeAccent: Color {
@@ -868,7 +1020,7 @@ struct GeminiTalkPanelView: View {
                 isEditing: isEditingExistingPrompt,
                 onDone: savePromptDraft
             )
-        } else if gemini.connectionState == .connected {
+        } else if gemini.showsConnectedSessionUI {
             GeminiTalkConnectedView(
                 gemini: gemini,
                 presentationModel: presentationModel,
@@ -909,7 +1061,7 @@ struct GeminiTalkPanelView: View {
     var body: some View {
         VStack(spacing: 8) {
             panelContent
-            .padding(.bottom, gemini.connectionState == .connected ? 4 : 10)
+            .padding(.bottom, gemini.showsConnectedSessionUI ? 4 : 10)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, minHeight: 116, alignment: .topLeading)
@@ -933,7 +1085,7 @@ struct GeminiTalkPanelView: View {
         .onChange(of: gemini.hasSavedAPIKey) { _, _ in
             scheduleHeaderRefresh()
         }
-        .onChange(of: gemini.connectionState) { _, _ in
+        .onChange(of: gemini.lifecycleState) { _, _ in
             scheduleHeaderRefresh()
         }
         .onChange(of: gemini.isSavingAPIKey) { _, _ in
@@ -1630,7 +1782,7 @@ struct GeminiInputModeMenu: View {
         case .openMic:
             return Localization.get("Mic", lang: appLanguage)
         case .pushToTalk:
-            if gemini.connectionState == .connected || gemini.connectionState == .connecting {
+            if gemini.canDisconnectSession {
                 return gemini.holdToTalkShortcut.displayString
             }
             return Localization.get("Push to Talk", lang: appLanguage)
@@ -2323,8 +2475,8 @@ struct GeminiAgentHomeAvatarFigure: View {
         ZStack {
             Circle()
                 .fill(Color.black.opacity(0.82))
-                .frame(width: 104, height: 104)
-                .shadow(color: .black.opacity(isHovering ? 0.45 : 0.28), radius: isHovering ? 18 : 10, y: isHovering ? 8 : 4)
+                .frame(width: 100, height: 100)
+                .shadow(color: .black.opacity(isHovering ? 0.42 : 0.26), radius: isHovering ? 16 : 10, y: isHovering ? 6 : 3)
             Circle()
                 .fill(
                     LinearGradient(
@@ -2333,26 +2485,26 @@ struct GeminiAgentHomeAvatarFigure: View {
                             Color.white.opacity(0.03)
                         ],
                         startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
+                            endPoint: .bottomTrailing
+                        )
                 )
-                .frame(width: 96, height: 96)
+                .frame(width: 91, height: 91)
                 .overlay {
                     Circle()
                         .stroke(statusColor.opacity(isHovering ? 0.34 : 0.18), lineWidth: isHovering ? 1.5 : 1)
-                        .frame(width: 96, height: 96)
+                        .frame(width: 91, height: 91)
                 }
 
             GeminiAgentAvatarArtwork(
                 imageURL: avatarImageURL,
                 symbolName: avatarSymbolName,
-                symbolFont: .system(size: 38, weight: .medium),
-                size: 104
+                symbolFont: .system(size: 36, weight: .medium),
+                size: 100
             )
         }
-        .scaleEffect(isHovering ? 1.04 : 1)
+        .scaleEffect(isHovering ? 1.03 : 1)
         .animation(.spring(response: 0.22, dampingFraction: 0.82), value: isHovering)
-        .frame(width: 120, height: 110, alignment: .top)
+        .frame(width: 108, height: 100, alignment: .top)
         .contentShape(Circle())
         .onHover { hovering in
             isHovering = hovering

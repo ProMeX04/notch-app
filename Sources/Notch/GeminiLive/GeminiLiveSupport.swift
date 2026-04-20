@@ -51,7 +51,7 @@ enum GeminiLiveConnectionMethod: String, Codable, CaseIterable, Identifiable {
         case .userAPIKey:
             return "Use your own Gemini API key to connect directly."
         case .managedServer:
-            return "Create an account on the web, then sign in to the app with the same email and password."
+            return "Sign in securely in your browser. Notch completes OAuth 2.0 with PKCE automatically."
         }
     }
 

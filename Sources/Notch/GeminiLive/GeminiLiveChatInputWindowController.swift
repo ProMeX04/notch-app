@@ -22,7 +22,7 @@ private struct GeminiLiveChatInputContentView: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.white.opacity(0.92))
                 .onSubmit(commitSend)
-                .disabled(gemini.connectionState != .connected)
+                .disabled(!gemini.canSendLiveInput)
 
             Button(action: commitSend) {
                 Image(systemName: "arrow.up.circle.fill")
@@ -32,7 +32,7 @@ private struct GeminiLiveChatInputContentView: View {
             }
             .buttonStyle(.plain)
             .disabled(
-                gemini.connectionState != .connected
+                !gemini.canSendLiveInput
                     || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             )
         }
@@ -87,11 +87,11 @@ final class GeminiLiveChatInputWindowController {
         self.gemini = gemini
         cancellables.removeAll()
 
-        Publishers.CombineLatest(gemini.$connectionState, gemini.$showLiveChatInput)
+        Publishers.CombineLatest(gemini.$lifecycleState, gemini.$showLiveChatInput)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] state, showInput in
+            .sink { [weak self] lifecycleState, showInput in
                 guard let self else { return }
-                if state == .connected, showInput {
+                if lifecycleState.preservesSessionUI, showInput {
                     self.ensurePanel(gemini: gemini)
                     self.panel?.orderFrontRegardless()
                 } else {

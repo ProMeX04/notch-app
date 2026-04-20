@@ -1,105 +1,182 @@
-'use client';
+'use client'
 
-import { type FormEvent, useState } from 'react';
-import Link from 'next/link';
-import { AlertCircle, ArrowRight, Check, Copy, Loader2, LogIn, ShieldCheck, UserRound } from 'lucide-react';
-import { PortalAuthShowcase } from '@/components/portal/PortalAuthShowcase';
-import { PortalLogo } from '@/components/portal/PortalLogo';
-import { storeAuthSession } from '@/lib/portal-auth-client';
+import { Suspense, type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { AlertCircle, Loader2 } from 'lucide-react'
 
-export default function LoginPage() {
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [appSessionToken, setAppSessionToken] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+import { PortalAppHandoffCard } from '@/components/portal/PortalAppHandoffCard'
+import { usePortalAuth } from '@/components/portal/PortalAuthProvider'
+import { PortalLogo } from '@/components/portal/PortalLogo'
+import { buildBrowserAuthDevicePayload, notifyPortalAuthSessionChange } from '@/lib/portal-auth-client'
+import {
+  buildPortalOAuthSearch,
+  completePortalOAuthAuthorization,
+  launchPortalOAuthAppRedirect,
+  readPortalOAuthAuthorizeRequest,
+} from '@/lib/portal-oauth-client'
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setError(null);
+function LoginPageFallback() {
+  return (
+    <main className="portal-auth-page-centered">
+      <div className="portal-auth-topbar-minimal">
+        <PortalLogo />
+      </div>
 
-    const formData = new FormData(e.currentTarget);
-    const email = formData.get('email') as string;
-    const password = formData.get('password') as string;
+      <section className="portal-auth-container">
+        <div className="portal-card portal-auth-card" style={{ display: 'grid', placeItems: 'center', minHeight: '280px', gap: '12px' }}>
+          <Loader2 size={20} className="portal-spinner" />
+          <p className="portal-muted">Đang chuẩn bị đăng nhập...</p>
+        </div>
+      </section>
+    </main>
+  )
+}
+
+function LoginPageContent() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const { isAuthenticated } = usePortalAuth()
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [hasOpenedApp, setHasOpenedApp] = useState(false)
+  const [lastRedirectTo, setLastRedirectTo] = useState<string | null>(null)
+  const hasAttemptedOAuthRedirect = useRef(false)
+
+  const oauthRequest = useMemo(() => readPortalOAuthAuthorizeRequest(searchParams), [searchParams])
+  const signupHref = useMemo(() => `/signup${buildPortalOAuthSearch(oauthRequest)}`, [oauthRequest])
+  const isHandoffState = Boolean(oauthRequest && hasOpenedApp)
+
+  const handoffToApp = (redirectTo: string) => {
+    setLastRedirectTo(redirectTo)
+    hasAttemptedOAuthRedirect.current = true
+    launchPortalOAuthAppRedirect(redirectTo, {
+      onAppSwitch: () => {
+        setHasOpenedApp(true)
+        setIsLoading(false)
+      },
+      onFallback: () => {
+        setHasOpenedApp(true)
+        setIsLoading(false)
+      },
+    })
+  }
+
+  useEffect(() => {
+    if (!isAuthenticated || hasAttemptedOAuthRedirect.current) return
+
+    let ignore = false
+
+    const continueFlow = async () => {
+      if (!oauthRequest) {
+        router.replace('/pro')
+        return
+      }
+
+      setIsLoading(true)
+      setError(null)
+
+      try {
+        const redirectTo = await completePortalOAuthAuthorization(oauthRequest)
+        if (!ignore) {
+          handoffToApp(redirectTo)
+        }
+      } catch (nextError) {
+        if (!ignore) {
+          setError(nextError instanceof Error ? nextError.message : 'Không thể hoàn tất đăng nhập cho Notch app.')
+          setIsLoading(false)
+        }
+      }
+    }
+
+    void continueFlow()
+
+    return () => {
+      ignore = true
+    }
+  }, [isAuthenticated, oauthRequest, router])
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setIsLoading(true)
+    setError(null)
+
+    const formData = new FormData(event.currentTarget)
+    const email = formData.get('email') as string
+    const password = formData.get('password') as string
 
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
+        body: JSON.stringify({
+          email,
+          password,
+          ...buildBrowserAuthDevicePayload(),
+        }),
+      })
 
-      const data = await response.json();
-
+      const data = await response.json()
       if (!response.ok) {
-        throw new Error(data.error || 'Không thể đăng nhập. Vui lòng thử lại.');
+        throw new Error(data.error || data.detail || 'Không thể đăng nhập. Vui lòng thử lại.')
       }
 
-      const token = (data.session_token as string | undefined) ?? (data.access_token as string);
-      setAppSessionToken(token);
-      storeAuthSession(data);
+      notifyPortalAuthSessionChange()
 
-      try {
-        await navigator.clipboard.writeText(token);
-        setCopied(true);
-      } catch {}
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Không thể đăng nhập. Vui lòng thử lại.');
-    } finally {
-      setIsLoading(false);
+      if (oauthRequest) {
+        const redirectTo = await completePortalOAuthAuthorization(oauthRequest)
+        handoffToApp(redirectTo)
+        return
+      }
+
+      router.replace('/pro')
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Không thể đăng nhập. Vui lòng thử lại.')
+      setIsLoading(false)
     }
-  };
-
-  const handleCopy = () => {
-    if (!appSessionToken) return;
-    navigator.clipboard.writeText(appSessionToken);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+  }
 
   return (
     <main className="portal-auth-page-centered">
-      <div className="portal-auth-topbar-minimal">
-        <PortalLogo />
-        <Link href="/signup" className="portal-button-ghost">
-          Tạo tài khoản
-        </Link>
-      </div>
+      {!isHandoffState ? (
+        <div className="portal-auth-topbar-minimal">
+          <PortalLogo />
+          <Link href={signupHref} className="portal-button-ghost">
+            Tạo tài khoản
+          </Link>
+        </div>
+      ) : null}
 
       <section className="portal-auth-container">
         <div className="portal-auth-header-centered">
-          <h1 className="portal-auth-title-large">Chào bạn quay lại</h1>
-          <p className="portal-muted">Đăng nhập để quản lý tài khoản và đồng bộ với Notch app.</p>
+          <h1 className="portal-auth-title-large">{isHandoffState ? 'Notch' : 'Chào bạn quay lại'}</h1>
+          <p className="portal-muted">
+            {isHandoffState
+              ? 'Mở ứng dụng để tiếp tục.'
+              : oauthRequest
+              ? 'Đăng nhập để tiếp tục ngay trong ứng dụng Notch.'
+              : 'Đăng nhập để quản lý tài khoản và đồng bộ với Notch app.'}
+          </p>
         </div>
 
         <div className="portal-card portal-auth-card">
-          {appSessionToken ? (
-            <div className="portal-success-view">
-              <div className="portal-success-ring">
-                <Check size={32} />
-              </div>
-              <h2>Đăng nhập thành công!</h2>
-              <p className="portal-muted">Sao chép token bên dưới để dán vào Notch app trên Mac của bạn.</p>
-
-              <div className="portal-token-box">
-                <code>{appSessionToken}</code>
-                <button type="button" onClick={handleCopy} className="portal-token-copy">
-                  {copied ? <Check size={16} /> : <Copy size={16} />}
-                  {copied ? 'Đã chép' : 'Sao chép'}
-                </button>
-              </div>
-
-              <div className="portal-divider" />
-
-              <div style={{ display: 'grid', gap: '12px' }}>
-                <Link href="/pro" className="portal-button-secondary" style={{ width: '100%' }}>
-                  Đi tới trang quản lý tài khoản
-                </Link>
-                <Link href="/" className="portal-button-ghost" style={{ width: '100%' }}>
-                  Quay về trang chủ
-                </Link>
-              </div>
-            </div>
+          {hasOpenedApp && oauthRequest ? (
+            <PortalAppHandoffCard
+              mode="ready"
+              title="Tiếp tục trong Notch"
+              description="Bạn có thể đóng tab này."
+              primaryLabel="Mở lại Notch"
+              onPrimaryAction={() => {
+                if (!lastRedirectTo) {
+                  setHasOpenedApp(false)
+                  hasAttemptedOAuthRedirect.current = false
+                  return
+                }
+                setHasOpenedApp(false)
+                setIsLoading(true)
+                handoffToApp(lastRedirectTo)
+              }}
+            />
           ) : (
             <form className="portal-auth-form" onSubmit={handleSubmit}>
               {error ? (
@@ -108,7 +185,7 @@ export default function LoginPage() {
                   <span>{error}</span>
                 </div>
               ) : null}
-              
+
               <div className="portal-field">
                 <label htmlFor="email">Email</label>
                 <input className="portal-input" type="email" id="email" name="email" placeholder="email@example.com" required />
@@ -126,12 +203,20 @@ export default function LoginPage() {
           )}
         </div>
 
-        {!appSessionToken && (
+        {!isHandoffState ? (
           <p className="portal-auth-footer-simple">
-            Chưa có tài khoản? <Link href="/signup">Tạo tài khoản mới</Link>
+            Chưa có tài khoản? <Link href={signupHref}>Tạo tài khoản mới</Link>
           </p>
-        )}
+        ) : null}
       </section>
     </main>
-  );
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginPageFallback />}>
+      <LoginPageContent />
+    </Suspense>
+  )
 }

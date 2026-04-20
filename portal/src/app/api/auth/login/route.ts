@@ -1,18 +1,31 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import prisma from '@/lib/prisma';
-import { createAuthPayload } from '@/lib/notch-auth';
+import { applyAuthCookies } from '@/lib/auth-cookies';
+import { isValidEmail, normalizeEmail } from '@/lib/email';
+import { AuthDeviceLimitError, authPayloadUserResponse, createAuthPayload } from '@/lib/notch-auth';
 
 export async function POST(req: Request) {
   try {
-    const { email, password } = await req.json();
+    const body = await req.json();
+    const { email: rawEmail, password } = body;
+    const email = normalizeEmail(rawEmail);
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Vui lòng nhập email và mật khẩu' }, { status: 400 });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email },
+    if (!isValidEmail(email)) {
+      return NextResponse.json({ error: 'Email không hợp lệ' }, { status: 400 });
+    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        email: {
+          equals: email,
+          mode: 'insensitive',
+        },
+      },
     });
 
     if (!user || !user.password) {
@@ -25,11 +38,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
 
-    // In a real app, you would set a session cookie or return a JWT
-    // For now, we'll just return the user data as a success response
-    const payload = await createAuthPayload(user);
-    return NextResponse.json(payload);
+    const payload = await createAuthPayload(user, {
+      req,
+      device: body,
+    });
+    return applyAuthCookies(
+      NextResponse.json(authPayloadUserResponse(payload.user, payload.session.id)),
+      payload,
+    );
   } catch (error: unknown) {
+    if (error instanceof AuthDeviceLimitError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode });
+    }
     console.error('Login error:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Đã có lỗi xảy ra' },

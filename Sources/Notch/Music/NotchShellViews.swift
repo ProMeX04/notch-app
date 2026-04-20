@@ -327,7 +327,7 @@ struct CompactTalkView: View {
                 } else if gemini.isModelThinking {
                     CompactTalkThinkingSpinner(tint: accentColor)
                 } else {
-                    CompactTalkLiveDot(connectionState: gemini.connectionState)
+                    CompactTalkLiveDot(connectionState: gemini.effectiveConnectionState)
                 }
             }
             .frame(width: sideSize, height: sideSize)
@@ -825,9 +825,9 @@ struct Localization {
             "English": "This key is stored locally on your Mac and used directly by Notch.",
             "Tiếng Việt": "Key này được lưu cục bộ trên máy Mac và được Notch dùng trực tiếp.",
         ],
-        "Use your email and password. Notch will handle the secure connection automatically.": [
-            "English": "Use your email and password. Notch will handle the secure connection automatically.",
-            "Tiếng Việt": "Dùng email và mật khẩu của bạn. Notch sẽ tự xử lý kết nối bảo mật ở phía sau.",
+        "Use secure browser sign-in. Notch will complete OAuth 2.0 + PKCE automatically.": [
+            "English": "Use secure browser sign-in. Notch will complete OAuth 2.0 + PKCE automatically.",
+            "Tiếng Việt": "Dùng đăng nhập an toàn trên trình duyệt. Notch sẽ tự hoàn tất OAuth 2.0 + PKCE.",
         ],
         "No URL or token setup required.": [
             "English": "No URL or token setup required.",
@@ -836,6 +836,10 @@ struct Localization {
         "Sign in here once and Talk will reuse this session everywhere in the app.": [
             "English": "Sign in here once and Talk will reuse this session everywhere in the app.",
             "Tiếng Việt": "Đăng nhập một lần ở đây, Talk sẽ dùng lại phiên này ở mọi nơi trong app.",
+        ],
+        "Continue in your browser. Notch will finish OAuth sign-in automatically.": [
+            "English": "Continue in your browser. Notch will finish OAuth sign-in automatically.",
+            "Tiếng Việt": "Tiếp tục trong trình duyệt. Notch sẽ tự hoàn tất đăng nhập OAuth.",
         ],
         "Use your own Gemini key if you prefer to connect directly.": [
             "English": "Use your own Gemini key if you prefer to connect directly.",
@@ -846,6 +850,10 @@ struct Localization {
         "Sign up": ["English": "Sign up", "Tiếng Việt": "Tạo tài khoản"],
         "Sign out": ["English": "Sign out", "Tiếng Việt": "Đăng xuất"],
         "Open Settings Tab": ["English": "Open Settings Tab", "Tiếng Việt": "Mở tab Cài đặt"],
+        "Notch Pro is required to use Talk.": [
+            "English": "Notch Pro is required to use Talk.",
+            "Tiếng Việt": "Cần Notch Pro để dùng Talk.",
+        ],
         "Notch Pro is required to use the hosted Gemini Live server.": [
             "English": "Notch Pro is required to use the hosted Gemini Live server.",
             "Tiếng Việt": "Cần Notch Pro để dùng máy chủ Gemini Live được Notch cung cấp.",
@@ -858,9 +866,9 @@ struct Localization {
             "English": "Sign in on the web",
             "Tiếng Việt": "Đăng nhập trên web",
         ],
-        "Then sign in to the app with the same email and password.": [
-            "English": "Then sign in to the app with the same email and password.",
-            "Tiếng Việt": "Sau đó đăng nhập trong app bằng cùng email và mật khẩu.",
+        "After you sign in on the web, Notch will return automatically.": [
+            "English": "After you sign in on the web, Notch will return automatically.",
+            "Tiếng Việt": "Sau khi bạn đăng nhập trên web, Notch sẽ tự quay lại.",
         ],
         "Copy-token flow (recommended): on the web sign-in page, the token is copied after login — open Notch, tap Paste from clipboard, then Sign in with token. Or sign in below with email and password.": [
             "English": "Copy-token flow (recommended): on the web sign-in page, the token is copied after login — open Notch, tap Paste from clipboard, then Sign in with token. Or sign in below with email and password.",
@@ -900,18 +908,12 @@ struct GlobalSettingsView: View {
     @ObservedObject var presentationModel: NotchPresentationModel
     @ObservedObject var gemini: GeminiLiveViewModel
     @AppStorage("app_language") private var appLanguage: String = "English"
-    @State private var webSessionTokenDraft = ""
-    @State private var lastPastedWebSessionToken = ""
     @State private var launchAtLoginEnabled = false
     @State private var launchAtLoginError: String?
     private let launchAtLoginController = LaunchAtLoginController()
 
     private var tint: Color {
         presentationModel.accentColor.ensureMinimumBrightness(factor: 0.78)
-    }
-
-    private var canApplyWebSessionToken: Bool {
-        !webSessionTokenDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !gemini.isSavingAPIKey
     }
 
     private var isShowingInlineAuthError: Bool {
@@ -932,26 +934,12 @@ struct GlobalSettingsView: View {
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .onAppear(perform: refreshLaunchAtLoginState)
-        .onChange(of: webSessionTokenDraft) { _, newValue in
-            if newValue != lastPastedWebSessionToken {
-                lastPastedWebSessionToken = ""
-            }
-        }
     }
 
     private var generalSettingsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 14) {
-                    Button {
-                        if !gemini.isBackendAuthenticated {
-                            gemini.openWebAccountLogin()
-                        }
-                    } label: {
-                        accountAvatar
-                    }
-                    .buttonStyle(.plain)
-
                     VStack(alignment: .leading, spacing: 4) {
                         if gemini.isBackendAuthenticated {
                             HStack(spacing: 8) {
@@ -987,42 +975,17 @@ struct GlobalSettingsView: View {
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(Color(nsColor: .systemRed).opacity(0.9))
                         } else {
-                            HStack(spacing: 10) {
+                            VStack(alignment: .leading, spacing: 6) {
                                 Button(Localization.get("Sign in", lang: appLanguage)) {
                                     gemini.openWebAccountLogin()
                                 }
                                 .buttonStyle(.plain)
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(tint)
-
-                                settingsInlineInputCard {
-                                    HStack(spacing: 8) {
-                                        SecureField("ntk_…", text: $webSessionTokenDraft)
-                                            .textFieldStyle(.plain)
-                                            .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                            .foregroundStyle(.white)
-
-                                        Button(lastPastedWebSessionToken.isEmpty ? Localization.get("Paste from clipboard", lang: appLanguage) : "Xác nhận") {
-                                            if lastPastedWebSessionToken.isEmpty {
-                                                if let s = NSPasteboard.general.string(forType: .string) {
-                                                    webSessionTokenDraft = s
-                                                    lastPastedWebSessionToken = s
-                                                }
-                                            } else {
-                                                Task {
-                                                    let ok = await gemini.applyWebSessionToken(webSessionTokenDraft)
-                                                    if ok {
-                                                        webSessionTokenDraft = ""
-                                                        lastPastedWebSessionToken = ""
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        .buttonStyle(.plain)
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .foregroundStyle(lastPastedWebSessionToken.isEmpty ? tint : .green)
-                                    }
-                                }
+                                
+                                Text(Localization.get("Continue in your browser. Notch will finish OAuth sign-in automatically.", lang: appLanguage))
+                                    .font(.system(size: 10.5, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.55))
                             }
                         }
                     }
@@ -1041,7 +1004,7 @@ struct GlobalSettingsView: View {
                             }
 
                             Button {
-                                Task { await gemini.refreshBackendSubscriptionStatus() }
+                                Task { await gemini.refreshBackendSubscriptionStatus(forceRefresh: true) }
                             } label: {
                                 Image(systemName: "arrow.clockwise")
                                     .font(.system(size: 13, weight: .bold))
@@ -1061,7 +1024,7 @@ struct GlobalSettingsView: View {
 
                 if !gemini.isBackendAuthenticated {
                     VStack(alignment: .leading, spacing: 10) {
-                        if let error = gemini.lastErrorMessage, !error.isEmpty {
+                        if let error = gemini.lastErrorMessage ?? gemini.backendAuthFailureMessage, !error.isEmpty {
                             Text(Localization.get(error, lang: appLanguage))
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(Color(nsColor: .systemRed).opacity(0.9))
@@ -1211,32 +1174,6 @@ struct GlobalSettingsView: View {
         } catch {
             launchAtLoginError = error.localizedDescription
             refreshLaunchAtLoginState()
-        }
-    }
-
-    private var accountAvatar: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: gemini.isBackendAuthenticated
-                            ? [tint, tint.opacity(0.68)]
-                            : [Color.white.opacity(0.2), Color.white.opacity(0.08)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: 40, height: 40)
-
-            if let initial = gemini.backendSignedInSummary?.trimmingCharacters(in: .whitespacesAndNewlines).first {
-                Text(String(initial).uppercased())
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-            } else {
-                Image(systemName: "person.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.92))
-            }
         }
     }
 

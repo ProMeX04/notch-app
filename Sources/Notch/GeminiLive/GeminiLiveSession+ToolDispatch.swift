@@ -38,7 +38,7 @@ extension GeminiLiveSession {
         let workingDirectory = args["workingDirectory"] as? String
         let timeoutSeconds = (args["timeoutSeconds"] as? NSNumber)?.doubleValue
             ?? (args["timeoutSeconds"] as? Double)
-        let resolvedTimeout = min(max(timeoutSeconds ?? 15, 1), 30)
+        let resolvedTimeout = min(max(timeoutSeconds ?? 15, 1), 600)
         let trimmedCommand = command.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedWorkingDirectory = GeminiLiveStoragePaths
             .resolvedExecWorkingDirectory(from: workingDirectory)?

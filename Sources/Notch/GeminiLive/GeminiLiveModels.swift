@@ -35,6 +35,81 @@ enum GeminiLiveConnectionState: Equatable {
     }
 }
 
+enum GeminiLiveReconnectState: Equatable {
+    case none
+    case transport
+    case sessionRefresh
+    case fullRestart
+
+    var preservesLiveSessionUI: Bool {
+        self != .none
+    }
+}
+
+enum GeminiLiveLifecycleState: Equatable {
+    case disconnected
+    case connecting
+    case live
+    case reconnecting(GeminiLiveReconnectState)
+    case failed
+
+    var visualConnectionState: GeminiLiveConnectionState {
+        switch self {
+        case .disconnected:
+            return .disconnected
+        case .connecting, .reconnecting:
+            return .connecting
+        case .live:
+            return .connected
+        case .failed:
+            return .failed
+        }
+    }
+
+    var preservesSessionUI: Bool {
+        switch self {
+        case .live, .reconnecting:
+            return true
+        case .disconnected, .connecting, .failed:
+            return false
+        }
+    }
+
+    var canDisconnect: Bool {
+        switch self {
+        case .connecting, .live, .reconnecting:
+            return true
+        case .disconnected, .failed:
+            return false
+        }
+    }
+
+    var canManageConfiguration: Bool {
+        switch self {
+        case .disconnected, .failed:
+            return true
+        case .connecting, .live, .reconnecting:
+            return false
+        }
+    }
+
+    var canSendLiveInput: Bool {
+        if case .live = self {
+            return true
+        }
+        return false
+    }
+
+    var isBusy: Bool {
+        switch self {
+        case .connecting, .reconnecting:
+            return true
+        case .disconnected, .live, .failed:
+            return false
+        }
+    }
+}
+
 enum GeminiThinkingLevel: String, CaseIterable {
     case off = "Off"
     case low = "Low"

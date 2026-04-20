@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import {
-  ArrowRight,
   BrainCircuit,
   Clock3,
   FolderKanban,
@@ -16,6 +15,7 @@ import {
   Music,
 } from 'lucide-react';
 import { PortalLogo } from '@/components/portal/PortalLogo';
+import { usePortalAuth } from '@/components/portal/PortalAuthProvider';
 
 const featureCards = [
   {
@@ -101,17 +101,13 @@ const lightReasons = [
   },
 ];
 
-const marqueeItems = [
-  'Pomodoro focus',
-  'Drag & drop shelf',
-  'Media controls',
-  'Gemini Live',
-  'Menu bar utility',
-  'Tối ưu bộ nhớ',
-  'macOS notch workflow',
-];
-
 export default function Home() {
+  const { isAuthenticated, user } = usePortalAuth();
+  const primaryHref = isAuthenticated ? '/pro' : '/signup';
+  const primaryLabel = isAuthenticated ? 'Mở trang tài khoản' : 'Bắt đầu miễn phí';
+  const navSecondaryHref = isAuthenticated ? '/pro' : '/login';
+  const navSecondaryLabel = isAuthenticated ? (user?.name?.trim() || 'Tài khoản') : 'Đăng nhập';
+
   return (
     <main className="landing-page">
       <nav className="landing-nav">
@@ -123,11 +119,11 @@ export default function Home() {
             <Link href="/pro">Tài khoản</Link>
           </div>
           <div className="landing-nav-actions">
-            <Link href="/login" className="portal-button-ghost">
-              Đăng nhập
+            <Link href={navSecondaryHref} className="portal-button-ghost">
+              {navSecondaryLabel}
             </Link>
-            <Link href="/signup" className="portal-button-secondary">
-              Tạo tài khoản
+            <Link href={primaryHref} className="portal-button-secondary">
+              {isAuthenticated ? 'Vào portal' : 'Tạo tài khoản'}
             </Link>
           </div>
         </div>
@@ -149,8 +145,8 @@ export default function Home() {
               <Link href="/pricing" className="portal-button-secondary">
                 Xem bảng giá
               </Link>
-              <Link href="/signup" className="portal-button">
-                Bắt đầu miễn phí
+              <Link href={primaryHref} className="portal-button">
+                {primaryLabel}
               </Link>
             </div>
           </div>
@@ -254,11 +250,11 @@ export default function Home() {
               </p>
             </div>
             <div className="landing-cta-actions">
-              <Link href="/signup" className="portal-button">
-                Tạo tài khoản
+              <Link href={primaryHref} className="portal-button">
+                {isAuthenticated ? 'Vào portal' : 'Tạo tài khoản'}
               </Link>
-              <Link href="/pro" className="portal-button-secondary">
-                Xem trang tài khoản
+              <Link href={isAuthenticated ? '/pro' : '/pricing'} className="portal-button-secondary">
+                {isAuthenticated ? 'Xem trang tài khoản' : 'Xem bảng giá'}
               </Link>
             </div>
           </div>

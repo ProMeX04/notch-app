@@ -310,10 +310,10 @@ final class PomodoroFullscreenWindowController {
     }
 
     private func hideFullscreen() {
-        guard let panel else { return }
         fullscreenSafetyTask?.cancel()
         fullscreenSafetyTask = nil
         removeKeyEventMonitor()
+        guard let panel else { return }
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.25
             panel.animator().alphaValue = 0

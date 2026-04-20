@@ -14,12 +14,13 @@ model User {
   name         String?
   email        String?          @unique
   password     String?
-  image        String?
   isPro        Boolean          @default(false)
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
   sessions     AuthSession[]
   bridgeTokens AuthBridgeToken[]
+  appBridgeTokens AuthAppBridgeToken[]
+  oauthAuthorizationCodes OAuthAuthorizationCode[]
   payments     PaymentTransaction[]
 }
 
@@ -27,17 +28,26 @@ model AuthSession {
   id              String    @id @default(cuid())
   tokenHash       String    @unique
   accessTokenHash String?   @unique
+  deviceId        String?
+  deviceName      String?
+  platform        String?
   expiresAt       DateTime
   accessExpiresAt DateTime?
   createdAt       DateTime  @default(now())
+  lastSeenAt      DateTime  @default(now())
+  trustedAt       DateTime?
   updatedAt       DateTime  @updatedAt
   revokedAt       DateTime?
+  revokedReason   String?
   userId          String
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([userId, deviceId])
   @@index([expiresAt])
   @@index([accessExpiresAt])
+  @@index([lastSeenAt])
+  @@index([trustedAt])
   @@index([revokedAt])
 }
 
@@ -52,6 +62,42 @@ model AuthBridgeToken {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+model AuthAppBridgeToken {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  deviceId   String?
+  deviceName String?
+  platform   String?
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  completedAt DateTime?
+  consumedAt DateTime?
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([completedAt])
+}
+
+model OAuthAuthorizationCode {
+  id                  String   @id @default(cuid())
+  codeHash            String   @unique
+  clientId            String
+  redirectUri         String
+  codeChallenge       String
+  codeChallengeMethod String
+  expiresAt           DateTime
+  createdAt           DateTime @default(now())
+  consumedAt          DateTime?
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([clientId, redirectUri])
 }
 
 model PaymentTransaction {
@@ -70,9 +116,11 @@ model PaymentTransaction {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   paidAt         DateTime?
-  userId         String
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guestEmail     String?
+  userId         String?
+  user           User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([guestEmail])
   @@index([userId])
   @@index([status])
 }

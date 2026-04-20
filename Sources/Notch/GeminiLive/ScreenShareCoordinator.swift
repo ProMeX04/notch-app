@@ -180,7 +180,7 @@ final class ScreenShareCoordinator: ObservableObject {
     }
 
     private func updateHighlight() {
-        guard isActive || mode != .fullScreen else {
+        guard isActive else {
             highlightRect = nil
             highlightController.hide()
             return

@@ -1,37 +1,98 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import prisma from '@/lib/prisma';
-import { createAuthPayload } from '@/lib/notch-auth';
+import { applyAuthCookies } from '@/lib/auth-cookies';
+import { isValidEmail, normalizeEmail } from '@/lib/email';
+import { AuthDeviceLimitError, authPayloadUserResponse, createAuthPayload } from '@/lib/notch-auth';
 
 export async function POST(req: Request) {
   try {
-    const { name, email, password } = await req.json();
+    const body = await req.json();
+    const { name, email: rawEmail, password } = body;
+    const email = normalizeEmail(rawEmail);
+    const normalizedName = typeof name === 'string' ? name.trim() : '';
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Vui lòng nhập đầy đủ email và mật khẩu' }, { status: 400 });
     }
 
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
+    if (!isValidEmail(email)) {
+      return NextResponse.json({ error: 'Email không hợp lệ' }, { status: 400 });
+    }
+
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        email: {
+          equals: email,
+          mode: 'insensitive',
+        },
+      },
     });
 
-    if (existingUser) {
+    if (existingUser?.password) {
       return NextResponse.json({ error: 'Email này đã được sử dụng' }, { status: 400 });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const user = await prisma.user.create({
-      data: {
-        name,
-        email,
-        password: hashedPassword,
-      },
+    const user = await prisma.$transaction(async (tx) => {
+      const baseUser = existingUser
+        ? await tx.user.update({
+            where: { id: existingUser.id },
+            data: {
+              email,
+              password: hashedPassword,
+              name: normalizedName || existingUser.name || email.split('@')[0],
+            },
+          })
+        : await tx.user.create({
+            data: {
+              name: normalizedName,
+              email,
+              password: hashedPassword,
+            },
+          });
+
+      const hasPaidGuestTransaction = await tx.paymentTransaction.findFirst({
+        where: {
+          guestEmail: email,
+          status: 'paid',
+        },
+        select: { id: true },
+      });
+
+      await tx.paymentTransaction.updateMany({
+        where: {
+          guestEmail: email,
+          userId: null,
+        },
+        data: {
+          userId: baseUser.id,
+        },
+      });
+
+      if (hasPaidGuestTransaction && !baseUser.isPro) {
+        return tx.user.update({
+          where: { id: baseUser.id },
+          data: { isPro: true },
+        });
+      }
+
+      return baseUser;
     });
 
-    const payload = await createAuthPayload(user);
-    return NextResponse.json(payload, { status: 201 });
+    const payload = await createAuthPayload(user, {
+      req,
+      device: body,
+    });
+    return applyAuthCookies(
+      NextResponse.json(authPayloadUserResponse(payload.user, payload.session.id), { status: 201 }),
+      payload,
+    );
   } catch (error) {
+    if (error instanceof AuthDeviceLimitError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode });
+    }
     console.error('Registration error:', error);
     return NextResponse.json({ error: 'Đã có lỗi xảy ra trong quá trình đăng ký' }, { status: 500 });
   }

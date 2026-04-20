@@ -89,6 +89,14 @@ final class NotchWindowController {
             }
             .store(in: &cancellables)
 
+        pomodoroViewModel.$isFullscreenActive
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isFullscreenActive in
+                self?.syncVisibilityForPomodoroFullscreen(isFullscreenActive)
+            }
+            .store(in: &cancellables)
+
         transcriptOverlay.setPreferredScreen(initialScreen)
         transcriptOverlay.observe(gemini: geminiLiveViewModel)
         liveChatInputPanel.setPreferredScreen(initialScreen)
@@ -114,6 +122,26 @@ final class NotchWindowController {
     func hide() {
         isVisible = false
         window.orderOut(nil)
+    }
+
+    private func syncVisibilityForPomodoroFullscreen(_ isFullscreenActive: Bool) {
+        if isFullscreenActive {
+            applyWindowVisibility(false)
+            return
+        }
+
+        guard isVisible else { return }
+        applyWindowVisibility(true)
+    }
+
+    private func applyWindowVisibility(_ visible: Bool) {
+        guard visible else {
+            window.orderOut(nil)
+            return
+        }
+
+        updateWindowFrame(animated: false)
+        window.orderFrontRegardless()
     }
 
     func toggleVisibility() {

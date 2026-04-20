@@ -86,12 +86,12 @@ final class GeminiLiveWebRTCAudioIO: NSObject, @unchecked Sendable {
         try ensurePlayoutStarted()
     }
 
-    func startCapture(onCapture: @escaping (AVAudioPCMBuffer) -> Void) throws {
+    func startCapture(muted: Bool = false, onCapture: @escaping (AVAudioPCMBuffer) -> Void) throws {
         self.onCapture = onCapture
         try ensurePlayoutStarted()
 
         if recordingStarted {
-            _ = audioDeviceModule.setMicrophoneMuted(false)
+            _ = audioDeviceModule.setMicrophoneMuted(muted)
             return
         }
 
@@ -100,7 +100,7 @@ final class GeminiLiveWebRTCAudioIO: NSObject, @unchecked Sendable {
             throw Error.recordingFailed(result)
         }
 
-        _ = audioDeviceModule.setMicrophoneMuted(false)
+        _ = audioDeviceModule.setMicrophoneMuted(muted)
         recordingStarted = true
     }
 

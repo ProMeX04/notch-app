@@ -341,9 +341,9 @@
       border: 1px solid var(--border);
       background: rgba(255, 255, 255, 0.02);
     }
-    .mode.off { border-color: rgba(139, 146, 165, 0.3); }
-    .mode.zen { border-color: rgba(255, 107, 122, 0.35); }
-    .mode.strict { border-color: rgba(110, 184, 255, 0.35); }
+    .mode.running { border-color: rgba(255, 107, 122, 0.35); }
+    .mode.paused { border-color: rgba(110, 184, 255, 0.35); }
+    .mode.idle { border-color: rgba(139, 146, 165, 0.3); }
     .mode h4 {
       font-size: 0.85rem;
       margin-bottom: 0.5rem;
@@ -407,7 +407,7 @@
         <li><a href="#intro">Giá trị</a></li>
         <li><a href="#cycle">Chu kỳ</a></li>
         <li><a href="#presets">Nhịp làm việc</a></li>
-        <li><a href="#modes">Không gian</a></li>
+        <li><a href="#modes">Trạng thái</a></li>
         <li><a href="#features">Thêm lợi ích</a></li>
         <li><a href="#tips">Kết quả</a></li>
       </ul>
@@ -521,7 +521,7 @@
               <p><strong style="color:var(--text)">Lợi ích:</strong> trạng thái trước khi bắt đầu giúp bạn chọn đúng phiên, đúng task, đúng nhịp; không có áp lực phải “vào chế độ” ngay lập tức.</p>
             </div>
           </div>
-          <h3>An toàn khi thoát</h3>
+          <h3>Khi cần dừng lại</h3>
           <p>
             Khi bạn tạm dừng hoặc reset, timer dừng đúng chỗ để tránh trạng thái mơ hồ.
             Chuyển sang một cấu hình mới khi đang chạy cũng dừng trước, rồi mới tiếp tục theo thiết lập mới.
@@ -562,7 +562,7 @@
           <h2>Bạn đạt được gì khi dùng đúng cách</h2>
           <ul class="clean">
             <li><strong style="color:var(--text)">Một nhiệm vụ rõ ràng mỗi phiên</strong> — giảm cảm giác “làm loãng” vì não không phải quản lý danh sách việc trong lúc đếm.</li>
-            <li><strong style="color:var(--text)">Nghỉ thật sự</strong> — với trạng thái Paused hoặc thói quen tự chủ động, bạn phục hồi thể và mắt; tránh biến nghỉ thành thêm một “phiên làm việc khác” trong cùng nhịp.</li>
+            <li><strong style="color:var(--text)">Nghỉ thật sự</strong> — với thói quen chủ động rời màn hình, bạn phục hồi thể và mắt; tránh biến nghỉ thành thêm một “phiên làm việc khác” trong cùng nhịp.</li>
             <li><strong style="color:var(--text)">Auto-start có chủ đích</strong> — khi bật, bạn ít bị “đứt đà” giữa các pha; khi tắt, bạn giữ quyền kiểm soát — phù hợp ngày họp nhiều hoặc ngày cần chuỗi deep work liền mạch.</li>
             <li><strong style="color:var(--text)">Preset khớp loại công việc</strong> — bạn tận dụng tối đa từng khối thời gian: việc ngắn không bị “kéo dài giả tạo”, việc sâu không bị cắt vụn vì chọn nhịp sai.</li>
             <li><strong style="color:var(--text)">Theo dõi xu hướng</strong> — số liệu biến cảm giác “mình có cố không?” thành “mình đang duy trì được bao nhiêu focus thật” — cơ sở để điều chỉnh, không phải tự trách.</li>

@@ -200,6 +200,93 @@ private struct GeminiTalkToolToastChip: View {
     }
 }
 
+private struct GeminiTalkSettingsRedirectView: View {
+    @ObservedObject var gemini: GeminiLiveViewModel
+    let appLanguage: String
+    let themeAccent: Color
+    let statusColor: Color
+    let selectedAgentAvatarSymbolName: String
+    let selectedAgentAvatarImageURL: URL?
+
+    private var statusText: String {
+        if gemini.canStartConnection {
+            return "Talk is ready. Start a session when you want."
+        }
+        if gemini.selectedConnectionMethod == .managedServer {
+            return Localization.get("Sign in here once and Talk will reuse this session everywhere in the app.", lang: appLanguage)
+        }
+        return Localization.get("Use your own Gemini key if you prefer to connect directly.", lang: appLanguage)
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            GeminiTalkPanelCard(tint: statusColor) {
+                HStack(spacing: 12) {
+                    GeminiAgentHomeAvatarFigure(
+                        statusColor: statusColor,
+                        avatarSymbolName: selectedAgentAvatarSymbolName,
+                        avatarImageURL: selectedAgentAvatarImageURL
+                    )
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(formattedAgentDisplayName(gemini.selectedSystemPromptPreset.title))
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.92))
+                            .lineLimit(2)
+
+                        HStack(spacing: 6) {
+                            GeminiTalkMetricChip(
+                                icon: "hammer.fill",
+                                value: "\(gemini.enabledTools.count) \(Localization.get("Tools", lang: appLanguage))",
+                                tint: themeAccent
+                            )
+                            GeminiTalkMetricChip(
+                                icon: "sparkles",
+                                value: "\(gemini.enabledSkillNames.count) \(Localization.get("Skills", lang: appLanguage))",
+                                tint: themeAccent
+                            )
+                        }
+                    }
+                }
+            }
+            .frame(width: 250, alignment: .topLeading)
+
+            GeminiTalkPanelCard(tint: themeAccent) {
+                VStack(alignment: .leading, spacing: 10) {
+                    GeminiTalkStateBadge(
+                        title: Localization.get("Talk", lang: appLanguage),
+                        tint: themeAccent
+                    )
+
+                    Text(statusText)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.68))
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 8) {
+                        GeminiPillButton(
+                            title: gemini.lifecycleState.isBusy
+                                ? Localization.get("Cancel", lang: appLanguage)
+                                : Localization.get(gemini.connectionButtonTitle, lang: appLanguage),
+                            icon: gemini.lifecycleState.isBusy
+                                ? "xmark.circle.fill"
+                                : gemini.connectionButtonIcon,
+                            tint: gemini.lifecycleState.isBusy
+                                ? Color(nsColor: .systemRed)
+                                : themeAccent,
+                            isDisabled: !gemini.canStartConnection && !gemini.lifecycleState.isBusy,
+                            fillsAvailableWidth: true
+                        ) {
+                            gemini.toggleConnection()
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+    }
+}
+
 private struct GeminiAgentCommonSettingsContent: View {
     @ObservedObject var gemini: GeminiLiveViewModel
     @Binding var holdShortcut: HoldToTalkShortcut
@@ -1007,7 +1094,7 @@ struct GeminiTalkPanelView: View {
     }
 
     private func openSettingsPanel() {
-        presentationModel.selectPanel(.settings)
+        AppSettingsController.shared.open(tab: .talk)
     }
 
     @ViewBuilder
@@ -1033,27 +1120,13 @@ struct GeminiTalkPanelView: View {
                 themeAccent: themeAccent
             )
         } else {
-            GeminiTalkDisconnectedHomeView(
+            GeminiTalkSettingsRedirectView(
                 gemini: gemini,
-                setupViewMode: $setupViewMode,
-                settingsTab: $settingsTab,
-                holdShortcut: $holdShortcut,
-                agentNameDraft: $agentNameDraft,
-                isAgentNameFieldFocused: $isAgentNameFieldFocused,
                 appLanguage: appLanguage,
                 themeAccent: themeAccent,
                 statusColor: statusColor,
                 selectedAgentAvatarSymbolName: selectedAgentAvatarSymbolName,
-                selectedAgentAvatarImageURL: selectedAgentAvatarImageURL,
-                openSettingsPanel: openSettingsPanel,
-                beginCreatingAgent: beginCreatingAgent,
-                beginEditingSelectedPrompt: beginEditingSelectedPrompt,
-                beginEditingUserProfile: beginEditingUserProfile,
-                beginEditingMemory: beginEditingMemory,
-                requestDeleteSelectedPrompt: requestDeleteSelectedPrompt,
-                saveAgentNameDraft: saveAgentNameDraft,
-                chooseSelectedSystemPromptAvatarImage: { gemini.chooseSelectedSystemPromptAvatarImage() },
-                clearSelectedSystemPromptAvatarImage: { gemini.clearSelectedSystemPromptAvatarImage() }
+                selectedAgentAvatarImageURL: selectedAgentAvatarImageURL
             )
         }
     }

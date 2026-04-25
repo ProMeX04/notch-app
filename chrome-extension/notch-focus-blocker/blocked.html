@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Blocked by Notch Focus</title>
+    <link rel="stylesheet" href="blocked.css" />
+  </head>
+  <body>
+    <main class="container">
+      <div class="glass-card">
+        <div class="header">
+          <div class="app-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+          </div>
+          <p class="brand">Notch Focus</p>
+        </div>
+
+        <div id="timer-container" class="timer-card">
+          <span id="phase" class="phase-label">Focus</span>
+          <h2 id="timer" class="timer-display">00:00</h2>
+          <p class="timer-hint">Remaining in session</p>
+        </div>
+
+        <div class="content">
+          <h1>Website Blocked</h1>
+          <p class="description">This site is temporarily restricted to help you stay focused on your goals.</p>
+        </div>
+
+        <div class="meta-section">
+          <div class="meta-item">
+            <span class="label">Domain</span>
+            <span id="host" class="value">-</span>
+          </div>
+        </div>
+
+        <p id="status" class="status-text">Checking focus status...</p>
+
+        <div class="footer-actions">
+          <button id="retry-button" class="btn btn-secondary">Retry Page</button>
+          <button id="refresh-button" class="btn btn-primary">Sync Now</button>
+        </div>
+      </div>
+    </main>
+
+    <script src="blocked.js"></script>
+  </body>
+</html>

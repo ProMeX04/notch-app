@@ -221,10 +221,9 @@ struct NotchHeaderView: View {
                     NotchShape()
                 }
 
-            PanelSwitcher(
-                presentationModel: presentationModel,
-                panels: [.shelf, .settings]
-            )
+            HStack(spacing: 10) {
+                HeaderUtilitySwitcher(presentationModel: presentationModel)
+            }
             .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(.trailing, 20)
             .offset(y: 3)
@@ -513,6 +512,7 @@ struct IdleClosedNotchView: View {
 struct ExpandedNotchContent: View {
     @ObservedObject var playback: MediaProbeViewModel
     @ObservedObject var pomodoro: PomodoroViewModel
+    @ObservedObject var focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore
     @ObservedObject var gemini: GeminiLiveViewModel
     @ObservedObject var shelf: NotchShelfViewModel
     @ObservedObject var learningStats: LearningStatsStore
@@ -524,9 +524,7 @@ struct ExpandedNotchContent: View {
         Group {
             if presentationModel.selectedPanel == .focus {
                 PomodoroPanelView(
-                    pomodoro: pomodoro,
-                    learningStats: learningStats,
-                    presentationModel: presentationModel
+                    pomodoro: pomodoro
                 )
             } else if presentationModel.selectedPanel == .talk {
                 GeminiTalkPanelView(
@@ -538,11 +536,6 @@ struct ExpandedNotchContent: View {
                 ShelfPanelView(
                     shelf: shelf,
                     presentationModel: presentationModel
-                )
-            } else if presentationModel.selectedPanel == .settings {
-                GlobalSettingsView(
-                    presentationModel: presentationModel,
-                    gemini: gemini
                 )
             } else {
                 HStack {
@@ -596,8 +589,6 @@ struct PanelSwitcher: View {
             return "bubble.left.and.bubble.right"
         case .shelf:
             return "tray.full"
-        case .settings:
-            return "gearshape"
         }
     }
 
@@ -628,9 +619,54 @@ struct PanelSwitcher: View {
             return "Talk"
         case .shelf:
             return ""
-        case .settings:
-            return "Settings"
         }
+    }
+}
+
+private struct HeaderUtilitySwitcher: View {
+    @ObservedObject var presentationModel: NotchPresentationModel
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Button {
+                presentationModel.selectPanel(.shelf)
+            } label: {
+                utilityIcon(
+                    "tray.full",
+                    isSelected: presentationModel.selectedPanel == .shelf
+                )
+            }
+            .buttonStyle(.plain)
+            .help("Shelf")
+
+            Button {
+                AppSettingsController.shared.open(tab: .general)
+            } label: {
+                utilityIcon("gearshape", isSelected: false)
+            }
+            .buttonStyle(.plain)
+            .help(Localization.get("Settings", lang: "English"))
+        }
+        .padding(3)
+        .background(
+            Capsule()
+                .fill(Color.white.opacity(0.045))
+        )
+        .overlay {
+            Capsule()
+                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+        }
+    }
+
+    private func utilityIcon(_ systemName: String, isSelected: Bool) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 11, weight: .semibold))
+            .frame(width: StandardButtonMetrics.height, height: StandardButtonMetrics.height)
+            .background(
+                Capsule()
+                    .fill(isSelected ? Color.white.opacity(0.12) : Color.white.opacity(0.001))
+            )
+            .contentShape(Capsule())
     }
 }
 
@@ -659,7 +695,21 @@ struct Localization {
         "Focus Sound": ["English": "Focus Sound", "Tiếng Việt": "Âm đổi focus"],
         "Short": ["English": "Short", "Tiếng Việt": "Nghỉ ngắn"],
         "Long": ["English": "Long", "Tiếng Việt": "Nghỉ dài"],
+        "Blocked Websites": ["English": "Blocked Websites", "Tiếng Việt": "Trang web bị chặn"],
+        "Enter one domain per line. Example: youtube.com": [
+            "English": "Enter one domain per line. Example: youtube.com",
+            "Tiếng Việt": "Nhập mỗi domain trên một dòng. Ví dụ: youtube.com",
+        ],
+        "%d domains synced to Chrome extension": [
+            "English": "%d domains synced to Chrome extension",
+            "Tiếng Việt": "%d domain đã đồng bộ sang extension Chrome",
+        ],
+        "Chrome reads this list live while focus is running.": [
+            "English": "Chrome reads this list live while focus is running.",
+            "Tiếng Việt": "Chrome đọc danh sách này trực tiếp khi focus đang chạy.",
+        ],
         "Round": ["English": "Round", "Tiếng Việt": "Vòng"],
+        "Time": ["English": "Time", "Tiếng Việt": "Thời gian"],
         "Stats": ["English": "Stats", "Tiếng Việt": "Thống kê"],
         "Settings": ["English": "Settings", "Tiếng Việt": "Cài đặt"],
         "Last 7 Days": ["English": "Last 7 Days", "Tiếng Việt": "7 ngày qua"],
@@ -794,7 +844,8 @@ struct Localization {
         "Sound": ["English": "Sound", "Tiếng Việt": "Âm thanh"],
         "Streak": ["English": "Streak", "Tiếng Việt": "Chuỗi"],
         "Today": ["English": "Today", "Tiếng Việt": "Hôm nay"],
-        "Focusing on": ["English": "Focusing on", "Tiếng Việt": "Mục tiêu"],
+        "Sessions": ["English": "Sessions", "Tiếng Việt": "Phiên"],
+        "Average": ["English": "Average", "Tiếng Việt": "Trung bình"],
         "What are you working on?": ["English": "What are you working on?", "Tiếng Việt": "Bạn đang làm việc gì?"],
         "Tasks": ["English": "Tasks", "Tiếng Việt": "Nhiệm vụ"],
         "Add": ["English": "Add", "Tiếng Việt": "Thêm"],
@@ -804,6 +855,7 @@ struct Localization {
         "Subscription": ["English": "Subscription", "Tiếng Việt": "Đăng ký"],
         "Gemini Live": ["English": "Gemini Live", "Tiếng Việt": "Gemini Live"],
         "Gemini Account": ["English": "Gemini Account", "Tiếng Việt": "Tài khoản Gemini"],
+        "Talk": ["English": "Talk", "Tiếng Việt": "Trò chuyện"],
         "Appearance": ["English": "Appearance", "Tiếng Việt": "Giao diện"],
         "Notch Pro": ["English": "Notch Pro", "Tiếng Việt": "Notch Pro"],
         "Subscribed": ["English": "Subscribed", "Tiếng Việt": "Đã đăng ký"],

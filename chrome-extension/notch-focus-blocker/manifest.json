@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Notch Focus Blocker",
+  "description": "Connects to the Notch macOS app and blocks distracting sites while a focus session is running.",
+  "version": "0.1.0",
+  "permissions": [
+    "alarms",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:44991/*",
+    "http://localhost:44991/*",
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "action": {
+    "default_title": "Notch Focus Blocker",
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html"
+}

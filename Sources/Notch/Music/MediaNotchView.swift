@@ -17,6 +17,7 @@ private struct CompactActivityCandidate {
 struct MediaNotchView: View {
     @ObservedObject var playback: MediaProbeViewModel
     @ObservedObject var pomodoro: PomodoroViewModel
+    @ObservedObject var focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore
     @ObservedObject var gemini: GeminiLiveViewModel
     @ObservedObject var shelf: NotchShelfViewModel
     @ObservedObject var learningStats: LearningStatsStore
@@ -199,6 +200,7 @@ struct MediaNotchView: View {
             ExpandedNotchContent(
                 playback: playback,
                 pomodoro: pomodoro,
+                focusWebsiteBlocklistStore: focusWebsiteBlocklistStore,
                 gemini: gemini,
                 shelf: shelf,
                 learningStats: learningStats,

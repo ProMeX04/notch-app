@@ -255,9 +255,9 @@ enum PomodoroViewModelTests {
         try expectEqual(restoredVM.remainingSeconds, 3)
     }
 
-    static func selectPresetClearsDurationOverrides() throws {
+    static func updatingDurationsPreservesDirectConfiguration() throws {
         let vm = makeViewModel(
-            userDefaults: makeIsolatedUserDefaults(label: "preset-reset"),
+            userDefaults: makeIsolatedUserDefaults(label: "duration-config"),
             clock: TestPomodoroClock(now: Date(timeIntervalSince1970: 8_000)),
             workspaceNotificationCenter: NotificationCenter()
         )
@@ -265,13 +265,14 @@ enum PomodoroViewModelTests {
 
         vm.updateCurrentDurations(focusSeconds: 95, breakSeconds: 125)
         vm.updateLongBreakDuration(seconds: 99)
-        vm.selectPreset(.sprint)
+        vm.updateCurrentDurations(focusMinutes: 15, breakMinutes: 3)
 
-        try expectEqual(vm.focusDurationOverrideSeconds, nil)
-        try expectEqual(vm.breakDurationOverrideSeconds, nil)
-        try expectEqual(vm.longBreakDurationOverrideSeconds, nil)
-        try expectEqual(vm.focusDurationSeconds, PomodoroPreset.sprint.focusMinutes * 60)
-        try expectEqual(vm.breakDurationSeconds, PomodoroPreset.sprint.breakMinutes * 60)
+        try expectEqual(vm.focusDurationOverrideSeconds, 15 * 60)
+        try expectEqual(vm.breakDurationOverrideSeconds, 3 * 60)
+        try expectEqual(vm.longBreakDurationOverrideSeconds, 99)
+        try expectEqual(vm.focusDurationSeconds, 15 * 60)
+        try expectEqual(vm.breakDurationSeconds, 3 * 60)
+        try expectEqual(vm.longBreakDurationSeconds, 99)
     }
 
     static func resetReturnsToIdleFocusBaseline() throws {

@@ -4,18 +4,12 @@ import Foundation
 enum NotchMetrics {
     static let openWidth: CGFloat = 640
     static let defaultOpenHeight: CGFloat = 190
-    static let settingsOpenHeight: CGFloat = 330
     static let shadowPadding: CGFloat = 20
     static let closedCornerRadius: (top: CGFloat, bottom: CGFloat) = (6, 14)
     static let openCornerRadius: (top: CGFloat, bottom: CGFloat) = (19, 24)
 
-    static func openHeight(for panel: NotchPanel) -> CGFloat {
-        switch panel {
-        case .settings:
-            return settingsOpenHeight
-        case .media, .focus, .talk, .shelf:
-            return defaultOpenHeight
-        }
+    static func openHeight(for _: NotchPanel) -> CGFloat {
+        defaultOpenHeight
     }
 
     static func openSize(for panel: NotchPanel) -> CGSize {

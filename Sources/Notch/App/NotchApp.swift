@@ -6,7 +6,13 @@ struct NotchApp: App {
 
     var body: some Scene {
         Settings {
-            EmptyView()
+            AppSettingsView(
+                presentationModel: appDelegate.presentationModel,
+                pomodoro: appDelegate.pomodoroViewModel,
+                focusWebsiteBlocklistStore: appDelegate.focusWebsiteBlocklistStore,
+                learningStats: appDelegate.learningStatsStore,
+                gemini: appDelegate.geminiLiveViewModel
+            )
         }
     }
 }

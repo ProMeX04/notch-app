@@ -8,6 +8,7 @@ import SwiftUI
 final class NotchWindowController {
     let playbackViewModel: MediaProbeViewModel
     let pomodoroViewModel: PomodoroViewModel
+    let focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore
     let geminiLiveViewModel: GeminiLiveViewModel
     let shelfViewModel: NotchShelfViewModel
     let learningStatsStore: LearningStatsStore
@@ -25,6 +26,7 @@ final class NotchWindowController {
     init(
         playbackViewModel: MediaProbeViewModel,
         pomodoroViewModel: PomodoroViewModel,
+        focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore,
         geminiLiveViewModel: GeminiLiveViewModel,
         shelfViewModel: NotchShelfViewModel,
         learningStatsStore: LearningStatsStore,
@@ -32,6 +34,7 @@ final class NotchWindowController {
     ) {
         self.playbackViewModel = playbackViewModel
         self.pomodoroViewModel = pomodoroViewModel
+        self.focusWebsiteBlocklistStore = focusWebsiteBlocklistStore
         self.geminiLiveViewModel = geminiLiveViewModel
         self.shelfViewModel = shelfViewModel
         self.learningStatsStore = learningStatsStore
@@ -53,6 +56,7 @@ final class NotchWindowController {
             rootView: MediaNotchView(
                 playback: playbackViewModel,
                 pomodoro: pomodoroViewModel,
+                focusWebsiteBlocklistStore: focusWebsiteBlocklistStore,
                 gemini: geminiLiveViewModel,
                 shelf: shelfViewModel,
                 learningStats: learningStatsStore,
@@ -97,8 +101,8 @@ final class NotchWindowController {
         geminiLiveViewModel.onExecApprovalAttentionRequested = { [weak self] in
             self?.presentExecApproval()
         }
-        geminiLiveViewModel.onOpenAppSettingsRequested = { [weak self] in
-            self?.showPanel(.settings)
+        geminiLiveViewModel.onOpenAppSettingsRequested = {
+            AppSettingsController.shared.open(tab: .talk)
         }
     }
 
@@ -176,7 +180,7 @@ final class NotchWindowController {
     }
 
     func presentManageKeysFromStatusMenu() {
-        openAppSettings()
+        AppSettingsController.shared.open(tab: .talk)
     }
 
     func presentExecApproval() {
@@ -294,12 +298,6 @@ final class NotchWindowController {
         pomodoroViewModel.setPhase(targetPhase)
     }
 
-    func selectPomodoroPreset(_ rawPreset: String) throws {
-        let preset = try resolvedPomodoroPreset(from: rawPreset)
-        presentationModel.selectPanel(.focus, reveal: true)
-        pomodoroViewModel.selectPreset(preset)
-    }
-
     func setPomodoroLongBreak(duration: String) throws {
         let seconds = try resolvedPomodoroSeconds(
             from: duration,
@@ -379,7 +377,7 @@ final class NotchWindowController {
     }
 
     func openAppSettings() {
-        geminiLiveViewModel.openAppSettings()
+        AppSettingsController.shared.open(tab: .general)
     }
 
     func togglePomodoroSession() {
@@ -435,20 +433,6 @@ final class NotchWindowController {
         }
     }
 
-    private func resolvedPomodoroPreset(from raw: String) throws -> PomodoroPreset {
-        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let preset = pomodoroViewModel.availablePresets.first {
-            $0.id.lowercased() == normalized ||
-            $0.title.lowercased() == normalized ||
-            $0.title.lowercased().replacingOccurrences(of: " ", with: "-") == normalized
-        }
-
-        guard let preset else {
-            throw NotchFocusCommandError.invalidParameter("preset", raw)
-        }
-
-        return preset
-    }
 }
 
 enum FocusToggleMode {

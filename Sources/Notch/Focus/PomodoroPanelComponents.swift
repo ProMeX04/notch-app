@@ -2,199 +2,243 @@ import SwiftUI
 import NotchFocusCore
 
 enum PomodoroPanelMetrics {
-    static let horizontalPadding: CGFloat = 16
-    static let verticalPadding: CGFloat = 8
-    static let contentSpacing: CGFloat = 8
-    static let timerFontSize: CGFloat = 58
-    static let taskFontSize: CGFloat = 16
+    static let horizontalPadding: CGFloat = 32
+    static let verticalPadding: CGFloat = 10
+    static let timerFontSize: CGFloat = 88
 }
 
-struct PomodoroPanelHeader: View {
+struct PomodoroSimpleFocusPanel: View {
     @ObservedObject var pomodoro: PomodoroViewModel
     let tint: Color
+    let namespace: Namespace.ID
+
+    @AppStorage("app_language") private var appLanguage: String = "English"
+
+    private var primaryTitle: String {
+        pomodoro.hasActiveSession ? "Resume" : "Start"
+    }
+
+    var body: some View {
+        HStack(spacing: 32) {
+            Spacer(minLength: 0)
+
+            PomodoroTimerCluster(pomodoro: pomodoro, tint: tint)
+                .matchedGeometryEffect(id: "focus-timer", in: namespace)
+                .frame(width: 480)
+
+            VStack(spacing: 8) {
+                StandardActionButton(
+                    title: Localization.get(primaryTitle, lang: appLanguage),
+                    icon: "play.fill",
+                    tint: tint,
+                    variant: .primary
+                ) {
+                    pomodoro.toggleRunning()
+                }
+
+                if pomodoro.hasActiveSession {
+                    StandardActionButton(
+                        title: Localization.get("Reset", lang: appLanguage),
+                        icon: "arrow.counterclockwise",
+                        tint: tint,
+                        variant: .secondary
+                    ) {
+                        pomodoro.reset()
+                    }
+                }
+            }
+            .frame(width: 140, alignment: .leading)
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+    }
+}
+
+struct PomodoroActiveFocusPanel: View {
+    @ObservedObject var pomodoro: PomodoroViewModel
+    let tint: Color
+    let namespace: Namespace.ID
 
     @AppStorage("app_language") private var appLanguage: String = "English"
 
     var body: some View {
-        VStack(spacing: 4) {
-            Text(Localization.get(pomodoro.phase.rawValue, lang: appLanguage))
-                .font(.system(size: 10, weight: .black, design: .rounded))
-                .foregroundStyle(tint)
-                .tracking(1.0)
+        HStack(spacing: 32) {
+            Spacer(minLength: 0)
 
-            if pomodoro.hasActiveSession {
-                HStack(spacing: 8) {
-                    PomodoroSessionDotsView(
-                        current: pomodoro.completedSessionsInCycle,
-                        total: pomodoro.sessionsBeforeLongBreak,
-                        isFocus: pomodoro.phase == .focus,
-                        tint: tint
-                    )
-
-                    Text("\(Localization.get("Round", lang: appLanguage)) \(pomodoro.currentFocusSessionIndex)/\(pomodoro.sessionsBeforeLongBreak)")
-                        .font(.system(size: 8, weight: .bold, design: .rounded))
-                        .foregroundStyle(tint.opacity(0.82))
-                }
-            }
-        }
-        .frame(maxWidth: .infinity)
-    }
-}
-
-struct PomodoroPanelTimer: View {
-    @ObservedObject var pomodoro: PomodoroViewModel
-    let tint: Color
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 1.0)) { context in
-            Text(pomodoro.remainingText(at: context.date))
-                .font(.system(size: PomodoroPanelMetrics.timerFontSize, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .foregroundStyle(tint)
-                .contentTransition(.numericText())
-                .animation(.spring(duration: 0.4), value: pomodoro.remainingSeconds)
-                .shadow(color: tint.opacity(0.26), radius: 24, x: 0, y: 0)
-        }
-        .frame(maxWidth: .infinity)
-    }
-}
-
-struct PomodoroPanelTaskChip: View {
-    @ObservedObject var pomodoro: PomodoroViewModel
-    let tint: Color
-
-    @AppStorage("app_language") private var appLanguage: String = "English"
-
-    var body: some View {
-        if !pomodoro.currentTask.isEmpty {
-            VStack(spacing: 6) {
-                Text(Localization.get("Focusing on", lang: appLanguage).uppercased())
-                    .font(.system(size: 9, weight: .black))
-                    .foregroundStyle(tint.opacity(0.7))
-                    .tracking(2.5)
-
-                HStack(spacing: 8) {
-                    Image(systemName: "checklist")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(tint)
-
-                Text(pomodoro.currentTask)
-                    .font(.system(size: PomodoroPanelMetrics.taskFontSize, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 5)
-                .background(
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .fill(.white.opacity(0.05))
+            TimelineView(.periodic(from: .now, by: 1.0)) { context in
+                PomodoroProgressClock(
+                    pomodoro: pomodoro,
+                    tint: tint,
+                    date: context.date
                 )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .stroke(.white.opacity(0.1), lineWidth: 0.5)
-                )
+                .matchedGeometryEffect(id: "focus-timer", in: namespace)
+                .frame(width: 460, height: 168)
             }
-            .frame(maxWidth: .infinity)
-        }
-    }
-}
 
-struct PomodoroPanelDock: View {
-    enum State {
-        case idle
-        case paused
-        case running
-    }
-
-    let state: State
-    let phaseTint: Color
-    let interfaceTint: Color
-    let onPrimaryAction: () -> Void
-    let onReset: () -> Void
-    let onStats: () -> Void
-    let onSettings: () -> Void
-    let onSkip: () -> Void
-
-    var body: some View {
-        HStack(spacing: 8) {
-            switch state {
-            case .running:
+            VStack(spacing: 8) {
                 StandardActionButton(
                     title: Localization.get("Pause", lang: appLanguage),
                     icon: "pause.fill",
-                    tint: interfaceTint,
-                    variant: .primary,
-                    fillsAvailableWidth: true,
-                    action: onPrimaryAction
-                )
+                    tint: tint,
+                    variant: .primary
+                ) {
+                    pomodoro.toggleRunning()
+                }
 
                 StandardActionButton(
                     title: Localization.get("Skip", lang: appLanguage),
                     icon: "forward.end.fill",
-                    tint: phaseTint,
-                    variant: .secondary,
-                    fillsAvailableWidth: true,
-                    action: onSkip
-                )
-
-            case .paused:
-                StandardActionButton(
-                    title: Localization.get("Resume", lang: appLanguage),
-                    icon: "play.fill",
-                    tint: interfaceTint,
-                    variant: .primary,
-                    fillsAvailableWidth: true,
-                    action: onPrimaryAction
-                )
-
-                standardSecondaryButtons
-
-            case .idle:
-                StandardActionButton(
-                    title: Localization.get("Start", lang: appLanguage),
-                    icon: "play.fill",
-                    tint: interfaceTint,
-                    variant: .primary,
-                    fillsAvailableWidth: true,
-                    action: onPrimaryAction
-                )
-
-                standardSecondaryButtons
+                    tint: tint,
+                    variant: .secondary
+                ) {
+                    pomodoro.skipPhase()
+                }
             }
+            .frame(width: 140, alignment: .leading)
+
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+    }
+}
+
+private struct PomodoroProgressClock: View {
+    @ObservedObject var pomodoro: PomodoroViewModel
+    let tint: Color
+    let date: Date
+
+    private var totalSeconds: Int {
+        switch pomodoro.phase {
+        case .focus:
+            return pomodoro.focusDurationSeconds
+        case .shortBreak:
+            return pomodoro.breakDurationSeconds
+        case .longBreak:
+            return pomodoro.longBreakDurationSeconds
+        }
     }
 
-    @AppStorage("app_language") private var appLanguage: String = "English"
+    var body: some View {
+        VStack(spacing: 0) {
+            PomodoroTimerCluster(pomodoro: pomodoro, tint: tint, date: date)
+                .frame(width: 440)
+        }
+        .frame(width: 480, height: 160)
+    }
+}
 
-    @ViewBuilder
-    private var standardSecondaryButtons: some View {
-        StandardActionButton(
-            title: Localization.get("Reset", lang: appLanguage),
-            icon: "arrow.counterclockwise",
-            tint: interfaceTint,
-            variant: .secondary,
-            fillsAvailableWidth: true,
-            action: onReset
-        )
+private struct PomodoroTimerCluster: View {
+    @ObservedObject var pomodoro: PomodoroViewModel
+    let tint: Color
+    var date: Date = .now
 
-        StandardActionButton(
-            title: Localization.get("Stats", lang: appLanguage),
-            icon: "chart.bar.xaxis",
-            tint: interfaceTint,
-            variant: .secondary,
-            fillsAvailableWidth: true,
-            action: onStats
-        )
+    var body: some View {
+        HStack(spacing: 32) {
+            PomodoroClockGlyph(
+                tint: tint,
+                totalAngle: clockProgressAngle,
+                minuteAngle: minuteProgressAngle,
+                isRunning: pomodoro.isRunning
+            )
 
-        StandardActionButton(
-            title: Localization.get("Settings", lang: appLanguage),
-            icon: "slider.horizontal.3",
-            tint: interfaceTint,
-            variant: .secondary,
-            fillsAvailableWidth: true,
-            action: onSettings
-        )
+            PomodoroTimerText(pomodoro: pomodoro, tint: tint, date: date)
+        }
+    }
+
+    private var clockProgressAngle: Double {
+        let total: Int
+        switch pomodoro.phase {
+        case .focus:
+            total = pomodoro.focusDurationSeconds
+        case .shortBreak:
+            total = pomodoro.breakDurationSeconds
+        case .longBreak:
+            total = pomodoro.longBreakDurationSeconds
+        }
+        
+        let remaining = Double(pomodoro.remainingSeconds(at: date))
+        let totalDuration = Double(max(total, 1))
+        // Positive angle for counter-clockwise rotation as time counts down
+        return (remaining / totalDuration) * 360.0
+    }
+
+    private var minuteProgressAngle: Double {
+        let remaining = Double(pomodoro.remainingSeconds(at: date))
+        // 6 degrees per second for counter-clockwise movement
+        return remaining * 6.0
+    }
+}
+
+private struct PomodoroClockGlyph: View {
+    let tint: Color
+    let totalAngle: Double
+    let minuteAngle: Double
+    let isRunning: Bool
+
+    var body: some View {
+        ZStack {
+            // Background ambient glow from the tinted ring
+            Circle()
+                .fill(tint.opacity(0.15))
+                .frame(width: 140, height: 140)
+                .blur(radius: 20)
+
+            // Background Ring (Dim)
+            Circle()
+                .stroke(tint.opacity(0.15), lineWidth: 11)
+                .frame(width: 100, height: 100)
+
+            // Progress Arc (Solid Tint)
+            // Follows the total session progress (Counter-Clockwise)
+            Circle()
+                .trim(from: 0, to: max(0.001, (totalAngle / 360.0).truncatingRemainder(dividingBy: 1.0) == 0 && totalAngle != 0 ? 1.0 : (totalAngle / 360.0).truncatingRemainder(dividingBy: 1.0)))
+                .stroke(tint, style: StrokeStyle(lineWidth: 11, lineCap: .round))
+                .frame(width: 100, height: 100)
+                .rotationEffect(.degrees(-90)) // Start from 12 o'clock
+                .animation(isRunning ? .linear(duration: 1.0) : .smooth, value: minuteAngle)
+                .shadow(color: tint.opacity(0.3), radius: 6, x: 0, y: 0)
+
+            // Hour hand (White, shorter) - Represents total session progress
+            Capsule()
+                .fill(Color.white)
+                .frame(width: 8, height: 24)
+                .offset(y: -12) // Pivot point at bottom
+                .rotationEffect(.degrees(totalAngle))
+                .animation(isRunning ? .linear(duration: 1.0) : .smooth, value: totalAngle)
+                .shadow(color: Color.black.opacity(0.2), radius: 4)
+
+            // Minute hand (White, longer, sharp) - Represents seconds in the current minute
+            Capsule()
+                .fill(Color.white)
+                .frame(width: 8, height: 38)
+                .offset(y: -19) // Pivot point at bottom
+                .rotationEffect(.degrees(minuteAngle))
+                .animation(isRunning ? .linear(duration: 1.0) : .smooth, value: minuteAngle)
+                .shadow(color: Color.white.opacity(0.4), radius: 8, x: 0, y: 0)
+
+            // Center Pivot Dot (Tinted to match the ring)
+            Circle()
+                .fill(tint)
+                .frame(width: 14, height: 14)
+                .shadow(color: tint.opacity(0.6), radius: 8, x: 0, y: 0)
+        }
+        .frame(width: 132, height: 132)
+    }
+}
+
+private struct PomodoroTimerText: View {
+    @ObservedObject var pomodoro: PomodoroViewModel
+    let tint: Color
+    var date: Date = .now
+
+    var body: some View {
+        Text(pomodoro.remainingText(at: date))
+            .font(.system(size: PomodoroPanelMetrics.timerFontSize, weight: .bold, design: .rounded))
+            .monospacedDigit()
+            .foregroundStyle(tint)
+            .contentTransition(.numericText())
+            .shadow(color: tint.opacity(0.32), radius: 16, x: 0, y: 0) // Increased glow
+            .shadow(color: tint.opacity(0.12), radius: 32, x: 0, y: 0)
     }
 }

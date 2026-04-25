@@ -1,6 +1,6 @@
 ---
 name: pomodoro
-description: Use when the user wants to fully control the Notch Pomodoro timer, presets, phases, and auto-start settings.
+description: Use when the user wants to fully control the Notch Pomodoro timer, durations, phases, and auto-start settings.
 icon: timer
 category: builtin
 requiredTools: ["exec"]
@@ -14,14 +14,13 @@ Use this skill for full Pomodoro control inside Notch through `exec` and Notch's
 Rules:
 - Prefer `~/.notch/bin/notchctl` over ad-hoc app automation.
 - This skill is only for the Notch Pomodoro timer.
-- Prefer explicit commands like `start`, `pause`, `resume`, `reset`, `phase`, `preset`, `cycle`, `long-break`, `auto-breaks`, and `auto-pomo`.
+- Prefer explicit commands like `start`, `pause`, `resume`, `reset`, `phase`, `cycle`, `long-break`, `auto-breaks`, and `auto-pomo`.
 - Use `set` when the user wants to change focus, short-break, and optional long-break durations without immediately starting.
 - Use `skip` only for moving to the next Pomodoro phase.
 - Use `show` if the user only wants the Pomodoro panel opened.
 - Prefer exact target states over `toggle` unless the user explicitly asks to toggle.
 - `start` and `set` can take focus duration, short-break duration, and optional long-break duration.
 - `phase` switches the current Pomodoro phase inside Notch.
-- `preset` accepts the built-in presets `sprint`, `classic`, and `deep`, plus custom slots like `custom-1`.
 - `reset` stops the current Pomodoro session and returns to the idle focus state while keeping the current durations and settings.
 
 Command cookbook:
@@ -69,11 +68,6 @@ Skip to the next Pomodoro phase:
 Switch to the long break phase:
 ```sh
 ~/.notch/bin/notchctl focus phase long-break
-```
-
-Select the Deep preset:
-```sh
-~/.notch/bin/notchctl focus preset deep
 ```
 
 Set long break duration:

@@ -157,11 +157,6 @@ enum NotchCommandRouter {
                 throw NotchCommandError.missingParameter("phase")
             }
             try controller.setPomodoroPhase(phase)
-        case "preset":
-            guard let preset = firstNonEmpty(queryItems["preset"], queryItems["value"]) else {
-                throw NotchCommandError.missingParameter("preset")
-            }
-            try controller.selectPomodoroPreset(preset)
         case "long-break", "longbreak":
             guard let duration = firstNonEmpty(queryItems["duration"], queryItems["value"]) else {
                 throw NotchCommandError.missingParameter("duration")

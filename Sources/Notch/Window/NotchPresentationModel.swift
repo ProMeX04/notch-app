@@ -83,7 +83,6 @@ enum NotchPanel: String {
     case focus
     case talk
     case shelf
-    case settings
 }
 
 enum NotchAutoCollapseSuppressionReason: Hashable {

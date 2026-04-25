@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Notch Focus Blocker Settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <section class="hero">
+        <p class="eyebrow">Chrome Extension</p>
+        <h1>Notch Focus Blocker</h1>
+        <p>Use the local bridge exposed by the Notch app. When a focus session enters the running focus phase, matching domains are redirected to the block page.</p>
+      </section>
+
+      <section class="card">
+        <label for="api-base-url">Bridge base URL</label>
+        <div class="field-row">
+          <input id="api-base-url" type="text" spellcheck="false" />
+          <button id="save-button" type="button">Save</button>
+        </div>
+        <p class="hint">Default: <code>http://127.0.0.1:44991</code></p>
+      </section>
+
+      <section class="card">
+        <div class="status-row">
+          <div>
+            <p class="label">Connection</p>
+            <strong id="connection-text">Checking…</strong>
+          </div>
+          <button id="test-button" class="secondary" type="button">Test now</button>
+        </div>
+
+        <div class="status-grid">
+          <div>
+            <p class="label">Focus</p>
+            <strong id="focus-text">-</strong>
+          </div>
+          <div>
+            <p class="label">Phase</p>
+            <strong id="phase-text">-</strong>
+          </div>
+          <div>
+            <p class="label">Blocked domains</p>
+            <strong id="count-text">0</strong>
+          </div>
+        </div>
+
+        <p id="detail-text" class="hint"></p>
+      </section>
+    </main>
+
+    <script src="options.js"></script>
+  </body>
+</html>

@@ -8,11 +8,13 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
     private var notchController: NotchWindowController?
     private var statusItemController: StatusItemController?
     private var holdToTalkHotkeyManager: HoldToTalkHotkeyManager?
+    private var focusBrowserBridgeServer: FocusBrowserBridgeServer?
     private let singleInstanceCoordinator = SingleInstanceCoordinator()
     let geminiLiveViewModel = GeminiLiveViewModel()
     lazy var learningStatsStore = LearningStatsStore()
     lazy var playbackViewModel = MediaProbeViewModel()
     lazy var pomodoroViewModel = PomodoroViewModel(learningStatsStore: learningStatsStore)
+    lazy var focusWebsiteBlocklistStore = FocusWebsiteBlocklistStore()
     lazy var shelfViewModel = NotchShelfViewModel()
     lazy var presentationModel = NotchPresentationModel()
 
@@ -41,6 +43,7 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
         let notchController = NotchWindowController(
             playbackViewModel: playbackViewModel,
             pomodoroViewModel: pomodoroViewModel,
+            focusWebsiteBlocklistStore: focusWebsiteBlocklistStore,
             geminiLiveViewModel: geminiLiveViewModel,
             shelfViewModel: shelfViewModel,
             learningStatsStore: learningStatsStore,
@@ -49,6 +52,19 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
 
         self.notchController = notchController
         self.statusItemController = StatusItemController(windowController: notchController)
+        AppSettingsController.shared.configure(
+            presentationModel: presentationModel,
+            pomodoro: pomodoroViewModel,
+            focusWebsiteBlocklistStore: focusWebsiteBlocklistStore,
+            learningStats: learningStatsStore,
+            gemini: geminiLiveViewModel
+        )
+        let focusBrowserBridgeServer = FocusBrowserBridgeServer(
+            pomodoroViewModel: pomodoroViewModel,
+            blocklistStore: focusWebsiteBlocklistStore
+        )
+        focusBrowserBridgeServer.start()
+        self.focusBrowserBridgeServer = focusBrowserBridgeServer
 
         let holdToTalkHotkeyManager = HoldToTalkHotkeyManager()
         holdToTalkHotkeyManager.onPress = { [weak notchController] in
@@ -97,6 +113,8 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
         singleInstanceCoordinator.unregisterActivationHandler()
         statusItemController = nil
         holdToTalkHotkeyManager = nil
+        focusBrowserBridgeServer?.stop()
+        focusBrowserBridgeServer = nil
         notchController?.shutdown()
     }
 

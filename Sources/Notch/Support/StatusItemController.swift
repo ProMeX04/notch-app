@@ -65,7 +65,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     )
 
     private lazy var manageServiceKeysItem = NSMenuItem(
-        title: "Gemini Settings…",
+        title: "Settings…",
         action: #selector(showManageKeys),
         keyEquivalent: ""
     )
@@ -134,7 +134,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         ]
 
         statusItem.menu = menu
-        statusItem.isVisible = false
+        statusItem.isVisible = true
 
         let pomo = windowController.pomodoroViewModel
         Publishers.CombineLatest3(
@@ -223,7 +223,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc
     private func showManageKeys() {
-        windowController.presentManageKeysFromStatusMenu()
+        windowController.openAppSettings()
     }
 
     @objc

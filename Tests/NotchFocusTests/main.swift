@@ -42,8 +42,8 @@ func buildTestCases() -> [TestCase] {
             run: PomodoroViewModelTests.pausedRestoreKeepsSessionPaused
         ),
         TestCase(
-            name: "focus/select preset clears duration overrides",
-            run: PomodoroViewModelTests.selectPresetClearsDurationOverrides
+            name: "focus/updating durations preserves direct configuration",
+            run: PomodoroViewModelTests.updatingDurationsPreservesDirectConfiguration
         ),
         TestCase(
             name: "focus/reset returns to idle focus baseline",

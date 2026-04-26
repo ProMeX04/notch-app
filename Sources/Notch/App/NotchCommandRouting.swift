@@ -3,7 +3,7 @@ import Foundation
 
 @MainActor
 enum NotchCommandRouter {
-    static func handle(url: URL, controller: NotchWindowController) {
+    static func handle(url: URL, controller: NotchWindowController, entitlementStore: NotchEntitlementStore) {
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let scheme = components.scheme?.lowercased(),
               scheme == "notch" else {
@@ -20,20 +20,26 @@ enum NotchCommandRouter {
         do {
             switch host {
             case "panel":
-                try handlePanel(action: action, queryItems: queryItems, controller: controller)
+                try handlePanel(action: action, queryItems: queryItems, controller: controller, entitlementStore: entitlementStore)
             case "visibility":
+                try requireAccess(.deepLinkCommand(.visibility), entitlementStore: entitlementStore)
                 try handleVisibility(action: action, controller: controller)
             case "pin":
+                try requireAccess(.deepLinkCommand(.pin), entitlementStore: entitlementStore)
                 try handlePin(action: action, controller: controller)
             case "talk":
-                try handleTalk(action: action, controller: controller)
+                try handleTalk(action: action, controller: controller, entitlementStore: entitlementStore)
             case "screen":
+                try requireAccess(.deepLinkCommand(.screen), entitlementStore: entitlementStore)
                 try handleScreen(action: action, controller: controller)
             case "caption":
+                try requireAccess(.deepLinkCommand(.caption), entitlementStore: entitlementStore)
                 try handleCaption(action: action, controller: controller)
             case "focus":
+                try requireAccess(.deepLinkCommand(.focus), entitlementStore: entitlementStore)
                 try handleFocus(action: action, queryItems: queryItems, controller: controller)
             case "media":
+                try requireAccess(.deepLinkCommand(.media), entitlementStore: entitlementStore)
                 try handleMedia(action: action, queryItems: queryItems, controller: controller)
             case "oauth":
                 try handleOAuth(url: url, action: action, controller: controller)
@@ -45,11 +51,18 @@ enum NotchCommandRouter {
         }
     }
 
-    private static func handlePanel(action: String, queryItems: [String: String], controller: NotchWindowController) throws {
+    private static func handlePanel(
+        action: String,
+        queryItems: [String: String],
+        controller: NotchWindowController,
+        entitlementStore: NotchEntitlementStore
+    ) throws {
         let panelName = firstNonEmpty(action, queryItems["name"], queryItems["panel"])
         guard let panel = panelName.flatMap(NotchPanel.init(rawValue:)) else {
             throw NotchCommandError.invalidValue("panel", action)
         }
+        try requireAccess(.panelAccess(panel), entitlementStore: entitlementStore)
+        try requireAccess(.deepLinkCommand(.panel), entitlementStore: entitlementStore)
         controller.showPanel(panel)
     }
 
@@ -79,11 +92,17 @@ enum NotchCommandRouter {
         }
     }
 
-    private static func handleTalk(action: String, controller: NotchWindowController) throws {
+    private static func handleTalk(
+        action: String,
+        controller: NotchWindowController,
+        entitlementStore: NotchEntitlementStore
+    ) throws {
+        try requireAccess(.deepLinkCommand(.talk), entitlementStore: entitlementStore)
         switch action {
         case "show":
             controller.showTalkPanel()
         case "connect":
+            try requireAccess(.talkConnection, entitlementStore: entitlementStore)
             controller.connectGeminiLive()
         case "disconnect":
             controller.disconnectGeminiLive()
@@ -231,6 +250,13 @@ enum NotchCommandRouter {
         return seconds
     }
 
+    private static func requireAccess(_ capability: NotchCapability, entitlementStore: NotchEntitlementStore) throws {
+        let decision = entitlementStore.decision(for: capability)
+        guard decision.isAllowed else {
+            throw NotchCommandError.permissionDenied(decision.message)
+        }
+    }
+
     private static func firstNonEmpty(_ values: String?...) -> String? {
         for value in values {
             guard let value else { continue }
@@ -269,6 +295,7 @@ private enum NotchCommandError: LocalizedError {
     case invalidAction(String, String)
     case invalidValue(String, String)
     case missingParameter(String)
+    case permissionDenied(String)
 
     var errorDescription: String? {
         switch self {
@@ -280,6 +307,8 @@ private enum NotchCommandError: LocalizedError {
             return "Invalid \(name) value '\(value)'."
         case let .missingParameter(name):
             return "Missing required parameter '\(name)'."
+        case let .permissionDenied(message):
+            return message
         }
     }
 }

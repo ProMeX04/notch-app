@@ -13,6 +13,7 @@ final class NotchWindowController {
     let shelfViewModel: NotchShelfViewModel
     let learningStatsStore: LearningStatsStore
     let presentationModel: NotchPresentationModel
+    let entitlementStore: NotchEntitlementStore
 
     private let hostingView: NSHostingView<MediaNotchView>
     private let window: NotchFloatingPanel
@@ -30,7 +31,8 @@ final class NotchWindowController {
         geminiLiveViewModel: GeminiLiveViewModel,
         shelfViewModel: NotchShelfViewModel,
         learningStatsStore: LearningStatsStore,
-        presentationModel: NotchPresentationModel
+        presentationModel: NotchPresentationModel,
+        entitlementStore: NotchEntitlementStore
     ) {
         self.playbackViewModel = playbackViewModel
         self.pomodoroViewModel = pomodoroViewModel
@@ -39,6 +41,7 @@ final class NotchWindowController {
         self.shelfViewModel = shelfViewModel
         self.learningStatsStore = learningStatsStore
         self.presentationModel = presentationModel
+        self.entitlementStore = entitlementStore
 
         let initialScreen = NotchMetrics.preferredScreen()
         presentationModel.closedNotchSize = NotchMetrics.baseClosedSize(for: initialScreen)
@@ -60,7 +63,8 @@ final class NotchWindowController {
                 gemini: geminiLiveViewModel,
                 shelf: shelfViewModel,
                 learningStats: learningStatsStore,
-                presentationModel: presentationModel
+                presentationModel: presentationModel,
+                entitlementStore: entitlementStore
             )
         )
 

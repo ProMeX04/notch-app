@@ -93,6 +93,7 @@ enum NotchAutoCollapseSuppressionReason: Hashable {
 @MainActor
 final class NotchPresentationModel: ObservableObject {
     private static let hoverOpenDelayKey = "dev.notch.hover-open-delay-ms"
+    private static let autoCollapseDelayKey = "dev.notch.auto-collapse-delay-ms"
     private static let hideInFullscreenKey = "dev.notch.hide-in-fullscreen"
 
     @Published private(set) var isExpanded = false
@@ -101,6 +102,7 @@ final class NotchPresentationModel: ObservableObject {
     @Published var selectedPanel: NotchPanel = .media
     @Published var isFocusOverlayPresented = false
     @Published private(set) var hoverOpenDelayMilliseconds: Double
+    @Published private(set) var autoCollapseDelayMilliseconds: Double
     @Published private(set) var accentColorID: String
     @Published private(set) var hideInFullscreen: Bool
 
@@ -110,11 +112,18 @@ final class NotchPresentationModel: ObservableObject {
     private var autoCollapseSuppressionReasons = Set<NotchAutoCollapseSuppressionReason>()
 
     init(defaults: UserDefaults = .standard) {
-        let stored = defaults.double(forKey: Self.hoverOpenDelayKey)
-        if stored > 0 {
-            hoverOpenDelayMilliseconds = stored
+        let hoverStored = defaults.double(forKey: Self.hoverOpenDelayKey)
+        if hoverStored > 0 {
+            hoverOpenDelayMilliseconds = hoverStored
         } else {
             hoverOpenDelayMilliseconds = 140
+        }
+
+        let collapseStored = defaults.double(forKey: Self.autoCollapseDelayKey)
+        if collapseStored > 0 {
+            autoCollapseDelayMilliseconds = collapseStored
+        } else {
+            autoCollapseDelayMilliseconds = 900
         }
 
         accentColorID = NotchAccentColorOption.resolve(
@@ -126,6 +135,10 @@ final class NotchPresentationModel: ObservableObject {
 
     var hoverOpenDelaySeconds: Double {
         hoverOpenDelayMilliseconds / 1000
+    }
+
+    var autoCollapseDelaySeconds: Double {
+        autoCollapseDelayMilliseconds / 1000
     }
 
     var selectedAccentColorOption: NotchAccentColorOption {
@@ -159,6 +172,12 @@ final class NotchPresentationModel: ObservableObject {
         UserDefaults.standard.set(milliseconds, forKey: Self.hoverOpenDelayKey)
     }
 
+    func setAutoCollapseDelay(seconds: Double) {
+        let milliseconds = min(max(seconds * 1000, 0), 5000)
+        autoCollapseDelayMilliseconds = milliseconds
+        UserDefaults.standard.set(milliseconds, forKey: Self.autoCollapseDelayKey)
+    }
+
     func setAccentColor(_ option: NotchAccentColorOption) {
         accentColorID = option.rawValue
         UserDefaults.standard.set(option.rawValue, forKey: NotchAccentColorOption.storageKey)
@@ -185,13 +204,15 @@ final class NotchPresentationModel: ObservableObject {
         }
     }
 
-    func scheduleCollapse(after duration: Duration = .milliseconds(900)) {
+    func scheduleCollapse(after duration: Duration? = nil) {
         collapseTask?.cancel()
 
         guard canAutoCollapse else { return }
 
+        let finalDuration = duration ?? .milliseconds(Int(autoCollapseDelayMilliseconds.rounded()))
+
         collapseTask = Task { @MainActor in
-            try? await Task.sleep(for: duration)
+            try? await Task.sleep(for: finalDuration)
             guard !Task.isCancelled else { return }
             guard self.canAutoCollapse else { return }
             isExpanded = false

@@ -1,3 +1,4 @@
+
 import SwiftUI
 
 struct ExpandedAlbumArtView: View {
@@ -10,12 +11,11 @@ struct ExpandedAlbumArtView: View {
                 Image(nsImage: albumArt)
                     .resizable()
                     .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 13))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
                     .aspectRatio(1, contentMode: .fit)
-                    .scaleEffect(x: 1.3, y: 1.4)
-                    .rotationEffect(.degrees(92))
+                    .scaleEffect(x: 1.1, y: 1.1)
                     .blur(radius: 40)
-                    .opacity(0.45)
+                    .opacity(0.5)
             }
 
             Button {
@@ -26,38 +26,41 @@ struct ExpandedAlbumArtView: View {
                         if let albumArt = playback.albumArt {
                             Image(nsImage: albumArt)
                                 .resizable()
-                                .aspectRatio(1, contentMode: .fit)
+                                .aspectRatio(1, contentMode: .fill)
                                 .matchedGeometryEffect(id: "albumArt", in: albumArtNamespace)
                         } else {
-                            RoundedRectangle(cornerRadius: 13)
+                            RoundedRectangle(cornerRadius: 16)
                                 .fill(Color.white.opacity(0.06))
                         }
                     }
-                    .clipShape(RoundedRectangle(cornerRadius: 13))
-                    .frame(width: 90, height: 90)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .frame(width: 118, height: 118)
+                    .shadow(color: Color(nsColor: playback.accentColor).opacity(0.4), radius: 20, x: 0, y: 4)
 
                     if let appIcon = playback.appIcon, !playback.usingAppIconForArtwork {
                         Image(nsImage: appIcon)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
-                            .frame(width: 30, height: 30)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .offset(x: 10, y: 10)
+                            .frame(width: 28, height: 28)
+                            .background(Color.white)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Color.black.opacity(0.1), lineWidth: 1))
+                            .offset(x: 8, y: 8)
                             .transition(.scale.combined(with: .opacity))
                             .zIndex(2)
                     }
                 }
             }
             .buttonStyle(.plain)
-            .scaleEffect(playback.isPlaying ? 1 : 0.85)
+            .scaleEffect(playback.isPlaying ? 1 : 0.95)
 
             Rectangle()
                 .fill(Color.black)
-                .opacity(playback.isPlaying ? 0 : 0.4)
+                .opacity(playback.isPlaying ? 0 : 0.3)
                 .blur(radius: 50)
-                .frame(width: 90, height: 90)
+                .frame(width: 118, height: 118)
         }
-        .frame(width: 100, height: 100)
+        .frame(width: 128, height: 128)
     }
 }
 
@@ -103,89 +106,139 @@ struct ExpandedMediaControlsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            GeometryReader { geometry in
-                VStack(alignment: .leading, spacing: 4) {
-                    VStack(alignment: .leading, spacing: 1) {
-                        MarqueeText(
-                            .constant(primaryText),
-                            font: .system(size: 14, weight: .bold, design: .rounded),
-                            nsFont: .headline,
-                            textColor: accent,
-                            frameWidth: geometry.size.width
-                        )
-                        MarqueeText(
-                            .constant(secondaryText),
-                            font: .system(size: 12, weight: .medium, design: .rounded),
-                            nsFont: .subheadline,
-                            textColor: accent.opacity(0.7),
-                            frameWidth: geometry.size.width
-                        )
+        VStack(alignment: .leading, spacing: 4) {
+            // Header
+            HStack(spacing: 4) {
+                Image(systemName: "music.note.square.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                Text("ĐANG PHÁT")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .tracking(0.5)
+            }
+            .foregroundColor(accent)
+            .padding(.bottom, -2)
+            
+            // Track Info
+            VStack(alignment: .leading, spacing: 2) {
+                MarqueeText(
+                    .constant(primaryText),
+                    font: .system(size: 17, weight: .bold, design: .rounded),
+                    nsFont: .title2,
+                    textColor: .white,
+                    frameWidth: 320
+                )
+                
+                HStack(spacing: 4) {
+                    MarqueeText(
+                        .constant(secondaryText),
+                        font: .system(size: 13, weight: .medium, design: .rounded),
+                        nsFont: .body,
+                        textColor: .white.opacity(0.6),
+                        frameWidth: 300
+                    )
+                    
+                    if sourceLabel == "YouTube Music" || secondaryText.lowercased().contains("vevo") {
+                        Image(systemName: "checkmark.seal.fill")
+                            .foregroundColor(accent)
+                            .font(.system(size: 13))
+                            .offset(y: -1)
                     }
-
-                    TimelineView(.animation(minimumInterval: playback.state.playbackRate > 0 ? 0.1 : nil)) { timeline in
-                        MediaSliderView(
-                            sliderValue: $sliderValue,
-                            duration: playback.state.duration,
-                            accentColor: accent,
-                            labelColor: accent.ensureMinimumBrightness(factor: 0.6),
-                            dragging: $dragging,
-                            lastDragged: $lastDragged,
-                            currentDate: timeline.date,
-                            playback: playback
-                        )
-                    }
-                    .padding(.top, 5)
-                    .frame(height: 36)
                 }
             }
-            .frame(height: 76)
-            .padding(.top, 10)
-            .padding(.leading, 5)
+            
+            Spacer().frame(height: 4)
 
-            HStack(spacing: 4) {
+            // Slider with inline text
+            TimelineView(.animation(minimumInterval: playback.state.playbackRate > 0 ? 0.1 : nil)) { timeline in
+                MediaSliderView(
+                    sliderValue: $sliderValue,
+                    duration: playback.state.duration,
+                    accentColor: accent,
+                    labelColor: accent,
+                    dragging: $dragging,
+                    lastDragged: $lastDragged,
+                    currentDate: timeline.date,
+                    playback: playback
+                )
+            }
+            .frame(height: 14)
+            .padding(.top, 2)
+
+            // Controls
+            HStack(spacing: 12) {
                 ForEach(MediaControlSlot.allControls) { slot in
                     slotView(for: slot)
                 }
+                
+                Spacer()
+                
+                VolumeControlView(playback: playback, accent: accent)
             }
-            .frame(maxWidth: .infinity, alignment: .center)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding(.vertical, 8)
+        .padding(.leading, 8)
+        .padding(.trailing, 16)
         .buttonStyle(.plain)
     }
 
     @ViewBuilder
     private func slotView(for slot: MediaControlSlot) -> some View {
         switch slot {
+        case .shuffle:
+            HoverButton(icon: "shuffle", iconColor: accent, scale: .medium, isEnabled: false) {}
         case .previous:
-            HoverButton(icon: "backward.fill", iconColor: accent, scale: .medium, isEnabled: playback.canSkipToPreviousTrack) {
+            HoverButton(icon: "backward.end.fill", iconColor: .white.opacity(0.6), scale: .medium, isEnabled: playback.canSkipToPreviousTrack) {
                 playback.previousTrack()
             }
         case .playPause:
-            HoverButton(icon: playback.isPlaying ? "pause.fill" : "play.fill", iconColor: accent, scale: .large, isEnabled: playback.canTogglePlayback) {
+            Button {
                 playback.togglePlay()
+            } label: {
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [accent.opacity(0.8), accent],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 40, height: 40)
+                        .shadow(color: accent.opacity(0.6), radius: 8, x: 0, y: 0)
+                    
+                    Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.white)
+                        .contentTransition(.symbolEffect)
+                }
             }
+            .buttonStyle(.plain)
+            .scaleEffect(playback.canTogglePlayback ? 1.0 : 0.9)
+            .opacity(playback.canTogglePlayback ? 1.0 : 0.5)
+            .disabled(!playback.canTogglePlayback)
         case .next:
-            HoverButton(icon: "forward.fill", iconColor: accent, scale: .medium, isEnabled: playback.canSkipToNextTrack) {
+            HoverButton(icon: "forward.end.fill", iconColor: .white.opacity(0.6), scale: .medium, isEnabled: playback.canSkipToNextTrack) {
                 playback.nextTrack()
             }
         case .favorite:
             FavoriteControlButton(playback: playback, accent: accent)
         case .volume:
-            VolumeControlView(playback: playback, accent: accent)
+            Color.clear
         case .goBackward:
-            HoverButton(icon: "gobackward.15", iconColor: accent, scale: .medium, isEnabled: playback.canSkipBackward15Seconds) {
-                playback.skip(seconds: -15)
+            HoverButton(icon: "gobackward.10", iconColor: .white.opacity(0.6), scale: .medium, isEnabled: playback.canSkipBackward15Seconds) {
+                playback.skip(seconds: -10)
             }
         case .goForward:
-            HoverButton(icon: "goforward.15", iconColor: accent, scale: .medium, isEnabled: playback.canSkipForward15Seconds) {
-                playback.skip(seconds: 15)
+            HoverButton(icon: "goforward.10", iconColor: .white.opacity(0.6), scale: .medium, isEnabled: playback.canSkipForward15Seconds) {
+                playback.skip(seconds: 10)
             }
+        case .repeatMode:
+            HoverButton(icon: "repeat", iconColor: accent, scale: .medium, isEnabled: false) {}
         case .stop:
-            HoverButton(icon: "stop.fill", iconColor: accent, scale: .medium) {
-                playback.stop()
-            }
+            Color.clear
         case .none:
-            Color.clear.frame(width: 30, height: 30)
+            Color.clear
         }
     }
 }
@@ -201,7 +254,12 @@ struct MediaSliderView: View {
     let playback: MediaProbeViewModel
 
     var body: some View {
-        VStack {
+        HStack(spacing: 12) {
+            Text(timeString(from: sliderValue))
+                .font(.system(size: 11, weight: .bold, design: .rounded).monospacedDigit())
+                .foregroundColor(accentColor)
+                .fixedSize(horizontal: true, vertical: false)
+
             CustomSlider(
                 value: $sliderValue,
                 range: 0...max(duration, 1),
@@ -211,16 +269,12 @@ struct MediaSliderView: View {
             ) { newValue in
                 playback.seek(to: newValue)
             }
-            .frame(height: 10)
+            .frame(height: 5)
 
-            HStack {
-                Text(timeString(from: sliderValue))
-                Spacer()
-                Text(timeString(from: duration))
-            }
-            .fontWeight(.semibold)
-            .foregroundStyle(labelColor)
-            .font(.system(size: 10, weight: .semibold, design: .rounded).monospacedDigit())
+            Text(timeString(from: duration))
+                .font(.system(size: 11, weight: .bold, design: .rounded).monospacedDigit())
+                .foregroundColor(.white.opacity(0.6))
+                .fixedSize(horizontal: true, vertical: false)
         }
         .onChange(of: currentDate) { _, newDate in
             guard !dragging, playback.state.lastUpdated.timeIntervalSince(lastDragged) > -1 else { return }
@@ -232,6 +286,7 @@ struct MediaSliderView: View {
     }
 
     private func timeString(from seconds: Double) -> String {
+        guard seconds.isFinite, !seconds.isNaN else { return "0:00" }
         let totalMinutes = Int(seconds) / 60
         let remainingSeconds = Int(seconds) % 60
         let hours = totalMinutes / 60
@@ -259,11 +314,11 @@ struct CustomSlider: View {
     var body: some View {
         GeometryReader { geometry in
             let width = geometry.size.width
-            let height = CGFloat(dragging ? 9 : 5)
+            let height = CGFloat(dragging ? 8 : 5)
             let rangeSpan = range.upperBound - range.lowerBound
             let progress = rangeSpan == .zero ? 0 : (value - range.lowerBound) / rangeSpan
             let filledTrackWidth = min(max(progress, 0), 1) * width
-            let dotSize = CGFloat(dragging ? 13 : 0)
+            let dotSize = CGFloat(dragging ? 12 : 0)
 
             ZStack(alignment: .leading) {
                 // Track empty
@@ -271,28 +326,10 @@ struct CustomSlider: View {
                     .fill(color.opacity(0.18))
                     .frame(height: height)
 
-                // Track filled + shimmer
+                // Track filled
                 Capsule()
                     .fill(color.opacity(0.9))
                     .frame(width: filledTrackWidth, height: height)
-                    .overlay {
-                        // Shimmer sweep
-                        GeometryReader { fillGeo in
-                            LinearGradient(
-                                colors: [
-                                    .clear,
-                                    .white.opacity(0.35),
-                                    .clear
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                            .frame(width: fillGeo.size.width * 0.4)
-                            .offset(x: shimmerOffset * fillGeo.size.width)
-                            .blendMode(.plusLighter)
-                        }
-                        .clipShape(Capsule())
-                    }
 
                 // Glowing playhead dot
                 if progress > 0.01 {
@@ -322,11 +359,6 @@ struct CustomSlider: View {
                     }
             )
             .animation(.spring(response: 0.35, dampingFraction: 0.7), value: dragging)
-            .onAppear {
-                withAnimation(.linear(duration: 2.2).repeatForever(autoreverses: false)) {
-                    shimmerOffset = 1.4
-                }
-            }
         }
     }
 }
@@ -342,7 +374,7 @@ struct HoverButton: View {
     @State private var isHovering = false
 
     var body: some View {
-        let size = CGFloat(scale == .large ? 40 : 30)
+        let size = CGFloat(scale == .large ? 32 : 24)
         let effectiveIconColor = isEnabled ? iconColor : iconColor.opacity(0.5)
 
         Button(action: action) {
@@ -358,7 +390,7 @@ struct HoverButton: View {
                             Image(systemName: icon)
                                 .foregroundColor(effectiveIconColor)
                                 .contentTransition(contentTransition)
-                                .font(scale == .large ? .largeTitle : .body)
+                                .font(scale == .large ? .title2 : .system(size: 13, weight: .semibold))
                         }
                 }
         }
@@ -395,79 +427,82 @@ struct FavoriteControlButton: View {
 }
 
 struct VolumeControlView: View {
-    // accent is passed in so the icon tints with the album-art color
     @ObservedObject var playback: MediaProbeViewModel
     let accent: Color
     @State private var volumeSliderValue = 0.5
     @State private var dragging = false
-    @State private var showVolumeSlider = false
     @State private var lastVolumeUpdateTime = Date.distantPast
 
     private let volumeUpdateThrottle: TimeInterval = 0.1
 
     var body: some View {
-        HStack(spacing: 4) {
-            Button {
-                if playback.supportsVolumeControl {
-                    withAnimation(.easeInOut(duration: 0.12)) {
-                        showVolumeSlider.toggle()
+        HStack(spacing: 8) {
+            Image(systemName: volumeIcon)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(accent.opacity(0.8))
+                .frame(width: 14)
+            
+            CustomSlider(
+                value: $volumeSliderValue,
+                range: 0.0...1.0,
+                color: accent,
+                dragging: $dragging,
+                lastDragged: .constant(.distantPast),
+                onValueChange: { newValue in
+                    setSystemVolume(newValue)
+                },
+                onDragChange: { newValue in
+                    let now = Date()
+                    if now.timeIntervalSince(lastVolumeUpdateTime) > volumeUpdateThrottle {
+                        setSystemVolume(newValue)
+                        lastVolumeUpdateTime = now
                     }
                 }
-            } label: {
-                Image(systemName: volumeIcon)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(playback.supportsVolumeControl ? accent : .gray)
-            }
-            .buttonStyle(.plain)
-            .disabled(!playback.supportsVolumeControl)
-            .frame(width: 24)
-
-            if showVolumeSlider && playback.supportsVolumeControl {
-                CustomSlider(
-                    value: $volumeSliderValue,
-                    range: 0.0...1.0,
-                    color: accent,
-                    dragging: $dragging,
-                    lastDragged: .constant(.distantPast),
-                    onValueChange: { newValue in
-                        playback.setVolume(to: newValue)
-                    },
-                    onDragChange: { newValue in
-                        let now = Date()
-                        if now.timeIntervalSince(lastVolumeUpdateTime) > volumeUpdateThrottle {
-                            playback.setVolume(to: newValue)
-                            lastVolumeUpdateTime = now
-                        }
-                    }
-                )
-                .frame(width: 48, height: 8)
-                .transition(.scale.combined(with: .opacity))
-            }
+            )
+            .frame(width: 46, height: 5)
+            
+            Text("\(Int(volumeSliderValue * 100))%")
+                .font(.system(size: 10, weight: .bold, design: .rounded).monospacedDigit())
+                .foregroundColor(.white.opacity(0.6))
+                .frame(width: 26, alignment: .trailing)
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(Capsule().fill(Color.white.opacity(0.04)))
+        .overlay(Capsule().stroke(Color.white.opacity(0.06), lineWidth: 1))
         .clipped()
-        .onChange(of: playback.state.volume) { _, volume in
-            if !dragging {
-                volumeSliderValue = volume
+        .onAppear {
+            volumeSliderValue = getSystemVolume()
+        }
+    }
+    
+    private func setSystemVolume(_ level: Double) {
+        playback.setVolume(to: level) // Fallback: thử chỉnh volume của app phát nhạc trước
+        
+        let script = "set volume output volume \(Int(level * 100))"
+        var error: NSDictionary?
+        if let appleScript = NSAppleScript(source: script) {
+            appleScript.executeAndReturnError(&error)
+        }
+    }
+    
+    private func getSystemVolume() -> Double {
+        let script = "output volume of (get volume settings)"
+        var error: NSDictionary?
+        if let appleScript = NSAppleScript(source: script) {
+            let descriptor = appleScript.executeAndReturnError(&error)
+            if let stringValue = descriptor.stringValue, let val = Double(stringValue) {
+                return val / 100.0
+            }
+            if descriptor.descriptorType != typeNull {
+                return Double(descriptor.int32Value) / 100.0
             }
         }
-        .onChange(of: playback.supportsVolumeControl) { _, supported in
-            if !supported {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    showVolumeSlider = false
-                }
-            }
-        }
-        .onChange(of: showVolumeSlider) { _, isShowing in
-            if isShowing {
-                volumeSliderValue = playback.volume
-            }
-        }
+        return 0.5
     }
 
     private var volumeIcon: String {
-        if !playback.supportsVolumeControl {
-            return "speaker.slash"
-        } else if volumeSliderValue == 0 {
+        if volumeSliderValue == 0 {
             return "speaker.slash.fill"
         } else if volumeSliderValue < 0.33 {
             return "speaker.1.fill"
@@ -480,25 +515,28 @@ struct VolumeControlView: View {
 }
 
 enum MediaControlSlot: String, CaseIterable, Identifiable {
+    case shuffle
     case previous
+    case goBackward
     case playPause
+    case goForward
     case next
+    case repeatMode
     case volume
     case favorite
-    case goBackward
-    case goForward
     case stop
     case none
 
     var id: String { rawValue }
 
-    /// Một hàng: không tăng chiều cao panel (stop/volume/favorite bỏ — không ổn định trên mọi app).
     static let allControls: [MediaControlSlot] = [
+        .shuffle,
         .previous,
         .goBackward,
         .playPause,
         .goForward,
         .next,
+        .repeatMode
     ]
 }
 

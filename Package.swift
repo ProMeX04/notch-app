@@ -62,6 +62,8 @@ let package = Package(
                 .copy("Resources/BuiltInSkills"),
                 .copy("Resources/FocusSounds"),
                 .copy("Resources/MenuBar"),
+                .copy("Resources/Animations"),
+                .copy("docs"),
             ]
         ),
         .executableTarget(

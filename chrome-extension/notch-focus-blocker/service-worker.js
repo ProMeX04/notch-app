@@ -12,24 +12,39 @@ let focusState = {
   phase: "Focus",
   remainingSeconds: 0,
   blockedHosts: [],
+  allowedHosts: [],
+  autoOpenUrls: [],
   updatedAt: null,
   checkedAt: null,
   error: null
 };
 
+let pollInterval = null;
+
+function ensureFastPolling() {
+  if (!pollInterval) {
+    pollInterval = setInterval(() => {
+      refreshFocusState({ enforce: true });
+    }, 1000);
+  }
+}
+
 chrome.runtime.onInstalled.addListener(async () => {
   await ensureDefaults();
   schedulePolling();
+  ensureFastPolling();
   await refreshFocusState({ enforce: true });
 });
 
 chrome.runtime.onStartup.addListener(async () => {
   await ensureDefaults();
   schedulePolling();
+  ensureFastPolling();
   await refreshFocusState({ enforce: true });
 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
+  ensureFastPolling();
   if (alarm.name !== POLL_ALARM_NAME) {
     return;
   }
@@ -38,6 +53,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 });
 
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  ensureFastPolling();
   if (changeInfo.url) {
     await refreshFocusState({ enforce: false });
     await maybeBlockTab(tabId, changeInfo.url);
@@ -50,6 +66,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 });
 
 chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+  ensureFastPolling();
   await refreshFocusState({ enforce: false });
   const tab = await chrome.tabs.get(tabId).catch(() => null);
   if (tab?.url) {
@@ -58,6 +75,7 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
 });
 
 chrome.windows.onFocusChanged.addListener(async () => {
+  ensureFastPolling();
   await refreshFocusState({ enforce: false });
 });
 
@@ -117,6 +135,7 @@ async function refreshFocusState({ enforce } = { enforce: false }) {
     apiBaseUrl: DEFAULT_API_BASE_URL
   });
   const previousFocusActive = focusState.focusActive;
+  const previousHasActiveSession = focusState.hasActiveSession;
 
   try {
     const response = await fetch(`${sanitizeApiBaseUrl(apiBaseUrl)}${FOCUS_STATE_PATH}`, {
@@ -137,6 +156,8 @@ async function refreshFocusState({ enforce } = { enforce: false }) {
       phase: payload.phase || "Focus",
       remainingSeconds: payload.remainingSeconds || 0,
       blockedHosts: Array.isArray(payload.blockedHosts) ? payload.blockedHosts : [],
+      allowedHosts: Array.isArray(payload.allowedHosts) ? payload.allowedHosts : [],
+      autoOpenUrls: Array.isArray(payload.autoOpenUrls) ? payload.autoOpenUrls : [],
       updatedAt: payload.updatedAt || null,
       checkedAt: new Date().toISOString(),
       error: null
@@ -151,6 +172,8 @@ async function refreshFocusState({ enforce } = { enforce: false }) {
       hasActiveSession: false,
       remainingSeconds: 0,
       blockedHosts: [],
+      allowedHosts: [],
+      autoOpenUrls: [],
       checkedAt: new Date().toISOString(),
       error: error instanceof Error ? error.message : String(error)
     };
@@ -158,12 +181,16 @@ async function refreshFocusState({ enforce } = { enforce: false }) {
 
   await chrome.storage.local.set({ lastFocusState: focusState });
 
-  if (!enforce) {
-    return focusState;
+  // Detect fresh start: hasActiveSession went from false to true
+  if (!previousHasActiveSession && focusState.hasActiveSession) {
+    await openAutoUrls();
   }
 
   if (previousFocusActive && !focusState.focusActive) {
     await releaseBlockedTabs();
+  }
+
+  if (!enforce) {
     return focusState;
   }
 
@@ -172,6 +199,20 @@ async function refreshFocusState({ enforce } = { enforce: false }) {
   }
 
   return focusState;
+}
+
+async function openAutoUrls() {
+  const urls = focusState.autoOpenUrls;
+  if (!urls.length) return;
+
+  for (const url of urls) {
+    const trimmed = url.trim();
+    if (!trimmed) continue;
+    const fullUrl = trimmed.startsWith("http://") || trimmed.startsWith("https://")
+      ? trimmed
+      : `https://${trimmed}`;
+    await chrome.tabs.create({ url: fullUrl, active: true }).catch(() => null);
+  }
 }
 
 async function enforceAcrossTabs() {
@@ -190,34 +231,115 @@ async function releaseBlockedTabs() {
   const tabs = await chrome.tabs.query({});
 
   for (const tab of tabs) {
-    if (!tab.id || !isBlockPageUrl(tab.url)) {
+    if (!tab.id || !isHttpUrl(tab.url)) {
       continue;
     }
 
-    const originalUrl = extractOriginalUrl(tab.url);
-    if (!originalUrl) {
-      continue;
-    }
-
-    await chrome.tabs.update(tab.id, { url: originalUrl }).catch(() => null);
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => {
+        const overlay = document.getElementById('notch-focus-blocker-overlay');
+        if (overlay) {
+          overlay.remove();
+        }
+        if (document.body) {
+          document.body.style.removeProperty('overflow');
+        }
+      }
+    }).catch(() => null);
   }
 }
 
 async function maybeBlockTab(tabId, url) {
-  if (!focusState.focusActive || !focusState.connected || isBlockPageUrl(url) || !isHttpUrl(url)) {
+  if (!focusState.focusActive || !focusState.connected || !isHttpUrl(url)) {
     return;
   }
 
   const hostname = parseHostname(url);
-  if (!hostname || !isBlockedHost(hostname, focusState.blockedHosts)) {
+  if (!hostname || !isBlockedHost(hostname, focusState.blockedHosts, focusState.allowedHosts)) {
     return;
   }
 
-  const redirectUrl = buildBlockedPageUrl(url, hostname);
-  await chrome.tabs.update(tabId, { url: redirectUrl }).catch(() => null);
+  const iconUrl = chrome.runtime.getURL("icons/icon128.png");
+
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (iconUrl) => {
+      if (document.getElementById('notch-focus-blocker-overlay')) {
+        return;
+      }
+      
+      document.querySelectorAll('video, audio').forEach(media => media.pause());
+
+      const overlay = document.createElement('div');
+      overlay.id = 'notch-focus-blocker-overlay';
+      overlay.style.cssText = `
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        background: rgba(255, 255, 255, 0.75) !important;
+        backdrop-filter: blur(24px) saturate(180%) !important;
+        -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+        z-index: 2147483647 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+        color: #1d1d1f !important;
+      `;
+
+      const img = document.createElement('img');
+      img.src = iconUrl;
+      img.style.cssText = `
+        width: 120px !important;
+        height: 120px !important;
+        margin-bottom: 24px !important;
+        border-radius: 24px !important;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.12) !important;
+      `;
+
+      const title = document.createElement('h1');
+      title.textContent = 'Oops! 🙈';
+      title.style.cssText = `
+        font-size: 32px !important;
+        font-weight: 700 !important;
+        margin: 0 0 12px 0 !important;
+        letter-spacing: -0.5px !important;
+      `;
+
+      const subtitle = document.createElement('p');
+      subtitle.textContent = "You're in a focus session right now. Keep up the great work! ✨";
+      subtitle.style.cssText = `
+        font-size: 18px !important;
+        font-weight: 400 !important;
+        margin: 0 !important;
+        color: #86868b !important;
+      `;
+
+      overlay.appendChild(img);
+      overlay.appendChild(title);
+      overlay.appendChild(subtitle);
+      
+      if (document.body) {
+        document.body.style.setProperty('overflow', 'hidden', 'important');
+      }
+      document.documentElement.appendChild(overlay);
+    },
+    args: [iconUrl]
+  }).catch(() => null);
 }
 
-function isBlockedHost(hostname, blockedHosts) {
+function isBlockedHost(hostname, blockedHosts, allowlist = []) {
+  if (allowlist.some(rule => {
+    const normalized = rule.trim().toLowerCase();
+    return normalized && (hostname === normalized || hostname.endsWith(`.${normalized}`));
+  })) {
+    return false;
+  }
+
   return blockedHosts.some((rule) => {
     const normalizedRule = normalizeHostRule(rule);
     if (!normalizedRule) {

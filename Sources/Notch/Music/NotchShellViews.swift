@@ -186,6 +186,8 @@ struct NotchHeaderView: View {
     let closedNotchHeight: CGFloat
     @ObservedObject var presentationModel: NotchPresentationModel
     @ObservedObject var accessoryController: NotchHeaderAccessoryController
+    @ObservedObject var entitlementStore: NotchEntitlementStore
+    @ObservedObject var gemini: GeminiLiveViewModel
 
     private var displayHeight: CGFloat {
         max(22, closedNotchHeight - 6)
@@ -207,7 +209,9 @@ struct NotchHeaderView: View {
 
                 PanelSwitcher(
                     presentationModel: presentationModel,
-                    panels: [.media, .focus, .talk]
+                    panels: [.media, .focus, .talk],
+                    entitlementStore: entitlementStore,
+                    gemini: gemini
                 )
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -222,7 +226,11 @@ struct NotchHeaderView: View {
                 }
 
             HStack(spacing: 10) {
-                HeaderUtilitySwitcher(presentationModel: presentationModel)
+                HeaderUtilitySwitcher(
+                    presentationModel: presentationModel,
+                    entitlementStore: entitlementStore,
+                    gemini: gemini
+                )
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(.trailing, 20)
@@ -517,6 +525,7 @@ struct ExpandedNotchContent: View {
     @ObservedObject var shelf: NotchShelfViewModel
     @ObservedObject var learningStats: LearningStatsStore
     @ObservedObject var presentationModel: NotchPresentationModel
+    @ObservedObject var entitlementStore: NotchEntitlementStore
     @ObservedObject var talkHeaderAccessoryController: NotchHeaderAccessoryController
     let albumArtNamespace: Namespace.ID
 
@@ -529,6 +538,7 @@ struct ExpandedNotchContent: View {
             } else if presentationModel.selectedPanel == .talk {
                 GeminiTalkPanelView(
                     gemini: gemini,
+                    entitlementStore: entitlementStore,
                     headerAccessoryController: talkHeaderAccessoryController,
                     presentationModel: presentationModel
                 )
@@ -558,6 +568,8 @@ struct ExpandedNotchContent: View {
 struct PanelSwitcher: View {
     @ObservedObject var presentationModel: NotchPresentationModel
     let panels: [NotchPanel]
+    @ObservedObject var entitlementStore: NotchEntitlementStore
+    @ObservedObject var gemini: GeminiLiveViewModel
 
     var body: some View {
         HStack(spacing: 3) {
@@ -594,7 +606,20 @@ struct PanelSwitcher: View {
 
     private func switcherButton(icon: String, panel: NotchPanel) -> some View {
         return Button {
-            presentationModel.selectPanel(panel)
+            let cap: NotchCapability
+            switch panel {
+            case .focus: cap = .focusPomodoro
+            case .talk: cap = .talkConnection
+            case .media: cap = .mediaControls
+            case .shelf: cap = .panelAccess(.shelf)
+            }
+            
+            let decision = entitlementStore.decision(for: cap)
+            if decision.isAllowed {
+                presentationModel.selectPanel(panel)
+            } else {
+                NotchProWindowController.shared.show(for: cap, entitlementStore: entitlementStore, gemini: gemini)
+            }
         } label: {
             Image(systemName: icon)
                 .font(.system(size: 11, weight: .semibold))
@@ -625,11 +650,19 @@ struct PanelSwitcher: View {
 
 private struct HeaderUtilitySwitcher: View {
     @ObservedObject var presentationModel: NotchPresentationModel
+    @ObservedObject var entitlementStore: NotchEntitlementStore
+    @ObservedObject var gemini: GeminiLiveViewModel
 
     var body: some View {
         HStack(spacing: 3) {
             Button {
-                presentationModel.selectPanel(.shelf)
+                let cap = NotchCapability.panelAccess(.shelf)
+                let decision = entitlementStore.decision(for: cap)
+                if decision.isAllowed {
+                    presentationModel.selectPanel(.shelf)
+                } else {
+                    NotchProWindowController.shared.show(for: cap, entitlementStore: entitlementStore, gemini: gemini)
+                }
             } label: {
                 utilityIcon(
                     "tray.full",
@@ -786,6 +819,7 @@ struct Localization {
         "Deny": ["English": "Deny", "Tiếng Việt": "Từ chối"],
         "Gemini API Key": ["English": "Gemini API Key", "Tiếng Việt": "Gemini API Key"],
         "Saved": ["English": "Saved", "Tiếng Việt": "Đã lưu"],
+        "Save API key to local": ["English": "Save API key to local", "Tiếng Việt": "Lưu API Key vào máy"],
         "Allow Once": ["English": "Allow Once", "Tiếng Việt": "Cho phép 1 lần"],
         "Once": ["English": "Once", "Tiếng Việt": "1 lần"],
         "Always Exact": ["English": "Always Exact", "Tiếng Việt": "Luôn lệnh này"],
@@ -863,6 +897,37 @@ struct Localization {
         "Subscribe": ["English": "Subscribe", "Tiếng Việt": "Đăng ký"],
         "Restore Purchases": ["English": "Restore Purchases", "Tiếng Việt": "Khôi phục giao dịch"],
         "Connection Method": ["English": "Connection Method", "Tiếng Việt": "Kiểu kết nối"],
+        "Account": ["English": "Account", "Tiếng Việt": "Tài khoản"],
+        "Notch Account": ["English": "Notch Account", "Tiếng Việt": "Tài khoản Notch"],
+        "Not signed in": ["English": "Not signed in", "Tiếng Việt": "Chưa đăng nhập"],
+        "Manage your Notch account and Pro subscription.": [
+            "English": "Manage your Notch account and Pro subscription.",
+            "Tiếng Việt": "Quản lý tài khoản Notch và gói Pro.",
+        ],
+        "Your account has Notch Pro access.": [
+            "English": "Your account has Notch Pro access.",
+            "Tiếng Việt": "Tài khoản của bạn có quyền Notch Pro.",
+        ],
+        "Upgrade to Notch Pro to unlock Talk.": [
+            "English": "Upgrade to Notch Pro to unlock Talk.",
+            "Tiếng Việt": "Nâng cấp Notch Pro để mở khóa Talk.",
+        ],
+        "Sign in to verify Pro access and sync your subscription.": [
+            "English": "Sign in to verify Pro access and sync your subscription.",
+            "Tiếng Việt": "Đăng nhập để xác minh quyền Pro và đồng bộ gói đăng ký.",
+        ],
+        "Managed server uses your Notch Account.": [
+            "English": "Managed server uses your Notch Account.",
+            "Tiếng Việt": "Máy chủ được quản lý dùng Tài khoản Notch của bạn.",
+        ],
+        "Sign in and manage Pro from the Account tab.": [
+            "English": "Sign in and manage Pro from the Account tab.",
+            "Tiếng Việt": "Đăng nhập và quản lý Pro trong tab Tài khoản.",
+        ],
+        "Open Account Settings": [
+            "English": "Open Account Settings",
+            "Tiếng Việt": "Mở cài đặt Tài khoản",
+        ],
         "Choose how Notch connects to Gemini Live across the app.": [
             "English": "Choose how Notch connects to Gemini Live across the app.",
             "Tiếng Việt": "Chọn cách Notch kết nối tới Gemini Live cho toàn bộ ứng dụng.",
@@ -947,6 +1012,26 @@ struct Localization {
             "English": "Refresh Pro status",
             "Tiếng Việt": "Cập nhật trạng thái Pro",
         ],
+        "Sign in or refresh your Notch account to verify Pro access for Talk.": [
+            "English": "Sign in or refresh your Notch account to verify Pro access for Talk.",
+            "Tiếng Việt": "Đăng nhập hoặc cập nhật tài khoản Notch để xác minh quyền Pro cho Talk.",
+        ],
+        "Notch Pro access could not be verified. Refresh your account to continue using Talk.": [
+            "English": "Notch Pro access could not be verified. Refresh your account to continue using Talk.",
+            "Tiếng Việt": "Không thể xác minh quyền Notch Pro. Hãy cập nhật tài khoản để tiếp tục dùng Talk.",
+        ],
+        "Offline Pro grace period is active.": [
+            "English": "Offline Pro grace period is active.",
+            "Tiếng Việt": "Đang dùng thời gian gia hạn Pro khi offline.",
+        ],
+        "Pro status is expired. Refresh your account to verify access.": [
+            "English": "Pro status is expired. Refresh your account to verify access.",
+            "Tiếng Việt": "Trạng thái Pro đã hết hạn. Hãy cập nhật tài khoản để xác minh quyền truy cập.",
+        ],
+        "Pro status has not been verified yet.": [
+            "English": "Pro status has not been verified yet.",
+            "Tiếng Việt": "Trạng thái Pro chưa được xác minh.",
+        ],
     ]
 
     static func get(_ key: String, lang: String) -> String {
@@ -959,6 +1044,7 @@ struct Localization {
 struct GlobalSettingsView: View {
     @ObservedObject var presentationModel: NotchPresentationModel
     @ObservedObject var gemini: GeminiLiveViewModel
+    @ObservedObject var entitlementStore: NotchEntitlementStore
     @AppStorage("app_language") private var appLanguage: String = "English"
     @State private var launchAtLoginEnabled = false
     @State private var launchAtLoginError: String?
@@ -999,21 +1085,21 @@ struct GlobalSettingsView: View {
                                     .font(.system(size: 14, weight: .bold))
                                     .foregroundStyle(.white.opacity(0.95))
 
-                                Text(gemini.isProUser ? "PRO" : "FREE")
+                                Text(entitlementStore.planBadgeTitle)
                                     .font(.system(size: 9, weight: .black, design: .rounded))
-                                    .foregroundStyle(gemini.isProUser ? .black.opacity(0.85) : .white.opacity(0.92))
+                                    .foregroundStyle(entitlementStore.isProUser ? .black.opacity(0.85) : .white.opacity(0.92))
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 3)
                                     .background(
                                         Capsule(style: .continuous)
                                             .fill(
-                                                gemini.isProUser
+                                                entitlementStore.isProUser
                                                     ? Color(nsColor: .systemYellow)
                                                     : Color.white.opacity(0.14)
                                             )
                                     )
                                     .overlay {
-                                        if !gemini.isProUser {
+                                        if !entitlementStore.isProUser {
                                             Capsule(style: .continuous)
                                                 .stroke(Color.white.opacity(0.12), lineWidth: 1)
                                         }
@@ -1044,7 +1130,7 @@ struct GlobalSettingsView: View {
 
                     Spacer(minLength: 16)
 
-                    if gemini.isBackendAuthenticated && !gemini.isProUser {
+                    if gemini.isBackendAuthenticated && !entitlementStore.isProUser {
                         HStack(spacing: 8) {
                             StandardActionButton(
                                 title: Localization.get("Buy Notch Pro", lang: appLanguage),

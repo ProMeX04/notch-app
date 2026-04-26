@@ -11,7 +11,8 @@ struct NotchApp: App {
                 pomodoro: appDelegate.pomodoroViewModel,
                 focusWebsiteBlocklistStore: appDelegate.focusWebsiteBlocklistStore,
                 learningStats: appDelegate.learningStatsStore,
-                gemini: appDelegate.geminiLiveViewModel
+                gemini: appDelegate.geminiLiveViewModel,
+                entitlementStore: appDelegate.entitlementStore
             )
         }
     }

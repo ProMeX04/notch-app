@@ -1,7 +1,7 @@
 import AppKit
 import NotchFocusCore
 @testable import NotchShelfCore
-import UserNotifications
+@preconcurrency import UserNotifications
 
 @MainActor
 final class NotchAppDelegate: NSObject, NSApplicationDelegate {
@@ -10,7 +10,8 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
     private var holdToTalkHotkeyManager: HoldToTalkHotkeyManager?
     private var focusBrowserBridgeServer: FocusBrowserBridgeServer?
     private let singleInstanceCoordinator = SingleInstanceCoordinator()
-    let geminiLiveViewModel = GeminiLiveViewModel()
+    lazy var entitlementStore = NotchEntitlementStore()
+    lazy var geminiLiveViewModel = GeminiLiveViewModel(entitlementStore: entitlementStore)
     lazy var learningStatsStore = LearningStatsStore()
     lazy var playbackViewModel = MediaProbeViewModel()
     lazy var pomodoroViewModel = PomodoroViewModel(learningStatsStore: learningStatsStore)
@@ -33,7 +34,7 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
 
         AppNotificationManager.setup()
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .timeSensitive]) { granted, error in
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
             if let error = error {
                 NotchLog.app.error("Notification authorization error: \(error.localizedDescription)")
             }
@@ -47,7 +48,8 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
             geminiLiveViewModel: geminiLiveViewModel,
             shelfViewModel: shelfViewModel,
             learningStatsStore: learningStatsStore,
-            presentationModel: presentationModel
+            presentationModel: presentationModel,
+            entitlementStore: entitlementStore
         )
 
         self.notchController = notchController
@@ -57,11 +59,13 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
             pomodoro: pomodoroViewModel,
             focusWebsiteBlocklistStore: focusWebsiteBlocklistStore,
             learningStats: learningStatsStore,
-            gemini: geminiLiveViewModel
+            gemini: geminiLiveViewModel,
+            entitlementStore: entitlementStore
         )
         let focusBrowserBridgeServer = FocusBrowserBridgeServer(
             pomodoroViewModel: pomodoroViewModel,
-            blocklistStore: focusWebsiteBlocklistStore
+            blocklistStore: focusWebsiteBlocklistStore,
+            entitlementStore: entitlementStore
         )
         focusBrowserBridgeServer.start()
         self.focusBrowserBridgeServer = focusBrowserBridgeServer
@@ -121,7 +125,7 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
     func application(_ application: NSApplication, open urls: [URL]) {
         guard let notchController else { return }
         for url in urls {
-            NotchCommandRouter.handle(url: url, controller: notchController)
+            NotchCommandRouter.handle(url: url, controller: notchController, entitlementStore: entitlementStore)
         }
     }
 

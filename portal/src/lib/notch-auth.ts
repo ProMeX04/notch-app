@@ -153,13 +153,76 @@ function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex')
 }
 
-function serializeUser(user: SessionUser) {
+export async function getRemotePermissionPolicy() {
+  const configs = await (prisma as any).featureConfig.findMany();
+
+  const features: Record<string, string> = {};
+  configs.forEach((c: any) => {
+    features[c.key] = !c.isEnabled ? "disabled" : c.isProOnly ? "pro" : "free";
+  });
+
+  return {
+    version: 1,
+    features,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export async function getFeatureRequirement(key: string): Promise<"free" | "pro" | "disabled"> {
+  const config = await prisma.featureConfig.findUnique({ where: { key } });
+  if (!config || !config.isEnabled) return "disabled";
+  return config.isProOnly ? "pro" : "free";
+}
+
+export async function canUseFeature(user: { isPro: boolean }, key: string): Promise<boolean> {
+  const requirement = await getFeatureRequirement(key);
+  if (requirement === "disabled") return false;
+  if (requirement === "pro") return user.isPro;
+  return true;
+}
+
+async function verifyAdminSession(token: string | null): Promise<boolean> {
+  if (!token) return false;
+  try {
+    const session = await findSessionByAccessToken(token);
+    if (!session?.user) return false;
+
+    const accessExpiresAt = session.accessExpiresAt ?? session.expiresAt;
+    if (session.revokedAt || accessExpiresAt <= new Date()) return false;
+
+    return !!(session.user as any).isAdmin;
+  } catch {
+    return false;
+  }
+}
+
+export async function requireAdminUser(req: Request) {
+  const token = readBearerToken(req) ?? readCookie(req, 'notch_access_token');
+  if (!token) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+  const isAdmin = await verifyAdminSession(token);
+  if (!isAdmin) {
+    return new Response(JSON.stringify({ error: "Forbidden" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+  return null; // OK
+}
+
+async function serializeUser(user: SessionUser) {
+  const permission_policy = await getRemotePermissionPolicy();
   return {
     id: user.id,
     email: user.email ?? '',
     name: user.name,
     created_at: user.createdAt.toISOString(),
     is_pro: user.isPro,
+    permission_policy,
   }
 }
 
@@ -293,7 +356,7 @@ function buildNormalizedDevice(args: {
   }
 }
 
-function buildAuthPayload(args: {
+async function buildAuthPayload(args: {
   accessToken: string
   accessExpiresAt: Date
   refreshToken: string
@@ -307,7 +370,7 @@ function buildAuthPayload(args: {
     trustedAt: Date | null
   }
   sessionToken?: string
-}): NotchAuthPayload {
+}): Promise<NotchAuthPayload> {
   const expiresAt = args.accessExpiresAt.toISOString()
   const refreshExpiresAt = args.refreshExpiresAt.toISOString()
 
@@ -317,7 +380,7 @@ function buildAuthPayload(args: {
     expires_at: expiresAt,
     refresh_token: args.refreshToken,
     refresh_expires_at: refreshExpiresAt,
-    user: serializeUser(args.user),
+    user: await serializeUser(args.user) as any,
     session: {
       id: args.session.id,
       device_id: args.session.deviceId,
@@ -543,7 +606,7 @@ async function issueDeviceBoundAuthPayload(args: {
     sessionToken = createBridgeBackedSessionToken(bridgeToken, bridgeExpiresAt.toISOString())
   }
 
-  return buildAuthPayload({
+  return await buildAuthPayload({
     accessToken,
     accessExpiresAt,
     refreshToken,
@@ -638,7 +701,7 @@ async function rotateExistingSession(args: {
     sessionToken = createBridgeBackedSessionToken(bridgeToken, bridgeExpiresAt.toISOString())
   }
 
-  return buildAuthPayload({
+  return await buildAuthPayload({
     accessToken,
     accessExpiresAt,
     refreshToken,
@@ -830,6 +893,10 @@ export async function getAuthenticatedUser(req: Request) {
     sessionId: session.id,
     user: session.user,
   }
+}
+
+export async function requireAdminForServerComponent(token: string | null): Promise<boolean> {
+  return verifyAdminSession(token);
 }
 
 function normalizedLogoutTokens(
@@ -1354,9 +1421,10 @@ export async function revokeDeviceSessions(args: {
   })
 }
 
-export function authUserResponse(user: SessionUser, sessionId?: string | null) {
+export async function authUserResponse(user: SessionUser, sessionId?: string | null) {
+  const serialized = await serializeUser(user);
   return {
-    ...serializeUser(user),
+    ...serialized,
     current_session_id: sessionId ?? null,
     max_active_devices: MAX_ACTIVE_DEVICES,
   }

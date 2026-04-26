@@ -125,16 +125,16 @@ final class GeminiLiveViewModel: ObservableObject {
     @Published private(set) var pendingExecApprovals: [ExecApprovalRequest] = []
     @Published private(set) var screenShareMode: ScreenShareMode = .fullScreen
     @Published private(set) var isProFromBackend = false
-    /// True when the user has Pro via the backend (`is_pro`) or dev bypass.
-    @Published private(set) var isProUser = false
     private var toastClearTask: Task<Void, Never>?
     private var reconnectTask: Task<Void, Never>?
     private var reconnectAttempt = 0
     private let maxReconnectAttempts = 3
+    private var lastTalkConnectionAllowed = false
     private var subscriptions = Set<AnyCancellable>()
     private var lastDisconnectWasUserInitiated = false
     private var pendingTurnSeparator = false
     let screenShare = ScreenShareCoordinator()
+    let entitlementStore: NotchEntitlementStore
     let backend: BackendAccountCoordinator
     let session: GeminiLiveSession
     private let keyStore: GeminiLiveAPIKeyStore
@@ -179,8 +179,21 @@ final class GeminiLiveViewModel: ObservableObject {
         lifecycleState.canSendLiveInput
     }
 
-    init(processInfo: ProcessInfo = .processInfo, session: GeminiLiveSession = GeminiLiveSession()) {
+    var isProUser: Bool {
+        entitlementStore.isProUser
+    }
+
+    var talkPermissionDecision: NotchPermissionDecision {
+        entitlementStore.decision(for: .talkConnection)
+    }
+
+    init(
+        processInfo: ProcessInfo = .processInfo,
+        session: GeminiLiveSession = GeminiLiveSession(),
+        entitlementStore: NotchEntitlementStore = NotchEntitlementStore()
+    ) {
         self.session = session
+        self.entitlementStore = entitlementStore
         keyStore = GeminiLiveAPIKeyStore(processInfo: processInfo)
         backendConfigStore = GeminiLiveBackendConfigStore(processInfo: processInfo)
         let backendAuthStore = GeminiLiveBackendAuthStore(processInfo: processInfo)
@@ -188,7 +201,8 @@ final class GeminiLiveViewModel: ObservableObject {
         backend = BackendAccountCoordinator(
             client: backendClient,
             configStore: backendConfigStore,
-            authStore: backendAuthStore
+            authStore: backendAuthStore,
+            entitlementStore: entitlementStore
         )
         settingsStore = GeminiLiveSettingsStore()
         let execApprovalStore = GeminiLiveExecApprovalStore()
@@ -266,6 +280,13 @@ final class GeminiLiveViewModel: ObservableObject {
         backend.$signedInSummary.assign(to: &$backendSignedInSummary)
         backend.$authenticatedEmail.assign(to: &$backendAuthenticatedEmail)
         backend.$isProFromBackend.assign(to: &$isProFromBackend)
+        entitlementStore.$snapshot
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.objectWillChange.send()
+                self.recomputeProEntitlement()
+            }
+            .store(in: &subscriptions)
         backend.onAuthChanged = { [weak self] in
             self?.syncConfiguredConnectionState()
         }
@@ -555,10 +576,14 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     private func recomputeProEntitlement() {
-        let wasProUser = isProUser
-        isProUser = NotchProEntitlement.isProUser(backendPro: isProFromBackend)
+        let wasAllowed = lastTalkConnectionAllowed
+        let isAllowed = talkPermissionDecision.isAllowed
+        lastTalkConnectionAllowed = isAllowed
 
-        guard wasProUser && !isProUser else { return }
+        guard wasAllowed && !isAllowed else {
+            syncConfiguredConnectionState(updateStatus: true)
+            return
+        }
 
         if canDisconnectSession {
             disconnect()
@@ -619,9 +644,9 @@ final class GeminiLiveViewModel: ObservableObject {
     var requiresProForCurrentConnection: Bool {
         switch selectedConnectionMethod {
         case .userAPIKey:
-            return !isProUser
+            return !talkPermissionDecision.isAllowed
         case .managedServer:
-            return isBackendAuthenticated && !isProUser
+            return isBackendAuthenticated && !talkPermissionDecision.isAllowed
         }
     }
 
@@ -644,8 +669,8 @@ final class GeminiLiveViewModel: ObservableObject {
             if requiresAuthenticationForCurrentConnection {
                 return "Sign in to your server account in the Settings tab."
             }
-            if !isProUser {
-                return "Notch Pro is required before you can connect with your Notch account."
+            if !talkPermissionDecision.isAllowed {
+                return talkPermissionDecision.message
             }
             return "Ready to use your server-managed Gemini session."
         }
@@ -660,7 +685,7 @@ final class GeminiLiveViewModel: ObservableObject {
             return "Sign in to your Gemini Live server account."
         }
         if requiresProForCurrentConnection {
-            return "Notch Pro is required to use Talk."
+            return talkPermissionDecision.message
         }
         return hasConfiguredConnection ? "Ready to connect to Gemini Live." : selectedConnectionMethod.setupDescription
     }
@@ -1345,9 +1370,10 @@ final class GeminiLiveViewModel: ObservableObject {
             return
         }
 
-        if !isProUser {
+        let talkDecision = talkPermissionDecision
+        if !talkDecision.isAllowed {
             setConnectionState(.failed)
-            lastErrorMessage = "Notch Pro is required to use Talk."
+            lastErrorMessage = talkDecision.message
             statusText = defaultDisconnectedStatusText
             logConnectBlocked(reason: "Talk requires Pro")
             handleUnrecoverableReconnectFailureIfNeeded()

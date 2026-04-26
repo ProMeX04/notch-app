@@ -213,24 +213,66 @@ final class ScreenShareCoordinator: ObservableObject {
     }
 
     private func captureAndEncodeDisplayRegion(_ region: CGRect?) async -> Data? {
-        let captureRect = region ?? NSScreen.main.map { screen in
+        let requestedRect = (region ?? NSScreen.main.map { screen in
             CGRect(
                 x: screen.frame.origin.x,
                 y: screen.frame.origin.y,
                 width: screen.frame.width,
                 height: screen.frame.height
             )
-        } ?? CGRect.infinite
+        } ?? CGRect(x: 0, y: 0, width: 1, height: 1)).standardized
+        guard requestedRect.width > 0, requestedRect.height > 0 else { return nil }
 
-        return await Task.detached(priority: .userInitiated) {
-            guard let fullImage = CGWindowListCreateImage(
-                captureRect, .optionAll, kCGNullWindowID, [.boundsIgnoreFraming]
-            ) else { return nil }
-            return Self.encodeJPEG(from: fullImage)
-        }.value
+        do {
+            let shareableContent = try await SCShareableContent.current
+            guard let display = Self.bestDisplay(in: shareableContent.displays, for: requestedRect) else { return nil }
+
+            let displayFrame = display.frame.standardized
+            let sourceRect = requestedRect.intersection(displayFrame).standardized
+            guard !sourceRect.isNull, sourceRect.width > 0, sourceRect.height > 0 else { return nil }
+
+            let streamConfiguration = SCStreamConfiguration()
+            let scaleX = CGFloat(display.width) / max(displayFrame.width, 1)
+            let scaleY = CGFloat(display.height) / max(displayFrame.height, 1)
+            streamConfiguration.sourceRect = sourceRect
+            streamConfiguration.width = max(Int((sourceRect.width * scaleX).rounded(.up)), 1)
+            streamConfiguration.height = max(Int((sourceRect.height * scaleY).rounded(.up)), 1)
+            streamConfiguration.showsCursor = false
+
+            let contentFilter = SCContentFilter(display: display, excludingWindows: [])
+            let image = await withCheckedContinuation { (continuation: CheckedContinuation<CGImage?, Never>) in
+                SCScreenshotManager.captureImage(contentFilter: contentFilter, configuration: streamConfiguration) { image, error in
+                    guard error == nil else {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    continuation.resume(returning: image)
+                }
+            }
+
+            guard let image else { return nil }
+            return await Task.detached(priority: .userInitiated) {
+                Self.encodeJPEG(from: image)
+            }.value
+        } catch {
+            NotchLog.gemini.debug("Screen capture failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
     }
 
     private nonisolated static let jpegContext = CIContext(options: [.useSoftwareRenderer: false])
+
+    private nonisolated static func bestDisplay(in displays: [SCDisplay], for rect: CGRect) -> SCDisplay? {
+        displays.max { lhs, rhs in
+            intersectionArea(lhs.frame, rect) < intersectionArea(rhs.frame, rect)
+        }
+    }
+
+    private nonisolated static func intersectionArea(_ lhs: CGRect, _ rhs: CGRect) -> CGFloat {
+        let intersection = lhs.intersection(rhs)
+        guard !intersection.isNull else { return 0 }
+        return intersection.width * intersection.height
+    }
 
     private nonisolated static func encodeJPEG(from fullImage: CGImage) -> Data? {
         let maxWidth: CGFloat = 1280

@@ -10,6 +10,8 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
         var phase = PomodoroPhase.focus.rawValue
         var remainingSeconds = 0
         var blockedHosts: [String] = []
+        var allowedHosts: [String] = []
+        var autoOpenUrls: [String] = []
 
         var focusActive: Bool {
             isRunning && phase == PomodoroPhase.focus.rawValue
@@ -25,6 +27,8 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
         let phase: String
         let remainingSeconds: Int
         let blockedHosts: [String]
+        let allowedHosts: [String]
+        let autoOpenUrls: [String]
         let updatedAt: String
     }
 
@@ -43,13 +47,18 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
     private var cancellables = Set<AnyCancellable>()
     private var snapshot = FocusBridgeSnapshot()
 
+    private let entitlementStore: NotchEntitlementStore
+
     @MainActor
-    init(pomodoroViewModel: PomodoroViewModel, blocklistStore: FocusWebsiteBlocklistStore) {
+    init(pomodoroViewModel: PomodoroViewModel, blocklistStore: FocusWebsiteBlocklistStore, entitlementStore: NotchEntitlementStore) {
+        self.entitlementStore = entitlementStore
         snapshot.isRunning = pomodoroViewModel.isRunning
         snapshot.hasActiveSession = pomodoroViewModel.hasActiveSession
         snapshot.phase = pomodoroViewModel.phase.rawValue
         snapshot.remainingSeconds = pomodoroViewModel.remainingSeconds
         snapshot.blockedHosts = blocklistStore.blockedHosts
+        snapshot.allowedHosts = blocklistStore.allowedHosts
+        snapshot.autoOpenUrls = blocklistStore.autoOpenUrls
 
         encoder.outputFormatting = [.sortedKeys]
 
@@ -60,19 +69,39 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
             pomodoroViewModel.$remainingSeconds
         )
         .sink { [weak self] isRunning, hasActiveSession, phase, remainingSeconds in
-            self?.stateQueue.async {
-                self?.snapshot.isRunning = isRunning
-                self?.snapshot.hasActiveSession = hasActiveSession
-                self?.snapshot.phase = phase.rawValue
-                self?.snapshot.remainingSeconds = remainingSeconds
+            guard let self else { return }
+            self.stateQueue.async {
+                self.snapshot.isRunning = isRunning
+                self.snapshot.hasActiveSession = hasActiveSession
+                self.snapshot.phase = phase.rawValue
+                self.snapshot.remainingSeconds = remainingSeconds
             }
         }
         .store(in: &cancellables)
 
         blocklistStore.$blockedHosts
             .sink { [weak self] blockedHosts in
-                self?.stateQueue.async {
-                    self?.snapshot.blockedHosts = blockedHosts
+                guard let self else { return }
+                self.stateQueue.async {
+                    self.snapshot.blockedHosts = blockedHosts
+                }
+            }
+            .store(in: &cancellables)
+
+        blocklistStore.$allowedHosts
+            .sink { [weak self] allowedHosts in
+                guard let self else { return }
+                self.stateQueue.async {
+                    self.snapshot.allowedHosts = allowedHosts
+                }
+            }
+            .store(in: &cancellables)
+
+        blocklistStore.$autoOpenUrls
+            .sink { [weak self] autoOpenUrls in
+                guard let self else { return }
+                self.stateQueue.async {
+                    self.snapshot.autoOpenUrls = autoOpenUrls
                 }
             }
             .store(in: &cancellables)
@@ -186,26 +215,49 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
             )
             sendJSONResponse(payload, to: connection)
         case ("GET", "/v1/focus-state"):
-            let payload = currentPayload()
-            sendJSONResponse(payload, to: connection)
+            Task { @MainActor in
+                let payload = currentPayload()
+                sendJSONResponse(payload, to: connection)
+            }
         default:
             sendPlainTextResponse(status: "404 Not Found", body: "Not found.", to: connection)
         }
     }
 
+    @MainActor
     private func currentPayload() -> FocusBridgePayload {
+        let isAllowed = entitlementStore.decision(for: .browserBridge).isAllowed
         let snapshot = stateQueue.sync { self.snapshot }
-        return FocusBridgePayload(
-            app: "Notch",
-            bridgeVersion: Self.bridgeVersion,
-            focusActive: snapshot.focusActive,
-            isRunning: snapshot.isRunning,
-            hasActiveSession: snapshot.hasActiveSession,
-            phase: snapshot.phase,
-            remainingSeconds: snapshot.remainingSeconds,
-            blockedHosts: snapshot.blockedHosts,
-            updatedAt: iso8601Formatter.string(from: .now)
-        )
+        
+        if isAllowed {
+            return FocusBridgePayload(
+                app: "Notch",
+                bridgeVersion: Self.bridgeVersion,
+                focusActive: snapshot.focusActive,
+                isRunning: snapshot.isRunning,
+                hasActiveSession: snapshot.hasActiveSession,
+                phase: snapshot.phase,
+                remainingSeconds: snapshot.remainingSeconds,
+                blockedHosts: snapshot.blockedHosts,
+                allowedHosts: snapshot.allowedHosts,
+                autoOpenUrls: snapshot.autoOpenUrls,
+                updatedAt: iso8601Formatter.string(from: .now)
+            )
+        } else {
+            return FocusBridgePayload(
+                app: "Notch",
+                bridgeVersion: Self.bridgeVersion,
+                focusActive: false,
+                isRunning: false,
+                hasActiveSession: false,
+                phase: PomodoroPhase.focus.rawValue,
+                remainingSeconds: 0,
+                blockedHosts: [],
+                allowedHosts: [],
+                autoOpenUrls: [],
+                updatedAt: iso8601Formatter.string(from: .now)
+            )
+        }
     }
 
     private func sendJSONResponse<T: Encodable>(_ payload: T, to connection: NWConnection) {

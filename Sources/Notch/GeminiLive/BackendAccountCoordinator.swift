@@ -34,6 +34,7 @@ final class BackendAccountCoordinator: ObservableObject {
     private let client: GeminiLiveBackendClient
     private let configStore: GeminiLiveBackendConfigStore
     private let authStore: GeminiLiveBackendAuthStore
+    private let entitlementStore: NotchEntitlementStore?
     private var storedAuthSession: GeminiLiveBackendAuthSession?
     private var authRefreshTask: Task<GeminiLiveBackendAuthSession, Error>?
     private var logoutRetryTask: Task<Void, Never>?
@@ -54,11 +55,13 @@ final class BackendAccountCoordinator: ObservableObject {
     init(
         client: GeminiLiveBackendClient,
         configStore: GeminiLiveBackendConfigStore,
-        authStore: GeminiLiveBackendAuthStore
+        authStore: GeminiLiveBackendAuthStore,
+        entitlementStore: NotchEntitlementStore? = nil
     ) {
         self.client = client
         self.configStore = configStore
         self.authStore = authStore
+        self.entitlementStore = entitlementStore
         loadCurrentAuth()
     }
 
@@ -81,12 +84,10 @@ final class BackendAccountCoordinator: ObservableObject {
 
     var authPhaseDescription: String? {
         switch authPhase {
-        case .signedOut:
+        case .signedOut, .authenticated, .refreshing:
             return nil
         case .signingIn:
             return "Signing in"
-        case let .authenticated(session), let .refreshing(session):
-            return session.user.email
         case let .failed(failure):
             switch failure {
             case .unauthorized:
@@ -174,6 +175,9 @@ final class BackendAccountCoordinator: ObservableObject {
         guard let configuration = await freshConfiguredBackendUserConfiguration(forceRefresh: forceRefresh) else {
             if storedAuthSession == nil {
                 setProFromBackend(false)
+                entitlementStore?.markSignedOut()
+            } else {
+                entitlementStore?.markRefreshFailed()
             }
             return
         }
@@ -185,6 +189,8 @@ final class BackendAccountCoordinator: ObservableObject {
         } catch {
             if shouldClearBackendAuthSession(for: error) {
                 clearBackendAuthSession()
+            } else {
+                entitlementStore?.markRefreshFailed()
             }
         }
     }
@@ -328,6 +334,7 @@ final class BackendAccountCoordinator: ObservableObject {
         setAuthPhase(.signedOut)
         updatePublishedAuthState()
         setProFromBackend(false)
+        entitlementStore?.markSignedOut()
         onAuthChanged?()
     }
 
@@ -514,7 +521,12 @@ final class BackendAccountCoordinator: ObservableObject {
             setAuthPhase(.signedOut)
         }
         updatePublishedAuthState()
-        setProFromBackend(storedAuthSession?.user.isPro ?? false)
+        if let user = storedAuthSession?.user {
+            applyEntitlement(from: user)
+        } else {
+            setProFromBackend(false)
+            entitlementStore?.markSignedOut()
+        }
     }
 
     private func setAuthPhase(_ phase: BackendAuthPhase) {
@@ -588,7 +600,7 @@ final class BackendAccountCoordinator: ObservableObject {
         setLastError(nil)
         setAuthPhase(.authenticated(session))
         updatePublishedAuthState()
-        setProFromBackend(session.user.isPro ?? false)
+        applyEntitlement(from: session.user)
         onAuthChanged?()
     }
 
@@ -607,7 +619,7 @@ final class BackendAccountCoordinator: ObservableObject {
 
     private func syncAuthenticatedUser(_ user: GeminiLiveBackendAuthUser) {
         guard let existingSession = storedAuthSession else {
-            setProFromBackend(user.isPro ?? false)
+            applyEntitlement(from: user)
             return
         }
 
@@ -630,7 +642,18 @@ final class BackendAccountCoordinator: ObservableObject {
         }
 
         updatePublishedAuthState()
-        setProFromBackend(user.isPro ?? false)
+        applyEntitlement(from: user)
+    }
+
+    private func applyEntitlement(from user: GeminiLiveBackendAuthUser) {
+        let isPro = user.isPro ?? false
+        setProFromBackend(isPro)
+        entitlementStore?.updateBackendEntitlement(
+            isPro: isPro,
+            accountID: user.id,
+            accountEmail: user.email,
+            permissionPolicy: user.permissionPolicy
+        )
     }
 
     private func setProFromBackend(_ newValue: Bool) {

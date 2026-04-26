@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   BrainCircuit,
@@ -17,32 +18,12 @@ import {
 import { PortalLogo } from '@/components/portal/PortalLogo';
 import { usePortalAuth } from '@/components/portal/PortalAuthProvider';
 
-const featureCards = [
-  {
-    icon: Clock3,
-    title: 'Pomodoro focus ngay trong notch',
-    description:
-      'Chạy preset focus, break và nhịp làm việc sâu mà không phải mở thêm một cửa sổ lớn chiếm màn hình.',
-  },
-  {
-    icon: FolderKanban,
-    title: 'Drag & drop shelf cho file và link',
-    description:
-      'Kéo thả nhanh tài liệu, liên kết hoặc nội dung vào shelf để gom mọi thứ cho phiên làm việc hiện tại.',
-  },
-  {
-    icon: Waves,
-    title: 'Media controls gọn và tiện',
-    description:
-      'Đổi bài, xem trạng thái phát và thao tác media trực tiếp trong vùng notch thay vì chuyển app liên tục.',
-  },
-  {
-    icon: BrainCircuit,
-    title: 'Gemini Live khi bạn cần trợ lực',
-    description:
-      'Mở trợ lý AI theo ngữ cảnh, nói chuyện nhanh hơn và giữ workflow liền mạch trong khi vẫn tập trung.',
-  },
-];
+const ICON_MAP: Record<string, any> = {
+  gemini_live: BrainCircuit,
+  advanced_pomodoro: Clock3,
+  shelf_storage: FolderKanban,
+  media_controls: Music,
+};
 
 const storyCards = [
   {
@@ -103,6 +84,21 @@ const lightReasons = [
 
 export default function Home() {
   const { isAuthenticated, user } = usePortalAuth();
+  const [capabilities, setCapabilities] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch("/api/capabilities")
+      .then(res => res.json())
+      .then(data => setCapabilities(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
+
+  const featureCards = capabilities.map(cap => ({
+    icon: ICON_MAP[cap.key] || Zap,
+    title: cap.name,
+    description: cap.description,
+  }));
+
   const primaryHref = isAuthenticated ? '/pro' : '/signup';
   const primaryLabel = isAuthenticated ? 'Mở trang tài khoản' : 'Bắt đầu miễn phí';
   const navSecondaryHref = isAuthenticated ? '/pro' : '/login';
@@ -173,7 +169,7 @@ export default function Home() {
           </div>
 
           <div className="landing-feature-grid">
-            {featureCards.map(({ icon: Icon, title, description }) => (
+            {featureCards.map(({ icon: Icon, title, description }: any) => (
               <article key={title} className="landing-feature-card portal-card">
                 <div className="landing-icon-wrap">
                   <Icon size={20} />

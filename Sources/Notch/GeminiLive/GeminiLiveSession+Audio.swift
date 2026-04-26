@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 import Foundation
+import os
 
 extension GeminiLiveSession {
     func prepareOutputIfNeeded() {
@@ -199,14 +200,19 @@ extension GeminiLiveSession {
         }
 
         var error: NSError?
-        var hasProvidedInput = false
+        let hasProvidedInput = OSAllocatedUnfairLock(initialState: false)
         let status = converter.convert(to: outputBuffer, error: &error) { _, outputStatus in
-            if hasProvidedInput {
+            let shouldProvideInput = hasProvidedInput.withLock { providedInput in
+                guard !providedInput else { return false }
+                providedInput = true
+                return true
+            }
+
+            if !shouldProvideInput {
                 outputStatus.pointee = .noDataNow
                 return nil
             }
 
-            hasProvidedInput = true
             outputStatus.pointee = .haveData
             return buffer
         }

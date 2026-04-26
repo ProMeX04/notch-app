@@ -1,25 +1,41 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Check, ArrowRight } from 'lucide-react';
+import { Check, ArrowRight, Loader2 } from 'lucide-react';
 import { PortalLogo } from '@/components/portal/PortalLogo';
 import { usePortalAuth } from '@/components/portal/PortalAuthProvider';
 
-const features = [
-  { name: 'Gemini Live AI', free: false, pro: true, desc: 'Tích hợp AI thời gian thực trực tiếp vào Notch.' },
-  { name: 'Đồng bộ thiết bị', free: true, pro: true, desc: 'Lưu cài đặt của bạn trên mọi máy Mac.' },
-  { name: 'Truy cập Beta', free: false, pro: true, desc: 'Trải nghiệm sớm các tính năng mới nhất.' },
-  { name: 'Ưu tiên hỗ trợ', free: false, pro: true, desc: 'Nhận phản hồi nhanh từ đội ngũ phát triển.' },
-  { name: 'Toàn bộ tính năng Media', free: true, pro: true, desc: 'Điều khiển nhạc và video cơ bản.' },
-  { name: 'Custom Animations', free: false, pro: true, desc: 'Tùy biến hiệu ứng hiển thị của Notch.' },
-];
-
 export default function PricingPage() {
   const { isAuthenticated, user } = usePortalAuth();
+  const [capabilities, setCapabilities] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/capabilities")
+      .then(res => res.json())
+      .then(data => {
+        setCapabilities(Array.isArray(data) ? data : []);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
   const primaryHref = isAuthenticated ? '/pro' : '/signup';
   const primaryLabel = isAuthenticated ? 'Mở portal' : 'Bắt đầu miễn phí';
   const secondaryHref = isAuthenticated ? '/pro' : '/login';
   const secondaryLabel = isAuthenticated ? (user?.name?.trim() || 'Tài khoản') : 'Đăng nhập';
+
+  if (loading) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-white">
+        <Loader2 className="animate-spin text-[var(--accent)]" size={48} />
+      </div>
+    );
+  }
+
+  const freeFeatures = capabilities.filter(c => !c.isProOnly);
+  const proFeatures = capabilities.filter(c => c.isProOnly);
 
   return (
     <main className="portal-pricing-page" style={{ position: 'relative', overflow: 'hidden' }}>
@@ -51,10 +67,12 @@ export default function PricingPage() {
           </div>
           <div className="portal-divider-subtle" />
           <ul className="feature-list">
-            <li><Check size={18} /> Đồng bộ cơ bản</li>
-            <li><Check size={18} /> Media controls</li>
-            <li className="disabled"><Check size={18} /> Gemini Live AI</li>
-            <li className="disabled"><Check size={18} /> Custom Animations</li>
+            {freeFeatures.map(f => (
+              <li key={f.key}><Check size={18} /> {f.name}</li>
+            ))}
+            {proFeatures.slice(0, 2).map(f => (
+              <li key={f.key} className="disabled"><Check size={18} /> {f.name}</li>
+            ))}
           </ul>
           <Link href={primaryHref} className="portal-button-secondary-large">
             {isAuthenticated ? 'Mở portal' : 'Bắt đầu ngay'}
@@ -75,10 +93,9 @@ export default function PricingPage() {
           <div className="portal-divider-subtle" />
           <ul className="feature-list">
             <li><Check size={18} /> <strong>Mọi tính năng từ gói Free</strong></li>
-            <li><Check size={18} /> Gemini Live AI mạnh mẽ</li>
-            <li><Check size={18} /> Custom Animations độc quyền</li>
-            <li><Check size={18} /> Ưu tiên cập nhật tính năng</li>
-            <li><Check size={18} /> Đồng bộ Cloud không giới hạn</li>
+            {proFeatures.map(f => (
+              <li key={f.key}><Check size={18} /> {f.name}</li>
+            ))}
           </ul>
           <Link href={primaryHref} className="portal-button-primary-large">
             {isAuthenticated ? 'Vào portal để nâng cấp' : 'Tạo tài khoản để nâng cấp'}
@@ -94,20 +111,20 @@ export default function PricingPage() {
         </div>
 
         <div className="comparison-table">
-          {features.map((f) => (
-            <div key={f.name} className="comparison-row">
+          {capabilities.map((f) => (
+            <div key={f.key} className="comparison-row">
               <div className="feature-info">
                 <h3>{f.name}</h3>
-                <p>{f.desc}</p>
+                <p>{f.description}</p>
               </div>
               <div className="plan-status">
                 <div className="status-col">
                   <span>Free</span>
-                  {f.free ? <Check size={20} className="check" /> : <div className="dash" />}
+                  {!f.isProOnly ? <Check size={20} className="check" /> : <div className="dash" />}
                 </div>
                 <div className="status-col">
                   <span>Pro</span>
-                  {f.pro ? <Check size={20} className="check pro" /> : <div className="dash" />}
+                  <Check size={20} className="check pro" />
                 </div>
               </div>
             </div>

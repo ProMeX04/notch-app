@@ -1,18 +1,13 @@
-const connectionStatus = document.getElementById("connection-status");
-const focusState = document.getElementById("focus-state");
-const phase = document.getElementById("phase");
-const blockedCount = document.getElementById("blocked-count");
-const bridgeUrl = document.getElementById("bridge-url");
-const blockedHosts = document.getElementById("blocked-hosts");
-const refreshButton = document.getElementById("refresh-button");
-const optionsButton = document.getElementById("options-button");
+function el(id) { return document.getElementById(id); }
+function setText(id, val) { const n = el(id); if (n) n.textContent = val; }
+function setClass(id, cls) { const n = el(id); if (n) n.className = cls; }
 
-refreshButton.addEventListener("click", async () => {
+el("refresh-button")?.addEventListener("click", async () => {
   const response = await chrome.runtime.sendMessage({ type: "refresh-state" });
-  render(response.state);
+  render(response?.state);
 });
 
-optionsButton.addEventListener("click", () => {
+el("options-button")?.addEventListener("click", () => {
   chrome.runtime.openOptionsPage();
 });
 
@@ -20,42 +15,47 @@ bootstrap();
 
 async function bootstrap() {
   const response = await chrome.runtime.sendMessage({ type: "get-state" });
-  render(response.state);
+  render(response?.state);
 }
 
 function render(state) {
-  bridgeUrl.textContent = state.apiBaseUrl || "http://127.0.0.1:44991";
-  focusState.textContent = state.focusActive ? "Blocking active" : state.connected ? "Idle" : "App offline";
-  phase.textContent = state.phase || "-";
-  blockedCount.textContent = String((state.blockedHosts || []).length);
+  if (!state) return;
+
+  setText("bridge-url", state.apiBaseUrl || "http://127.0.0.1:44991");
+  setText("focus-state", state.focusActive ? "Blocking active" : state.connected ? "Idle" : "App offline");
+  setText("phase", state.phase || "-");
+  setText("blocked-count", String((state.blockedHosts || []).length));
 
   if (!state.connected) {
-    connectionStatus.textContent = state.error
+    setText("connection-status", state.error
       ? `Cannot reach Notch app: ${state.error}`
-      : "Cannot reach Notch app.";
-    connectionStatus.className = "status status-idle";
+      : "Cannot reach Notch app.");
+    setClass("connection-status", "status status-idle");
   } else if (state.focusActive) {
-    connectionStatus.textContent = "Focus session is running. Matching domains will be blocked.";
-    connectionStatus.className = "status status-active";
+    setText("connection-status", "Focus session is running. Matching domains will be blocked.");
+    setClass("connection-status", "status status-active");
   } else {
-    connectionStatus.textContent = "Connected. Waiting for a running focus phase.";
-    connectionStatus.className = "status status-connected";
+    setText("connection-status", "Connected. Waiting for a running focus phase.");
+    setClass("connection-status", "status status-connected");
   }
 
-  blockedHosts.textContent = "";
+  const blockedHostsEl = el("blocked-hosts");
+  if (!blockedHostsEl) return;
+
+  blockedHostsEl.textContent = "";
 
   if (!state.blockedHosts || state.blockedHosts.length === 0) {
-    blockedHosts.textContent = "No synced domains.";
-    blockedHosts.className = "chips empty";
+    blockedHostsEl.textContent = "No synced domains.";
+    blockedHostsEl.className = "chips empty";
     return;
   }
 
-  blockedHosts.className = "chips";
+  blockedHostsEl.className = "chips";
 
   for (const host of state.blockedHosts) {
     const chip = document.createElement("span");
     chip.className = "chip";
     chip.textContent = host;
-    blockedHosts.appendChild(chip);
+    blockedHostsEl.appendChild(chip);
   }
 }

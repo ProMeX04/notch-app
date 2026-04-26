@@ -148,3 +148,59 @@ struct NotchMenuFieldRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
+
+// MARK: - Interactive Button Styles
+
+struct GrowingButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
+
+// MARK: - Custom Segmented Picker
+
+struct NotchSegmentedPicker<T: Identifiable & Equatable>: View where T.ID == String {
+    let options: [T]
+    @Binding var selection: T
+    let titleMapper: (T) -> String
+    var tint: Color = .blue
+    
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(options) { option in
+                let isSelected = selection == option
+                
+                Button {
+                    selection = option
+                } label: {
+                    Text(titleMapper(option))
+                        .font(.system(size: 11, weight: isSelected ? .bold : .medium))
+                        .foregroundStyle(isSelected ? .black.opacity(0.85) : .white.opacity(0.6))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 24)
+                        .background {
+                            if isSelected {
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .fill(tint)
+                                    .matchedGeometryEffect(id: "segment", in: animationNamespace)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(2)
+        .background(Color.white.opacity(0.06).cornerRadius(9))
+        .overlay {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        }
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: selection)
+    }
+    
+    @Namespace private var animationNamespace
+}
+
+

@@ -22,6 +22,7 @@ struct MediaNotchView: View {
     @ObservedObject var shelf: NotchShelfViewModel
     @ObservedObject var learningStats: LearningStatsStore
     @ObservedObject var presentationModel: NotchPresentationModel
+    @ObservedObject var entitlementStore: NotchEntitlementStore
 
     @Namespace private var albumArtNamespace
     @StateObject private var talkHeaderAccessoryController = NotchHeaderAccessoryController()
@@ -186,7 +187,9 @@ struct MediaNotchView: View {
                 closedNotchWidth: presentationModel.closedNotchSize.width,
                 closedNotchHeight: presentationModel.closedNotchSize.height,
                 presentationModel: presentationModel,
-                accessoryController: talkHeaderAccessoryController
+                accessoryController: talkHeaderAccessoryController,
+                entitlementStore: entitlementStore,
+                gemini: gemini
             )
             .frame(height: expandedHeaderHeight)
         } else {
@@ -205,6 +208,7 @@ struct MediaNotchView: View {
                 shelf: shelf,
                 learningStats: learningStats,
                 presentationModel: presentationModel,
+                entitlementStore: entitlementStore,
                 talkHeaderAccessoryController: talkHeaderAccessoryController,
                 albumArtNamespace: albumArtNamespace
             )

@@ -1,7 +1,7 @@
 import { GoogleGenAI, Modality } from '@google/genai'
 import { NextResponse } from 'next/server'
 
-import { getAuthenticatedUser } from '@/lib/notch-auth'
+import { getAuthenticatedUser, getFeatureRequirement } from '@/lib/notch-auth'
 
 type SessionTokenRequest = {
   model?: string
@@ -39,7 +39,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ detail: 'Invalid or expired session token.' }, { status: 401 })
   }
 
-  if (!auth.user.isPro) {
+  const requirement = await getFeatureRequirement('talk_connection')
+  if (requirement === 'disabled') {
+    return NextResponse.json({ detail: 'This feature is currently disabled.' }, { status: 403 })
+  }
+  if (requirement === 'pro' && !auth.user.isPro) {
     return NextResponse.json({ detail: 'Notch Pro is required to create a Gemini Live session token.' }, { status: 403 })
   }
 

@@ -1,5 +1,5 @@
 import Foundation
-import UserNotifications
+@preconcurrency import UserNotifications
 import AppKit
 
 struct AppNotificationManager {
@@ -27,7 +27,7 @@ struct AppNotificationManager {
 
         center.getNotificationSettings { settings in
             guard settings.authorizationStatus == .authorized else {
-                center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
                     guard granted else { return }
                     deliver(title: title, body: body, identifier: identifier)
                 }

@@ -7,6 +7,10 @@ final class FocusWebsiteBlocklistStore: ObservableObject {
 
     @Published private(set) var blockedHostsText: String
     @Published private(set) var blockedHosts: [String]
+    @Published private(set) var allowedHostsText: String
+    @Published private(set) var allowedHosts: [String]
+    @Published private(set) var autoOpenUrlsText: String
+    @Published private(set) var autoOpenUrls: [String]
 
     private let defaults: UserDefaults
 
@@ -18,8 +22,20 @@ final class FocusWebsiteBlocklistStore: ObservableObject {
         self.blockedHosts = normalizedHosts
         self.blockedHostsText = Self.text(from: normalizedHosts)
 
+        let storedAllowed = defaults.stringArray(forKey: Self.allowedHostsDefaultsKey) ?? ["music.youtube.com"]
+        let normalizedAllowed = Self.normalizedHosts(from: storedAllowed)
+        self.allowedHosts = normalizedAllowed
+        self.allowedHostsText = Self.text(from: normalizedAllowed)
+
+        let storedAutoOpen = defaults.stringArray(forKey: Self.autoOpenUrlsDefaultsKey) ?? []
+        self.autoOpenUrls = storedAutoOpen
+        self.autoOpenUrlsText = storedAutoOpen.joined(separator: "\n")
+
         if normalizedHosts != storedHosts {
-            persist(hosts: normalizedHosts)
+            persist(hosts: normalizedHosts, key: Self.blockedHostsDefaultsKey)
+        }
+        if normalizedAllowed != storedAllowed {
+            persist(hosts: normalizedAllowed, key: Self.allowedHostsDefaultsKey)
         }
     }
 
@@ -31,13 +47,30 @@ final class FocusWebsiteBlocklistStore: ObservableObject {
 
         blockedHosts.append(normalized)
         blockedHostsText = Self.text(from: blockedHosts)
-        persist(hosts: blockedHosts)
+        persist(hosts: blockedHosts, key: Self.blockedHostsDefaultsKey)
     }
 
     func removeHost(_ host: String) {
         blockedHosts.removeAll { $0 == host }
         blockedHostsText = Self.text(from: blockedHosts)
-        persist(hosts: blockedHosts)
+        persist(hosts: blockedHosts, key: Self.blockedHostsDefaultsKey)
+    }
+
+    func addAllowedHost(_ rawHost: String) {
+        guard let normalized = Self.normalizedHost(from: rawHost),
+              !allowedHosts.contains(normalized) else {
+            return
+        }
+
+        allowedHosts.append(normalized)
+        allowedHostsText = Self.text(from: allowedHosts)
+        persist(hosts: allowedHosts, key: Self.allowedHostsDefaultsKey)
+    }
+
+    func removeAllowedHost(_ host: String) {
+        allowedHosts.removeAll { $0 == host }
+        allowedHostsText = Self.text(from: allowedHosts)
+        persist(hosts: allowedHosts, key: Self.allowedHostsDefaultsKey)
     }
 
     func setBlockedHostsText(_ text: String) {
@@ -50,7 +83,20 @@ final class FocusWebsiteBlocklistStore: ObservableObject {
 
         blockedHosts = normalizedHosts
         blockedHostsText = normalizedText
-        persist(hosts: normalizedHosts)
+        persist(hosts: normalizedHosts, key: Self.blockedHostsDefaultsKey)
+    }
+
+    func setAutoOpenUrlsText(_ text: String) {
+        let urls = text
+            .split(whereSeparator: { $0 == "\n" || $0 == "," || $0 == ";" })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        guard urls != autoOpenUrls else { return }
+
+        autoOpenUrls = urls
+        autoOpenUrlsText = urls.joined(separator: "\n")
+        defaults.set(urls, forKey: Self.autoOpenUrlsDefaultsKey)
     }
 
     static func normalizedHosts(from text: String) -> [String] {
@@ -111,9 +157,11 @@ final class FocusWebsiteBlocklistStore: ObservableObject {
         hosts.joined(separator: "\n")
     }
 
-    private func persist(hosts: [String]) {
-        defaults.set(hosts, forKey: Self.blockedHostsDefaultsKey)
+    private func persist(hosts: [String], key: String) {
+        defaults.set(hosts, forKey: key)
     }
 
     private static let blockedHostsDefaultsKey = "NotchFocusBlockedHosts"
+    private static let allowedHostsDefaultsKey = "NotchFocusAllowedHosts"
+    private static let autoOpenUrlsDefaultsKey = "NotchFocusAutoOpenUrls"
 }

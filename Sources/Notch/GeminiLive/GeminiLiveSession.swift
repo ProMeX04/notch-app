@@ -818,43 +818,46 @@ final class GeminiLiveSession: @unchecked Sendable {
     func sendJSONObject(_ object: [String: Any], onCompletion: (@Sendable (Bool) -> Void)? = nil) {
         guard let socketTask else { return }
 
+        let message: String
+        do {
+            let data = try JSONSerialization.data(withJSONObject: object)
+            guard let encodedMessage = String(data: data, encoding: .utf8) else {
+                handleFailure(
+                    message: "Couldn't encode the Gemini Live message.",
+                    preserveAudioSession: hasCompletedSetup && captureMode == .webRTC
+                )
+                onCompletion?(false)
+                return
+            }
+            message = encodedMessage
+        } catch {
+            handleFailure(
+                message: "Couldn't prepare the Gemini Live payload.",
+                preserveAudioSession: hasCompletedSetup && captureMode == .webRTC
+            )
+            onCompletion?(false)
+            return
+        }
+
         sendQueue.async { [weak self] in
             guard let self else { return }
 
-            do {
-                let data = try JSONSerialization.data(withJSONObject: object)
-                guard let message = String(data: data, encoding: .utf8) else {
-                    self.handleFailure(
-                        message: "Couldn't encode the Gemini Live message.",
-                        preserveAudioSession: self.hasCompletedSetup && self.captureMode == .webRTC
-                    )
+            socketTask.send(.string(message)) { error in
+                guard self.socketTask === socketTask else {
                     onCompletion?(false)
                     return
                 }
 
-                socketTask.send(.string(message)) { error in
-                    guard self.socketTask === socketTask else {
-                        onCompletion?(false)
-                        return
-                    }
-
-                    if let error {
-                        let hadCompletedSetup = self.hasCompletedSetup
-                        self.handleSocketTransportFailure(
-                            message: "Gemini Live send failed: \(error.localizedDescription)",
-                            hadCompletedSetup: hadCompletedSetup
-                        )
-                        onCompletion?(false)
-                    } else {
-                        onCompletion?(true)
-                    }
+                if let error {
+                    let hadCompletedSetup = self.hasCompletedSetup
+                    self.handleSocketTransportFailure(
+                        message: "Gemini Live send failed: \(error.localizedDescription)",
+                        hadCompletedSetup: hadCompletedSetup
+                    )
+                    onCompletion?(false)
+                } else {
+                    onCompletion?(true)
                 }
-            } catch {
-                self.handleFailure(
-                    message: "Couldn't prepare the Gemini Live payload.",
-                    preserveAudioSession: self.hasCompletedSetup && self.captureMode == .webRTC
-                )
-                onCompletion?(false)
             }
         }
     }

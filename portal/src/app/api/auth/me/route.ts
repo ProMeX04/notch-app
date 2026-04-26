@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server'
 
+export const dynamic = 'force-dynamic';
+
 import { applyAuthCookies, clearAuthCookies, readRefreshTokenCookie } from '@/lib/auth-cookies'
 import { authUserResponse, getAuthenticatedUser, refreshAuthSessionWithToken } from '@/lib/notch-auth'
 
 export async function GET(req: Request) {
   const auth = await getAuthenticatedUser(req)
   if (auth) {
-    return NextResponse.json(authUserResponse(auth.user, auth.sessionId))
+    const response = await authUserResponse(auth.user, auth.sessionId);
+    return NextResponse.json(response);
   }
 
   const payload = await refreshAuthSessionWithToken(req, readRefreshTokenCookie(req) ?? '', {

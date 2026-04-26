@@ -69,6 +69,24 @@ struct GeminiLiveBackendAuthUser: Decodable, Equatable, Sendable {
     let createdAt: String
     /// Present when the API returns `is_pro` (web subscription / server-side Pro).
     let isPro: Bool?
+    /// Optional remote feature policy returned by `GET /auth/me`.
+    let permissionPolicy: NotchRemotePermissionPolicy?
+
+    init(
+        id: String,
+        email: String,
+        name: String?,
+        createdAt: String,
+        isPro: Bool?,
+        permissionPolicy: NotchRemotePermissionPolicy? = nil
+    ) {
+        self.id = id
+        self.email = email
+        self.name = name
+        self.createdAt = createdAt
+        self.isPro = isPro
+        self.permissionPolicy = permissionPolicy
+    }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -76,6 +94,7 @@ struct GeminiLiveBackendAuthUser: Decodable, Equatable, Sendable {
         case name
         case createdAt = "created_at"
         case isPro = "is_pro"
+        case permissionPolicy = "permission_policy"
     }
 }
 
@@ -355,6 +374,7 @@ final class GeminiLiveBackendAuthStore {
     private let lastIsProDefaultsKey = "dev.notch.gemini-live.backend-auth.last-is-pro"
     private let expiresAtDefaultsKey = "dev.notch.gemini-live.backend-auth.expires-at"
     private let refreshExpiresAtDefaultsKey = "dev.notch.gemini-live.backend-auth.refresh-expires-at"
+    private let permissionPolicyDefaultsKey = "dev.notch.gemini-live.backend-auth.permission-policy"
     private let processInfo: ProcessInfo
 
     init(processInfo: ProcessInfo, defaults: UserDefaults = .standard) {
@@ -408,12 +428,23 @@ final class GeminiLiveBackendAuthStore {
             return nil
         }
 
+        // Restore the persisted permission policy so the app uses the correct
+        // feature flags (e.g. talk_connection = free) immediately on launch,
+        // before the async /auth/me refresh has a chance to run.
+        let permissionPolicy: NotchRemotePermissionPolicy?
+        if let policyData = defaults.data(forKey: permissionPolicyDefaultsKey),
+           let decoded = try? JSONDecoder().decode(NotchRemotePermissionPolicy.self, from: policyData) {
+            permissionPolicy = decoded
+        } else {
+            permissionPolicy = nil
+        }
+
         return GeminiLiveBackendAuthSession(
             accessToken: accessToken,
             expiresAt: expiresAt,
             refreshToken: refreshToken,
             refreshExpiresAt: refreshExpiresAt,
-            user: GeminiLiveBackendAuthUser(id: userID, email: email, name: name, createdAt: "", isPro: isPro)
+            user: GeminiLiveBackendAuthUser(id: userID, email: email, name: name, createdAt: "", isPro: isPro, permissionPolicy: permissionPolicy)
         )
     }
 
@@ -428,6 +459,14 @@ final class GeminiLiveBackendAuthStore {
             defaults.set(refreshExpiresAt, forKey: refreshExpiresAtDefaultsKey)
         } else {
             defaults.removeObject(forKey: refreshExpiresAtDefaultsKey)
+        }
+
+        // Persist the remote permission policy so it survives across app launches.
+        if let policy = session.user.permissionPolicy,
+           let policyData = try? JSONEncoder().encode(policy) {
+            defaults.set(policyData, forKey: permissionPolicyDefaultsKey)
+        } else {
+            defaults.removeObject(forKey: permissionPolicyDefaultsKey)
         }
 
         let didSaveAccess = accessTokenStore.save(session.accessToken)
@@ -457,6 +496,7 @@ final class GeminiLiveBackendAuthStore {
         defaults.removeObject(forKey: lastIsProDefaultsKey)
         defaults.removeObject(forKey: expiresAtDefaultsKey)
         defaults.removeObject(forKey: refreshExpiresAtDefaultsKey)
+        defaults.removeObject(forKey: permissionPolicyDefaultsKey)
         accessTokenStore.delete()
         refreshTokenStore.delete()
     }

@@ -23,6 +23,8 @@ extension GeminiLiveSession {
             handleGrepCall(id: id, call: call)
         case "edit":
             handleEditCall(id: id, call: call)
+        case "calendar":
+            handleCalendarCall(id: id, call: call)
         default:
             sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
         }
@@ -235,6 +237,22 @@ extension GeminiLiveSession {
         }
     }
 
+    private func handleCalendarCall(id: String, call: [String: Any]) {
+        let name = "calendar"
+        let rawArgs = call["args"] as? [String: Any] ?? [:]
+        let args = GeminiToolArgumentNormalizer.normalize(rawArgs)
+
+        let action = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["action"]) ?? "list"
+        let sendableArgs = SendableToolArgs(args: args)
+        toolExecutionQueue.async { [weak self] in
+            guard let self else { return }
+            self.notifyFunctionStarted(name: name, args: sendableArgs.args)
+            let result = self.executeCalendar(action: action, args: sendableArgs.args)
+            self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
+            self.sendFunctionResponse(id: id, name: name, result: result)
+        }
+    }
+
     func approveExecCall(toolCallID: String) {
         guard let pending = takePendingExecApproval(toolCallID: toolCallID) else { return }
         notifyFunctionStarted(name: "exec", args: pending.args)
@@ -260,7 +278,6 @@ extension GeminiLiveSession {
         notifyFunctionExecuted(name: "exec", args: pending.args, result: result)
         sendFunctionResponse(id: toolCallID, name: "exec", result: result)
     }
-
 }
 
 struct SendableToolArgs: @unchecked Sendable {

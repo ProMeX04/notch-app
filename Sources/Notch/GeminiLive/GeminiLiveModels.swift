@@ -323,6 +323,7 @@ enum GeminiTool: String, CaseIterable, Identifiable {
     case find = "find"
     case grep = "grep"
     case edit = "edit"
+    case calendar = "calendar"
 
     var id: String { rawValue }
 
@@ -335,6 +336,7 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         .find,
         .grep,
         .edit,
+        .calendar,
     ]
 
     static let coreToolSet: Set<GeminiTool> = Set(coreCases)
@@ -349,6 +351,7 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         case .grep: return "Grep"
         case .edit: return "Edit"
         case .exec: return "Exec"
+        case .calendar: return "Calendar"
         }
     }
 
@@ -362,6 +365,7 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         case .grep: return "text.magnifyingglass"
         case .edit: return "slider.horizontal.below.rectangle"
         case .exec: return "terminal"
+        case .calendar: return "calendar"
         }
     }
 }

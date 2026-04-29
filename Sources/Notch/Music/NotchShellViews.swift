@@ -187,6 +187,7 @@ struct NotchHeaderView: View {
     @ObservedObject var presentationModel: NotchPresentationModel
     @ObservedObject var accessoryController: NotchHeaderAccessoryController
     @ObservedObject var entitlementStore: NotchEntitlementStore
+    @ObservedObject var pomodoro: PomodoroViewModel
     @ObservedObject var gemini: GeminiLiveViewModel
 
     private var displayHeight: CGFloat {
@@ -211,6 +212,7 @@ struct NotchHeaderView: View {
                     presentationModel: presentationModel,
                     panels: [.media, .focus, .talk],
                     entitlementStore: entitlementStore,
+                    pomodoro: pomodoro,
                     gemini: gemini
                 )
             }
@@ -569,6 +571,7 @@ struct PanelSwitcher: View {
     @ObservedObject var presentationModel: NotchPresentationModel
     let panels: [NotchPanel]
     @ObservedObject var entitlementStore: NotchEntitlementStore
+    @ObservedObject var pomodoro: PomodoroViewModel
     @ObservedObject var gemini: GeminiLiveViewModel
 
     var body: some View {
@@ -629,6 +632,16 @@ struct PanelSwitcher: View {
                         .fill(presentationModel.selectedPanel == panel ? Color.white.opacity(0.12) : Color.white.opacity(0.001))
                 )
                 .contentShape(Capsule())
+                .overlay(alignment: .topTrailing) {
+                    if let badge = badge(for: panel) {
+                        PanelActivityBadge(
+                            color: badge.color,
+                            pulses: badge.pulses
+                        )
+                        .offset(x: -4, y: 4)
+                        .allowsHitTesting(false)
+                    }
+                }
         }
         .buttonStyle(.plain)
         .help(switcherTitle(for: panel))
@@ -644,6 +657,67 @@ struct PanelSwitcher: View {
             return "Talk"
         case .shelf:
             return ""
+        }
+    }
+
+    private func badge(for panel: NotchPanel) -> PanelSwitcherBadgeStyle? {
+        switch panel {
+        case .focus:
+            guard pomodoro.isRunning else { return nil }
+            return PanelSwitcherBadgeStyle(
+                color: pomodoro.phase.accentSwiftUIColor.ensureMinimumBrightness(factor: 0.78),
+                pulses: true
+            )
+        case .talk:
+            switch gemini.effectiveConnectionState {
+            case .connected:
+                return PanelSwitcherBadgeStyle(
+                    color: Color(nsColor: .systemGreen),
+                    pulses: true
+                )
+            case .connecting:
+                return PanelSwitcherBadgeStyle(
+                    color: Color(nsColor: .systemOrange),
+                    pulses: true
+                )
+            case .disconnected, .failed:
+                return nil
+            }
+        case .media, .shelf:
+            return nil
+        }
+    }
+}
+
+private struct PanelSwitcherBadgeStyle {
+    let color: Color
+    let pulses: Bool
+}
+
+private struct PanelActivityBadge: View {
+    let color: Color
+    let pulses: Bool
+
+    @State private var isPulsing = false
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(Color.black.opacity(0.92))
+                .frame(width: 10, height: 10)
+
+            Circle()
+                .fill(color)
+                .frame(width: 5, height: 5)
+                .shadow(color: color.opacity(0.5), radius: pulses ? 4 : 0)
+                .scaleEffect(pulses && isPulsing ? 1.16 : 1.0)
+        }
+        .onAppear {
+            guard pulses else { return }
+            isPulsing = false
+            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                isPulsing = true
+            }
         }
     }
 }
@@ -792,6 +866,7 @@ struct Localization {
         "End": ["English": "End", "Tiếng Việt": "Kết thúc"],
         "Open Mic": ["English": "Open Mic", "Tiếng Việt": "Mic"],
         "Push to Talk": ["English": "Push to Talk", "Tiếng Việt": "Nhấn để nói"],
+        "Push to Talk key": ["English": "Push to Talk key", "Tiếng Việt": "Phím bấm để nói"],
         "Hold": ["English": "Hold", "Tiếng Việt": "Giữ"],
         "Listening": ["English": "Listening", "Tiếng Việt": "Đang nghe"],
         "Mic": ["English": "Mic", "Tiếng Việt": "Mic"],
@@ -1032,6 +1107,30 @@ struct Localization {
             "English": "Pro status has not been verified yet.",
             "Tiếng Việt": "Trạng thái Pro chưa được xác minh.",
         ],
+        "Weekly Activity": ["English": "Weekly Activity", "Tiếng Việt": "Hoạt động hàng tuần"],
+        "Session Timing": ["English": "Session Timing", "Tiếng Việt": "Thời gian phiên"],
+        "Automation": ["English": "Automation", "Tiếng Việt": "Tự động hóa"],
+        "Allowed Websites": ["English": "Allowed Websites", "Tiếng Việt": "Trang web được cho phép"],
+        "Auto-open on Focus Start": ["English": "Auto-open on Focus Start", "Tiếng Việt": "Tự động mở khi tập trung"],
+        "Transition Sound": ["English": "Transition Sound", "Tiếng Việt": "Âm thanh chuyển đổi"],
+        "Enable Notifications": ["English": "Enable Notifications", "Tiếng Việt": "Bật thông báo"],
+        "No allowed websites yet.": ["English": "No allowed websites yet.", "Tiếng Việt": "Chưa có trang web được cho phép."],
+        "No auto-open URLs yet.": ["English": "No auto-open URLs yet.", "Tiếng Việt": "Chưa có URL tự động mở."],
+        "e.g. music.youtube.com": ["English": "e.g. music.youtube.com", "Tiếng Việt": "ví dụ: music.youtube.com"],
+        "e.g. notion.so or https://docs.google.com": ["English": "e.g. notion.so or https://docs.google.com", "Tiếng Việt": "ví dụ: notion.so hoặc https://docs.google.com"],
+        "domains will never be blocked": ["English": "domains will never be blocked", "Tiếng Việt": "domain sẽ không bao giờ bị chặn"],
+        "URLs will open on focus start": ["English": "URLs will open on focus start", "Tiếng Việt": "URL sẽ tự động mở khi bắt đầu tập trung"],
+        "%d domains will never be blocked": ["English": "%d domains will never be blocked", "Tiếng Việt": "%d domain sẽ không bao giờ bị chặn"],
+        "%d URLs will open on focus start": ["English": "%d URLs will open on focus start", "Tiếng Việt": "%d URL sẽ tự động mở khi bắt đầu tập trung"],
+        "Accent": ["English": "Accent", "Tiếng Việt": "Màu nhấn"],
+        "Display": ["English": "Display", "Tiếng Việt": "Hiển thị"],
+        "Interaction": ["English": "Interaction", "Tiếng Việt": "Tương tác"],
+        "System": ["English": "System", "Tiếng Việt": "Hệ thống"],
+        "Auto-Collapse Delay": ["English": "Auto-Collapse Delay", "Tiếng Việt": "Độ trễ tự đóng"],
+        "Connection": ["English": "Connection", "Tiếng Việt": "Kết nối"],
+        "Saving...": ["English": "Saving...", "Tiếng Việt": "Đang lưu..."],
+        "Model": ["English": "Model", "Tiếng Việt": "Mô hình"],
+        "Untitled": ["English": "Untitled", "Tiếng Việt": "Chưa đặt tên"],
     ]
 
     static func get(_ key: String, lang: String) -> String {
@@ -1081,7 +1180,7 @@ struct GlobalSettingsView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         if gemini.isBackendAuthenticated {
                             HStack(spacing: 8) {
-                                Text(gemini.backendSignedInSummary ?? Localization.get("Notch Account", lang: appLanguage))
+                                Text(Localization.get(gemini.backendSignedInSummary ?? "Notch Account", lang: appLanguage))
                                     .font(.system(size: 14, weight: .bold))
                                     .foregroundStyle(.white.opacity(0.95))
 
@@ -1193,7 +1292,7 @@ struct GlobalSettingsView: View {
                         settingsGroupedDivider()
 
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Accent")
+                            Text(Localization.get("Accent", lang: appLanguage))
                                 .font(.system(size: 11, weight: .bold))
                                 .foregroundStyle(.white.opacity(0.45))
 

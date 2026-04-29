@@ -3,7 +3,7 @@ import Foundation
 import Security
 
 enum GeminiLiveHostedBackend {
-    static let defaultURL = "https://portal-promex04s-projects.vercel.app/api"
+    static let defaultURL = "https://portal-six-blue.vercel.app/api"
 }
 
 enum GeminiLiveInputMode: String, Codable, CaseIterable, Identifiable {

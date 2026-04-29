@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { requireAdminUser } from "@/lib/notch-auth";
+import { mergeDefaultFeatureConfigs, requireAdminUser } from "@/lib/notch-auth";
 
 export async function GET(req: Request) {
   try {
@@ -10,7 +10,7 @@ export async function GET(req: Request) {
     const configs = await prisma.featureConfig.findMany({
       orderBy: { name: "asc" }
     });
-    return NextResponse.json(configs);
+    return NextResponse.json(mergeDefaultFeatureConfigs(configs));
   } catch (error) {
     return NextResponse.json({ error: "Failed to fetch capabilities" }, { status: 500 });
   }

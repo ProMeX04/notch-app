@@ -206,7 +206,7 @@ export default function ProPage() {
 
   const handleSignOut = () => {
     signOut()
-    router.push('/login')
+    router.push('/')
   }
 
   if (status === 'booting') {
@@ -264,8 +264,7 @@ export default function ProPage() {
               </div>
 
               <div className="portal-dashboard-guest-actions">
-                <Link href="/login" className="portal-button">Đăng nhập</Link>
-                <Link href="/signup" className="portal-button-ghost">Tạo tài khoản</Link>
+                <Link href="/api/auth/google" className="portal-button">Đăng nhập với Google</Link>
               </div>
             </section>
           </div>

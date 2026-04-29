@@ -135,11 +135,8 @@ function OAuthAuthorizeContent() {
 
               {oauthRequest && !isAuthenticated && status !== 'booting' ? (
                 <div style={{ display: 'grid', gap: '12px' }}>
-                  <Link href={`/login${oauthSearch}`} className="portal-button" style={{ width: '100%' }}>
-                    Đăng nhập
-                  </Link>
-                  <Link href={`/signup${oauthSearch}`} className="portal-button-secondary" style={{ width: '100%' }}>
-                    Tạo tài khoản
+                  <Link href={`/api/auth/google${oauthSearch}`} className="portal-button" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    Tiếp tục với Google
                   </Link>
                 </div>
               ) : null}

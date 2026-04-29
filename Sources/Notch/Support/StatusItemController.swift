@@ -6,7 +6,7 @@ import NotchFocusCore
 final class StatusItemController: NSObject, NSMenuDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let menu = NSMenu()
-    private let windowController: NotchWindowController
+    private let featureCoordinator: NotchFeatureCoordinator
     private let launchAtLoginController = LaunchAtLoginController()
     private var cancellables = Set<AnyCancellable>()
     private var taskPopover: NSPopover?
@@ -82,8 +82,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         keyEquivalent: ""
     )
 
-    init(windowController: NotchWindowController) {
-        self.windowController = windowController
+    init(featureCoordinator: NotchFeatureCoordinator) {
+        self.featureCoordinator = featureCoordinator
         super.init()
 
         if let button = statusItem.button {
@@ -136,7 +136,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusItem.menu = menu
         statusItem.isVisible = true
 
-        let pomo = windowController.pomodoroViewModel
+        let pomo = featureCoordinator.pomodoroViewModel
         Publishers.CombineLatest3(
             pomo.$isRunning,
             pomo.$hasActiveSession,
@@ -153,24 +153,24 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         launchAtLoginController.refreshStatus()
-        visibilityItem.title = windowController.isVisible ? "Hide Notch" : "Show Notch"
-        pinItem.state = windowController.presentationModel.isPinnedOpen ? .on : .off
-        mediaItem.state = windowController.presentationModel.selectedPanel == .media ? .on : .off
-        pomodoroItem.state = windowController.presentationModel.selectedPanel == .focus ? .on : .off
-        talkItem.state = windowController.presentationModel.selectedPanel == .talk ? .on : .off
-        shelfItem.state = windowController.presentationModel.selectedPanel == .shelf ? .on : .off
+        visibilityItem.title = featureCoordinator.isVisible ? "Hide Notch" : "Show Notch"
+        pinItem.state = featureCoordinator.presentationModel.isPinnedOpen ? .on : .off
+        mediaItem.state = featureCoordinator.presentationModel.selectedPanel == .media ? .on : .off
+        pomodoroItem.state = featureCoordinator.presentationModel.selectedPanel == .focus ? .on : .off
+        talkItem.state = featureCoordinator.presentationModel.selectedPanel == .talk ? .on : .off
+        shelfItem.state = featureCoordinator.presentationModel.selectedPanel == .shelf ? .on : .off
         launchAtLoginItem.state = launchAtLoginController.isEnabled ? .on : .off
 
-        if windowController.geminiLiveViewModel.canDisconnectSession {
+        if featureCoordinator.geminiLiveViewModel.canDisconnectSession {
             toggleTalkItem.title = "Disconnect Gemini Live"
         } else {
             toggleTalkItem.title = "Connect Gemini Live"
         }
         toggleTalkItem.isEnabled = true
 
-        if windowController.pomodoroViewModel.isRunning {
+        if featureCoordinator.pomodoroViewModel.isRunning {
             togglePomodoroItem.title = "Pause Pomodoro"
-        } else if windowController.pomodoroViewModel.hasActiveSession {
+        } else if featureCoordinator.pomodoroViewModel.hasActiveSession {
             togglePomodoroItem.title = "Resume Pomodoro"
         } else {
             togglePomodoroItem.title = "Start Pomodoro"
@@ -178,57 +178,57 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         togglePomodoroItem.isEnabled = true
 
         resetPomodoroItem.title = "Reset Pomodoro"
-        resetPomodoroItem.isEnabled = windowController.pomodoroViewModel.hasActiveSession
+        resetPomodoroItem.isEnabled = featureCoordinator.pomodoroViewModel.hasActiveSession
     }
 
     @objc
     private func toggleVisibility() {
-        windowController.toggleVisibility()
+        featureCoordinator.toggleVisibility()
     }
 
     @objc
     private func togglePinned() {
-        windowController.togglePinned()
+        featureCoordinator.togglePinned()
     }
 
     @objc
     private func showMediaPanel() {
-        windowController.showMediaPanel()
+        featureCoordinator.showPanel(.media)
     }
 
     @objc
     private func showPomodoroPanel() {
-        windowController.showFocusPanel()
+        featureCoordinator.showFocusPanel()
     }
 
     @objc
     private func showTalkPanel() {
-        windowController.showTalkPanel()
+        featureCoordinator.showTalkPanel()
     }
 
     @objc
     private func showShelfPanel() {
-        windowController.showShelfPanel()
+        featureCoordinator.showShelfPanel()
     }
 
     @objc
     private func togglePomodoro() {
-        windowController.togglePomodoro()
+        featureCoordinator.togglePomodoro()
     }
 
     @objc
     private func toggleTalk() {
-        windowController.toggleGeminiLive()
+        featureCoordinator.toggleGeminiLive()
     }
 
     @objc
     private func showManageKeys() {
-        windowController.openAppSettings()
+        featureCoordinator.openAppSettings()
     }
 
     @objc
     private func resetPomodoro() {
-        windowController.resetPomodoro()
+        featureCoordinator.resetPomodoro()
     }
 
     @objc
@@ -439,7 +439,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func updatePomodoroStatusItem() {
-        let pomodoro = windowController.pomodoroViewModel
+        let pomodoro = featureCoordinator.pomodoroViewModel
 
         if pomodoro.hasActiveSession {
             if pomodoroStatusItem == nil {
@@ -466,7 +466,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func refreshPomodoroLabel() {
         guard let button = pomodoroStatusItem?.button else { return }
-        let pomodoro = windowController.pomodoroViewModel
+        let pomodoro = featureCoordinator.pomodoroViewModel
         let text = pomodoro.remainingText(at: .now)
         let symbolName = pomodoro.phase.symbolName
         let taskForBar = pomodoro.currentTask
@@ -502,10 +502,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             popover.animates = true
             
             let contentView = TaskPopoverView(
-                pomodoro: windowController.pomodoroViewModel,
+                pomodoro: featureCoordinator.pomodoroViewModel,
                 onOpenNotch: { [weak self] in
                     self?.taskPopover?.performClose(nil)
-                    self?.windowController.showFocusPanel()
+                    self?.featureCoordinator.showFocusPanel()
                 }
             )
             

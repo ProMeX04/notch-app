@@ -5,6 +5,7 @@ import SwiftUI
 struct HoldToTalkShortcutRecorderView: View {
     @Binding var shortcut: HoldToTalkShortcut
     var title: String? = nil
+    var icon: String? = nil
     var helperText: String? = nil
     var isNotchStyle: Bool = false
     var tint: Color = .accentColor
@@ -28,6 +29,13 @@ struct HoldToTalkShortcutRecorderView: View {
 
     private var notchStyleBody: some View {
         HStack(spacing: 8) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(tint.opacity(0.9))
+                    .frame(width: 28, height: 28)
+                    .background(tint.opacity(0.1).cornerRadius(8))
+            }
             Text(title ?? "Push to Talk")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.9))

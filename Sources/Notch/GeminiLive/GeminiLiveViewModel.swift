@@ -133,24 +133,15 @@ final class GeminiLiveViewModel: ObservableObject {
     private var subscriptions = Set<AnyCancellable>()
     private var lastDisconnectWasUserInitiated = false
     private var pendingTurnSeparator = false
-    let screenShare = ScreenShareCoordinator()
     let entitlementStore: NotchEntitlementStore
-    let backend: BackendAccountCoordinator
-    let session: GeminiLiveSession
-    private let keyStore: GeminiLiveAPIKeyStore
-    private let backendConfigStore: GeminiLiveBackendConfigStore
-    private let backendClient: GeminiLiveBackendClient
+    let settingsController: GeminiLiveSettingsController
+    let accountController: GeminiLiveAccountController
+    let sessionController: GeminiLiveSessionController
 
     private var shouldPreserveMicrophoneLiveStateDuringReconnect: Bool {
         reconnectState.preservesLiveSessionUI && session.isLocalWebRTCMicrophoneCaptureActive
     }
-    private let settingsStore: GeminiLiveSettingsStore
-    let execApprovals: ExecApprovalCoordinator
-    private let agentAvatarStore: GeminiAgentAvatarStore
-    private let skillStore: SkillStore
-    private let skillPackageService: SkillPackageService
-    private let userStore: UserStore
-    private let memoryStore: MemoryStore
+    let toolingController: GeminiLiveToolingController
     private var currentSkillSnapshot: SkillSessionSnapshot?
     private var isNormalizingEnabledSkillNames = false
 
@@ -158,6 +149,20 @@ final class GeminiLiveViewModel: ObservableObject {
     private var storedBackendConfiguration: GeminiLiveBackendConfiguration?
     var onExecApprovalAttentionRequested: (() -> Void)?
     var onOpenAppSettingsRequested: (() -> Void)?
+
+    var screenShare: ScreenShareCoordinator { sessionController.screenShare }
+    var backend: BackendAccountCoordinator { accountController.backend }
+    var session: GeminiLiveSession { sessionController.session }
+    private var keyStore: GeminiLiveAPIKeyStore { settingsController.keyStore }
+    private var backendConfigStore: GeminiLiveBackendConfigStore { settingsController.backendConfigStore }
+    private var backendClient: GeminiLiveBackendClient { accountController.backendClient }
+    private var settingsStore: GeminiLiveSettingsStore { settingsController.settingsStore }
+    var execApprovals: ExecApprovalCoordinator { toolingController.execApprovals }
+    private var agentAvatarStore: GeminiAgentAvatarStore { toolingController.agentAvatarStore }
+    private var skillStore: SkillStore { toolingController.skillStore }
+    private var skillPackageService: SkillPackageService { toolingController.skillPackageService }
+    private var userStore: UserStore { toolingController.userStore }
+    private var memoryStore: MemoryStore { toolingController.memoryStore }
 
     var effectiveConnectionState: GeminiLiveConnectionState {
         lifecycleState.visualConnectionState
@@ -192,29 +197,26 @@ final class GeminiLiveViewModel: ObservableObject {
         session: GeminiLiveSession = GeminiLiveSession(),
         entitlementStore: NotchEntitlementStore = NotchEntitlementStore()
     ) {
-        self.session = session
-        self.entitlementStore = entitlementStore
-        keyStore = GeminiLiveAPIKeyStore(processInfo: processInfo)
-        backendConfigStore = GeminiLiveBackendConfigStore(processInfo: processInfo)
-        let backendAuthStore = GeminiLiveBackendAuthStore(processInfo: processInfo)
-        backendClient = GeminiLiveBackendClient()
-        backend = BackendAccountCoordinator(
-            client: backendClient,
-            configStore: backendConfigStore,
-            authStore: backendAuthStore,
+        let settingsController = GeminiLiveSettingsController(processInfo: processInfo)
+        let accountController = GeminiLiveAccountController(
+            processInfo: processInfo,
             entitlementStore: entitlementStore
         )
-        settingsStore = GeminiLiveSettingsStore()
-        let execApprovalStore = GeminiLiveExecApprovalStore()
-        execApprovals = ExecApprovalCoordinator(store: execApprovalStore)
-        agentAvatarStore = GeminiAgentAvatarStore()
-        skillStore = SkillStore()
-        skillPackageService = SkillPackageService(skillStore: skillStore)
-        userStore = UserStore()
-        memoryStore = MemoryStore()
-        installedSkills = skillStore.listInstalledSkills()
+        let sessionController = GeminiLiveSessionController(session: session)
+        let toolingController = GeminiLiveToolingController()
 
-        let savedSettings = settingsStore.read()
+        self.entitlementStore = entitlementStore
+        self.settingsController = settingsController
+        self.accountController = accountController
+        self.sessionController = sessionController
+        self.toolingController = toolingController
+        apiKeyText = ""
+        backendURLText = GeminiLiveHostedBackend.defaultURL
+        backendClientTokenText = ""
+        backendAuthEmailText = ""
+        installedSkills = toolingController.skillStore.listInstalledSkills()
+
+        let savedSettings = settingsController.settingsStore.read()
         if let savedSettings {
             isMicrophoneEnabled = savedSettings.isMicrophoneEnabled
             inputMode = savedSettings.inputMode
@@ -227,11 +229,12 @@ final class GeminiLiveViewModel: ObservableObject {
             selectedSystemPromptID = savedSettings.selectedSystemPromptID
         }
 
-        userProfileContent = userStore.readUserProfile()
-        memoryContent = memoryStore.readMainMemory()
+        userProfileContent = toolingController.userStore.readUserProfile()
+        memoryContent = toolingController.memoryStore.readMainMemory()
 
-        let currentGeminiKey = keyStore.read()?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let currentGeminiKey = settingsController.keyStore.read()?.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedCurrentGeminiKey = (currentGeminiKey?.isEmpty == false) ? currentGeminiKey : nil
+        let backend = accountController.backend
         storedAPIKey = normalizedCurrentGeminiKey
         apiKeyText = normalizedCurrentGeminiKey ?? ""
         backendAuthEmailText = backend.authenticatedEmail ?? backend.lastKnownEmail
@@ -241,7 +244,7 @@ final class GeminiLiveViewModel: ObservableObject {
         backendSignedInSummary = backend.signedInSummary
         isProFromBackend = backend.isProFromBackend
 
-        if let storedBackend = backendConfigStore.read() {
+        if let storedBackend = settingsController.backendConfigStore.read() {
             storedBackendConfiguration = storedBackend
             backendURLText = GeminiLiveHostedBackend.defaultURL
             backendClientTokenText = ""
@@ -531,6 +534,7 @@ final class GeminiLiveViewModel: ObservableObject {
                 }
             }
         }
+        
         configureExecApprovalCallbacks()
 
         // Derive overlayInput from all relevant publishers so observers subscribe to one source.
@@ -593,7 +597,7 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     func openWebAccountSignup() {
-        NotchWebPortal.openInBrowser(NotchWebPortal.signupURL())
+        NotchWebPortal.openInBrowser(NotchWebPortal.signupURL(apiBaseURL: configuredBackendConfiguration?.baseURL))
     }
 
     func openWebAccountLogin() {

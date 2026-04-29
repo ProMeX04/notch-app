@@ -45,5 +45,9 @@
 	<string>Notch uses the microphone for Gemini Live voice conversations.</string>
 	<key>NSScreenCaptureUsageDescription</key>
 	<string>Notch shares your screen with Gemini Live so it can see what's on your display.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Notch reads your calendar so Gemini can answer questions about your schedule.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Notch needs reminders access to let you manage your to-do lists via Gemini Live.</string>
 </dict>
 </plist>

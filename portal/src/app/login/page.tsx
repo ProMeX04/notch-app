@@ -44,7 +44,6 @@ function LoginPageContent() {
   const hasAttemptedOAuthRedirect = useRef(false)
 
   const oauthRequest = useMemo(() => readPortalOAuthAuthorizeRequest(searchParams), [searchParams])
-  const signupHref = useMemo(() => `/signup${buildPortalOAuthSearch(oauthRequest)}`, [oauthRequest])
   const isHandoffState = Boolean(oauthRequest && hasOpenedApp)
 
   const handoffToApp = (redirectTo: string) => {
@@ -96,56 +95,13 @@ function LoginPageContent() {
     }
   }, [isAuthenticated, oauthRequest, router])
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setIsLoading(true)
-    setError(null)
 
-    const formData = new FormData(event.currentTarget)
-    const email = formData.get('email') as string
-    const password = formData.get('password') as string
-
-    try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email,
-          password,
-          ...buildBrowserAuthDevicePayload(),
-        }),
-      })
-
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data.error || data.detail || 'Không thể đăng nhập. Vui lòng thử lại.')
-      }
-
-      notifyPortalAuthSessionChange()
-
-      if (oauthRequest) {
-        const redirectTo = await completePortalOAuthAuthorization(oauthRequest)
-        handoffToApp(redirectTo)
-        return
-      }
-
-      router.replace('/pro')
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Không thể đăng nhập. Vui lòng thử lại.')
-      setIsLoading(false)
-    }
-  }
 
   return (
     <main className="portal-auth-page-centered">
-      {!isHandoffState ? (
         <div className="portal-auth-topbar-minimal">
           <PortalLogo />
-          <Link href={signupHref} className="portal-button-ghost">
-            Tạo tài khoản
-          </Link>
         </div>
-      ) : null}
 
       <section className="portal-auth-container">
         <div className="portal-auth-header-centered">
@@ -178,7 +134,7 @@ function LoginPageContent() {
               }}
             />
           ) : (
-            <form className="portal-auth-form" onSubmit={handleSubmit}>
+            <div className="portal-auth-form">
               {error ? (
                 <div className="portal-error">
                   <AlertCircle size={18} />
@@ -186,28 +142,14 @@ function LoginPageContent() {
                 </div>
               ) : null}
 
-              <div className="portal-field">
-                <label htmlFor="email">Email</label>
-                <input className="portal-input" type="email" id="email" name="email" placeholder="email@example.com" required />
-              </div>
-
-              <div className="portal-field">
-                <label htmlFor="password">Mật khẩu</label>
-                <input className="portal-input" type="password" id="password" name="password" placeholder="••••••••" required />
-              </div>
-
-              <button type="submit" className="portal-button" disabled={isLoading} style={{ width: '100%', marginTop: '8px' }}>
-                {isLoading ? <Loader2 size={18} className="portal-spinner" /> : 'Đăng nhập'}
-              </button>
-            </form>
+              <Link href={`/api/auth/google${buildPortalOAuthSearch(oauthRequest)}`} className="portal-button" style={{ width: '100%', marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                Tiếp tục với Google
+              </Link>
+            </div>
           )}
         </div>
 
-        {!isHandoffState ? (
-          <p className="portal-auth-footer-simple">
-            Chưa có tài khoản? <Link href={signupHref}>Tạo tài khoản mới</Link>
-          </p>
-        ) : null}
+
       </section>
     </main>
   )

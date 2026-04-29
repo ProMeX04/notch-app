@@ -228,13 +228,7 @@ struct NotchPermissionDecision: Equatable {
 @MainActor
 final class NotchEntitlementStore: ObservableObject {
     static let defaultGraceInterval: TimeInterval = 72 * 60 * 60
-    private static let localDefaultRequirements: [String: NotchFeatureRequirement] = [
-        NotchCapability.talkConnection.policyKey: .pro,
-        NotchCapability.focusPomodoro.policyKey: .free,
-        NotchCapability.focusWebsiteBlocklist.policyKey: .free,
-        NotchCapability.browserBridge.policyKey: .free,
-        NotchCapability.mediaControls.policyKey: .free,
-    ]
+    private static let localDefaultRequirements = NotchCapabilityManifestLoader.defaultRequirements()
 
     @Published private(set) var snapshot: NotchEntitlementSnapshot
     @Published private(set) var policySnapshot: NotchPermissionPolicySnapshot

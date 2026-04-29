@@ -90,6 +90,11 @@ final class GeminiLiveSession: @unchecked Sendable {
     var onShouldAutoApproveExec: (@Sendable (_ command: String, _ workingDirectory: String?) -> Bool)?
     var onExecApprovalRequested: (@Sendable (ExecApprovalRequest) -> Void)?
 
+    /// Intercept handler for `notchctl` URL-scheme commands (media, focus, talk, panel, etc.).
+    /// Returns `true` if the command was handled in-process, `false` to fall through to shell.
+    var onNotchCommand: (@Sendable (String) async -> Bool)?
+    var onReadPomodoroState: (@Sendable () async -> [String: Any])?
+
     func sendScreenFrame(_ data: Data) {
         sendJSONObject([
             "realtimeInput": [
@@ -477,6 +482,89 @@ final class GeminiLiveSession: @unchecked Sendable {
                 "name": "edit",
                 "description": GeminiWorkspaceCodingTools.openClawEditToolDescription,
                 "parameters": GeminiWorkspaceCodingTools.openClawEditToolParameters
+            ])
+        }
+        if enabledTools.contains(.calendar) {
+            decls.append([
+                "name": "calendar",
+                "description": """
+                Manage the user's macOS Calendar (iCloud, Google, Exchange, etc.).
+                Actions:
+                - "list": Query events. Params: daysAhead (0-30, default 0), daysBack (0-30, default 0), query (filter by title).
+                - "create": Create a new event. Params: title (required), startDate (required, 'yyyy-MM-dd HH:mm'), endDate (optional), allDay (bool), location, notes, calendarName, alertMinutesBefore (set a notification alert).
+                - "delete": Delete an event. Params: eventId (required, from list results).
+                - "calendars": List all available calendars and their properties.
+                - "list_reminders": List pending or completed reminders (to-do items). Params: query, isCompleted, reminderList.
+                - "create_reminder": Create a new reminder/to-do. Params: title (required), notes, reminderList, startDate (due date/time — the notification fires exactly at this time by default), alertMinutesBefore (only set if user explicitly asks to be reminded BEFORE the due time; defaults to 0 = alert at due time).
+                - "complete_reminder": Mark a reminder as completed. Params: eventId (required).
+                - "delete_reminder": Delete a reminder. Params: eventId (required).
+                """,
+                "parameters": [
+                    "type": "OBJECT",
+                    "properties": [
+                        "action": [
+                            "type": "STRING",
+                            "description": "The action to perform: 'list', 'create', 'delete', 'calendars', 'list_reminders', 'create_reminder', 'complete_reminder', or 'delete_reminder'."
+                        ],
+                        "daysAhead": [
+                            "type": "NUMBER",
+                            "description": "For 'list': days into the future (0-30). Default 0."
+                        ],
+                        "daysBack": [
+                            "type": "NUMBER",
+                            "description": "For 'list': days into the past (0-30). Default 0."
+                        ],
+                        "query": [
+                            "type": "STRING",
+                            "description": "For 'list' or 'list_reminders': filter by text."
+                        ],
+                        "title": [
+                            "type": "STRING",
+                            "description": "For 'create': event title (required)."
+                        ],
+                        "startDate": [
+                            "type": "STRING",
+                            "description": "For 'create': start date/time in 'yyyy-MM-dd HH:mm' format (required). For 'create_reminder': the due date."
+                        ],
+                        "endDate": [
+                            "type": "STRING",
+                            "description": "For 'create': end date/time. Defaults to 1 hour after start."
+                        ],
+                        "allDay": [
+                            "type": "BOOLEAN",
+                            "description": "For 'create': true for all-day events."
+                        ],
+                        "location": [
+                            "type": "STRING",
+                            "description": "For 'create': event location."
+                        ],
+                        "notes": [
+                            "type": "STRING",
+                            "description": "For 'create': event notes/description."
+                        ],
+                        "calendarName": [
+                            "type": "STRING",
+                            "description": "For 'create': target calendar name. Defaults to the user's default calendar."
+                        ],
+                        "eventId": [
+                            "type": "STRING",
+                            "description": "For 'delete': the event ID from 'list' results."
+                        ],
+                        "alertMinutesBefore": [
+                            "type": "NUMBER",
+                            "description": "For 'create': minutes before the event to show a notification. For 'create_reminder': defaults to 0 (alert fires at the due time). Only set a non-zero value if the user explicitly asks to be reminded BEFORE the due time."
+                        ],
+                        "reminderList": [
+                            "type": "STRING",
+                            "description": "For 'create_reminder' or 'list_reminders': target reminder list name (e.g., 'Groceries', 'Inbox'). Defaults to default list."
+                        ],
+                        "isCompleted": [
+                            "type": "BOOLEAN",
+                            "description": "For 'list_reminders': true to show completed, false for pending (default)."
+                        ],
+                    ],
+                    "required": ["action"]
+                ] as [String: Any]
             ])
         }
 

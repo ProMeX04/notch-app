@@ -12,7 +12,7 @@ memory: false
 Use this skill for Notch Talk and Gemini Live controls through `exec` and Notch's command bridge.
 
 Rules:
-- Prefer `~/.notch/bin/notchctl` over ad-hoc app automation.
+- Use `notchctl` for Talk control inside Notch. The app intercepts this command internally.
 - Use this skill for Talk session controls, microphone mute state, captions, and screen sharing.
 - Prefer explicit commands like `mute`, `unmute`, `caption on`, `caption off`, `screen full`, and `screen stop`.
 - Use `toggle` only when the user explicitly asks for a toggle or the target state is unclear.
@@ -22,60 +22,60 @@ Command cookbook:
 
 Open the Talk panel:
 ```sh
-~/.notch/bin/notchctl panel talk
+notchctl panel talk
 ```
 
 Connect Talk:
 ```sh
-~/.notch/bin/notchctl talk connect
+notchctl talk connect
 ```
 
 Disconnect Talk:
 ```sh
-~/.notch/bin/notchctl talk disconnect
+notchctl talk disconnect
 ```
 
 Mute microphone:
 ```sh
-~/.notch/bin/notchctl talk mute
+notchctl talk mute
 ```
 
 Unmute microphone:
 ```sh
-~/.notch/bin/notchctl talk unmute
+notchctl talk unmute
 ```
 
 Toggle microphone:
 ```sh
-~/.notch/bin/notchctl talk mic-toggle
+notchctl talk mic-toggle
 ```
 
 Turn captions on:
 ```sh
-~/.notch/bin/notchctl caption on
+notchctl caption on
 ```
 
 Turn captions off:
 ```sh
-~/.notch/bin/notchctl caption off
+notchctl caption off
 ```
 
 Share full screen:
 ```sh
-~/.notch/bin/notchctl screen full
+notchctl screen full
 ```
 
 Share a selected region:
 ```sh
-~/.notch/bin/notchctl screen region
+notchctl screen region
 ```
 
 Share a selected app window:
 ```sh
-~/.notch/bin/notchctl screen window
+notchctl screen window
 ```
 
 Stop screen sharing:
 ```sh
-~/.notch/bin/notchctl screen stop
+notchctl screen stop
 ```

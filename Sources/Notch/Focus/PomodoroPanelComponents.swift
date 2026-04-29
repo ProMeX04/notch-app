@@ -138,7 +138,6 @@ private struct PomodoroTimerCluster: View {
             PomodoroClockGlyph(
                 tint: tint,
                 totalAngle: clockProgressAngle,
-                minuteAngle: minuteProgressAngle,
                 isRunning: pomodoro.isRunning
             )
 
@@ -173,55 +172,95 @@ private struct PomodoroTimerCluster: View {
 private struct PomodoroClockGlyph: View {
     let tint: Color
     let totalAngle: Double
-    let minuteAngle: Double
     let isRunning: Bool
 
     var body: some View {
         ZStack {
             // Background ambient glow from the tinted ring
             Circle()
-                .fill(tint.opacity(0.15))
+                .fill(tint.opacity(0.12))
                 .frame(width: 140, height: 140)
-                .blur(radius: 20)
+                .blur(radius: 24)
 
-            // Background Ring (Dim)
+            // Clock face background (Subtle glassmorphism)
             Circle()
-                .stroke(tint.opacity(0.15), lineWidth: 11)
+                .fill(Color.white.opacity(0.02))
+                .frame(width: 112, height: 112)
+                .overlay {
+                    Circle()
+                        .stroke(
+                            LinearGradient(
+                                colors: [.white.opacity(0.12), .clear, .white.opacity(0.04)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                }
+
+            // Ticks around the clock (Refined dots)
+            ForEach(0..<12) { i in
+                Circle()
+                    .fill(i % 3 == 0 ? Color.white.opacity(0.25) : Color.white.opacity(0.08))
+                    .frame(width: i % 3 == 0 ? 2 : 1.5, height: i % 3 == 0 ? 2 : 1.5)
+                    .offset(y: -50)
+                    .rotationEffect(.degrees(Double(i) * 30))
+            }
+
+            // Background Ring (Subtle glass guide)
+            Circle()
+                .stroke(Color.white.opacity(0.05), lineWidth: 14)
                 .frame(width: 100, height: 100)
 
-            // Progress Arc (Solid Tint)
-            // Follows the total session progress (Counter-Clockwise)
+            // Progress Arc (Solid Tint with glow)
+            // Follows the total session progress (Counter-Clockwise as it depletes)
             Circle()
                 .trim(from: 0, to: max(0.001, (totalAngle / 360.0).truncatingRemainder(dividingBy: 1.0) == 0 && totalAngle != 0 ? 1.0 : (totalAngle / 360.0).truncatingRemainder(dividingBy: 1.0)))
-                .stroke(tint, style: StrokeStyle(lineWidth: 11, lineCap: .round))
+                .stroke(
+                    AngularGradient(
+                        colors: [tint.opacity(0.4), tint, tint.opacity(0.4)],
+                        center: .center,
+                        startAngle: .degrees(-90),
+                        endAngle: .degrees(totalAngle - 90)
+                    ),
+                    style: StrokeStyle(lineWidth: 14, lineCap: .round)
+                )
                 .frame(width: 100, height: 100)
                 .rotationEffect(.degrees(-90)) // Start from 12 o'clock
-                .animation(isRunning ? .linear(duration: 1.0) : .smooth, value: minuteAngle)
-                .shadow(color: tint.opacity(0.3), radius: 6, x: 0, y: 0)
-
-            // Hour hand (White, shorter) - Represents total session progress
-            Capsule()
-                .fill(Color.white)
-                .frame(width: 8, height: 24)
-                .offset(y: -12) // Pivot point at bottom
-                .rotationEffect(.degrees(totalAngle))
                 .animation(isRunning ? .linear(duration: 1.0) : .smooth, value: totalAngle)
-                .shadow(color: Color.black.opacity(0.2), radius: 4)
+                .shadow(color: tint.opacity(0.45), radius: 8, x: 0, y: 0)
 
-            // Minute hand (White, longer, sharp) - Represents seconds in the current minute
-            Capsule()
-                .fill(Color.white)
-                .frame(width: 8, height: 38)
-                .offset(y: -19) // Pivot point at bottom
-                .rotationEffect(.degrees(minuteAngle))
-                .animation(isRunning ? .linear(duration: 1.0) : .smooth, value: minuteAngle)
-                .shadow(color: Color.white.opacity(0.4), radius: 8, x: 0, y: 0)
+            // The Single Hand (Sleek, tapered design)
+            // Represents the current session progress
+            VStack(spacing: 0) {
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [.white, Color.white.opacity(0.7)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(width: 12, height: 30)
+                    .shadow(color: Color.black.opacity(0.2), radius: 4, x: 0, y: 2)
+                
+                Spacer(minLength: 0)
+            }
+            .frame(width: 12, height: 60) // Height is 2x hand length to pivot in center
+            .rotationEffect(.degrees(totalAngle))
+            .animation(isRunning ? .linear(duration: 1.0) : .smooth, value: totalAngle)
 
-            // Center Pivot Dot (Tinted to match the ring)
-            Circle()
-                .fill(tint)
-                .frame(width: 14, height: 14)
-                .shadow(color: tint.opacity(0.6), radius: 8, x: 0, y: 0)
+            // Center Pivot Dot (Premium layered look)
+            ZStack {
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 11, height: 11)
+                
+                Circle()
+                    .stroke(tint, lineWidth: 2.5)
+                    .frame(width: 11, height: 11)
+            }
+            .shadow(color: tint.opacity(0.6), radius: 6, x: 0, y: 0)
         }
         .frame(width: 132, height: 132)
     }
@@ -234,7 +273,7 @@ private struct PomodoroTimerText: View {
 
     var body: some View {
         Text(pomodoro.remainingText(at: date))
-            .font(.system(size: PomodoroPanelMetrics.timerFontSize, weight: .bold, design: .rounded))
+            .font(.system(size: PomodoroPanelMetrics.timerFontSize, weight: .black, design: .rounded))
             .monospacedDigit()
             .foregroundStyle(tint)
             .contentTransition(.numericText())

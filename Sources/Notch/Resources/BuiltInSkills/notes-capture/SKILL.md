@@ -1,6 +1,6 @@
 ---
 name: notes-capture
-description: Use when the user wants to save a note or create a reminder.
+description: Use when the user wants to save a note.
 icon: square.and.pencil
 category: builtin
 requiredTools: ["exec"]
@@ -9,21 +9,18 @@ memory: false
 
 # Notes Capture
 
-Use this skill to create notes and reminders quickly through `exec` and AppleScript.
+Use this skill to create notes quickly through `exec` and `notchctl`.
 
 Rules:
-- Use Notes for notes and Reminders for reminders.
+- Use `notchctl` for Notes capture inside Notch. The app intercepts this command internally.
+- Use Notes app for saving notes.
 - Preserve the user's wording as much as possible.
 - Ask for missing note details only when they matter.
+- For reminders or scheduling, use the calendar tool instead.
 
 Command cookbook:
 
 Create a note in Notes:
 ```sh
-osascript -e 'tell application "Notes" to make new note with properties {body:"Buy milk tomorrow"}'
-```
-
-Create a reminder in the default Reminders list:
-```sh
-osascript -e 'tell application "Reminders" to tell default account to tell default list to make new reminder with properties {name:"Buy milk tomorrow"}'
+notchctl notes create "Buy milk tomorrow"
 ```

@@ -63,7 +63,7 @@ let package = Package(
                 .copy("Resources/FocusSounds"),
                 .copy("Resources/MenuBar"),
                 .copy("Resources/Animations"),
-                .copy("docs"),
+                .copy("Resources/Shared"),
             ]
         ),
         .executableTarget(

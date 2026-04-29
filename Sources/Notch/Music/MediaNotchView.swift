@@ -189,6 +189,7 @@ struct MediaNotchView: View {
                 presentationModel: presentationModel,
                 accessoryController: talkHeaderAccessoryController,
                 entitlementStore: entitlementStore,
+                pomodoro: pomodoro,
                 gemini: gemini
             )
             .frame(height: expandedHeaderHeight)

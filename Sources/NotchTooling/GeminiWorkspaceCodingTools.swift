@@ -1,4 +1,5 @@
 import AppKit
+import Quartz
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
@@ -251,7 +252,7 @@ public enum GeminiLiveToolResponsePayloadBuilder {
         var attachments: [FunctionResponseAttachment] = []
 
         for block in contentBlocks {
-            guard let type = block["type"] as? String, type == "image" else { continue }
+            guard let type = block["type"] as? String, type == "image" || type == "document" else { continue }
             guard let data = block["data"] as? String, !data.isEmpty else { continue }
             guard let mimeType = block["mimeType"] as? String, supportedInlineDataMimeTypes.contains(mimeType) else {
                 continue
@@ -264,9 +265,10 @@ public enum GeminiLiveToolResponsePayloadBuilder {
                 toolName: toolName,
                 index: attachments.count
             )
+            let kind: FunctionResponseAttachment.Kind = (type == "document") ? .document : .image
             attachments.append(
                 FunctionResponseAttachment(
-                    kind: .image,
+                    kind: kind,
                     displayName: displayName,
                     mimeType: mimeType,
                     data: data
@@ -351,6 +353,7 @@ public struct GeminiWorkspaceCodingTools {
     public static let defaultAdaptiveReadBudgetBytes = 50 * 1024
     public static let defaultGrepMaxLineLength = 500
     public static let defaultInlineImageMaxBytes = Int(4.5 * 1024 * 1024)
+    public static let defaultInlinePDFMaxBytes = 20 * 1024 * 1024
     public static let defaultInlineImageMaxDimension = 2_000
     public static let defaultJPEGQuality = 80
     private static let supportedGeminiInlineImageMimeTypes: Set<String> = [
@@ -384,7 +387,7 @@ public struct GeminiWorkspaceCodingTools {
     private static let narrowNoBreakSpace = "\u{202F}"
 
     public static let openClawReadToolDescription =
-        "Read the contents of a file. Supports text files and images (jpg, png, gif, webp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete."
+        "Read the contents of a file. Supports text files, images (jpg, png, gif, webp), and PDF documents. Images and PDFs are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete."
     public static let openClawReadPathParameterDescription =
         "Path to the file to read (relative or absolute)"
     public static let openClawReadOffsetParameterDescription =
@@ -621,6 +624,7 @@ public struct GeminiWorkspaceCodingTools {
     let inlineImageMaxBytes: Int
     let inlineImageMaxDimension: Int
     let jpegQuality: Int
+    let inlinePDFMaxBytes: Int
     let fileManager: FileManager
 
     public init(
@@ -633,6 +637,7 @@ public struct GeminiWorkspaceCodingTools {
         inlineImageMaxBytes: Int = defaultInlineImageMaxBytes,
         inlineImageMaxDimension: Int = defaultInlineImageMaxDimension,
         jpegQuality: Int = defaultJPEGQuality,
+        inlinePDFMaxBytes: Int = defaultInlinePDFMaxBytes,
         fileManager: FileManager = .default
     ) {
         self.workspaceRoot = workspaceRoot
@@ -644,6 +649,7 @@ public struct GeminiWorkspaceCodingTools {
         self.inlineImageMaxBytes = inlineImageMaxBytes
         self.inlineImageMaxDimension = inlineImageMaxDimension
         self.jpegQuality = jpegQuality
+        self.inlinePDFMaxBytes = inlinePDFMaxBytes
         self.fileManager = fileManager
     }
 
@@ -695,6 +701,9 @@ public struct GeminiWorkspaceCodingTools {
         case .success(let file):
             if let imageMimeType = file.imageMimeType {
                 return executeImageRead(file: file, mimeType: imageMimeType)
+            }
+            if let pdfMimeType = file.pdfMimeType {
+                return executePDFRead(file: file, mimeType: pdfMimeType, offset: normalizedOffset, limit: normalizedLimit ?? Self.pdfMaxPages)
             }
 
             guard normalizedLimit == nil else {
@@ -1248,6 +1257,59 @@ public struct GeminiWorkspaceCodingTools {
         } catch {
             return ["success": false, "error": "Couldn't read file: \(error.localizedDescription)"]
         }
+    }
+
+    private static let pdfMaxPages = 10
+
+    private func executePDFRead(file: ReadableFile, mimeType: String, offset: Int, limit: Int) -> [String: Any] {
+        guard let pdfDoc = PDFDocument(url: file.url) else {
+            return ["success": false, "error": "Couldn't open PDF: \(file.relativePath)"]
+        }
+
+        let totalPages = pdfDoc.pageCount
+        let startPage = max(offset, 1)
+        guard startPage <= totalPages else {
+            return [
+                "success": true,
+                "path": file.relativePath,
+                "absolutePath": file.url.path,
+                "mimeType": mimeType,
+                "content": "No more pages. PDF has \(totalPages) page\(totalPages == 1 ? "" : "s") total.",
+                "totalPages": totalPages,
+            ]
+        }
+
+        let endPage = min(startPage + limit - 1, totalPages)
+        let hasMore = endPage < totalPages
+
+        var extractedText = ""
+        for pageIndex in startPage...endPage {
+            guard let page = pdfDoc.page(at: pageIndex - 1) else { continue }
+            let pageText = page.string ?? ""
+            extractedText += "--- Page \(pageIndex) ---\n\(pageText)\n\n"
+        }
+
+        var header = "Read PDF [\(mimeType)] — pages \(startPage)-\(endPage) of \(totalPages)\n"
+        if hasMore {
+            header += "[Use offset=\(endPage + 1) to continue reading remaining \(totalPages - endPage) pages]\n"
+        }
+        let content = header + "\n" + extractedText
+        let truncation = truncateHead(content, maxLines: readMaxLines, maxBytes: readMaxBytes)
+
+        var result: [String: Any] = [
+            "success": true,
+            "path": file.relativePath,
+            "absolutePath": file.url.path,
+            "mimeType": mimeType,
+            "content": truncation.content,
+            "totalPages": totalPages,
+            "startPage": startPage,
+            "endPage": endPage,
+        ]
+        if hasMore {
+            result["continuationOffset"] = endPage + 1
+        }
+        return result
     }
 
     private func applyEditsToNormalizedContent(
@@ -2051,7 +2113,8 @@ public struct GeminiWorkspaceCodingTools {
             ReadableFile(
                 url: fileURL,
                 relativePath: workspaceRelativePath(for: fileURL),
-                imageMimeType: detectSupportedImageMimeType(from: fileURL)
+                imageMimeType: detectSupportedImageMimeType(from: fileURL),
+                pdfMimeType: detectPDFMimeType(from: fileURL)
             )
         )
     }
@@ -2087,6 +2150,22 @@ public struct GeminiWorkspaceCodingTools {
            String(decoding: data.prefix(4), as: UTF8.self) == "RIFF",
            String(decoding: data[8..<12], as: UTF8.self) == "WEBP" {
             return "image/webp"
+        }
+        return nil
+    }
+
+    private func detectPDFMimeType(from fileURL: URL) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: fileURL) else { return nil }
+        defer { try? handle.close() }
+        guard let header = try? handle.read(upToCount: 5) else { return nil }
+        return detectPDFMimeType(from: header)
+    }
+
+    private func detectPDFMimeType(from data: Data) -> String? {
+        guard data.count >= 5 else { return nil }
+        // PDF magic bytes: %PDF-
+        if Array(data.prefix(5)) == [0x25, 0x50, 0x44, 0x46, 0x2D] {
+            return "application/pdf"
         }
         return nil
     }
@@ -2350,6 +2429,7 @@ private struct ReadableFile {
     let url: URL
     let relativePath: String
     let imageMimeType: String?
+    let pdfMimeType: String?
 }
 
 private struct PreparedInlineImage {
@@ -2385,6 +2465,7 @@ private struct PreparedInlineImage {
 private struct FunctionResponseAttachment {
     enum Kind {
         case image
+        case document
     }
 
     let kind: Kind

@@ -24,55 +24,29 @@ private enum GeminiSetupViewMode: Equatable {
     case agentSelection
 }
 
-private struct MockupStatPill: View {
-    let icon: String
-    let title: String
-    let subtitle: String
+private struct GeminiDualPill: View {
+    let leftIcon: String
+    let leftTitle: String
+    let leftSubtitle: String
+    let rightIcon: String
+    let rightTitle: String
+    let rightSubtitle: String
     let tint: Color
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(tint)
-                .frame(width: 16)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.95))
-                Text(subtitle)
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.5))
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(Capsule().fill(Color.white.opacity(0.04)))
-        .overlay(Capsule().stroke(Color.white.opacity(0.08), lineWidth: 1))
-    }
-}
-
-private struct GeminiAgentStatusDualPill: View {
-    let voice: String
-    let thinking: String
-    let tint: Color
-    let lang: String
     
     @State private var isHovering = false
     
     var body: some View {
         HStack {
             HStack(spacing: 8) {
-                Image(systemName: "waveform")
+                Image(systemName: leftIcon)
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(tint)
                     .frame(width: 14)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(voice)
+                    Text(leftTitle)
                         .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.9))
-                    Text(Localization.get("Giọng nói", lang: lang))
+                        .foregroundStyle(.white.opacity(0.95))
+                    Text(leftSubtitle)
                         .font(.system(size: 8, weight: .medium))
                         .foregroundStyle(.white.opacity(0.4))
                 }
@@ -82,14 +56,14 @@ private struct GeminiAgentStatusDualPill: View {
             
             HStack(spacing: 8) {
                 VStack(alignment: .trailing, spacing: 1) {
-                    Text(thinking)
+                    Text(rightTitle)
                         .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.9))
-                    Text(Localization.get("Suy nghĩ", lang: lang))
+                        .foregroundStyle(.white.opacity(0.95))
+                    Text(rightSubtitle)
                         .font(.system(size: 8, weight: .medium))
                         .foregroundStyle(.white.opacity(0.4))
                 }
-                Image(systemName: "sparkles")
+                Image(systemName: rightIcon)
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(tint)
                     .frame(width: 14)
@@ -102,10 +76,27 @@ private struct GeminiAgentStatusDualPill: View {
         .scaleEffect(isHovering ? 1.01 : 1.0)
         .onHover { hovering in
             isHovering = hovering
-            if hovering { NSCursor.pointingHand.push() }
-            else { NSCursor.pop() }
         }
         .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isHovering)
+    }
+}
+
+private struct GeminiAgentStatusDualPill: View {
+    let voice: String
+    let thinking: String
+    let tint: Color
+    let lang: String
+    
+    var body: some View {
+        GeminiDualPill(
+            leftIcon: "waveform",
+            leftTitle: voice,
+            leftSubtitle: Localization.get("Giọng nói", lang: lang),
+            rightIcon: "sparkles",
+            rightTitle: thinking,
+            rightSubtitle: Localization.get("Suy nghĩ", lang: lang),
+            tint: tint
+        )
     }
 }
 
@@ -433,32 +424,22 @@ private struct GeminiTalkDisconnectedHomeView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Button {
-                            gemini.openAppSettings()
-                        } label: {
-                            GeminiAgentStatusDualPill(
-                                voice: gemini.selectedVoice.rawValue,
-                                thinking: gemini.thinkingLevel.rawValue,
-                                tint: themeAccent,
-                                lang: appLanguage
-                            )
-                        }
-                        .buttonStyle(PlainButtonStyle())
+                        GeminiAgentStatusDualPill(
+                            voice: gemini.selectedVoice.rawValue,
+                            thinking: gemini.thinkingLevel.rawValue,
+                            tint: themeAccent,
+                            lang: appLanguage
+                        )
                         
-                        HStack(spacing: 6) {
-                            MockupStatPill(
-                                icon: "wrench.fill",
-                                title: "\(gemini.enabledTools.count) \(Localization.get("Công cụ", lang: appLanguage))",
-                                subtitle: Localization.get("Được sử dụng", lang: appLanguage),
-                                tint: themeAccent
-                            )
-                            MockupStatPill(
-                                icon: "sparkles",
-                                title: "\(gemini.enabledSkillNames.count) \(Localization.get("Kỹ năng", lang: appLanguage))",
-                                subtitle: Localization.get("Sẵn sàng hỗ trợ", lang: appLanguage),
-                                tint: themeAccent
-                            )
-                        }
+                        GeminiDualPill(
+                            leftIcon: "wrench.fill",
+                            leftTitle: "\(gemini.enabledTools.count) \(Localization.get("Công cụ", lang: appLanguage))",
+                            leftSubtitle: Localization.get("Được sử dụng", lang: appLanguage),
+                            rightIcon: "sparkles",
+                            rightTitle: "\(gemini.enabledSkillNames.count) \(Localization.get("Kỹ năng", lang: appLanguage))",
+                            rightSubtitle: Localization.get("Sẵn sàng hỗ trợ", lang: appLanguage),
+                            tint: themeAccent
+                        )
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

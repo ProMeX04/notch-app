@@ -21,13 +21,19 @@ export default async function AdminLayout({
   }
 
   return (
-    <div className="min-h-screen bg-[#f8faff]">
-      <AdminSidebar />
-      <main className="pl-72 pt-4 pr-4 pb-4">
-        <div className="min-h-[calc(100vh-2rem)] rounded-[32px] bg-white border border-[var(--border)] shadow-sm overflow-hidden p-8">
-          {children}
-        </div>
-      </main>
+    <div className="min-h-screen relative overflow-hidden bg-slate-50">
+      {/* Decorative background elements */}
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-500 rounded-full mix-blend-multiply filter blur-[120px] opacity-20 pointer-events-none"></div>
+      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-500 rounded-full mix-blend-multiply filter blur-[120px] opacity-20 pointer-events-none"></div>
+
+      <div className="relative z-10 flex h-screen">
+        <AdminSidebar />
+        <main className="flex-1 pl-64 h-full overflow-y-auto">
+          <div className="m-4 min-h-[calc(100vh-2rem)] rounded-3xl glass-card p-8">
+            {children}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

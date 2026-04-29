@@ -200,7 +200,7 @@ final class BackendAccountCoordinator: ObservableObject {
             guard let configuration = await ensureResolvedConfigurationForAuth() else {
                 setLastError("Gemini Live server URL is missing.")
                 setStatus("Check the connection and try again.")
-                NotchWebPortal.openInBrowser(NotchWebPortal.loginURL())
+                NotchWebPortal.openInBrowser(NotchWebPortal.loginURL(apiBaseURL: configuredBackendConfiguration?.baseURL))
                 return
             }
 
@@ -218,14 +218,16 @@ final class BackendAccountCoordinator: ObservableObject {
                 clientID: oauthFlow.authorizationRequest.clientID,
                 redirectURI: oauthFlow.authorizationRequest.redirectURI,
                 state: oauthFlow.authorizationRequest.state,
-                codeChallenge: oauthFlow.authorizationRequest.codeChallenge
+                codeChallenge: oauthFlow.authorizationRequest.codeChallenge,
+                identityProvider: "google",
+                apiBaseURL: configuration.baseURL
             )
             NotchWebPortal.openInBrowser(url)
         }
     }
 
     func openWebProCheckout() {
-        NotchWebPortal.openInBrowser(NotchWebPortal.proCheckoutURL())
+        NotchWebPortal.openInBrowser(NotchWebPortal.proCheckoutURL(apiBaseURL: configuredBackendConfiguration?.baseURL))
     }
 
     func handleOAuthCallbackURL(_ url: URL) {

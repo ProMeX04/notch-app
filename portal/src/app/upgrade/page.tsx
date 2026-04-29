@@ -39,7 +39,7 @@ export default function UpgradePage() {
               <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', display: 'flex', alignItems: 'center', justifyItems: 'center', flexShrink: 0 }}>
                 <Check size={14} style={{ margin: 'auto' }} />
               </div>
-              <span>Tạo tài khoản hoặc đăng nhập</span>
+              <span>Đăng nhập hoặc Đăng ký bằng Google</span>
             </div>
             <div className="info-item" style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--foreground)', fontWeight: 600 }}>
               <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', display: 'flex', alignItems: 'center', justifyItems: 'center', flexShrink: 0 }}>
@@ -56,12 +56,9 @@ export default function UpgradePage() {
           </div>
 
           <div style={{ display: 'grid', gap: '12px', marginTop: '24px' }}>
-            <Link href={isAuthenticated ? '/pro' : '/signup'} className="portal-button" style={{ width: '100%', height: '60px', borderRadius: '18px', fontSize: '1.1rem', boxShadow: '0 10px 20px rgba(37, 99, 235, 0.2)' }}>
-              {isAuthenticated ? 'Vào trang tài khoản' : 'Tạo tài khoản để nâng cấp'}
+            <Link href={isAuthenticated ? '/pro' : '/api/auth/google'} className="portal-button" style={{ width: '100%', height: '60px', borderRadius: '18px', fontSize: '1.1rem', boxShadow: '0 10px 20px rgba(37, 99, 235, 0.2)' }}>
+              {isAuthenticated ? 'Vào trang tài khoản' : 'Đăng nhập với Google để nâng cấp'}
               <ArrowRight size={20} />
-            </Link>
-            <Link href={isAuthenticated ? '/pro' : '/login'} className="portal-button-ghost" style={{ width: '100%', height: '56px', borderRadius: '16px' }}>
-              {isAuthenticated ? 'Quản lý tài khoản' : 'Tôi đã có tài khoản'}
             </Link>
           </div>
 

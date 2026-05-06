@@ -153,49 +153,19 @@ enum NotchCommandRouter {
         let duration = firstNonEmpty(queryItems["duration"], queryItems["value"])
         let breakDuration = firstNonEmpty(queryItems["break"], queryItems["breakduration"])
         let longBreakDuration = firstNonEmpty(queryItems["long"], queryItems["longbreak"], queryItems["long-break"])
+        let cycleCount = firstNonEmpty(queryItems["cycle"], queryItems["count"], queryItems["sessions"])
 
         switch action {
-        case "show":
-            handler.showFocusPanel()
-        case "set":
-            try handler.configurePomodoro(duration: duration, breakDuration: breakDuration, longBreakDuration: longBreakDuration)
         case "start":
-            try handler.startPomodoro(duration: duration, breakDuration: breakDuration, longBreakDuration: longBreakDuration)
+            try handler.startPomodoro(duration: duration, breakDuration: breakDuration, longBreakDuration: longBreakDuration, cycleCount: cycleCount)
         case "pause":
             try handler.pausePomodoro()
         case "resume":
             try handler.resumePomodoro()
-        case "toggle":
-            handler.togglePomodoro()
         case "reset":
             try handler.resetPomodoroSession()
         case "skip":
             handler.skipPomodoroPhase()
-        case "phase":
-            guard let phase = firstNonEmpty(queryItems["phase"], queryItems["value"]) else {
-                throw NotchCommandError.missingParameter("phase")
-            }
-            try handler.setPomodoroPhase(phase)
-        case "long-break", "longbreak":
-            guard let duration = firstNonEmpty(queryItems["duration"], queryItems["value"]) else {
-                throw NotchCommandError.missingParameter("duration")
-            }
-            try handler.setPomodoroLongBreak(duration: duration)
-        case "cycle":
-            guard let count = firstNonEmpty(queryItems["count"], queryItems["value"]) else {
-                throw NotchCommandError.missingParameter("count")
-            }
-            try handler.setPomodoroCycle(count)
-        case "auto-breaks", "autobreaks":
-            guard let mode = try focusToggleMode(from: firstNonEmpty(queryItems["state"], queryItems["value"])) else {
-                throw NotchCommandError.missingParameter("state")
-            }
-            handler.setPomodoroAutoBreaks(mode)
-        case "auto-pomo", "autopomo", "auto-pomodoros":
-            guard let mode = try focusToggleMode(from: firstNonEmpty(queryItems["state"], queryItems["value"])) else {
-                throw NotchCommandError.missingParameter("state")
-            }
-            handler.setPomodoroAutoPomodoros(mode)
         default:
             throw NotchCommandError.invalidAction("focus", action)
         }
@@ -272,20 +242,6 @@ enum NotchCommandRouter {
         guard let raw else { return }
         guard raw == "pomodoro" else {
             throw NotchCommandError.invalidValue("tool", raw)
-        }
-    }
-
-    private static func focusToggleMode(from raw: String?) throws -> FocusToggleMode? {
-        guard let raw else { return nil }
-        switch raw {
-        case "on", "true", "enable", "enabled":
-            return .on
-        case "off", "false", "disable", "disabled":
-            return .off
-        case "toggle":
-            return .toggle
-        default:
-            throw NotchCommandError.invalidValue("state", raw)
         }
     }
 }

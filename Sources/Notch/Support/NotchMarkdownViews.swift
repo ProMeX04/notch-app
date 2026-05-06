@@ -20,6 +20,13 @@ struct NotchMarkdownView: View {
     let text: String
     let isUser: Bool
     var widthMode: NotchMarkdownWidthMode = .fillParent
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var isLightChrome: Bool { colorScheme == .light }
+    private var proseColor: Color { isLightChrome ? .black.opacity(0.9) : .white.opacity(0.92) }
+    private var codeTextColor: Color { isLightChrome ? .black.opacity(0.92) : .white.opacity(0.95) }
+    private var codeFillColor: Color { isLightChrome ? .black.opacity(0.06) : .black.opacity(0.4) }
+    private var codeStrokeColor: Color { isLightChrome ? .black.opacity(0.12) : .white.opacity(0.1) }
 
     var body: some View {
         let blocks = parseMarkdown(text)
@@ -42,16 +49,16 @@ struct NotchMarkdownView: View {
         let code = VStack(alignment: .leading, spacing: 0) {
             Text(content)
                 .font(.system(size: 12, weight: .regular, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.95))
+                .foregroundStyle(codeTextColor)
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .background(Color.black.opacity(0.4))
+        .background(codeFillColor)
         .cornerRadius(8)
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+                .stroke(codeStrokeColor, lineWidth: 0.5)
         )
 
         switch widthMode {
@@ -66,7 +73,7 @@ struct NotchMarkdownView: View {
     private func proseText(_ raw: String) -> some View {
         let textView = Text(LocalizedStringKey(raw))
             .font(.system(size: 13, weight: .medium, design: .rounded))
-            .foregroundStyle(.white.opacity(0.92))
+            .foregroundStyle(proseColor)
             .multilineTextAlignment(isUser ? .trailing : .leading)
 
         switch widthMode {

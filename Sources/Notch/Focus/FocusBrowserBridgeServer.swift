@@ -1,6 +1,8 @@
 import Combine
+import CommonCrypto
 import Foundation
 import Network
+import NotchBridgeParserCore
 import NotchFocusCore
 
 final class FocusBrowserBridgeServer: @unchecked Sendable {
@@ -18,20 +20,6 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
         }
     }
 
-    private struct FocusBridgePayload: Codable {
-        let app: String
-        let bridgeVersion: Int
-        let focusActive: Bool
-        let isRunning: Bool
-        let hasActiveSession: Bool
-        let phase: String
-        let remainingSeconds: Int
-        let blockedHosts: [String]
-        let allowedHosts: [String]
-        let autoOpenUrls: [String]
-        let updatedAt: String
-    }
-
     private struct HealthPayload: Codable {
         let ok: Bool
         let app: String
@@ -47,11 +35,98 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
     private var cancellables = Set<AnyCancellable>()
     private var snapshot = FocusBridgeSnapshot()
 
+    // MARK: - Browser Command Bridge
+
+    private struct BrowserCommand: Codable {
+        let type: String
+        let id: String
+        let action: String
+        let args: [String: JSONValue]
+
+        init(id: String, action: String, args: [String: JSONValue], type: String = "browser-command") {
+            self.type = type
+            self.id = id
+            self.action = action
+            self.args = args
+        }
+    }
+
+    private enum JSONValue: Codable, @unchecked Sendable {
+        case string(String)
+        case int(Int)
+        case double(Double)
+        case bool(Bool)
+        case array([JSONValue])
+        case object([String: JSONValue])
+        case null
+
+        var value: Any {
+            switch self {
+            case .string(let v): return v
+            case .int(let v): return v
+            case .double(let v): return v
+            case .bool(let v): return v
+            case .array(let v): return v.map { $0.value }
+            case .object(let v): return v.mapValues { $0.value }
+            case .null: return NSNull()
+            }
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            if let v = try? container.decode(Bool.self) { self = .bool(v) }
+            else if let v = try? container.decode(Int.self) { self = .int(v) }
+            else if let v = try? container.decode(Double.self) { self = .double(v) }
+            else if let v = try? container.decode(String.self) { self = .string(v) }
+            else if let v = try? container.decode([JSONValue].self) { self = .array(v) }
+            else if let v = try? container.decode([String: JSONValue].self) { self = .object(v) }
+            else { self = .null }
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.singleValueContainer()
+            switch self {
+            case .string(let v): try container.encode(v)
+            case .int(let v): try container.encode(v)
+            case .double(let v): try container.encode(v)
+            case .bool(let v): try container.encode(v)
+            case .array(let v): try container.encode(v)
+            case .object(let v): try container.encode(v)
+            case .null: try container.encodeNil()
+            }
+        }
+    }
+
+    private struct BrowserCommandResult: Codable {
+        let id: String
+        let success: Bool
+        let result: [String: JSONValue]?
+        let errorMessage: String?
+        let contentBlocks: [JSONValue]?
+    }
+
+    private let commandQueue = DispatchQueue(label: "dev.notch.browser-bridge.commands")
+    private var commandResults: [String: BrowserCommandResult] = [:]
+    private var commandWaiters: [String: CheckedContinuation<BrowserCommandResult?, Never>] = [:]
+    private var wsConnection: NWConnection?
+    private var wsConnected = false
+    /// Frame parser — owns the receive buffer, fragment buffer, and all frame state.
+    private var wsParser = BrowserBridgeFrameParser()
+
+    /// Returns `true` if the service worker has an active WebSocket connection.
+    var isExtensionConnected: Bool {
+        commandQueue.sync { wsConnected }
+    }
+
     private let entitlementStore: NotchEntitlementStore
+    /// Cached value of `entitlementStore.decision(for: .browserBridge).isAllowed`.
+    /// Updated on MainActor via Combine; read from any queue in `broadcastFocusState`.
+    private var isBrowserBridgeAllowed = false
 
     @MainActor
     init(pomodoroViewModel: PomodoroViewModel, blocklistStore: FocusWebsiteBlocklistStore, entitlementStore: NotchEntitlementStore) {
         self.entitlementStore = entitlementStore
+        self.isBrowserBridgeAllowed = entitlementStore.decision(for: .browserBridge).isAllowed
         snapshot.isRunning = pomodoroViewModel.isRunning
         snapshot.hasActiveSession = pomodoroViewModel.hasActiveSession
         snapshot.phase = pomodoroViewModel.phase.rawValue
@@ -75,6 +150,7 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
                 self.snapshot.hasActiveSession = hasActiveSession
                 self.snapshot.phase = phase.rawValue
                 self.snapshot.remainingSeconds = remainingSeconds
+                self.broadcastFocusState(snapshot: self.snapshot)
             }
         }
         .store(in: &cancellables)
@@ -84,6 +160,7 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
                 guard let self else { return }
                 self.stateQueue.async {
                     self.snapshot.blockedHosts = blockedHosts
+                    self.broadcastFocusState(snapshot: self.snapshot)
                 }
             }
             .store(in: &cancellables)
@@ -93,6 +170,7 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
                 guard let self else { return }
                 self.stateQueue.async {
                     self.snapshot.allowedHosts = allowedHosts
+                    self.broadcastFocusState(snapshot: self.snapshot)
                 }
             }
             .store(in: &cancellables)
@@ -102,7 +180,19 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
                 guard let self else { return }
                 self.stateQueue.async {
                     self.snapshot.autoOpenUrls = autoOpenUrls
+                    self.broadcastFocusState(snapshot: self.snapshot)
                 }
+            }
+            .store(in: &cancellables)
+
+        // Keep isBrowserBridgeAllowed in sync so broadcastFocusState can read it without @MainActor.
+        entitlementStore.$snapshot
+            .map { [weak self] _ in
+                self?.entitlementStore.decision(for: .browserBridge).isAllowed ?? false
+            }
+            .removeDuplicates()
+            .sink { [weak self] allowed in
+                self?.isBrowserBridgeAllowed = allowed
             }
             .store(in: &cancellables)
     }
@@ -142,6 +232,11 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
     func stop() {
         listener?.cancel()
         listener = nil
+        commandQueue.sync {
+            wsConnection?.cancel()
+            wsConnection = nil
+            wsConnected = false
+        }
         cancellables.removeAll()
     }
 
@@ -203,6 +298,12 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
         let target = String(parts[1])
         let path = URLComponents(string: "http://localhost\(target)")?.path ?? target
 
+        let isUpgrade = request.range(of: "Upgrade: websocket", options: .caseInsensitive) != nil
+        if isUpgrade && method == "GET" && (path == "/v1/ws" || path == "/ws") {
+            handleWebSocketUpgrade(request: request, connection: connection)
+            return
+        }
+
         switch (method, path) {
         case ("OPTIONS", _):
             sendResponse(status: "204 No Content", body: Data(), contentType: "application/json", to: connection)
@@ -214,49 +315,8 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
                 port: FocusWebsiteBlocklistStore.bridgePort
             )
             sendJSONResponse(payload, to: connection)
-        case ("GET", "/v1/focus-state"):
-            Task { @MainActor in
-                let payload = currentPayload()
-                sendJSONResponse(payload, to: connection)
-            }
         default:
             sendPlainTextResponse(status: "404 Not Found", body: "Not found.", to: connection)
-        }
-    }
-
-    @MainActor
-    private func currentPayload() -> FocusBridgePayload {
-        let isAllowed = entitlementStore.decision(for: .browserBridge).isAllowed
-        let snapshot = stateQueue.sync { self.snapshot }
-        
-        if isAllowed {
-            return FocusBridgePayload(
-                app: "Notch",
-                bridgeVersion: Self.bridgeVersion,
-                focusActive: snapshot.focusActive,
-                isRunning: snapshot.isRunning,
-                hasActiveSession: snapshot.hasActiveSession,
-                phase: snapshot.phase,
-                remainingSeconds: snapshot.remainingSeconds,
-                blockedHosts: snapshot.blockedHosts,
-                allowedHosts: snapshot.allowedHosts,
-                autoOpenUrls: snapshot.autoOpenUrls,
-                updatedAt: iso8601Formatter.string(from: .now)
-            )
-        } else {
-            return FocusBridgePayload(
-                app: "Notch",
-                bridgeVersion: Self.bridgeVersion,
-                focusActive: false,
-                isRunning: false,
-                hasActiveSession: false,
-                phase: PomodoroPhase.focus.rawValue,
-                remainingSeconds: 0,
-                blockedHosts: [],
-                allowedHosts: [],
-                autoOpenUrls: [],
-                updatedAt: iso8601Formatter.string(from: .now)
-            )
         }
     }
 
@@ -295,5 +355,261 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
         })
     }
 
-    private static let bridgeVersion = 1
+    // MARK: - Focus State WebSocket Broadcast
+
+    /// Push the current focus state to the connected extension over WebSocket.
+    /// Safe to call from any queue.
+    private func broadcastFocusState(snapshot: FocusBridgeSnapshot) {
+        let isAllowed = isBrowserBridgeAllowed
+
+        let dict: [String: Any] = [
+            "type": "focus-state",
+            "app": "Notch",
+            "bridgeVersion": Self.bridgeVersion,
+            "updatedAt": iso8601Formatter.string(from: .now),
+            "focusActive": isAllowed ? snapshot.focusActive : false,
+            "isRunning": isAllowed ? snapshot.isRunning : false,
+            "hasActiveSession": isAllowed ? snapshot.hasActiveSession : false,
+            "phase": isAllowed ? snapshot.phase : PomodoroPhase.focus.rawValue,
+            "remainingSeconds": isAllowed ? snapshot.remainingSeconds : 0,
+            "blockedHosts": isAllowed ? snapshot.blockedHosts : [] as [String],
+            "allowedHosts": isAllowed ? snapshot.allowedHosts : [] as [String],
+            "autoOpenUrls": isAllowed ? snapshot.autoOpenUrls : [] as [String],
+        ]
+
+        guard let data = try? JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys]) else { return }
+
+        let (connection, connected): (NWConnection?, Bool) = commandQueue.sync { (wsConnection, wsConnected) }
+        guard let connection, connected else { return }
+        sendWebSocketFrame(opcode: 0x01, payload: data, to: connection)
+    }
+
+    // MARK: - Browser Command Public API
+
+    /// Enqueue a browser command. If the extension has an active WebSocket connection, push it immediately.
+    /// Returns the result dictionary, or nil if the extension doesn't respond within the timeout.
+    func enqueueBrowserCommand(action: String, args: [String: Any], timeout: TimeInterval = 5) async -> [String: Any]? {
+        let id = UUID().uuidString
+        let jsonArgs = args.mapValues { value -> JSONValue in
+            switch value {
+            case let v as String: return .string(v)
+            case let v as Int: return .int(v)
+            case let v as Bool: return .bool(v)
+            default: return .string(String(describing: value))
+            }
+        }
+        let command = BrowserCommand(id: id, action: action, args: jsonArgs)
+
+        let (connection, connected) = commandQueue.sync { (wsConnection, wsConnected) }
+
+        NotchLog.app.info("enqueueBrowserCommand: action=\(action) id=\(id) wsConnected=\(connected) hasConnection=\(connection != nil)")
+
+        guard connected, let connection, let data = try? encoder.encode(command) else {
+            NotchLog.app.info("enqueueBrowserCommand: NO WebSocket connection")
+            return nil
+        }
+
+        // Wait for the extension to post a result.
+        let result: BrowserCommandResult? = await withCheckedContinuation { continuation in
+            commandQueue.sync {
+                commandWaiters[id] = continuation
+            }
+
+            sendWebSocketFrame(opcode: 0x01, payload: data, to: connection)
+            NotchLog.app.info("enqueueBrowserCommand: sent \(data.count) bytes over WebSocket")
+
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { [weak self] in
+                guard let self else { return }
+                self.commandQueue.sync {
+                    if let waiter = self.commandWaiters.removeValue(forKey: id) {
+                        NotchLog.app.info("Browser command \(action) timed out after \(timeout)s")
+                        waiter.resume(returning: nil)
+                    }
+                }
+            }
+        }
+
+        commandQueue.sync {
+            commandWaiters.removeValue(forKey: id)
+            commandResults.removeValue(forKey: id)
+        }
+
+        guard let result else { return nil }
+
+        var dict: [String: Any] = [:]
+        for (key, val) in result.result ?? [:] { dict[key] = val.value }
+        if let contentBlocks = result.contentBlocks?.compactMap({ $0.value }) {
+            dict["contentBlocks"] = contentBlocks
+        }
+        if let errorMessage = result.errorMessage { dict["errorMessage"] = errorMessage }
+        dict["success"] = result.success
+        return dict
+    }
+
+    // MARK: - WebSocket
+
+    private static let webSocketGUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
+    private func webSocketAcceptKey(for key: String) -> String {
+        let input = Data((key + Self.webSocketGUID).utf8)
+        var digest = [UInt8](repeating: 0, count: Int(CC_SHA1_DIGEST_LENGTH))
+        input.withUnsafeBytes { pointer in
+            _ = CC_SHA1(pointer.baseAddress, CC_LONG(input.count), &digest)
+        }
+        return Data(digest).base64EncodedString()
+    }
+
+    private func handleWebSocketUpgrade(request: String, connection: NWConnection) {
+        guard let keyLine = request.components(separatedBy: "\r\n").first(where: { $0.lowercased().hasPrefix("sec-websocket-key:") }) else {
+            sendPlainTextResponse(status: "400 Bad Request", body: "Missing Sec-WebSocket-Key.", to: connection)
+            return
+        }
+
+        let key = keyLine.split(separator: ":", maxSplits: 1).dropFirst().joined().trimmingCharacters(in: .whitespacesAndNewlines)
+        let accept = webSocketAcceptKey(for: key)
+        let response = [
+            "HTTP/1.1 101 Switching Protocols",
+            "Upgrade: websocket",
+            "Connection: Upgrade",
+            "Sec-WebSocket-Accept: \(accept)",
+            "",
+            "",
+        ].joined(separator: "\r\n")
+
+        commandQueue.sync {
+            wsConnection?.cancel()
+            wsConnection = connection
+            wsConnected = true
+        }
+
+        connection.send(content: Data(response.utf8), completion: .contentProcessed { [weak self] error in
+            if let error {
+                NotchLog.app.error("Browser bridge WebSocket handshake failed: \(error.localizedDescription)")
+                self?.clearWebSocket(connection)
+                connection.cancel()
+                return
+            }
+            NotchLog.app.info("Browser bridge WebSocket connected")
+            // Push current focus state immediately so extension doesn't need to poll.
+            let snap = self?.stateQueue.sync { self?.snapshot ?? FocusBridgeSnapshot() } ?? FocusBridgeSnapshot()
+            self?.broadcastFocusState(snapshot: snap)
+            self?.receiveWebSocketFrame(on: connection)
+        })
+    }
+
+    private func clearWebSocket(_ connection: NWConnection) {
+        commandQueue.sync {
+            if wsConnection === connection {
+                wsConnection = nil
+                wsConnected = false
+                wsParser = BrowserBridgeFrameParser()
+            }
+        }
+    }
+
+    private func receiveWebSocketFrame(on connection: NWConnection) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 256 * 1024) { [weak self] data, _, isComplete, error in
+            guard let self else {
+                connection.cancel()
+                return
+            }
+
+            // Process any data first (even if there's also an error or isComplete).
+            if let data, !data.isEmpty {
+                NotchLog.app.info("WS received \(data.count) bytes")
+                self.commandQueue.sync { self.wsParser.receiveBuffer.append(data) }
+                self.drainWebSocketBuffer(connection: connection)
+            }
+
+            // Check if the connection was cleared (e.g. by a close frame in drainWebSocketBuffer).
+            let stillConnected = self.commandQueue.sync { self.wsConnection === connection }
+            guard stillConnected else { return }
+
+            if let error {
+                NotchLog.app.error("Browser bridge WebSocket receive failed: \(error.localizedDescription)")
+                self.clearWebSocket(connection)
+                connection.cancel()
+                return
+            }
+            if isComplete {
+                self.clearWebSocket(connection)
+                return
+            }
+            self.receiveWebSocketFrame(on: connection)
+        }
+    }
+
+    /// Drain all complete messages from the parser buffer and handle each one.
+    private func drainWebSocketBuffer(connection: NWConnection) {
+        // Collect drained messages outside the sync block so we can call
+        // sendWebSocketFrame (which itself sends on the connection) without
+        // holding commandQueue.
+        let messages: [DrainedMessage] = commandQueue.sync { wsParser.drainMessages() }
+
+        for message in messages {
+            switch message {
+            case .text(let payload):
+                processCompleteMessage(payload: payload)
+
+            case .ping(let pingData):
+                // Echo back as pong (opcode 0x0A).
+                sendWebSocketFrame(opcode: 0x0A, payload: pingData, to: connection)
+
+            case .close:
+                clearWebSocket(connection)
+                connection.cancel()
+                return
+            }
+        }
+    }
+
+    private func processCompleteMessage(payload: Data) {
+        // Fast-path: check the type field before full decode.
+        // bridge-keepalive is a no-op; just keeps the connection alive.
+        if let rawObj = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
+           let type = rawObj["type"] as? String {
+            if type == "bridge-keepalive" { return }
+            // Only browser-command-result is expected from the extension.
+            guard type == "browser-command-result" else {
+                NotchLog.app.info("Browser bridge: ignoring unexpected message type '\(type)'")
+                return
+            }
+        }
+
+        guard let result = try? JSONDecoder().decode(BrowserCommandResult.self, from: payload) else {
+            NotchLog.app.info("Browser bridge: failed to decode complete message (\(payload.count) bytes)")
+            return
+        }
+
+        commandQueue.sync {
+            commandResults[result.id] = result
+            commandWaiters.removeValue(forKey: result.id)?.resume(returning: result)
+        }
+    }
+
+    private func sendWebSocketFrame(opcode: UInt8, payload: Data, to connection: NWConnection) {
+        var frame = Data()
+        frame.append(0x80 | opcode)
+        if payload.count < 126 {
+            frame.append(UInt8(payload.count))
+        } else if payload.count <= UInt16.max {
+            frame.append(126)
+            frame.append(UInt8(payload.count >> 8))
+            frame.append(UInt8(payload.count & 0xFF))
+        } else {
+            frame.append(127)
+            let length = UInt64(payload.count)
+            for shift in stride(from: 56, through: 0, by: -8) {
+                frame.append(UInt8((length >> UInt64(shift)) & 0xFF))
+            }
+        }
+        frame.append(payload)
+        connection.send(content: frame, completion: .contentProcessed { error in
+            if let error {
+                NotchLog.app.error("Browser bridge WebSocket send failed: \(error.localizedDescription)")
+            }
+        })
+    }
+
+    private static let bridgeVersion = 2
 }

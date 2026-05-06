@@ -3,6 +3,11 @@ import Foundation
 import os
 
 extension GeminiLiveSession {
+    func clearSessionResumptionHandle() {
+        latestSessionHandle = nil
+        latestSessionHandleIsResumable = false
+    }
+
     func prepareOutputIfNeeded() {
         guard !outputPrepared else { return }
 
@@ -256,16 +261,17 @@ extension GeminiLiveSession {
 
     func handleSessionResumptionUpdate(_ update: [String: Any]) {
         let resumable = update["resumable"] as? Bool ?? false
-        latestSessionHandleIsResumable = resumable
-
-        // Docs: only retain the handle when both resumable AND newHandle are present.
-        if resumable, let newHandle = update["newHandle"] as? String, !newHandle.isEmpty {
-            latestSessionHandle = newHandle
+        guard resumable, let newHandle = update["newHandle"] as? String, !newHandle.isEmpty else {
+            clearSessionResumptionHandle()
+            return
         }
+
+        latestSessionHandle = newHandle
+        latestSessionHandleIsResumable = true
     }
 
     func handleGoAway(_ goAway: [String: Any]) {
-        guard latestSessionHandle != nil else { return }
+        guard currentResumptionHandle != nil else { return }
         guard let timeLeft = parseGoAwayTimeLeft(goAway["timeLeft"] as? String) else { return }
 
         _ = scheduleAutomaticReconnect(
@@ -278,6 +284,9 @@ extension GeminiLiveSession {
     }
 
     func handleFailure(message: String, preserveAudioSession: Bool = false) {
+        if isResumingConnection {
+            clearSessionResumptionHandle()
+        }
         cancelPendingReconnect()
         tearDownConnection(preserveAudioSession: preserveAudioSession)
         isResumingConnection = false
@@ -322,6 +331,7 @@ extension GeminiLiveSession {
         guard socketTask != nil else { return }
         guard setupCompleteTime == nil else { return }
 
+        cancelSetupTimeout()
         hasCompletedSetup = true
         setupCompleteTime = Date()
         beginHeartbeatAfterSetup()

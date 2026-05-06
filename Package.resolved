@@ -1,5 +1,5 @@
 {
-  "originHash" : "c00834202025456802dd911195a0afd9acfa65715a473f64148b9bf3bc647fd6",
+  "originHash" : "d8bfd6cdbb2c30c49a3d13c4f083ca590417456f10cc4734f74cc04b7ae42320",
   "pins" : [
     {
       "identity" : "webrtc-xcframework",

@@ -19,21 +19,6 @@ struct PlaybackState: Equatable {
 }
 
 extension PlaybackState {
-    private static let browserBundleIdentifiers: Set<String> = [
-        "com.apple.Safari",
-        "com.google.Chrome",
-        "com.google.Chrome.canary",
-        "com.brave.Browser",
-        "com.brave.Browser.beta",
-        "com.microsoft.edgemac",
-        "company.thebrowser.Browser",
-        "org.mozilla.firefox",
-        "org.mozilla.firefoxdeveloperedition",
-        "com.operasoftware.Opera",
-        "com.operasoftware.OperaGX",
-        "com.vivaldi.Vivaldi",
-    ]
-
     var hasTrackMetadata: Bool {
         !title.isEmpty && title != "Nothing Playing"
     }
@@ -42,20 +27,16 @@ extension PlaybackState {
         hasTrackMetadata || !bundleIdentifier.isEmpty || isPlaying
     }
 
-    var isBrowserSource: Bool {
-        Self.browserBundleIdentifiers.contains(bundleIdentifier)
-    }
-
     var canTogglePlayback: Bool {
         hasMediaContext
     }
 
     var canSkipToPreviousTrack: Bool {
-        hasMediaContext && !prohibitsSkip && !isBrowserSource
+        hasMediaContext && !prohibitsSkip
     }
 
     var canSkipToNextTrack: Bool {
-        hasMediaContext && !prohibitsSkip && !isBrowserSource
+        hasMediaContext && !prohibitsSkip
     }
 
     var canSkipBackward15Seconds: Bool {

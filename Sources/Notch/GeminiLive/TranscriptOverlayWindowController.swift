@@ -8,6 +8,9 @@ import SwiftUI
 final class TranscriptOverlayModel: ObservableObject {
     @Published var input: TranscriptOverlayInput?
     @Published var isVisible: Bool = false
+    @Published var isPinned: Bool = false
+    @Published var isHovered: Bool = false
+    var onClose: (() -> Void)?
 
     var modelText: String {
         guard let input, input.subsEnabled else { return "" }
@@ -26,6 +29,12 @@ final class TranscriptOverlayModel: ObservableObject {
 
 private struct TranscriptOverlayView: View {
     @ObservedObject var model: TranscriptOverlayModel
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var isLightChrome: Bool { colorScheme == .light }
+    private var bubbleFillColor: Color { isLightChrome ? .white.opacity(0.82) : .black.opacity(0.22) }
+    private var bubbleStrokeColor: Color { isLightChrome ? .black.opacity(0.14) : .white.opacity(0.12) }
+    private var closeIconColor: Color { isLightChrome ? .black.opacity(0.68) : .white.opacity(0.72) }
 
     var body: some View {
         VStack(alignment: .center, spacing: 10) {
@@ -33,6 +42,7 @@ private struct TranscriptOverlayView: View {
                 HStack(alignment: .bottom, spacing: 8) {
                     if !model.modelText.isEmpty {
                         NotchMarkdownView(text: model.modelText, isUser: false, widthMode: .hugContent(maxWidth: 480))
+                            .textSelection(.enabled)
                     }
                     if model.isModelSpeaking {
                         CaptionTypingDots()
@@ -41,12 +51,36 @@ private struct TranscriptOverlayView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
                 .background {
-                    VisualEffectView()
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                    ZStack {
+                        VisualEffectView(material: isLightChrome ? .sidebar : .hudWindow)
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(bubbleFillColor)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(bubbleStrokeColor, lineWidth: 1)
+                    }
+                }
+                .overlay(alignment: .topTrailing) {
+                    if model.isPinned {
+                        Button {
+                            model.onClose?()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .symbolRenderingMode(.hierarchical)
+                                .foregroundStyle(closeIconColor)
+                                .font(.system(size: 18))
                         }
+                        .buttonStyle(.plain)
+                        .padding(2)
+                        .offset(x: 8, y: -8)
+                        .help("Hide Captions")
+                    }
+                }
+                .contentShape(Rectangle())
+                .onHover { hovering in
+                    model.isHovered = hovering
                 }
                 .animation(.spring(response: 0.38, dampingFraction: 0.82), value: model.modelText)
             }
@@ -54,19 +88,26 @@ private struct TranscriptOverlayView: View {
                 ToolStatusLine(action: toolAction)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(width: 520)
         .padding(.top, 6)
+        .padding(.bottom, 6)
+
     }
 }
 
 private struct CaptionTypingDots: View {
+    @Environment(\.colorScheme) private var colorScheme
     @State private var dotPhase = false
+
+    private var dotColor: Color {
+        colorScheme == .light ? .black.opacity(0.62) : .white.opacity(0.72)
+    }
 
     var body: some View {
         HStack(spacing: 2) {
             ForEach(0..<3, id: \.self) { i in
                 Circle()
-                    .fill(.white.opacity(0.72))
+                    .fill(dotColor)
                     .frame(width: 4, height: 4)
                     .scaleEffect(dotPhase ? 1.0 : 0.4)
                     .animation(
@@ -85,6 +126,11 @@ private struct CaptionTypingDots: View {
 
 private struct ToolStatusLine: View {
     let action: ToolActionToast
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var foregroundColor: Color {
+        colorScheme == .light ? .black.opacity(0.72) : .white.opacity(0.72)
+    }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -93,12 +139,19 @@ private struct ToolStatusLine: View {
             Text(action.label)
                 .font(.system(size: 11, weight: .medium))
         }
-        .foregroundStyle(.white.opacity(0.72))
+        .foregroundStyle(foregroundColor)
         .multilineTextAlignment(.center)
     }
 }
 
 // MARK: - Window Controller
+
+private final class TranscriptOverlayPanel: NSPanel { }
+
+private final class TranscriptOverlayHostingView<Content: View>: NSHostingView<Content> { }
+
+
+
 
 @MainActor
 final class TranscriptOverlayWindowController {
@@ -131,17 +184,24 @@ final class TranscriptOverlayWindowController {
     func setPreferredScreen(_ newScreen: NSScreen?) {
         preferredScreen = newScreen
 
-        guard let panel else { return }
-        let targetFrame = panelFrame(on: screen())
+        guard let panel, let hv = hostingView else { return }
+        let targetFrame = panelFrame(on: screen(), height: hv.fittingSize.height)
         panel.setFrame(targetFrame, display: true)
-        hostingView?.frame = CGRect(origin: .zero, size: targetFrame.size)
+        hv.frame = CGRect(origin: .zero, size: targetFrame.size)
     }
+
 
     func observe(gemini: GeminiLiveViewModel) {
         self.gemini = gemini
         suppressedTranscriptKey = nil
         model.input = nil
         model.isVisible = false
+        model.isPinned = !gemini.transcriptOverlayAutoHide
+        model.onClose = { [weak self] in
+            guard let self else { return }
+            self.suppressedTranscriptKey = self.gemini?.overlayInput.transcriptKey
+            self.hide(animated: true)
+        }
         cancellables.removeAll()
 
         gemini.$overlayInput
@@ -160,11 +220,28 @@ final class TranscriptOverlayWindowController {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] enabled in
                 guard let self else { return }
+                self.model.isPinned = !enabled
                 if !enabled {
                     self.hideTask?.cancel()
                     self.hideDebounceWorkItem?.cancel()
                     self.hideDebounceWorkItem = nil
                 } else if self.panel != nil, let g = self.gemini {
+                    self.scheduleAutoHide(isModelSpeaking: g.overlayInput.isModelSpeaking)
+                }
+            }
+            .store(in: &cancellables)
+
+        model.$isHovered
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] hovering in
+                guard let self else { return }
+                if hovering {
+                    self.hideTask?.cancel()
+                    self.hideDebounceWorkItem?.cancel()
+                    self.hideDebounceWorkItem = nil
+                } else {
+                    guard let g = self.gemini, g.transcriptOverlayAutoHide else { return }
                     self.scheduleAutoHide(isModelSpeaking: g.overlayInput.isModelSpeaking)
                 }
             }
@@ -176,6 +253,8 @@ final class TranscriptOverlayWindowController {
         cancellables.removeAll()
         model.input = nil
         model.isVisible = false
+        model.isPinned = false
+        model.onClose = nil
         hide(animated: true)
     }
 
@@ -203,16 +282,18 @@ final class TranscriptOverlayWindowController {
         ?? NSScreen.screens[0]
     }
 
-    private func panelFrame(on screen: NSScreen) -> CGRect {
+    private func panelFrame(on screen: NSScreen, height: CGFloat) -> CGRect {
         let closedNotchHeight = NotchMetrics.baseClosedSize(for: screen).height
         let x = screen.frame.midX - panelWidth / 2
-        let y = screen.frame.maxY - closedNotchHeight - notchSpacing - maxPanelHeight
-        return CGRect(x: x, y: y, width: panelWidth, height: maxPanelHeight)
+        let y = screen.frame.maxY - closedNotchHeight - notchSpacing - height
+        return CGRect(x: x, y: y, width: panelWidth, height: height)
     }
+
 
     private func showOrUpdate() {
         if let panel, let hv = hostingView {
-            let targetFrame = panelFrame(on: screen())
+            let contentHeight = hv.fittingSize.height
+            let targetFrame = panelFrame(on: screen(), height: contentHeight)
             panel.setFrame(targetFrame, display: true)
             hv.frame = CGRect(origin: .zero, size: targetFrame.size)
             ensurePanelVisible()
@@ -221,9 +302,12 @@ final class TranscriptOverlayWindowController {
 
         // Create a large stable window once
         let sc = screen()
-        let frame = panelFrame(on: sc)
+        let root = TranscriptOverlayView(model: model)
+        let hv = TranscriptOverlayHostingView(rootView: root)
+        let initialHeight = hv.fittingSize.height
+        let frame = panelFrame(on: sc, height: initialHeight)
 
-        let panel = NSPanel(
+        let panel = TranscriptOverlayPanel(
             contentRect: frame,
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
@@ -233,17 +317,19 @@ final class TranscriptOverlayWindowController {
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = true
-        panel.ignoresMouseEvents = true
+        // Always accept mouse events: enables hover-pause + text selection. Click-through is
+        // intentionally not preserved here per UX choice.
+        panel.ignoresMouseEvents = false
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         panel.alphaValue = 0
 
-        let hv = NSHostingView(rootView: TranscriptOverlayView(model: model))
         hv.frame = CGRect(origin: .zero, size: frame.size)
         hv.autoresizingMask = [.width, .height]
         panel.contentView = hv
 
         self.panel = panel
         self.hostingView = hv
+
 
         panel.orderFrontRegardless()
         NSAnimationContext.runAnimationGroup { ctx in
@@ -264,6 +350,7 @@ final class TranscriptOverlayWindowController {
         hideTask?.cancel()
         hideDebounceWorkItem?.cancel()
         hideDebounceWorkItem = nil
+        model.isHovered = false
         model.isVisible = false
         guard let panel else { return }
         if animated {
@@ -292,6 +379,8 @@ final class TranscriptOverlayWindowController {
 
         guard gemini?.transcriptOverlayAutoHide != false else { return }
         guard !isModelSpeaking else { return }
+        // Hover pauses the auto-hide entirely; resume happens via `model.$isHovered` sink.
+        guard !model.isHovered else { return }
 
         // Transcript keeps publishing small deltas after the model stops; restarting the timer on
         // every update made the overlay feel like it “never” hid. Wait for a quiet period first.
@@ -308,9 +397,11 @@ final class TranscriptOverlayWindowController {
         hideTask = Task { @MainActor [weak self] in
             guard let self else { return }
             guard self.gemini?.transcriptOverlayAutoHide != false else { return }
+            guard !self.model.isHovered else { return }
             let ms = Int(HideTiming.idleBeforeFade * 1000)
             try? await Task.sleep(for: .milliseconds(ms))
             guard !Task.isCancelled else { return }
+            guard !self.model.isHovered else { return }
             self.suppressedTranscriptKey = self.gemini?.overlayInput.transcriptKey
             self.hide(animated: true)
         }

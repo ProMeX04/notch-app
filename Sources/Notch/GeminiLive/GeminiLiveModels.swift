@@ -317,41 +317,54 @@ struct TranscriptOverlayInput: Equatable {
 enum GeminiTool: String, CaseIterable, Identifiable {
     case webSearch = "webSearch"
     case read = "read"
-    case write = "write"
-    case exec = "exec"
     case ls = "ls"
-    case find = "find"
-    case grep = "grep"
-    case edit = "edit"
     case calendar = "calendar"
+    case clipboard = "clipboard"
+    case appControl = "appControl"
+    case mediaControl = "mediaControl"
+    case pomodoro = "pomodoro"
+    case screenshot = "screenshot"
+    case browserControl = "browserControl"
+    case memory = "memory"
+    case exec = "exec"
 
     var id: String { rawValue }
 
     static let coreCases: [GeminiTool] = [
         .webSearch,
         .read,
-        .write,
-        .exec,
         .ls,
-        .find,
-        .grep,
-        .edit,
         .calendar,
+        .clipboard,
+        .appControl,
+        .mediaControl,
+        .pomodoro,
+        .screenshot,
+        .browserControl,
+        .memory,
     ]
 
     static let coreToolSet: Set<GeminiTool> = Set(coreCases)
+    static let allToolSet: Set<GeminiTool> = coreToolSet.union(restrictedTools)
+
+    /// Tools excluded from the default set for safety.
+    /// Shown in the picker but off by default; enabling them requires an explicit warning acknowledgment.
+    static let restrictedTools: Set<GeminiTool> = [.exec]
 
     var displayName: String {
         switch self {
         case .webSearch: return "Search"
         case .read: return "Read"
-        case .write: return "Write"
         case .ls: return "List"
-        case .find: return "Find"
-        case .grep: return "Grep"
-        case .edit: return "Edit"
-        case .exec: return "Exec"
         case .calendar: return "Calendar"
+        case .clipboard: return "Clipboard"
+        case .appControl: return "App"
+        case .mediaControl: return "Media"
+        case .pomodoro: return "Focus"
+        case .screenshot: return "Screenshot"
+        case .browserControl: return "Browser"
+        case .memory: return "Memory"
+        case .exec: return "Exec"
         }
     }
 
@@ -359,13 +372,16 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         switch self {
         case .webSearch: return "magnifyingglass"
         case .read: return "doc.text"
-        case .write: return "square.and.pencil"
         case .ls: return "list.bullet"
-        case .find: return "folder"
-        case .grep: return "text.magnifyingglass"
-        case .edit: return "slider.horizontal.below.rectangle"
-        case .exec: return "terminal"
         case .calendar: return "calendar"
+        case .clipboard: return "doc.on.clipboard"
+        case .appControl: return "macwindow"
+        case .mediaControl: return "playpause"
+        case .pomodoro: return "timer"
+        case .screenshot: return "camera.viewfinder"
+        case .browserControl: return "safari"
+        case .memory: return "brain"
+        case .exec: return "terminal"
         }
     }
 }
@@ -467,7 +483,7 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
     }
 
     var toolSet: Set<GeminiTool> {
-        Set(enabledTools.compactMap(GeminiTool.init(rawValue:))).intersection(GeminiTool.coreToolSet)
+        Set(enabledTools.compactMap(GeminiTool.init(rawValue:))).intersection(GeminiTool.allToolSet)
     }
 
     var voiceEnum: GeminiVoice {

@@ -12,6 +12,7 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
     var learningStatsStore: LearningStatsStore { bootstrapper.environment.learningStatsStore }
     var pomodoroViewModel: PomodoroViewModel { bootstrapper.environment.pomodoroViewModel }
     var focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore { bootstrapper.environment.focusWebsiteBlocklistStore }
+    var shortcutStore: ShortcutStore { bootstrapper.environment.shortcutStore }
     var presentationModel: NotchPresentationModel { bootstrapper.environment.presentationModel }
 
     func applicationWillFinishLaunching(_ notification: Notification) {

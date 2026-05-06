@@ -37,7 +37,8 @@ final class ApplicationBootstrapper {
             focusWebsiteBlocklistStore: environment.focusWebsiteBlocklistStore,
             learningStats: environment.learningStatsStore,
             gemini: environment.geminiLiveViewModel,
-            entitlementStore: environment.entitlementStore
+            entitlementStore: environment.entitlementStore,
+            shortcutStore: environment.shortcutStore
         )
 
         environment.focusBrowserBridgeServer.start()

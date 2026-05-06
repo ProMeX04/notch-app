@@ -28,7 +28,7 @@ The repo includes a Chrome extension in [`chrome-extension/notch-focus-blocker`]
 4. In Chrome, open `chrome://extensions`, enable Developer mode, then choose `Load unpacked`.
 5. Select the `chrome-extension/notch-focus-blocker` folder.
 
-The app exposes a local bridge at `http://127.0.0.1:44991`. The extension reads the current focus state and redirects matching tabs to an internal block page only while the app reports an active running focus phase.
+The app exposes a local WebSocket bridge at `ws://127.0.0.1:44991/v1/ws`. The extension keeps one offscreen WebSocket session open, receives pushed focus state changes, and sends browser command results over the same channel. HTTP is only used for the WebSocket upgrade and optional `/v1/health` diagnostics, not as a state or command fallback.
 
 ## Portal
 

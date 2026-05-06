@@ -2,19 +2,19 @@
 import Foundation
 import NotchTooling
 
-// Internal to this module - used by GeminiLiveSession and its extensions
-enum GeminiLiveCaptureMode {
-    case webRTC
-    case voiceProcessing
-    case standard
-}
-
 struct PendingExecApprovalCall {
     let toolCallID: String
     let args: [String: Any]
     let command: String
     let workingDirectory: String?
     let timeoutSeconds: Double
+}
+
+// Internal to this module - used by GeminiLiveSession and its extensions
+enum GeminiLiveCaptureMode {
+    case webRTC
+    case voiceProcessing
+    case standard
 }
 
 struct GeminiLiveUsageMetadata: Sendable {
@@ -70,6 +70,7 @@ struct GeminiLiveUsageMetadata: Sendable {
 final class GeminiLiveSession: @unchecked Sendable {
     static let defaultContextWindowTargetTokens = 25_000
     static let defaultContextWindowTriggerTokens = 65_000
+    private static let setupCompletionTimeout: TimeInterval = 15.0
     private static let maxReconnectDelay: TimeInterval = 30.0
     private static let baseReconnectDelay: TimeInterval = 0.5
     private static let pingInterval: DispatchTimeInterval = .seconds(20)
@@ -94,6 +95,18 @@ final class GeminiLiveSession: @unchecked Sendable {
     /// Returns `true` if the command was handled in-process, `false` to fall through to shell.
     var onNotchCommand: (@Sendable (String) async -> Bool)?
     var onReadPomodoroState: (@Sendable () async -> [String: Any])?
+    var onReadMediaState: (@Sendable () async -> [String: Any])?
+    var onReadUserStore: (@Sendable () -> String)?
+    var onReadMemoryStore: (@Sendable () -> String)?
+    var onWriteUserStore: (@Sendable (_ content: String) async -> Bool)?
+    var onWriteMemoryStore: (@Sendable (_ content: String) async -> Bool)?
+
+    /// Send a browser command through the extension bridge.
+    /// Returns the result dict if the extension responded, or nil on timeout.
+    var onBrowserBridgeCommand: (@Sendable (_ action: String, _ args: [String: Any]) async -> [String: Any]?)?
+
+    /// Check if the browser extension is currently connected and polling.
+    var onBrowserBridgeIsConnected: (@Sendable () -> Bool)?
 
     func sendScreenFrame(_ data: Data) {
         sendJSONObject([
@@ -173,12 +186,19 @@ final class GeminiLiveSession: @unchecked Sendable {
     var latestSessionHandle: String?
     var latestSessionHandleIsResumable = false
     var pendingReconnectWorkItem: DispatchWorkItem?
+    var setupTimeoutWorkItem: DispatchWorkItem?
     private var pingTimer: DispatchSourceTimer?
     private var lastMessageReceivedAt: Date?
     private var reconnectAttemptCount = 0
     private var hasLoggedUnstableConnection = false
     private let execApprovalQueue = DispatchQueue(label: "dev.notch.gemini.exec-approval")
     private var pendingExecApprovalsByID: [String: PendingExecApprovalCall] = [:]
+
+    var currentResumptionHandle: String? {
+        guard latestSessionHandleIsResumable else { return nil }
+        guard let latestSessionHandle, !latestSessionHandle.isEmpty else { return nil }
+        return latestSessionHandle
+    }
 
     deinit {
         disconnect(userInitiated: true)
@@ -230,8 +250,8 @@ final class GeminiLiveSession: @unchecked Sendable {
 
         startConnection(
             using: configuration,
-            statusText: resumeSession && latestSessionHandle != nil ? "Resuming Gemini Live..." : "Connecting to Gemini Live...",
-            displayState: resumeSession && latestSessionHandle != nil ? .connected : .connecting,
+            statusText: resumeSession && currentResumptionHandle != nil ? "Resuming Gemini Live..." : "Connecting to Gemini Live...",
+            displayState: resumeSession && currentResumptionHandle != nil ? .connected : .connecting,
             preserveAudioSession: shouldPreserveAudioSession
         )
     }
@@ -239,6 +259,7 @@ final class GeminiLiveSession: @unchecked Sendable {
     func disconnect(userInitiated: Bool) {
         userInitiatedDisconnect = userInitiated
         cancelPendingReconnect()
+        cancelSetupTimeout()
         stopHeartbeat()
         onReconnectStateChange?(.none)
         onMicrophoneInputLevel?(0)
@@ -291,23 +312,6 @@ final class GeminiLiveSession: @unchecked Sendable {
         }
     }
 
-    func enqueuePendingExecApproval(_ call: PendingExecApprovalCall) {
-        execApprovalQueue.sync {
-            pendingExecApprovalsByID[call.toolCallID] = call
-        }
-    }
-
-    func takePendingExecApproval(toolCallID: String) -> PendingExecApprovalCall? {
-        execApprovalQueue.sync {
-            pendingExecApprovalsByID.removeValue(forKey: toolCallID)
-        }
-    }
-
-    func clearPendingExecApprovals() {
-        execApprovalQueue.sync {
-            pendingExecApprovalsByID.removeAll()
-        }
-    }
 
     func setMicrophoneEnabled(_ enabled: Bool) {
         microphoneEnabled = enabled
@@ -449,39 +453,11 @@ final class GeminiLiveSession: @unchecked Sendable {
                 "parameters": GeminiWorkspaceCodingTools.openClawReadToolParameters
             ])
         }
-        if enabledTools.contains(.write) {
-            decls.append([
-                "name": "write",
-                "description": GeminiWorkspaceCodingTools.openClawWriteToolDescription,
-                "parameters": GeminiWorkspaceCodingTools.openClawWriteToolParameters
-            ])
-        }
         if enabledTools.contains(.ls) {
             decls.append([
                 "name": "ls",
                 "description": GeminiWorkspaceCodingTools.openClawLsToolDescription,
                 "parameters": GeminiWorkspaceCodingTools.openClawLsToolParameters
-            ])
-        }
-        if enabledTools.contains(.find) {
-            decls.append([
-                "name": "find",
-                "description": GeminiWorkspaceCodingTools.openClawFindToolDescription,
-                "parameters": GeminiWorkspaceCodingTools.openClawFindToolParameters
-            ])
-        }
-        if enabledTools.contains(.grep) {
-            decls.append([
-                "name": "grep",
-                "description": GeminiWorkspaceCodingTools.openClawGrepToolDescription,
-                "parameters": GeminiWorkspaceCodingTools.openClawGrepToolParameters
-            ])
-        }
-        if enabledTools.contains(.edit) {
-            decls.append([
-                "name": "edit",
-                "description": GeminiWorkspaceCodingTools.openClawEditToolDescription,
-                "parameters": GeminiWorkspaceCodingTools.openClawEditToolParameters
             ])
         }
         if enabledTools.contains(.calendar) {
@@ -567,7 +543,236 @@ final class GeminiLiveSession: @unchecked Sendable {
                 ] as [String: Any]
             ])
         }
+        if enabledTools.contains(.clipboard) {
+            decls.append([
+                "name": "clipboard",
+                "description": """
+                Read or write the macOS system clipboard, or copy file references to it.
+                Actions:
+                - "read": Return the current clipboard text.
+                - "write": Copy plain text to the clipboard for pasting elsewhere (Cmd+V). Use this for normal "copy this" requests.
+                - "copy-file": Copy one or more file references to the clipboard so the user can paste them into Finder, Mail, Slack, etc. as attachments. Use this only when the user explicitly wants the file itself pasted, not the file's text contents.
+                Treat clipboard text as potentially sensitive. Tell the user briefly what was placed on the clipboard.
+                """,
+                "parameters": [
+                    "type": "OBJECT",
+                    "properties": [
+                        "action": [
+                            "type": "STRING",
+                            "description": "The action to perform: 'read', 'write', or 'copy-file'."
+                        ],
+                        "text": [
+                            "type": "STRING",
+                            "description": "For 'write': the text to copy to the clipboard."
+                        ],
+                        "paths": [
+                            "type": "ARRAY",
+                            "items": ["type": "STRING"],
+                            "description": "For 'copy-file': one or more file paths to copy as file references."
+                        ],
+                    ],
+                    "required": ["action"]
+                ] as [String: Any]
+            ])
+        }
+        if enabledTools.contains(.appControl) {
+            decls.append([
+                "name": "appControl",
+                "description": """
+                Control macOS application windows: open, quit, check running state, minimize, or move/position a window.
+                Actions:
+                - "open": Launch an app by name.
+                - "quit": Quit an app by name.
+                - "check": Check whether an app is currently running.
+                - "minimize": Minimize the front window of an app.
+                - "move": Move and resize the front window to a screen position (left, right, top, bottom, center).
+                Use exact app names like Safari, Spotify, Notes. Do not use this for opening URLs or websites.
+                """,
+                "parameters": [
+                    "type": "OBJECT",
+                    "properties": [
+                        "action": [
+                            "type": "STRING",
+                            "description": "The action to perform: 'open', 'quit', 'check', 'minimize', or 'move'."
+                        ],
+                        "appName": [
+                            "type": "STRING",
+                            "description": "The exact macOS application name, e.g. 'Safari', 'Spotify', 'Notes'."
+                        ],
+                        "direction": [
+                            "type": "STRING",
+                            "description": "For 'move': the target position — 'left', 'right', 'top', 'bottom', or 'center'."
+                        ],
+                    ],
+                    "required": ["action", "appName"]
+                ] as [String: Any]
+            ])
+        }
+        if enabledTools.contains(.mediaControl) {
+            decls.append([
+                "name": "mediaControl",
+                "description": """
+                Control media playback and system volume on the user's Mac.
+                Playback actions: play, pause, toggle, next, previous, stop, skip-forward, skip-backward, open.
+                Volume actions: volume-get, volume-set, mute, unmute.
+                Use 'status' to check what is currently playing (title, artist, album, playing state, volume).
+                All actions return the current media state after execution.
+                If no supported media app is running, say so clearly instead of guessing.
+                """,
+                "parameters": [
+                    "type": "OBJECT",
+                    "properties": [
+                        "action": [
+                            "type": "STRING",
+                            "description": "Action: 'status', 'play', 'pause', 'toggle', 'next', 'previous', 'stop', 'skip-forward', 'skip-backward', 'open', 'volume-get', 'volume-set', 'mute', 'unmute'."
+                        ],
+                        "volumeLevel": [
+                            "type": "NUMBER",
+                            "description": "For 'volume-set': volume level 0-100 (e.g. 100 for maximum, 50 for half)."
+                        ],
+                        "skipSeconds": [
+                            "type": "NUMBER",
+                            "description": "For 'skip-forward'/'skip-backward': number of seconds to skip (e.g. 30)."
+                        ],
+                    ],
+                    "required": ["action"]
+                ] as [String: Any]
+            ])
+        }
 
+        if enabledTools.contains(.pomodoro) {
+            decls.append([
+                "name": "pomodoro",
+                "description": """
+                Control the Notch Pomodoro timer: start, pause, resume, reset, skip phase, check status.
+                Use 'status' to query the current timer state.
+                When the user asks to stop, end, cancel, or terminate a focus session, use the 'reset' action.
+                """,
+                "parameters": [
+                    "type": "OBJECT",
+                    "properties": [
+                        "action": [
+                            "type": "STRING",
+                            "description": "Action: 'status', 'start', 'pause', 'resume', 'reset', 'skip'. Use 'reset' when the user asks to stop, end, cancel, or terminate the active focus session."
+                        ],
+                        "focusDuration": [
+                            "type": "STRING",
+                            "description": "Focus duration, e.g. '25m' or '50m'. For 'start'."
+                        ],
+                        "breakDuration": [
+                            "type": "STRING",
+                            "description": "Short break duration, e.g. '5m'. For 'start'."
+                        ],
+                        "longBreakDuration": [
+                            "type": "STRING",
+                            "description": "Long break duration, e.g. '15m'. For 'start'."
+                        ],
+                        "cycleCount": [
+                            "type": "NUMBER",
+                            "description": "Number of focus sessions before a long break, e.g. 4. For 'start'."
+                        ],
+                    ],
+                    "required": ["action"]
+                ] as [String: Any]
+            ])
+        }
+        if enabledTools.contains(.screenshot) {
+            decls.append([
+                "name": "screenshot",
+                "description": "Take a screenshot on the user's Mac. Saves to ~/.notch/workspace/screenshots/ or copies to clipboard.",
+                "parameters": [
+                    "type": "OBJECT",
+                    "properties": [
+                        "mode": [
+                            "type": "STRING",
+                            "description": "Capture mode: 'fullscreen', 'window' (interactive), 'region' (interactive), 'fullscreen-clipboard', 'region-clipboard'."
+                        ],
+                    ],
+                    "required": ["mode"]
+                ] as [String: Any]
+            ])
+        }
+        if enabledTools.contains(.browserControl) {
+            decls.append([
+                "name": "browserControl",
+                "description": """
+                Control the browser: open URLs, read tab content, navigate, manage tabs, and interact with page elements.
+                Actions:
+                - "open": Open a URL in the default browser.
+                - "lucky": Open the top DuckDuckGo search result. 'youtube' is appended automatically for music queries.
+                - "read-tab": Read the current tab's URL, title, and visible text.
+                - "navigate": Navigate the current tab to a URL (stays in same tab).
+                - "go-back": Go back in browser history.
+                - "go-forward": Go forward in browser history.
+                - "reload": Reload the current page.
+                - "close-tab": Close a tab. IMPORTANT: Use 'tabId' for a specific tab from 'list-tabs' results. If no 'tabId' is provided, the current active tab is closed.
+                - "list-tabs": List all tabs in the front window. Returns each tab's unique 'tabId', title, and URL.
+                - "switch-tab": Switch to a tab. IMPORTANT: Prefer 'tabId' for reliability. Using 'index' (1-based) is supported but discouraged as indices shift when tabs are moved or closed.
+                - "scroll": Scroll the page up or down by a pixel amount (Chrome/Edge: precise; Safari: page scroll).
+                """,
+                "parameters": [
+                    "type": "OBJECT",
+                    "properties": [
+                        "action": [
+                            "type": "STRING",
+                            "description": "Action: 'open', 'lucky', 'read-tab', 'navigate', 'go-back', 'go-forward', 'reload', 'close-tab', 'list-tabs', 'switch-tab', or 'scroll'."
+                        ],
+                        "url": [
+                            "type": "STRING",
+                            "description": "For 'open', 'navigate': the URL."
+                        ],
+                        "query": [
+                            "type": "STRING",
+                            "description": "For 'lucky': the search query."
+                        ],
+                        "tabId": [
+                            "type": "INTEGER",
+                            "description": "The unique ID of the tab to target. Get this from 'list-tabs'. Highly recommended for 'close-tab', 'switch-tab', 'read-tab', and 'navigate'."
+                        ],
+                        "index": [
+                            "type": "INTEGER",
+                            "description": "For 'switch-tab': 1-based tab index. Discouraged, use 'tabId' instead."
+                        ],
+                        "direction": [
+                            "type": "STRING",
+                            "description": "For 'scroll': 'up' or 'down'. Defaults to 'down'."
+                        ],
+                        "amount": [
+                            "type": "INTEGER",
+                            "description": "For 'scroll': pixel amount to scroll. Defaults to 500."
+                        ],
+                    ],
+                    "required": ["action"]
+                ] as [String: Any]
+            ])
+        }
+        if enabledTools.contains(.memory) {
+            decls.append([
+                "name": "memory",
+                "description": """
+                Read or write persistent memory files for long-term context.
+                - "read-user": Read USER.md (stable identity: name, pronouns, role, preferences).
+                - "read-memory": Read MEMORY.md (durable facts, preferences, habits).
+                - "write-user": Overwrite USER.md with updated profile content.
+                - "write-memory": Overwrite MEMORY.md with updated memory content.
+                Use "write-user" when the user shares or corrects identity details. Use "write-memory" for broader long-term notes. Do not save temporary chatter or sensitive data.
+                """,
+                "parameters": [
+                    "type": "OBJECT",
+                    "properties": [
+                        "action": [
+                            "type": "STRING",
+                            "description": "Action: 'read-user', 'read-memory', 'write-user', or 'write-memory'."
+                        ],
+                        "content": [
+                            "type": "STRING",
+                            "description": "For 'write-user' or 'write-memory': the full file content to save."
+                        ],
+                    ],
+                    "required": ["action"]
+                ] as [String: Any]
+            ])
+        }
         return decls
     }
 
@@ -599,10 +804,11 @@ final class GeminiLiveSession: @unchecked Sendable {
         // "Connecting..." immediately, before any heavy audio work runs.
         captureMode = .webRTC
         audioChunkCount = 0
+        cancelSetupTimeout()
         userInitiatedDisconnect = false
         hasCompletedSetup = false
         setupCompleteTime = nil
-        isResumingConnection = latestSessionHandle != nil
+        isResumingConnection = currentResumptionHandle != nil
 
         guard let request = liveURLRequest(connectionCredential: configuration.connectionCredential) else {
             onStateChange?(.failed, "Couldn't create the Gemini Live URL.")
@@ -625,12 +831,14 @@ final class GeminiLiveSession: @unchecked Sendable {
             let task = self.urlSession.webSocketTask(with: request)
             self.socketTask = task
             task.resume()
+            self.scheduleSetupTimeout(for: task)
             self.receiveNextMessage()
             self.sendSetup(using: configuration, displayState: displayState)
         }
     }
 
     func tearDownConnection(preserveAudioSession: Bool = false) {
+        cancelSetupTimeout()
         stopHeartbeat()
         hasCompletedSetup = false
         setupCompleteTime = nil
@@ -665,8 +873,34 @@ final class GeminiLiveSession: @unchecked Sendable {
         pendingReconnectWorkItem = nil
     }
 
+    func cancelSetupTimeout() {
+        setupTimeoutWorkItem?.cancel()
+        setupTimeoutWorkItem = nil
+    }
+
+    func scheduleSetupTimeout(for socketTask: URLSessionWebSocketTask) {
+        cancelSetupTimeout()
+
+        let workItem = DispatchWorkItem { [weak self, weak socketTask] in
+            guard let self, let socketTask else { return }
+            guard self.socketTask === socketTask, !self.hasCompletedSetup else { return }
+
+            self.setupTimeoutWorkItem = nil
+            self.handleSocketTransportFailure(
+                message: self.isResumingConnection
+                    ? "Timed out while resuming Gemini Live session."
+                    : "Timed out waiting for Gemini Live setup.",
+                hadCompletedSetup: false
+            )
+        }
+
+        setupTimeoutWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.setupCompletionTimeout, execute: workItem)
+    }
+
     func stopPreservedAudioSession() {
         cancelPendingReconnect()
+        cancelSetupTimeout()
         stopHeartbeat()
         isResumingConnection = false
         onReconnectStateChange?(.none)
@@ -699,32 +933,44 @@ final class GeminiLiveSession: @unchecked Sendable {
             return false
         }
 
-        if requireSafeResumptionHandle && (!latestSessionHandleIsResumable || latestSessionHandle == nil) {
+        if requireSafeResumptionHandle && currentResumptionHandle == nil {
             return false
         }
 
-        if latestSessionHandle == nil && !allowFreshReconnectWithoutHandle {
+        if currentResumptionHandle == nil && !allowFreshReconnectWithoutHandle {
             return false
         }
 
         let displayState: GeminiLiveConnectionState = preserveConnectedState ? .connected : .connecting
         let reconnectState: GeminiLiveReconnectState = requireSafeResumptionHandle ? .sessionRefresh : .transport
+        // When the existing session is still alive (e.g. goAway with a resumption
+        // handle while setup is complete), the user can keep talking until the
+        // reconnect actually fires. Defer the "Refreshing..." UI emit to the
+        // workItem so the notch banner doesn't show during the idle wait.
+        let deferStateEmit = requireSafeResumptionHandle && preserveConnectedState
         let workItem = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.pendingReconnectWorkItem = nil
             guard !self.userInitiatedDisconnect else { return }
 
+            if deferStateEmit {
+                self.onReconnectStateChange?(reconnectState)
+                self.onStateChange?(displayState, statusText)
+            }
+
             self.startConnection(
                 using: currentConfiguration,
-                statusText: self.latestSessionHandle != nil ? "Resuming Gemini Live..." : "Reconnecting to Gemini Live...",
+                statusText: self.currentResumptionHandle != nil ? "Resuming Gemini Live..." : "Reconnecting to Gemini Live...",
                 displayState: displayState,
                 preserveAudioSession: preserveAudioSession
             )
         }
 
         pendingReconnectWorkItem = workItem
-        onReconnectStateChange?(reconnectState)
-        onStateChange?(displayState, statusText)
+        if !deferStateEmit {
+            onReconnectStateChange?(reconnectState)
+            onStateChange?(displayState, statusText)
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
         return true
     }
@@ -736,12 +982,30 @@ final class GeminiLiveSession: @unchecked Sendable {
     }
 
     private func reconnectStatusText() -> String {
-        latestSessionHandle != nil ? "Resuming Gemini Live session..." : "Reconnecting to Gemini Live..."
+        currentResumptionHandle != nil ? "Resuming Gemini Live session..." : "Reconnecting to Gemini Live..."
     }
 
     func resetReconnectBackoff() {
         reconnectAttemptCount = 0
         hasLoggedUnstableConnection = false
+    }
+
+    func enqueuePendingExecApproval(_ call: PendingExecApprovalCall) {
+        execApprovalQueue.sync {
+            pendingExecApprovalsByID[call.toolCallID] = call
+        }
+    }
+
+    func takePendingExecApproval(toolCallID: String) -> PendingExecApprovalCall? {
+        execApprovalQueue.sync {
+            pendingExecApprovalsByID.removeValue(forKey: toolCallID)
+        }
+    }
+
+    func clearPendingExecApprovals() {
+        execApprovalQueue.sync {
+            pendingExecApprovalsByID.removeAll()
+        }
     }
 
     func beginHeartbeatAfterSetup() {
@@ -776,6 +1040,12 @@ final class GeminiLiveSession: @unchecked Sendable {
 
     private func handleSocketTransportFailure(message: String, hadCompletedSetup: Bool) {
         let shouldPreserveAudioSession = hadCompletedSetup && captureMode == .webRTC
+
+        if !hadCompletedSetup && isResumingConnection {
+            clearSessionResumptionHandle()
+            isResumingConnection = false
+        }
+
         tearDownConnection(preserveAudioSession: shouldPreserveAudioSession)
         if pendingReconnectWorkItem != nil {
             cancelPendingReconnect()
@@ -877,7 +1147,7 @@ final class GeminiLiveSession: @unchecked Sendable {
                 ],
                 "triggerTokens": Self.defaultContextWindowTriggerTokens,
             ] as [String: Any],
-            "sessionResumption": latestSessionHandle.map { ["handle": $0] } ?? [:],
+            "sessionResumption": currentResumptionHandle.map { ["handle": $0] } ?? [:],
             "generationConfig": generationConfig,
             "realtimeInputConfig": [
                 "activityHandling": "START_OF_ACTIVITY_INTERRUPTS",

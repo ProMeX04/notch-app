@@ -116,7 +116,6 @@ extension GeminiLiveSession {
         if let runError = process.runError {
             var result: [String: Any] = [
                 "success": false,
-                "command": trimmedCommand,
                 "error": "Failed to start command: \(runError)"
             ]
             if let cwd {
@@ -128,7 +127,6 @@ extension GeminiLiveSession {
         if process.timedOut {
             var result: [String: Any] = [
                 "success": false,
-                "command": trimmedCommand,
                 "error": "Command timed out after \(Int(timeout))s.",
                 "exitCode": exitCode,
                 "stdout": stdout,
@@ -142,7 +140,6 @@ extension GeminiLiveSession {
 
         var result: [String: Any] = [
             "success": exitCode == 0,
-            "command": trimmedCommand,
             "message": exitCode == 0 ? "Command finished successfully." : "Command exited with status \(exitCode).",
             "exitCode": exitCode,
             "stdout": stdout,
@@ -157,7 +154,7 @@ extension GeminiLiveSession {
     // MARK: - Notchctl Intercept
 
     /// Parse and intercept `notchctl` commands, executing them in-process instead of spawning a shell.
-    private func interceptNotchctl(_ command: String, workingDirectory: String?) async -> [String: Any]? {
+    func interceptNotchctl(_ command: String, workingDirectory: String?) async -> [String: Any]? {
         // Match: ~/.notch/bin/notchctl <args...>  OR  notchctl <args...>
         let notchctlPrefixes = ["~/.notch/bin/notchctl ", "$HOME/.notch/bin/notchctl ", "notchctl "]
         var argsString: String?
@@ -196,7 +193,6 @@ extension GeminiLiveSession {
                        let jsonString = String(data: data, encoding: .utf8) {
                         return [
                             "success": true,
-                            "command": command,
                             "stdout": jsonString,
                             "stderr": "",
                             "exitCode": 0
@@ -278,7 +274,6 @@ extension GeminiLiveSession {
         if let handler = onNotchCommand, await handler(urlString) {
             return [
                 "success": true,
-                "command": "notchctl \(domain) \(tokens.joined(separator: " "))",
                 "message": "Command executed in-process.",
             ]
         }
@@ -347,20 +342,22 @@ extension GeminiLiveSession {
         case "get":
             let script = "output volume of (get volume settings)"
             let result = runAppleScript(script)
-            return ["success": true, "command": "notchctl volume get", "stdout": result]
+            return ["success": true, "stdout": result]
         case "set":
-            guard let levelStr = tokens.dropFirst().first else {
-                return ["success": false, "error": "Missing volume level. Usage: volume set <0-100>"]
+            guard let levelStr = tokens.dropFirst().first,
+                  let rawLevel = Double(levelStr) else {
+                return ["success": false, "error": "Missing or invalid volume level. Usage: volume set <0-100>"]
             }
-            let script = "set volume output volume \(levelStr)"
+            let clampedLevel = Int(min(max(rawLevel, 0), 100))
+            let script = "set volume output volume \(clampedLevel)"
             _ = runAppleScript(script)
-            return ["success": true, "command": "notchctl volume set \(levelStr)", "message": "Volume set to \(levelStr)."]
+            return ["success": true, "message": "Volume set to \(clampedLevel)."]
         case "mute":
             _ = runAppleScript("set volume with output muted")
-            return ["success": true, "command": "notchctl volume mute", "message": "Volume muted."]
+            return ["success": true, "message": "Volume muted."]
         case "unmute":
             _ = runAppleScript("set volume without output muted")
-            return ["success": true, "command": "notchctl volume unmute", "message": "Volume unmuted."]
+            return ["success": true, "message": "Volume unmuted."]
         default:
             return ["success": false, "error": "Unknown volume action '\(action)'."]
         }
@@ -379,7 +376,7 @@ extension GeminiLiveSession {
         let escaped = text.replacingOccurrences(of: "\"", with: "\\\"")
         let script = "tell application \"Notes\" to make new note with properties {body:\"\(escaped)\"}"
         _ = runAppleScript(script)
-        return ["success": true, "command": "notchctl notes create", "message": "Note created."]
+        return ["success": true, "message": "Note created."]
     }
 
     // MARK: - App Control (Native)
@@ -422,13 +419,12 @@ extension GeminiLiveSession {
             let success = result.terminationStatus == 0
             return [
                 "success": success,
-                "command": "notchctl app open \(appName)",
                 "message": success ? "\(appName) opened." : "Failed to open \(appName).",
             ]
         case "quit":
             let script = "tell application \"\(appName)\" to quit"
             _ = runAppleScript(script)
-            return ["success": true, "command": "notchctl app quit \(appName)", "message": "\(appName) quit."]
+            return ["success": true, "message": "\(appName) quit."]
         case "check":
             let result = await runProcess(
                 executablePath: "/usr/bin/pgrep",
@@ -438,7 +434,6 @@ extension GeminiLiveSession {
             let running = result.terminationStatus == 0
             return [
                 "success": true,
-                "command": "notchctl app check \(appName)",
                 "stdout": running ? "running" : "not running",
             ]
         case "minimize":
@@ -456,7 +451,6 @@ extension GeminiLiveSession {
             let success = result.success && !result.stdout.lowercased().hasPrefix("error:")
             return [
                 "success": success,
-                "command": "notchctl app minimize \(appName)",
                 "message": success ? "\(appName) minimized." : "Failed to minimize \(appName).",
                 "stderr": result.errorMessage ?? ""
             ]
@@ -561,7 +555,6 @@ extension GeminiLiveSession {
             let success = result.success && !result.stdout.lowercased().hasPrefix("error:")
             return [
                 "success": success,
-                "command": "notchctl app move \(appName) \(direction)",
                 "message": success ? "\(appName) moved \(direction)." : "Failed to move \(appName) \(direction).",
                 "stderr": result.errorMessage ?? ""
             ]
@@ -580,7 +573,7 @@ extension GeminiLiveSession {
         case "read":
             let pasteboard = NSPasteboard.general
             let text = pasteboard.string(forType: .string) ?? ""
-            return ["success": true, "command": "notchctl clipboard read", "stdout": text]
+            return ["success": true, "stdout": text]
         case "write":
             let text = Array(tokens.dropFirst()).joined(separator: " ")
             guard !text.isEmpty else {
@@ -592,7 +585,7 @@ extension GeminiLiveSession {
             guard didWrite else {
                 return ["success": false, "error": "Failed to write text to the clipboard."]
             }
-            return ["success": true, "command": "notchctl clipboard write", "message": "Copied text to clipboard."]
+            return ["success": true, "message": "Copied text to clipboard."]
         case "copy-file":
             let rawPaths = Array(tokens.dropFirst()).map {
                 $0.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -617,7 +610,6 @@ extension GeminiLiveSession {
             guard pasteboard.writeObjects(fileURLs) else {
                 return [
                     "success": false,
-                    "command": "notchctl clipboard copy-file",
                     "error": rawPaths.count == 1
                         ? "Failed to copy file reference to the clipboard."
                         : "Failed to copy file references to the clipboard."
@@ -625,7 +617,6 @@ extension GeminiLiveSession {
             }
             return [
                 "success": true,
-                "command": "notchctl clipboard copy-file",
                 "message": rawPaths.count == 1
                     ? "Copied file reference to clipboard."
                     : "Copied \(rawPaths.count) file references to clipboard."
@@ -1346,6 +1337,32 @@ extension GeminiLiveSession {
         guard value.count > limit else { return value }
         let endIndex = value.index(value.startIndex, offsetBy: limit)
         return String(value[..<endIndex]) + "\n...[truncated]"
+    }
+    func executeBrowserControl(action: String, args: [String: Any]) async -> [String: Any] {
+        NotchLog.gemini.info("executeBrowserControl called: action=\(action)")
+        
+        guard let handler = onBrowserBridgeCommand else {
+            NotchLog.gemini.error("executeBrowserControl: onBrowserBridgeCommand is nil!")
+            return ["success": false, "error": "Browser bridge is not available."]
+        }
+        
+        // Check if extension is connected
+        let isConnected = onBrowserBridgeIsConnected?() ?? false
+        NotchLog.gemini.info("executeBrowserControl: extension connected = \(isConnected)")
+        
+        let bridgeResult = await handler(action, args)
+        NotchLog.gemini.info("executeBrowserControl: bridgeResult isNil=\(bridgeResult == nil)")
+        
+        guard let bridgeResult else {
+            return ["success": false, "error": "Browser extension did not respond (timeout). Make sure the Notch Focus extension is installed and enabled in Chrome."]
+        }
+        
+        var result = bridgeResult
+        if result["success"] == nil {
+            result["success"] = result["error"] == nil && result["errorMessage"] == nil
+        }
+        
+        return result
     }
 }
 

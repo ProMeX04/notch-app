@@ -21,7 +21,7 @@ async function bootstrap() {
 function render(state) {
   if (!state) return;
 
-  setText("bridge-url", state.apiBaseUrl || "http://127.0.0.1:44991");
+  setText("bridge-url", state.apiBaseUrl || "ws://127.0.0.1:44991/v1/ws");
   setText("focus-state", state.focusActive ? "Blocking active" : state.connected ? "Idle" : "App offline");
   setText("phase", state.phase || "-");
   setText("blocked-count", String((state.blockedHosts || []).length));

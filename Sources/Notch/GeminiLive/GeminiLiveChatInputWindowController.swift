@@ -13,22 +13,72 @@ private final class GeminiLiveChatKeyPanel: NSPanel {
 
 private struct GeminiLiveChatInputContentView: View {
     @ObservedObject var gemini: GeminiLiveViewModel
+    @Environment(\.colorScheme) private var colorScheme
     @State private var draft = ""
+    @State private var suggestion = ""
+    @State private var historyIndex: Int? = nil
+    @State private var originalDraft = ""
+
+    private var isLightChrome: Bool { colorScheme == .light }
+    private var suggestionColor: Color { isLightChrome ? .black.opacity(0.28) : .white.opacity(0.25) }
+    private var inputTextColor: Color { isLightChrome ? .black.opacity(0.9) : .white.opacity(0.92) }
+    private var sendIconColor: Color {
+        let opacity = draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.24 : 0.95
+        return isLightChrome ? .black.opacity(opacity) : .white.opacity(opacity)
+    }
+    private var fieldChromeFill: Color { isLightChrome ? .white.opacity(0.82) : .black.opacity(0.28) }
+    private var fieldChromeStroke: Color { isLightChrome ? .black.opacity(0.14) : .white.opacity(0.12) }
 
     var body: some View {
         HStack(spacing: 10) {
-            TextField("Message…", text: $draft)
-                .textFieldStyle(.plain)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.white.opacity(0.92))
-                .onSubmit(commitSend)
-                .disabled(!gemini.canSendLiveInput)
+            ZStack(alignment: .leading) {
+                if !suggestion.isEmpty && draft.count < suggestion.count {
+                    Text(suggestion)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(suggestionColor)
+                        .padding(.leading, 0)
+                }
+
+                TextField("Message…", text: $draft)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(inputTextColor)
+                    .onSubmit(commitSend)
+                    .disabled(!gemini.canSendLiveInput)
+                    .onChange(of: draft) { _, newValue in
+                        if historyIndex == nil {
+                            updateSuggestion(for: newValue)
+                        }
+                    }
+                    .onKeyPress(.rightArrow) {
+                        if !suggestion.isEmpty && draft.count < suggestion.count {
+                            draft = suggestion
+                            suggestion = ""
+                            return .handled
+                        }
+                        return .ignored
+                    }
+                    .onKeyPress(.tab) {
+                        if !suggestion.isEmpty && draft.count < suggestion.count {
+                            draft = suggestion
+                            suggestion = ""
+                            return .handled
+                        }
+                        return .ignored
+                    }
+                    .onKeyPress(.upArrow) {
+                        return navigateHistory(direction: -1)
+                    }
+                    .onKeyPress(.downArrow) {
+                        return navigateHistory(direction: 1)
+                    }
+            }
 
             Button(action: commitSend) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 22, weight: .semibold))
                     .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.white.opacity(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.2 : 0.95))
+                    .foregroundStyle(sendIconColor)
             }
             .buttonStyle(.plain)
             .disabled(
@@ -40,13 +90,51 @@ private struct GeminiLiveChatInputContentView: View {
         .padding(.vertical, 8)
         .focusEffectDisabled()
         .background {
-            VisualEffectView()
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
-                }
+            ZStack {
+                VisualEffectView(material: isLightChrome ? .sidebar : .hudWindow)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(fieldChromeFill)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(fieldChromeStroke, lineWidth: 1)
+            }
         }
+    }
+
+    private func updateSuggestion(for newValue: String) {
+        if let found = GeminiLiveChatHistoryStore.shared.getSuggestion(for: newValue) {
+            suggestion = found
+        } else {
+            suggestion = ""
+        }
+    }
+
+    private func navigateHistory(direction: Int) -> KeyPress.Result {
+        let history = GeminiLiveChatHistoryStore.shared.history
+        guard !history.isEmpty else { return .ignored }
+
+        if historyIndex == nil {
+            originalDraft = draft
+        }
+
+        let currentIndex = historyIndex ?? -1
+        let nextIndex = currentIndex + (direction * -1) // Up is -1 (previous), Down is +1 (next)
+
+        if nextIndex < 0 {
+            historyIndex = nil
+            draft = originalDraft
+            updateSuggestion(for: draft)
+            return .handled
+        } else if nextIndex < history.count {
+            historyIndex = nextIndex
+            draft = history[nextIndex]
+            suggestion = "" // No suggestion while navigating history
+            return .handled
+        }
+
+        return .ignored
     }
 
     private func commitSend() {
@@ -54,6 +142,8 @@ private struct GeminiLiveChatInputContentView: View {
         guard !trimmed.isEmpty else { return }
         guard gemini.sendLiveChatMessage(trimmed) else { return }
         draft = ""
+        suggestion = ""
+        historyIndex = nil
     }
 }
 

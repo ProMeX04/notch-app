@@ -122,7 +122,6 @@ final class GeminiLiveViewModel: ObservableObject {
     @Published private(set) var isAutoReconnecting = false
     @Published private(set) var reconnectState: GeminiLiveReconnectState = .none
     @Published private(set) var lifecycleState: GeminiLiveLifecycleState = .disconnected
-    @Published private(set) var pendingExecApprovals: [ExecApprovalRequest] = []
     @Published private(set) var screenShareMode: ScreenShareMode = .fullScreen
     @Published private(set) var isProFromBackend = false
     private var toastClearTask: Task<Void, Never>?
@@ -147,8 +146,10 @@ final class GeminiLiveViewModel: ObservableObject {
 
     private var storedAPIKey: String?
     private var storedBackendConfiguration: GeminiLiveBackendConfiguration?
-    var onExecApprovalAttentionRequested: (() -> Void)?
     var onOpenAppSettingsRequested: (() -> Void)?
+    var onExecApprovalAttentionRequested: (() -> Void)?
+    @Published private(set) var pendingExecApprovals: [ExecApprovalRequest] = []
+    var execApprovals: ExecApprovalCoordinator { toolingController.execApprovals }
 
     var screenShare: ScreenShareCoordinator { sessionController.screenShare }
     var backend: BackendAccountCoordinator { accountController.backend }
@@ -157,7 +158,6 @@ final class GeminiLiveViewModel: ObservableObject {
     private var backendConfigStore: GeminiLiveBackendConfigStore { settingsController.backendConfigStore }
     private var backendClient: GeminiLiveBackendClient { accountController.backendClient }
     private var settingsStore: GeminiLiveSettingsStore { settingsController.settingsStore }
-    var execApprovals: ExecApprovalCoordinator { toolingController.execApprovals }
     private var agentAvatarStore: GeminiAgentAvatarStore { toolingController.agentAvatarStore }
     private var skillStore: SkillStore { toolingController.skillStore }
     private var skillPackageService: SkillPackageService { toolingController.skillPackageService }
@@ -397,12 +397,22 @@ final class GeminiLiveViewModel: ObservableObject {
         session.onUserTranscript = { [weak self] text in
             DispatchQueue.main.async {
                 self?.userTranscript = text
+                TranscriptSessionLogger.shared.setPendingUserText(text)
+                
+                let lowerText = text.lowercased()
+                if lowerText.contains("tắt mic") || lowerText.contains("stop listening") || lowerText.contains("stop recording") {
+                    self?.setMicrophoneEnabled(false)
+                }
             }
         }
 
         session.onModelThinkingStateChange = { [weak self] isThinking in
             DispatchQueue.main.async {
                 self?.isModelThinking = isThinking
+                if isThinking {
+                    // User finished talking; commit their voice transcript before model output.
+                    TranscriptSessionLogger.shared.flushUserIfPending()
+                }
             }
         }
 
@@ -411,6 +421,7 @@ final class GeminiLiveViewModel: ObservableObject {
                 guard let self else { return }
                 self.isModelThinking = false
                 self.isModelSpeaking = true
+                let isNewTurn = self.modelTranscript.isEmpty || self.pendingTurnSeparator
                 if self.modelTranscript.isEmpty {
                     self.modelTranscript = text
                 } else if self.pendingTurnSeparator {
@@ -424,6 +435,9 @@ final class GeminiLiveViewModel: ObservableObject {
                 if self.modelTranscript.count > 10_000 {
                     self.modelTranscript = String(self.modelTranscript.suffix(8_000))
                 }
+
+                // Logger keeps its own un-truncated buffer so very long turns are still saved in full.
+                TranscriptSessionLogger.shared.appendModelChunk(text, isNewTurn: isNewTurn)
             }
         }
 
@@ -435,6 +449,7 @@ final class GeminiLiveViewModel: ObservableObject {
                 if !self.modelTranscript.isEmpty {
                     self.pendingTurnSeparator = true
                 }
+                TranscriptSessionLogger.shared.flushModelTurn()
             }
         }
 
@@ -974,26 +989,35 @@ final class GeminiLiveViewModel: ObservableObject {
         if effectiveTools.contains(.webSearch) {
             lines.append("- When the user asks for up-to-date information, use the built-in Google Search tool instead of guessing.")
         }
-        if effectiveTools.contains(.exec) {
-            lines.append("- Use `exec` for local shell commands on this Mac, such as `curl`, `python3`, `jq`, or `git`. Commands default to `~/.notch/workspace`, and new commands may require approval.")
-        }
         if effectiveTools.contains(.read) {
-            lines.append("- Use `read` to examine files instead of `cat` or `sed`. It supports text files and common images, and uses `offset`/`limit` for large files.")
-        }
-        if effectiveTools.contains(.write) {
-            lines.append("- Use `write` to create or overwrite text files inside `~/.notch/workspace`. Store stable user identity details in `USER.md` and broader durable notes in `MEMORY.md`.")
+            lines.append("- Use `read` to examine files. It supports text files and common images.")
         }
         if effectiveTools.contains(.ls) {
-            lines.append("- Use `ls` to inspect one directory quickly before guessing paths. It includes dotfiles and marks directories with `/`.")
+            lines.append("- Use `ls` to inspect one directory quickly. It includes dotfiles and marks directories with `/`.")
         }
-        if effectiveTools.contains(.find) {
-            lines.append("- Use `find` with glob patterns like `*.ts` or `src/**/*.json` when you need to locate files before reading or editing them.")
+        if effectiveTools.contains(.clipboard) {
+            lines.append("- Use `clipboard` to read or write the macOS clipboard. Treat clipboard text as potentially sensitive.")
         }
-        if effectiveTools.contains(.grep) {
-            lines.append("- Use `grep` to search file contents before guessing where text lives.")
+        if effectiveTools.contains(.appControl) {
+            lines.append("- Use `appControl` to open, quit, check, minimize, or move macOS app windows. Use exact app names. Do not use for opening URLs.")
         }
-        if effectiveTools.contains(.edit) {
-            lines.append("- Use `edit` for exact text replacements in one file, including multiple disjoint changes via `edits[]`, instead of rewriting the whole file.")
+        if effectiveTools.contains(.mediaControl) {
+            lines.append("- Use `mediaControl` for playback (play, pause, next, previous) and system volume. If no media app is running, say so.")
+        }
+        if effectiveTools.contains(.pomodoro) {
+            lines.append("- Use `pomodoro` to control the Notch Pomodoro timer: start, pause, resume, reset, set durations, check status. If the user says stop/end/cancel focus, call reset.")
+        }
+        if effectiveTools.contains(.screenshot) {
+            lines.append("- Use `screenshot` to capture the screen. Use interactive modes (window, region) only when the user expects to click or drag.")
+        }
+        if effectiveTools.contains(.browserControl) {
+            lines.append("- Use `browserControl` to open URLs, play music via DuckDuckGo Lucky, or read the current browser tab content.")
+        }
+        if effectiveTools.contains(.memory) {
+            lines.append("- Use `memory` to read or write persistent USER.md (identity, preferences) and MEMORY.md (durable facts, habits). Use write-user for profile updates and write-memory for broader long-term notes.")
+        }
+        if effectiveTools.contains(.exec) {
+            lines.append("- Use `exec` to run shell commands. Every command requires explicit user approval before execution. Prefer native tools over exec when possible.")
         }
 
         return lines.joined(separator: "\n")
@@ -1005,18 +1029,24 @@ final class GeminiLiveViewModel: ObservableObject {
             return ToolActionToast(label: "Searching web…", icon: "magnifyingglass", showsInOverlay: false)
         case "read":
             return ToolActionToast(label: "Reading file…", icon: "doc.text", showsInOverlay: false)
-        case "write":
-            return ToolActionToast(label: "Writing file…", icon: "square.and.pencil", showsInOverlay: false)
         case "ls":
             return ToolActionToast(label: "Listing files…", icon: "list.bullet", showsInOverlay: false)
+        case "clipboard":
+            return ToolActionToast(label: "Using clipboard…", icon: "doc.on.clipboard", showsInOverlay: false)
+        case "appControl":
+            return ToolActionToast(label: "Controlling app…", icon: "macwindow", showsInOverlay: false)
+        case "mediaControl":
+            return ToolActionToast(label: "Controlling media…", icon: "playpause", showsInOverlay: false)
+        case "pomodoro":
+            return ToolActionToast(label: "Controlling timer…", icon: "timer", showsInOverlay: false)
+        case "screenshot":
+            return ToolActionToast(label: "Taking screenshot…", icon: "camera.viewfinder", showsInOverlay: false)
+        case "browserControl":
+            return ToolActionToast(label: "Using browser…", icon: "safari", showsInOverlay: false)
+        case "memory":
+            return ToolActionToast(label: "Using memory…", icon: "brain", showsInOverlay: false)
         case "exec":
             return ToolActionToast(label: "Running command…", icon: "terminal", showsInOverlay: false)
-        case "find":
-            return ToolActionToast(label: "Finding files…", icon: "folder", showsInOverlay: false)
-        case "grep":
-            return ToolActionToast(label: "Searching files…", icon: "text.magnifyingglass", showsInOverlay: false)
-        case "edit":
-            return ToolActionToast(label: "Editing file…", icon: "slider.horizontal.below.rectangle", showsInOverlay: false)
         default:
             return nil
         }
@@ -1033,18 +1063,24 @@ final class GeminiLiveViewModel: ObservableObject {
             return ToolActionToast(label: "Web search", icon: "magnifyingglass", showsInOverlay: false)
         case "read":
             return ToolActionToast(label: "Read file", icon: "doc.text", showsInOverlay: false)
-        case "write":
-            return ToolActionToast(label: "Wrote file", icon: "square.and.pencil", showsInOverlay: false)
         case "ls":
             return ToolActionToast(label: "Listed files", icon: "list.bullet", showsInOverlay: false)
+        case "clipboard":
+            return ToolActionToast(label: "Clipboard", icon: "doc.on.clipboard", showsInOverlay: false)
+        case "appControl":
+            return ToolActionToast(label: "App controlled", icon: "macwindow", showsInOverlay: false)
+        case "mediaControl":
+            return ToolActionToast(label: "Media controlled", icon: "playpause", showsInOverlay: false)
+        case "pomodoro":
+            return ToolActionToast(label: "Timer controlled", icon: "timer", showsInOverlay: false)
+        case "screenshot":
+            return ToolActionToast(label: "Screenshot taken", icon: "camera.viewfinder", showsInOverlay: false)
+        case "browserControl":
+            return ToolActionToast(label: "Browser action", icon: "safari", showsInOverlay: false)
+        case "memory":
+            return ToolActionToast(label: "Memory updated", icon: "brain", showsInOverlay: false)
         case "exec":
-            return ToolActionToast(label: "Ran command", icon: "terminal", showsInOverlay: false)
-        case "find":
-            return ToolActionToast(label: "Found files", icon: "folder", showsInOverlay: false)
-        case "grep":
-            return ToolActionToast(label: "Searched files", icon: "text.magnifyingglass", showsInOverlay: false)
-        case "edit":
-            return ToolActionToast(label: "Edited file", icon: "slider.horizontal.below.rectangle", showsInOverlay: false)
+            return ToolActionToast(label: "Command executed", icon: "terminal", showsInOverlay: false)
         default:
             return nil
         }
@@ -1052,22 +1088,28 @@ final class GeminiLiveViewModel: ObservableObject {
 
     private func failedToolActionLabel(for name: String) -> String {
         switch name {
-        case "exec":
-            return "Command failed."
         case "read":
             return "Read failed."
-        case "write":
-            return "Write failed."
         case "ls":
             return "List failed."
-        case "find":
-            return "Find failed."
-        case "grep":
-            return "Search failed."
-        case "edit":
-            return "Edit failed."
         case "webSearch":
             return "Web search failed."
+        case "clipboard":
+            return "Clipboard failed."
+        case "appControl":
+            return "App control failed."
+        case "mediaControl":
+            return "Media control failed."
+        case "pomodoro":
+            return "Timer control failed."
+        case "screenshot":
+            return "Screenshot failed."
+        case "browserControl":
+            return "Browser control failed."
+        case "memory":
+            return "Memory failed."
+        case "exec":
+            return "Command failed."
         default:
             return "Tool failed."
         }
@@ -1384,7 +1426,10 @@ final class GeminiLiveViewModel: ObservableObject {
             return
         }
 
-        if clearingTranscripts { clearTranscripts() }
+        if clearingTranscripts {
+            clearTranscripts()
+            TranscriptSessionLogger.shared.startSession()
+        }
         lastDisconnectWasUserInitiated = false
         setConnectionState(.connecting)
         if !shouldPreserveMicrophoneLiveStateDuringReconnect {
@@ -1392,123 +1437,111 @@ final class GeminiLiveViewModel: ObservableObject {
             microphoneInputLevel = 0
         }
         lastErrorMessage = nil
-        statusText = "Requesting microphone access..."
+        statusText = "Connecting to Gemini Live..."
         logConnectAttempt(clearingTranscripts: clearingTranscripts)
 
-        requestMicrophoneAccess { [weak self] granted in
-            guard let self else { return }
-            Task { @MainActor in
-                guard granted else {
-                    self.setConnectionState(.failed)
-                    self.lastErrorMessage = "Microphone access is required for Gemini Live."
-                    self.statusText = "Enable microphone access for Notch in System Settings."
-                    NotchLog.gemini.error("Connect failed: microphone permission denied")
-                    self.handleUnrecoverableReconnectFailureIfNeeded()
-                    return
-                }
-
-                self.statusText = "Connecting to Gemini Live..."
-                let skillSnapshot: SkillSessionSnapshot
-                if clearingTranscripts || self.currentSkillSnapshot == nil {
-                    skillSnapshot = self.makeSkillSessionSnapshot()
-                    self.currentSkillSnapshot = skillSnapshot
-                } else {
-                    skillSnapshot = self.currentSkillSnapshot ?? self.makeSkillSessionSnapshot()
-                }
-
-                let systemPrompt = self.buildSystemPrompt(
-                    activeSkills: skillSnapshot.activeSkills,
-                    effectiveTools: skillSnapshot.effectiveTools,
-                    userContent: self.userProfileContent,
-                    memoryContent: self.memoryContent
-                )
-
-                let preset = self.selectedSystemPromptPreset
-                let systemInstruction = systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
-                let existingConfiguration = !clearingTranscripts ? self.session.currentConfiguration : nil
-                let connectionCredential: String
-                let restAPIKey: String?
-                let backendConfiguration: GeminiLiveBackendConfiguration?
-
-                if let existingConfiguration,
-                   !self.shouldRefreshManagedServerCredential(existingConfiguration) {
-                    connectionCredential = existingConfiguration.connectionCredential
-                    restAPIKey = existingConfiguration.restAPIKey
-                    backendConfiguration = existingConfiguration.backendConfiguration
-                } else {
-                    switch self.selectedConnectionMethod {
-                    case .managedServer:
-                        guard let configuredBackend = await self.backend.freshConfiguredBackendUserConfiguration() else {
-                            self.setConnectionState(.failed)
-                            self.lastErrorMessage = self.configuredBackendConfiguration == nil
-                                ? "Gemini Live server is missing."
-                                : "Please sign in to your Gemini Live server account."
-                            self.statusText = self.defaultDisconnectedStatusText
-                            self.logConnectBlocked(reason: "managed server auth missing")
-                            self.handleUnrecoverableReconnectFailureIfNeeded()
-                            return
-                        }
-
-                        self.statusText = "Requesting secure Gemini Live token..."
-                        do {
-                            let token = try await self.requestManagedServerSessionToken(
-                                configuration: configuredBackend,
-                                model: preset.modelEnum.apiName,
-                                systemInstruction: systemInstruction.isEmpty ? nil : systemInstruction,
-                                voiceName: preset.voiceEnum.apiName,
-                                thinkingBudget: preset.thinkingEnum.budget > 0 ? preset.thinkingEnum.budget : nil
-                            )
-                            connectionCredential = token.name
-                            restAPIKey = nil
-                            backendConfiguration = configuredBackend
-                        } catch {
-                            if self.backend.shouldClearBackendAuthSession(for: error) {
-                                self.logGeminiFailure(
-                                    "session token request rejected the saved session; clearing local auth",
-                                    error: error
-                                )
-                                self.backend.clearBackendAuthSession()
-                            } else {
-                                self.logGeminiFailure("session token request failed", error: error)
-                            }
-                            self.setConnectionState(.failed)
-                            self.lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-                            self.statusText = "Couldn't create a Gemini Live session token."
-                            if self.reconnectState == .fullRestart {
-                                _ = self.scheduleReconnect()
-                            }
-                            return
-                        }
-                    case .userAPIKey:
-                        guard let configuredAPIKey = self.configuredAPIKey else {
-                            self.setConnectionState(.failed)
-                            self.lastErrorMessage = "Gemini API key is missing."
-                            self.statusText = self.defaultDisconnectedStatusText
-                            self.logConnectBlocked(reason: "API key missing")
-                            self.handleUnrecoverableReconnectFailureIfNeeded()
-                            return
-                        }
-                        connectionCredential = configuredAPIKey
-                        restAPIKey = configuredAPIKey
-                        backendConfiguration = nil
-                    }
-                }
-
-                self.session.connect(
-                    connectionCredential: connectionCredential,
-                    restAPIKey: restAPIKey,
-                    backendConfiguration: backendConfiguration,
-                    model: preset.modelEnum.apiName,
-                    systemPrompt: systemPrompt,
-                    microphoneEnabled: self.effectiveMicrophoneEnabled,
-                    microphonePrewarmingEnabled: self.inputMode == .pushToTalk,
-                    thinkingBudget: preset.thinkingEnum.budget,
-                    voiceName: preset.voiceEnum.apiName,
-                    enabledTools: skillSnapshot.effectiveTools,
-                    skillSnapshot: skillSnapshot,
-                    resumeSession: !clearingTranscripts
-                )
+        Task { @MainActor in
+            let skillSnapshot: SkillSessionSnapshot
+            if clearingTranscripts || self.currentSkillSnapshot == nil {
+                skillSnapshot = self.makeSkillSessionSnapshot()
+                self.currentSkillSnapshot = skillSnapshot
+            } else {
+                skillSnapshot = self.currentSkillSnapshot ?? self.makeSkillSessionSnapshot()
             }
+
+            let systemPrompt = self.buildSystemPrompt(
+                activeSkills: skillSnapshot.activeSkills,
+                effectiveTools: skillSnapshot.effectiveTools,
+                userContent: self.userProfileContent,
+                memoryContent: self.memoryContent
+            )
+
+            let preset = self.selectedSystemPromptPreset
+            let systemInstruction = systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+            let existingConfiguration = !clearingTranscripts ? self.session.currentConfiguration : nil
+            let connectionCredential: String
+            let restAPIKey: String?
+            let backendConfiguration: GeminiLiveBackendConfiguration?
+
+            if let existingConfiguration,
+               !self.shouldRefreshManagedServerCredential(existingConfiguration) {
+                connectionCredential = existingConfiguration.connectionCredential
+                restAPIKey = existingConfiguration.restAPIKey
+                backendConfiguration = existingConfiguration.backendConfiguration
+            } else {
+                switch self.selectedConnectionMethod {
+                case .managedServer:
+                    guard let configuredBackend = await self.backend.freshConfiguredBackendUserConfiguration() else {
+                        self.setConnectionState(.failed)
+                        self.lastErrorMessage = self.configuredBackendConfiguration == nil
+                            ? "Gemini Live server is missing."
+                            : "Please sign in to your Gemini Live server account."
+                        self.statusText = self.defaultDisconnectedStatusText
+                        self.logConnectBlocked(reason: "managed server auth missing")
+                        self.handleUnrecoverableReconnectFailureIfNeeded()
+                        return
+                    }
+
+                    self.statusText = "Requesting secure Gemini Live token..."
+                    do {
+                        let token = try await self.requestManagedServerSessionToken(
+                            configuration: configuredBackend,
+                            model: preset.modelEnum.apiName,
+                            systemInstruction: systemInstruction.isEmpty ? nil : systemInstruction,
+                            voiceName: preset.voiceEnum.apiName,
+                            thinkingBudget: preset.thinkingEnum.budget > 0 ? preset.thinkingEnum.budget : nil
+                        )
+                        connectionCredential = token.name
+                        restAPIKey = nil
+                        backendConfiguration = configuredBackend
+                    } catch {
+                        if self.backend.shouldClearBackendAuthSession(for: error) {
+                            self.logGeminiFailure(
+                                "session token request rejected the saved session; clearing local auth",
+                                error: error
+                            )
+                            self.backend.clearBackendAuthSession()
+                        } else {
+                            self.logGeminiFailure("session token request failed", error: error)
+                        }
+                        self.setConnectionState(.failed)
+                        self.lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                        self.statusText = "Couldn't create a Gemini Live session token."
+                        if self.reconnectState == .fullRestart {
+                            _ = self.scheduleReconnect()
+                        }
+                        return
+                    }
+                case .userAPIKey:
+                    guard let configuredAPIKey = self.configuredAPIKey else {
+                        self.setConnectionState(.failed)
+                        self.lastErrorMessage = "Gemini API key is missing."
+                        self.statusText = self.defaultDisconnectedStatusText
+                        self.logConnectBlocked(reason: "API key missing")
+                        self.handleUnrecoverableReconnectFailureIfNeeded()
+                        return
+                    }
+                    connectionCredential = configuredAPIKey
+                    restAPIKey = configuredAPIKey
+                    backendConfiguration = nil
+                }
+            }
+
+            self.session.connect(
+                connectionCredential: connectionCredential,
+                restAPIKey: restAPIKey,
+                backendConfiguration: backendConfiguration,
+                model: preset.modelEnum.apiName,
+                systemPrompt: systemPrompt,
+                microphoneEnabled: self.effectiveMicrophoneEnabled && self.hasMicrophonePermission,
+                microphonePrewarmingEnabled: self.inputMode == .pushToTalk,
+                thinkingBudget: preset.thinkingEnum.budget,
+                voiceName: preset.voiceEnum.apiName,
+                enabledTools: skillSnapshot.effectiveTools,
+                skillSnapshot: skillSnapshot,
+                resumeSession: !clearingTranscripts
+            )
+            self.syncEffectiveMicrophoneState()
         }
     }
 
@@ -1536,7 +1569,6 @@ final class GeminiLiveViewModel: ObservableObject {
         cancelReconnect()
         screenShare.stop()
         execApprovals.clearAll()
-        toastClearTask?.cancel()
         toastClearTask = nil
         lastToolAction = nil
         isModelThinking = false
@@ -1548,6 +1580,7 @@ final class GeminiLiveViewModel: ObservableObject {
         session.disconnect(userInitiated: true)
         setConnectionState(.disconnected)
         statusText = defaultDisconnectedStatusText
+        TranscriptSessionLogger.shared.endSession()
     }
 
     @discardableResult
@@ -1557,14 +1590,12 @@ final class GeminiLiveViewModel: ObservableObject {
             handleUnrecoverableReconnectFailure(statusText: "Connection lost. Please reconnect manually.")
             return false
         }
-        let delay = pow(2.0, Double(reconnectAttempt)) * 3.0 // 3s, 6s, 12s
         reconnectAttempt += 1
         setReconnectState(.fullRestart)
         statusText = "Reconnecting... (attempt \(reconnectAttempt)/\(maxReconnectAttempts))"
 
         reconnectTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { return }
             self.reconnectTask = nil
             self.lastDisconnectWasUserInitiated = false
@@ -1632,6 +1663,24 @@ final class GeminiLiveViewModel: ObservableObject {
         }
     }
 
+    private var hasMicrophonePermission: Bool {
+        AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+    }
+
+    private func ensureMicrophonePermission(completion: @escaping @Sendable (Bool) -> Void) {
+        let status = AVCaptureDevice.authorizationStatus(for: .audio)
+        switch status {
+        case .authorized:
+            completion(true)
+        case .notDetermined:
+            requestMicrophoneAccess(completion: completion)
+        case .denied, .restricted:
+            completion(false)
+        @unknown default:
+            completion(false)
+        }
+    }
+
     func setOpenMicrophoneEnabled(_ enabled: Bool) {
         guard isMicrophoneEnabled != enabled else { return }
         isMicrophoneEnabled = enabled
@@ -1694,6 +1743,8 @@ final class GeminiLiveViewModel: ObservableObject {
         session.sendClientTextTurn(trimmed)
         userTranscript = trimmed
         isModelThinking = true
+        TranscriptSessionLogger.shared.recordUserText(trimmed)
+        GeminiLiveChatHistoryStore.shared.save(trimmed)
         return true
     }
 
@@ -1815,7 +1866,32 @@ final class GeminiLiveViewModel: ObservableObject {
     private func syncEffectiveMicrophoneState() {
         guard canDisconnectSession else { return }
         session.setMicrophonePrewarmingEnabled(inputMode == .pushToTalk)
-        session.setMicrophoneEnabled(effectiveMicrophoneEnabled)
+        
+        let desiredState = effectiveMicrophoneEnabled
+        guard desiredState else {
+            session.setMicrophoneEnabled(false)
+            return
+        }
+
+        ensureMicrophonePermission { [weak self] granted in
+            guard let self else { return }
+            Task { @MainActor in
+                if granted {
+                    self.session.setMicrophoneEnabled(true)
+                } else {
+                    // If denied, we revert the local state
+                    if self.inputMode == .openMic {
+                        self.isMicrophoneEnabled = false
+                    } else {
+                        self.isHoldToTalkActive = false
+                    }
+                    self.lastErrorMessage = "Microphone access is required for Gemini Live."
+                    self.statusText = "Enable microphone access for Notch in System Settings."
+                    NotchLog.gemini.error("Microphone permission denied after lazy request")
+                    self.syncEffectiveMicrophoneState() // Sync the reverted state to the session
+                }
+            }
+        }
     }
 
     private func setConnectionState(_ state: GeminiLiveConnectionState) {

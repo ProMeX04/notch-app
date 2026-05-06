@@ -1,4 +1,5 @@
 import Cocoa
+import SwiftUI
 
 /// Host window for the notch UI. Named distinctly from `NotchPanel` (the tab enum in `NotchPresentationModel`).
 final class NotchFloatingPanel: NSPanel {
@@ -35,4 +36,11 @@ final class NotchFloatingPanel: NSPanel {
     override var canBecomeMain: Bool {
         true
     }
+}
+
+/// `NSHostingView` subclass that accepts first mouse clicks so a single
+/// click on any SwiftUI control inside the non-activating notch panel
+/// triggers the action immediately (no more "need 2 clicks" symptom).
+final class NotchHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }

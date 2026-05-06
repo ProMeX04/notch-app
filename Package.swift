@@ -16,6 +16,10 @@ let package = Package(
             name: "NotchFocusCore",
             targets: ["NotchFocusCore"]
         ),
+        .library(
+            name: "NotchBridgeParserCore",
+            targets: ["NotchBridgeParserCore"]
+        ),
         .executable(
             name: "Notch",
             targets: ["Notch"]
@@ -27,6 +31,10 @@ let package = Package(
         .executable(
             name: "NotchShelfTests",
             targets: ["NotchShelfTests"]
+        ),
+        .executable(
+            name: "NotchBridgeParserTests",
+            targets: ["NotchBridgeParserTests"]
         ),
     ],
     dependencies: [
@@ -53,6 +61,7 @@ let package = Package(
                 "NotchTooling",
                 "NotchFocusCore",
                 "NotchShelfCore",
+                "NotchBridgeParserCore",
                 .product(name: "LiveKitWebRTC", package: "webrtc-xcframework"),
             ],
             resources: [
@@ -78,6 +87,14 @@ let package = Package(
             name: "NotchFocusTests",
             dependencies: ["NotchFocusCore"],
             path: "Tests/NotchFocusTests"
+        ),
+        .target(
+            name: "NotchBridgeParserCore"
+        ),
+        .executableTarget(
+            name: "NotchBridgeParserTests",
+            dependencies: ["NotchBridgeParserCore"],
+            path: "Tests/NotchBridgeParserTests"
         ),
     ]
 )

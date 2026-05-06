@@ -692,6 +692,7 @@ struct GeminiTalkPanelView: View {
     }
 }
 
+
 struct GeminiExecApprovalCard: View {
     let request: ExecApprovalRequest
     let queueCount: Int
@@ -704,7 +705,6 @@ struct GeminiExecApprovalCard: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            // Left Column: Command details
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 6) {
                     Image(systemName: "terminal.fill")
@@ -749,7 +749,6 @@ struct GeminiExecApprovalCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
 
-            // Right Column: Small Actions
             VStack(spacing: 8) {
                 GeminiPillButton(
                     title: Localization.get("Deny", lang: appLanguage),
@@ -850,18 +849,24 @@ struct GeminiAgentAvatarArtwork: View {
 
 struct GeminiFileTextEditor: View {
     @Binding var text: String
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var isLightChrome: Bool { colorScheme == .light }
+    private var fillColor: Color { isLightChrome ? .black.opacity(0.04) : .white.opacity(0.08) }
+    private var strokeColor: Color { isLightChrome ? .black.opacity(0.1) : .white.opacity(0.12) }
+    private var textColor: Color { isLightChrome ? .black.opacity(0.9) : .white.opacity(0.9) }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 10)
-                .fill(Color.white.opacity(0.08))
+                .fill(fillColor)
 
             RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                .stroke(strokeColor, lineWidth: 1)
 
             TextEditor(text: $text)
                 .font(.system(size: 11, weight: .regular))
-                .foregroundStyle(.white.opacity(0.9))
+                .foregroundStyle(textColor)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 4)
                 .scrollContentBackground(.hidden)
@@ -1426,6 +1431,7 @@ struct GeminiToolsPicker: View {
     @Binding var selection: Set<GeminiTool>
     var lockedTools: Set<GeminiTool> = []
     var isDisabled = false
+    @State private var showExecWarning = false
     @AppStorage("app_language") private var appLanguage: String = "English"
     @AppStorage(NotchAccentColorOption.storageKey) private var accentColorID: String = NotchAccentColorOption.defaultOption.rawValue
 
@@ -1434,11 +1440,15 @@ struct GeminiToolsPicker: View {
     }
 
     private var allSelectableTools: Set<GeminiTool> {
-        Set(GeminiTool.coreCases).subtracting(lockedTools)
+        Set(GeminiTool.coreCases).union(GeminiTool.restrictedTools).subtracting(lockedTools)
     }
 
     private var hasAllToolsSelected: Bool {
         selection.isSuperset(of: allSelectableTools)
+    }
+
+    private var allToolsList: [GeminiTool] {
+        GeminiTool.coreCases + GeminiTool.restrictedTools.subtracting(GeminiTool.coreToolSet).sorted { $0.rawValue < $1.rawValue }
     }
 
     private var summaryText: String {
@@ -1482,7 +1492,7 @@ struct GeminiToolsPicker: View {
                 GridItem(.flexible(), spacing: 10),
                 GridItem(.flexible(), spacing: 10)
             ], spacing: 10) {
-                ForEach(GeminiTool.coreCases) { tool in
+                ForEach(allToolsList) { tool in
                     let isLocked = lockedTools.contains(tool)
                     let isSelected = selection.contains(tool) || isLocked
                     
@@ -1504,6 +1514,10 @@ struct GeminiToolsPicker: View {
                             set: { newValue in
                                 guard !isLocked else { return }
                                 if newValue {
+                                    if GeminiTool.restrictedTools.contains(tool) {
+                                        showExecWarning = true
+                                        return
+                                    }
                                     selection.insert(tool)
                                 } else {
                                     selection.remove(tool)
@@ -1526,6 +1540,14 @@ struct GeminiToolsPicker: View {
             }
         }
         .frame(maxWidth: .infinity)
+        .alert("⚠️ Enable Shell Access?", isPresented: $showExecWarning) {
+            Button("Cancel", role: .cancel) {}
+            Button("Enable", role: .destructive) {
+                selection.insert(.exec)
+            }
+        } message: {
+            Text("Exec allows the AI to run arbitrary shell commands on your Mac. This is risky in a voice conversation — the AI may execute commands you don't expect. Only enable this if you fully understand the risks.")
+        }
     }
 }
 

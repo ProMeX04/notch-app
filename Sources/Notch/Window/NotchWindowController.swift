@@ -11,11 +11,12 @@ final class NotchWindowController {
     let focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore
     let geminiLiveViewModel: GeminiLiveViewModel
     let shelfViewModel: NotchShelfViewModel
+    let shortcutStore: ShortcutStore
     let learningStatsStore: LearningStatsStore
     let presentationModel: NotchPresentationModel
     let entitlementStore: NotchEntitlementStore
 
-    private let hostingView: NSHostingView<MediaNotchView>
+    private let hostingView: NotchHostingView<MediaNotchView>
     private let window: NotchFloatingPanel
     private var cancellables = Set<AnyCancellable>()
     private let transcriptOverlay = TranscriptOverlayWindowController()
@@ -30,6 +31,7 @@ final class NotchWindowController {
         focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore,
         geminiLiveViewModel: GeminiLiveViewModel,
         shelfViewModel: NotchShelfViewModel,
+        shortcutStore: ShortcutStore,
         learningStatsStore: LearningStatsStore,
         presentationModel: NotchPresentationModel,
         entitlementStore: NotchEntitlementStore
@@ -39,6 +41,7 @@ final class NotchWindowController {
         self.focusWebsiteBlocklistStore = focusWebsiteBlocklistStore
         self.geminiLiveViewModel = geminiLiveViewModel
         self.shelfViewModel = shelfViewModel
+        self.shortcutStore = shortcutStore
         self.learningStatsStore = learningStatsStore
         self.presentationModel = presentationModel
         self.entitlementStore = entitlementStore
@@ -55,13 +58,14 @@ final class NotchWindowController {
         )
 
         self.window = window
-        self.hostingView = NSHostingView(
+        self.hostingView = NotchHostingView(
             rootView: MediaNotchView(
                 playback: playbackViewModel,
                 pomodoro: pomodoroViewModel,
                 focusWebsiteBlocklistStore: focusWebsiteBlocklistStore,
                 gemini: geminiLiveViewModel,
                 shelf: shelfViewModel,
+                shortcutStore: shortcutStore,
                 learningStats: learningStatsStore,
                 presentationModel: presentationModel,
                 entitlementStore: entitlementStore
@@ -90,6 +94,7 @@ final class NotchWindowController {
             .store(in: &cancellables)
 
         Publishers.CombineLatest(presentationModel.$selectedPanel, presentationModel.$isExpanded)
+            .removeDuplicates(by: { lhs, rhs in lhs.0 == rhs.0 && lhs.1 == rhs.1 })
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _, _ in
                 self?.updateWindowFrame(animated: true)
@@ -137,6 +142,10 @@ final class NotchWindowController {
         updateWindowFrame(animated: false)
     }
 
+    func presentExecApproval() {
+        geminiExecApprovalPanel.present(gemini: geminiLiveViewModel)
+    }
+
     func shutdown() {
         hide()
         transcriptOverlay.stopObserving()
@@ -149,17 +158,26 @@ final class NotchWindowController {
         cancellables.removeAll()
     }
 
-    func presentExecApproval() {
-        geminiExecApprovalPanel.present(gemini: geminiLiveViewModel)
-    }
 
     func updateWindowFrame(animated: Bool) {
         let currentScreen = window.screen ?? NotchMetrics.preferredScreen()
         presentationModel.closedNotchSize = NotchMetrics.baseClosedSize(for: currentScreen)
         let frame = NotchMetrics.windowFrame(on: currentScreen, selectedPanel: presentationModel.selectedPanel)
 
-        window.setFrame(frame, display: true, animate: animated)
-        hostingView.frame = CGRect(origin: .zero, size: NotchMetrics.windowSize(for: presentationModel.selectedPanel))
+        // Skip the AppKit setFrame animation when nothing actually changes.
+        // `windowFrame(...)` returns a constant-sized rect for the current
+        // screen, so panel/expand toggles often resolve to the same frame.
+        // Calling setFrame(animate: true) anyway runs an AppKit animation
+        // pass that competes with the SwiftUI spring driving the notch
+        // chrome, which the user perceived as drag-and-drop "khựng".
+        if window.frame != frame {
+            window.setFrame(frame, display: true, animate: animated)
+        }
+
+        let newSize = NotchMetrics.windowSize(for: presentationModel.selectedPanel)
+        if hostingView.frame.size != newSize {
+            hostingView.frame = CGRect(origin: .zero, size: newSize)
+        }
         transcriptOverlay.setPreferredScreen(currentScreen)
         liveChatInputPanel.setPreferredScreen(currentScreen)
 

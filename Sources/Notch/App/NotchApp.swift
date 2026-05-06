@@ -12,7 +12,8 @@ struct NotchApp: App {
                 focusWebsiteBlocklistStore: appDelegate.focusWebsiteBlocklistStore,
                 learningStats: appDelegate.learningStatsStore,
                 gemini: appDelegate.geminiLiveViewModel,
-                entitlementStore: appDelegate.entitlementStore
+                entitlementStore: appDelegate.entitlementStore,
+                shortcutStore: appDelegate.shortcutStore
             )
         }
     }

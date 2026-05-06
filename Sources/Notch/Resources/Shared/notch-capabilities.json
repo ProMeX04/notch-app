@@ -56,6 +56,12 @@
       "requirement": "pro"
     },
     {
+      "key": "panel_shortcuts",
+      "name": "Shortcuts",
+      "description": "Tao va chay shortcut tu notch",
+      "requirement": "free"
+    },
+    {
       "key": "deep_link_panel",
       "name": "Panel Commands",
       "description": "Dieu huong panel bang deep link",

@@ -13,6 +13,7 @@ protocol NotchCommandHandling: AnyObject {
     func showFocusPanel()
     func showTalkPanel()
     func showShelfPanel()
+    func showShortcutsPanel()
     func togglePomodoro()
     func resetPomodoro()
     func toggleGeminiLive()
@@ -28,16 +29,11 @@ protocol NotchCommandHandling: AnyObject {
     func startWindowScreenShare()
     func stopScreenShare()
     func configurePomodoro(duration: String?, breakDuration: String?, longBreakDuration: String?) throws
-    func startPomodoro(duration: String?, breakDuration: String?, longBreakDuration: String?) throws
+    func startPomodoro(duration: String?, breakDuration: String?, longBreakDuration: String?, cycleCount: String?) throws
     func pausePomodoro() throws
     func resumePomodoro() throws
     func resetPomodoroSession() throws
     func skipPomodoroPhase()
-    func setPomodoroPhase(_ rawPhase: String) throws
-    func setPomodoroLongBreak(duration: String) throws
-    func setPomodoroCycle(_ rawCount: String) throws
-    func setPomodoroAutoBreaks(_ mode: FocusToggleMode)
-    func setPomodoroAutoPomodoros(_ mode: FocusToggleMode)
     func playMedia()
     func pauseMedia()
     func toggleMediaPlayback()
@@ -130,6 +126,10 @@ final class NotchFeatureCoordinator: NotchCommandHandling {
         showPanel(.shelf)
     }
 
+    func showShortcutsPanel() {
+        showPanel(.shortcuts)
+    }
+
     func togglePomodoro() {
         presentationModel.selectPanel(.focus, reveal: true)
         pomodoroViewModel.toggleRunning()
@@ -220,8 +220,11 @@ final class NotchFeatureCoordinator: NotchCommandHandling {
         pomodoroViewModel.updateLongBreakDuration(seconds: longBreakSeconds)
     }
 
-    func startPomodoro(duration: String? = nil, breakDuration: String? = nil, longBreakDuration: String? = nil) throws {
+    func startPomodoro(duration: String? = nil, breakDuration: String? = nil, longBreakDuration: String? = nil, cycleCount: String? = nil) throws {
         try configurePomodoro(duration: duration, breakDuration: breakDuration, longBreakDuration: longBreakDuration)
+        if let cycleCount, let count = Int(cycleCount.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            pomodoroViewModel.updateSessionsBeforeLongBreak(count: count)
+        }
         try performPomodoroAction(action: .start)
     }
 
@@ -241,53 +244,6 @@ final class NotchFeatureCoordinator: NotchCommandHandling {
         pomodoroViewModel.skipPhase()
     }
 
-    func setPomodoroPhase(_ rawPhase: String) throws {
-        let targetPhase = try resolvedPomodoroPhase(from: rawPhase)
-        presentationModel.selectPanel(.focus, reveal: true)
-        pomodoroViewModel.setPhase(targetPhase)
-    }
-
-    func setPomodoroLongBreak(duration: String) throws {
-        let seconds = try resolvedPomodoroSeconds(
-            from: duration,
-            fallbackSeconds: pomodoroViewModel.longBreakDurationSeconds,
-            parameterName: "duration"
-        )
-        presentationModel.selectPanel(.focus, reveal: true)
-        pomodoroViewModel.updateLongBreakDuration(seconds: seconds)
-    }
-
-    func setPomodoroCycle(_ rawCount: String) throws {
-        guard let count = Int(rawCount.trimmingCharacters(in: .whitespacesAndNewlines)) else {
-            throw NotchFocusCommandError.invalidParameter("count", rawCount)
-        }
-        presentationModel.selectPanel(.focus, reveal: true)
-        pomodoroViewModel.updateSessionsBeforeLongBreak(count: count)
-    }
-
-    func setPomodoroAutoBreaks(_ mode: FocusToggleMode) {
-        presentationModel.selectPanel(.focus, reveal: true)
-        switch mode {
-        case .on:
-            pomodoroViewModel.autoStartBreaks = true
-        case .off:
-            pomodoroViewModel.autoStartBreaks = false
-        case .toggle:
-            pomodoroViewModel.autoStartBreaks.toggle()
-        }
-    }
-
-    func setPomodoroAutoPomodoros(_ mode: FocusToggleMode) {
-        presentationModel.selectPanel(.focus, reveal: true)
-        switch mode {
-        case .on:
-            pomodoroViewModel.autoStartPomodoros = true
-        case .off:
-            pomodoroViewModel.autoStartPomodoros = false
-        case .toggle:
-            pomodoroViewModel.autoStartPomodoros.toggle()
-        }
-    }
 
     func playMedia() {
         playbackViewModel.play()
@@ -353,24 +309,6 @@ final class NotchFeatureCoordinator: NotchCommandHandling {
         return seconds
     }
 
-    private func resolvedPomodoroPhase(from raw: String) throws -> PomodoroPhase {
-        switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-        case "focus":
-            return .focus
-        case "short-break", "shortbreak", "short_break", "break":
-            return .shortBreak
-        case "long-break", "longbreak", "long_break":
-            return .longBreak
-        default:
-            throw NotchFocusCommandError.invalidParameter("phase", raw)
-        }
-    }
-}
-
-enum FocusToggleMode {
-    case on
-    case off
-    case toggle
 }
 
 private enum FocusCommandAction {

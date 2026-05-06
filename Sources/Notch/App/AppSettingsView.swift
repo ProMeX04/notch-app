@@ -9,8 +9,10 @@ struct AppSettingsView: View {
     @ObservedObject var learningStats: LearningStatsStore
     @ObservedObject var gemini: GeminiLiveViewModel
     @ObservedObject var entitlementStore: NotchEntitlementStore
+    @ObservedObject var shortcutStore: ShortcutStore
     @ObservedObject private var settingsController = AppSettingsController.shared
     @AppStorage("app_language") private var appLanguage: String = "English"
+    @State private var hoveredTab: AppSettingsTab?
 
     private var versionLabel: String {
         let shortVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
@@ -54,6 +56,8 @@ struct AppSettingsView: View {
                         )
                     case .talk:
                         AppTalkSettingsPane(gemini: gemini)
+                    case .shortcuts:
+                        AppShortcutsSettingsPane(shortcutStore: shortcutStore)
                     }
                 }
                 .padding(24)
@@ -75,6 +79,9 @@ struct AppSettingsView: View {
 
             VStack(spacing: 8) {
                 ForEach(AppSettingsTab.allCases) { tab in
+                    let isSelected = settingsController.selectedTab == tab
+                    let isHovered = hoveredTab == tab
+
                     Button {
                         settingsController.selectedTab = tab
                     } label: {
@@ -87,9 +94,9 @@ struct AppSettingsView: View {
                             Spacer(minLength: 0)
                         }
                         .foregroundStyle(
-                            settingsController.selectedTab == tab
+                            isSelected
                                 ? .black.opacity(0.84)
-                                : .white.opacity(0.72)
+                                : (isHovered ? .white.opacity(0.92) : .white.opacity(0.72))
                         )
                         .padding(.horizontal, 12)
                         .frame(height: 36)
@@ -97,14 +104,17 @@ struct AppSettingsView: View {
                         .background(
                             RoundedRectangle(cornerRadius: 11, style: .continuous)
                                 .fill(
-                                    settingsController.selectedTab == tab
+                                    isSelected
                                         ? presentationModel.accentColor.ensureMinimumBrightness(factor: 0.78)
-                                        : Color.white.opacity(0.06)
+                                        : (isHovered ? Color.white.opacity(0.12) : Color.white.opacity(0.06))
                                 )
                         )
-                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .onHover { hovering in
+                        hoveredTab = hovering ? tab : nil
+                    }
                 }
             }
 

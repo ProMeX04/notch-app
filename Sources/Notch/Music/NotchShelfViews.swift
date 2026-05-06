@@ -2,17 +2,74 @@ import AppKit
 @testable import NotchShelfCore
 @preconcurrency import QuickLookUI
 import SwiftUI
+import UniformTypeIdentifiers
+
+/// Owns the long-lived `NSScrollView`/`NSCollectionView` and their
+/// coordinator so that switching panels (or collapsing the notch) does
+/// not tear down and rebuild the shelf — the previous behaviour where
+/// `NSViewRepresentable.makeNSView` ran every reveal was the dominant
+/// source of "khựng" the user reported. The host is created once at
+/// `MediaNotchView` level via `@StateObject` and reused forever.
+@MainActor
+final class ShelfBrowserHost: ObservableObject {
+    let scrollView: NSScrollView
+    fileprivate let collectionView: ShelfCollectionView
+    fileprivate var coordinator: ShelfBrowserView.Coordinator?
+
+    init() {
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.horizontalScrollElasticity = .none
+        scrollView.verticalScrollElasticity = .automatic
+
+        let layout = NSCollectionViewFlowLayout()
+        layout.scrollDirection = .vertical
+        layout.itemSize = ShelfCollectionItem.preferredSize
+        layout.minimumInteritemSpacing = ShelfBrowserView.itemSpacing
+        layout.minimumLineSpacing = ShelfBrowserView.itemSpacing
+        layout.sectionInset = ShelfBrowserView.sectionInsets
+
+        let collectionView = ShelfCollectionView()
+        collectionView.collectionViewLayout = layout
+        collectionView.isSelectable = true
+        collectionView.allowsMultipleSelection = true
+        collectionView.backgroundColors = [.clear]
+        collectionView.register(
+            ShelfCollectionItem.self,
+            forItemWithIdentifier: ShelfCollectionItem.identifier
+        )
+        // Accept native external drags (Finder URLs, plain text). With this
+        // registration in place, drops that happen while the shelf is
+        // visible are routed through `validateDrop`/`acceptDrop` directly,
+        // bypassing the SwiftUI `onDrop` → `@Published` chain that used
+        // to add latency.
+        collectionView.registerForDraggedTypes([.fileURL, .URL, .string])
+        collectionView.setDraggingSourceOperationMask(.move, forLocal: true)
+        collectionView.setDraggingSourceOperationMask(.copy, forLocal: false)
+
+        scrollView.documentView = collectionView
+
+        self.scrollView = scrollView
+        self.collectionView = collectionView
+    }
+}
 
 struct ShelfPanelView: View {
     @ObservedObject var shelf: NotchShelfViewModel
     @ObservedObject var presentationModel: NotchPresentationModel
+    let host: ShelfBrowserHost
 
     var body: some View {
         VStack(spacing: 10) {
             if shelf.hasItems {
                 ShelfBrowserView(
                     shelf: shelf,
-                    presentationModel: presentationModel
+                    presentationModel: presentationModel,
+                    host: host
                 )
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             } else {
@@ -42,59 +99,47 @@ struct ShelfPanelView: View {
     }
 }
 
-private struct ShelfBrowserView: NSViewRepresentable {
-    private static let itemsPerRow: CGFloat = 5
-    private static let itemSpacing: CGFloat = 10
-    private static let sectionInsets = NSEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
+struct ShelfBrowserView: NSViewRepresentable {
+    static let itemsPerRow: CGFloat = 5
+    static let itemSpacing: CGFloat = 10
+    static let sectionInsets = NSEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
 
     @ObservedObject var shelf: NotchShelfViewModel
     @ObservedObject var presentationModel: NotchPresentationModel
+    let host: ShelfBrowserHost
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(
+        if let existing = host.coordinator {
+            existing.shelf = shelf
+            return existing
+        }
+        let coord = Coordinator(
             shelf: shelf,
             presentationModel: presentationModel
         )
+        coord.collectionView = host.collectionView
+        host.collectionView.delegate = coord
+        host.collectionView.dataSource = coord
+        host.collectionView.shelfCoordinator = coord
+        host.coordinator = coord
+        return coord
     }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSScrollView()
-        scrollView.drawsBackground = false
-        scrollView.borderType = .noBorder
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.autohidesScrollers = true
-        scrollView.horizontalScrollElasticity = .none
-        scrollView.verticalScrollElasticity = .automatic
-
-        let layout = NSCollectionViewFlowLayout()
-        layout.scrollDirection = .vertical
-        layout.itemSize = ShelfCollectionItem.preferredSize
-        layout.minimumInteritemSpacing = Self.itemSpacing
-        layout.minimumLineSpacing = Self.itemSpacing
-        layout.sectionInset = Self.sectionInsets
-
-        let collectionView = ShelfCollectionView()
-        collectionView.collectionViewLayout = layout
-        collectionView.isSelectable = true
-        collectionView.allowsMultipleSelection = true
-        collectionView.backgroundColors = [.clear]
-        collectionView.delegate = context.coordinator
-        collectionView.dataSource = context.coordinator
-        collectionView.shelfCoordinator = context.coordinator
-        collectionView.register(
-            ShelfCollectionItem.self,
-            forItemWithIdentifier: ShelfCollectionItem.identifier
-        )
-        collectionView.registerForDraggedTypes([.fileURL, .URL, .string])
-        collectionView.setDraggingSourceOperationMask(.move, forLocal: true)
-        collectionView.setDraggingSourceOperationMask(.copy, forLocal: false)
-
-        scrollView.documentView = collectionView
-        context.coordinator.collectionView = collectionView
-        context.coordinator.reloadData()
-        context.coordinator.syncSelectionToCollectionView()
-        return scrollView
+        let coord = context.coordinator
+        if host.collectionView.delegate !== coord {
+            host.collectionView.delegate = coord
+        }
+        if host.collectionView.dataSource !== coord {
+            host.collectionView.dataSource = coord
+        }
+        if host.collectionView.shelfCoordinator !== coord {
+            host.collectionView.shelfCoordinator = coord
+        }
+        coord.collectionView = host.collectionView
+        coord.reloadData()
+        coord.syncSelectionToCollectionView()
+        return host.scrollView
     }
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
@@ -104,6 +149,9 @@ private struct ShelfBrowserView: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ nsView: NSScrollView, coordinator: Coordinator) {
+        // Don't tear down NSScrollView — the host owns it and reuses it
+        // across every panel switch / collapse-expand cycle. Just release
+        // any transient state that should not survive a hide.
         coordinator.cleanupWhenShelfDisappears()
     }
 
@@ -141,8 +189,65 @@ private struct ShelfBrowserView: NSViewRepresentable {
         func reloadData() {
             let snapshot = shelf.items.map(\.id)
             guard snapshot != lastSnapshot else { return }
+
+            let oldSnapshot = lastSnapshot
             lastSnapshot = snapshot
-            collectionView?.reloadData()
+
+            guard let collectionView else { return }
+
+            // Initial load (or after a full reset) — skip diffing to avoid
+            // animating items in from nowhere on first appearance.
+            guard !oldSnapshot.isEmpty else {
+                collectionView.reloadData()
+                return
+            }
+
+            let difference = snapshot.difference(from: oldSnapshot).inferringMoves()
+
+            var deletions: Set<IndexPath> = []
+            var insertions: Set<IndexPath> = []
+            var moves: [(from: IndexPath, to: IndexPath)] = []
+
+            for change in difference {
+                switch change {
+                case let .remove(offset, _, associatedWith):
+                    if associatedWith == nil {
+                        deletions.insert(IndexPath(item: offset, section: 0))
+                    }
+                case let .insert(offset, _, associatedWith):
+                    if let assoc = associatedWith {
+                        moves.append((
+                            from: IndexPath(item: assoc, section: 0),
+                            to: IndexPath(item: offset, section: 0)
+                        ))
+                    } else {
+                        insertions.insert(IndexPath(item: offset, section: 0))
+                    }
+                }
+            }
+
+            // Run inserts/deletes/moves inside an explicit animation context
+            // with a tight duration. The previous `animator().performBatchUpdates`
+            // path used the default 0.25s linear curve which competed with the
+            // SwiftUI spring driving the surrounding notch chrome; the user
+            // saw that as "giật giật" while items reflowed. A short, tweened
+            // pass plays much more smoothly alongside the panel transition.
+            NSAnimationContext.runAnimationGroup({ ctx in
+                ctx.duration = 0.18
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                ctx.allowsImplicitAnimation = true
+                collectionView.animator().performBatchUpdates({
+                    if !deletions.isEmpty {
+                        collectionView.deleteItems(at: deletions)
+                    }
+                    if !insertions.isEmpty {
+                        collectionView.insertItems(at: insertions)
+                    }
+                    for move in moves {
+                        collectionView.moveItem(at: move.from, to: move.to)
+                    }
+                }, completionHandler: nil)
+            }, completionHandler: nil)
         }
 
         func syncSelectionToCollectionView() {
@@ -384,13 +489,23 @@ private struct ShelfBrowserView: NSViewRepresentable {
             proposedIndexPath proposedDropIndexPath: AutoreleasingUnsafeMutablePointer<NSIndexPath>,
             dropOperation proposedDropOperation: UnsafeMutablePointer<NSCollectionView.DropOperation>
         ) -> NSDragOperation {
-            guard draggingInfo.draggingSource as AnyObject? === collectionView,
-                  !draggedItemIDs.isEmpty else {
-                return []
+            // Internal reorder.
+            if draggingInfo.draggingSource as AnyObject? === collectionView,
+               !draggedItemIDs.isEmpty {
+                proposedDropOperation.pointee = .before
+                return .move
             }
 
-            proposedDropOperation.pointee = .before
-            return .move
+            // External drop (e.g. from Finder). Routing this through the
+            // collection view rather than SwiftUI's `onDrop` keeps the
+            // event entirely in AppKit — no `@Published` round-trip — so
+            // the system insertion indicator and animations match Finder's.
+            if hasAcceptableExternalContent(in: draggingInfo.draggingPasteboard) {
+                proposedDropOperation.pointee = .before
+                return .copy
+            }
+
+            return []
         }
 
         func collectionView(
@@ -399,17 +514,66 @@ private struct ShelfBrowserView: NSViewRepresentable {
             indexPath destinationIndexPath: IndexPath,
             dropOperation: NSCollectionView.DropOperation
         ) -> Bool {
-            guard draggingInfo.draggingSource as AnyObject? === collectionView,
-                  !draggedItemIDs.isEmpty else {
-                return false
+            if draggingInfo.draggingSource as AnyObject? === collectionView {
+                guard !draggedItemIDs.isEmpty else { return false }
+                let destinationIndex = min(destinationIndexPath.item, shelf.items.count)
+                // Mutating `items` triggers SwiftUI's `updateNSView` which
+                // calls `reloadData()` → diff-based animation runs there.
+                // Avoid double reload (which previously cancelled the move
+                // animation).
+                shelf.moveItems(with: draggedItemIDs, to: destinationIndex)
+                draggedItemIDs.removeAll()
+                return true
             }
 
-            let destinationIndex = min(destinationIndexPath.item, shelf.items.count)
-            shelf.moveItems(with: draggedItemIDs, to: destinationIndex)
-            reloadData()
-            syncSelectionToCollectionView()
-            draggedItemIDs.removeAll()
-            return true
+            let providers = externalItemProviders(from: draggingInfo)
+            guard !providers.isEmpty else { return false }
+
+            // Make sure the shelf panel is the active one so the user
+            // sees the items they just dropped. This call is cheap when
+            // we're already on shelf because of the panel-switch guards.
+            presentationModel.selectPanel(.shelf, reveal: true)
+            // SwiftUI's `onDrop(isTargeted:)` already fired with `false`
+            // by the time AppKit reaches this acceptDrop, which armed an
+            // auto-collapse 120 ms out. Drop succeeded — keep the shelf
+            // open so the user sees what just landed.
+            presentationModel.cancelScheduledCollapse()
+            return shelf.handleDrop(providers: providers)
+        }
+
+        private func hasAcceptableExternalContent(in pasteboard: NSPasteboard) -> Bool {
+            pasteboard.canReadObject(forClasses: [NSURL.self], options: nil)
+                || pasteboard.canReadObject(forClasses: [NSString.self], options: nil)
+        }
+
+        private func externalItemProviders(from info: NSDraggingInfo) -> [NSItemProvider] {
+            let pasteboard = info.draggingPasteboard
+
+            if let urls = pasteboard.readObjects(
+                forClasses: [NSURL.self],
+                options: nil
+            ) as? [URL], !urls.isEmpty {
+                return urls.map { url -> NSItemProvider in
+                    if url.isFileURL {
+                        // File URLs need an explicit file-URL representation
+                        // so the shelf drop service picks the file branch
+                        // (rather than a generic URL link item).
+                        let provider = NSItemProvider()
+                        provider.registerObject(url as NSURL, visibility: .ownProcess)
+                        return provider
+                    }
+                    return NSItemProvider(object: url as NSURL)
+                }
+            }
+
+            if let strings = pasteboard.readObjects(
+                forClasses: [NSString.self],
+                options: nil
+            ) as? [String], !strings.isEmpty {
+                return strings.map { NSItemProvider(object: $0 as NSString) }
+            }
+
+            return []
         }
 
         private func syncSelectionFromCollectionView() {
@@ -455,9 +619,10 @@ private struct ShelfBrowserView: NSViewRepresentable {
         }
 
         @objc private func removeSelection() {
+            // `removeSelectedItems` mutates `items` which triggers
+            // `updateNSView` → diff-based reload. Skip the redundant
+            // synchronous reload that used to cancel removal animations.
             shelf.removeSelectedItems()
-            reloadData()
-            syncSelectionToCollectionView()
             refreshQuickLookIfNeeded()
         }
 
@@ -472,20 +637,29 @@ private struct ShelfBrowserView: NSViewRepresentable {
         func cleanupWhenShelfDisappears() {
             presentationModel.setAutoCollapseSuppressed(false, reason: .shelfQuickLook)
             _quickLookController?.close(restoreFocus: false)
-            
-            // Aggressively flush memory caches when shelf is hidden
-            WorkspaceIconCache.shared.clearAll()
-            Task {
-                await NotchShelfThumbnailService.shared.clearAllCache()
-            }
+
+            // Intentionally keep WorkspaceIconCache + thumbnail cache warm.
+            // Flushing them every time the shelf hides used to force a full
+            // QLThumbnailGenerator pass on the next reveal, which produced a
+            // visible "khựng" while items repopulated their previews. The
+            // caches enforce their own LRU caps, so leaving them resident
+            // keeps memory bounded without paying that cost.
         }
     }
 }
 
-private final class ShelfCollectionView: NSCollectionView {
+final class ShelfCollectionView: NSCollectionView {
     weak var shelfCoordinator: ShelfBrowserView.Coordinator?
 
     override var acceptsFirstResponder: Bool { true }
+
+    // The notch lives in a `.nonactivatingPanel`, so the window is often
+    // not key when the user reaches for an item. Without this override the
+    // first mouseDown is swallowed as "click-to-focus", and the user has
+    // to press a second time before a drag-out is recognised — exactly
+    // the "ấn kéo không nhạy" symptom. Returning `true` lets the very
+    // first click begin AppKit's drag tracking immediately.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func menu(for event: NSEvent) -> NSMenu? {
         shelfCoordinator?.menu(for: self, event: event)
@@ -627,6 +801,14 @@ private final class ShelfCollectionItemView: NSView {
         super.init(coder: coder)
         setup()
     }
+
+    // Same reasoning as `ShelfCollectionView.acceptsFirstMouse`: the
+    // hosting window is non-activating, so without this override the
+    // very first click on an item only focuses the panel and the
+    // subsequent mouseDragged events never form a drag session. Letting
+    // the item view accept first-mouse means a single press-and-drag
+    // always initiates the drag-out gesture, like Finder.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     func reset() {
         previewImageView.image = nil

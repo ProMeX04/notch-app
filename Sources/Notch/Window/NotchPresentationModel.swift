@@ -83,6 +83,7 @@ enum NotchPanel: String {
     case focus
     case talk
     case shelf
+    case shortcuts
 }
 
 enum NotchAutoCollapseSuppressionReason: Hashable {
@@ -217,6 +218,15 @@ final class NotchPresentationModel: ObservableObject {
             guard self.canAutoCollapse else { return }
             isExpanded = false
         }
+    }
+
+    /// Cancel any pending auto-collapse without re-scheduling. Used when
+    /// AppKit's `NSCollectionView` consumes a drop directly (bypassing
+    /// SwiftUI's `onDrop`) — in that path the drop-target leave event has
+    /// already armed a collapse before we know the drop was successful.
+    func cancelScheduledCollapse() {
+        collapseTask?.cancel()
+        collapseTask = nil
     }
 
     func setAutoCollapseSuppressed(_ suppressed: Bool, reason: NotchAutoCollapseSuppressionReason) {

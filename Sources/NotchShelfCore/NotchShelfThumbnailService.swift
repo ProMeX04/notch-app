@@ -13,7 +13,10 @@ actor NotchShelfThumbnailService {
     private let generator = QLThumbnailGenerator.shared
 
     /// Maximum number of thumbnails to keep in memory at any time.
-    internal let maxCacheEntries = 25
+    /// Sized so a typical shelf (≤ a few rows) plus recent off-screen items
+    /// stays warm across panel show/hide cycles, avoiding regeneration spikes
+    /// every time the user reopens the shelf.
+    internal let maxCacheEntries = 128
 
     static func cacheKey(for url: URL, size: CGSize) -> String {
         "\(url.standardizedFileURL.path)_\(Int(size.width))x\(Int(size.height))"

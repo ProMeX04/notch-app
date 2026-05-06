@@ -7,6 +7,7 @@ enum AppSettingsTab: String, CaseIterable, Identifiable {
     case general
     case focus
     case talk
+    case shortcuts
 
     var id: String { rawValue }
 
@@ -20,6 +21,8 @@ enum AppSettingsTab: String, CaseIterable, Identifiable {
             return "Focus"
         case .talk:
             return "Talk"
+        case .shortcuts:
+            return "Shortcuts"
         }
     }
 
@@ -34,6 +37,8 @@ enum AppSettingsTab: String, CaseIterable, Identifiable {
             return "timer"
         case .talk:
             return "bubble.left.and.bubble.right"
+        case .shortcuts:
+            return "command"
         }
     }
 }
@@ -49,6 +54,7 @@ final class AppSettingsController: ObservableObject {
         let learningStats: LearningStatsStore
         let gemini: GeminiLiveViewModel
         let entitlementStore: NotchEntitlementStore
+        let shortcutStore: ShortcutStore
     }
 
     @Published var selectedTab: AppSettingsTab = .general
@@ -62,7 +68,8 @@ final class AppSettingsController: ObservableObject {
         focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore,
         learningStats: LearningStatsStore,
         gemini: GeminiLiveViewModel,
-        entitlementStore: NotchEntitlementStore
+        entitlementStore: NotchEntitlementStore,
+        shortcutStore: ShortcutStore
     ) {
         dependencies = Dependencies(
             presentationModel: presentationModel,
@@ -70,7 +77,8 @@ final class AppSettingsController: ObservableObject {
             focusWebsiteBlocklistStore: focusWebsiteBlocklistStore,
             learningStats: learningStats,
             gemini: gemini,
-            entitlementStore: entitlementStore
+            entitlementStore: entitlementStore,
+            shortcutStore: shortcutStore
         )
 
         updateRootViewIfNeeded()
@@ -123,7 +131,8 @@ final class AppSettingsController: ObservableObject {
             focusWebsiteBlocklistStore: dependencies.focusWebsiteBlocklistStore,
             learningStats: dependencies.learningStats,
             gemini: dependencies.gemini,
-            entitlementStore: dependencies.entitlementStore
+            entitlementStore: dependencies.entitlementStore,
+            shortcutStore: dependencies.shortcutStore
         )
     }
 }

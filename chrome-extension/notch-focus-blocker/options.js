@@ -13,8 +13,8 @@ testButton.addEventListener("click", refreshState);
 bootstrap();
 
 async function bootstrap() {
-  const { apiBaseUrl = "http://127.0.0.1:44991" } = await chrome.storage.local.get({
-    apiBaseUrl: "http://127.0.0.1:44991"
+  const { apiBaseUrl = "ws://127.0.0.1:44991/v1/ws" } = await chrome.storage.local.get({
+    apiBaseUrl: "ws://127.0.0.1:44991/v1/ws"
   });
   apiBaseUrlInput.value = apiBaseUrl;
 

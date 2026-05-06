@@ -3,6 +3,7 @@
   "name": "Notch Focus Blocker",
   "description": "Connects to the Notch macOS app and blocks distracting sites while a focus session is running.",
   "version": "0.1.0",
+  "minimum_chrome_version": "116",
   "permissions": [
     "alarms",
     "storage",
@@ -10,8 +11,6 @@
     "scripting"
   ],
   "host_permissions": [
-    "http://127.0.0.1:44991/*",
-    "http://localhost:44991/*",
     "<all_urls>"
   ],
   "web_accessible_resources": [
@@ -23,7 +22,8 @@
     }
   ],
   "background": {
-    "service_worker": "service-worker.js"
+    "service_worker": "service-worker.js",
+    "type": "module"
   },
   "action": {
     "default_title": "Notch Focus Blocker",

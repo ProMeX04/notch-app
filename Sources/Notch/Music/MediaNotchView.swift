@@ -20,19 +20,58 @@ struct MediaNotchView: View {
     @ObservedObject var focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore
     @ObservedObject var gemini: GeminiLiveViewModel
     @ObservedObject var shelf: NotchShelfViewModel
+    @ObservedObject var shortcutStore: ShortcutStore
     @ObservedObject var learningStats: LearningStatsStore
     @ObservedObject var presentationModel: NotchPresentationModel
     @ObservedObject var entitlementStore: NotchEntitlementStore
 
     @Namespace private var albumArtNamespace
     @StateObject private var talkHeaderAccessoryController = NotchHeaderAccessoryController()
+    @StateObject private var shortcutsViewModel: NotchShortcutViewModel
+    // Persistent host for the shelf NSCollectionView. By owning it here
+    // (rather than letting `ShelfBrowserView` recreate it on every panel
+    // reveal) the underlying AppKit view stays alive across panel
+    // switches and notch collapse/expand cycles, which removes the most
+    // visible source of drag-and-drop "khựng".
+    @StateObject private var shelfBrowserHost = ShelfBrowserHost()
     @State private var isHovering = false
+
+    init(
+        playback: MediaProbeViewModel,
+        pomodoro: PomodoroViewModel,
+        focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore,
+        gemini: GeminiLiveViewModel,
+        shelf: NotchShelfViewModel,
+        shortcutStore: ShortcutStore,
+        learningStats: LearningStatsStore,
+        presentationModel: NotchPresentationModel,
+        entitlementStore: NotchEntitlementStore
+    ) {
+        self.playback = playback
+        self.pomodoro = pomodoro
+        self.focusWebsiteBlocklistStore = focusWebsiteBlocklistStore
+        self.gemini = gemini
+        self.shelf = shelf
+        self.shortcutStore = shortcutStore
+        self.learningStats = learningStats
+        self.presentationModel = presentationModel
+        self.entitlementStore = entitlementStore
+        _shortcutsViewModel = StateObject(wrappedValue: NotchShortcutViewModel(store: shortcutStore))
+    }
     @State private var didAutoRevealForShelfDrop = false
     @State private var didCommitShelfDrop = false
+    /// Set briefly while the user's drag-into-notch is being honoured.
+    /// While true, every animation modifier in this view collapses to
+    /// "no animation" — the notch SNAPS to its expanded layout instead
+    /// of springing into it. The spring chase used to make the drop
+    /// target dance under the cursor for ~420 ms, which was the dominant
+    /// source of perceived jitter.
+    @State private var isDragRevealing = false
     private let shelfDropTypes: [UTType] = [.fileURL, .url, .utf8PlainText, .plainText, .data]
 
-    private var notchAnimation: Animation {
-        presentationModel.isExpanded
+    private var notchAnimation: Animation? {
+        if isDragRevealing { return nil }
+        return presentationModel.isExpanded
             ? .spring(response: 0.42, dampingFraction: 0.8, blendDuration: 0)
             : .spring(response: 0.45, dampingFraction: 1.0, blendDuration: 0)
     }
@@ -131,11 +170,19 @@ struct MediaNotchView: View {
                     handleShelfDrop(providers)
                 }
         }
-        .onChange(of: shelf.isDropTargeted) { _, isTargeted in
+        .onChange(of: shelf.isDropTargeted) { wasTargeted, isTargeted in
+            // Ignore spurious re-emits with the same value (SwiftUI may
+            // republish during drag re-entry mid-animation).
+            guard wasTargeted != isTargeted else { return }
+
             if isTargeted {
                 didAutoRevealForShelfDrop = !presentationModel.isExpanded
                 didCommitShelfDrop = false
-                presentationModel.selectPanel(.shelf, reveal: true)
+                let alreadyOnShelf = presentationModel.selectedPanel == .shelf
+                    && presentationModel.isExpanded
+                if !alreadyOnShelf {
+                    snapToShelf()
+                }
                 return
             }
 
@@ -146,12 +193,48 @@ struct MediaNotchView: View {
             didAutoRevealForShelfDrop = false
             didCommitShelfDrop = false
         }
+        .transaction { transaction in
+            // Whenever a drag-reveal is in flight, force every animation
+            // in the subtree (frames, paddings, transitions, shadow flips)
+            // to apply instantaneously. The single-frame snap is the only
+            // way to give the user a stable drop target while their drag
+            // is in progress.
+            if isDragRevealing {
+                transaction.disablesAnimations = true
+                transaction.animation = nil
+            }
+        }
         .compositingGroup()
         .preferredColorScheme(.dark)
     }
 
+    /// Reveal the shelf instantly (no spring) so the user's drag can land
+    /// on a stable, fully-expanded drop target. We flip the gating flag
+    /// FIRST so SwiftUI's `.animation(notchAnimation, value:)` modifier
+    /// resolves to `nil` for this state change. Wrapping the mutation in
+    /// a `disablesAnimations` transaction is belt-and-suspenders for any
+    /// implicit animations in the chain (transitions, padding changes,
+    /// shadow toggles, …).
+    private func snapToShelf() {
+        isDragRevealing = true
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            presentationModel.selectPanel(.shelf, reveal: true)
+        }
+        // Restore the spring on the next runloop tick so subsequent
+        // click-driven panel/expand changes still feel lively.
+        DispatchQueue.main.async {
+            isDragRevealing = false
+        }
+    }
+
     private func handleShelfDrop(_ providers: [NSItemProvider]) -> Bool {
-        presentationModel.selectPanel(.shelf, reveal: true)
+        let alreadyOnShelf = presentationModel.selectedPanel == .shelf
+            && presentationModel.isExpanded
+        if !alreadyOnShelf {
+            snapToShelf()
+        }
         let accepted = shelf.handleDrop(providers: providers)
         didCommitShelfDrop = accepted
         return accepted
@@ -211,7 +294,9 @@ struct MediaNotchView: View {
                 presentationModel: presentationModel,
                 entitlementStore: entitlementStore,
                 talkHeaderAccessoryController: talkHeaderAccessoryController,
-                albumArtNamespace: albumArtNamespace
+                shortcutsViewModel: shortcutsViewModel,
+                albumArtNamespace: albumArtNamespace,
+                shelfBrowserHost: shelfBrowserHost
             )
             .padding(.top, presentationModel.selectedPanel == .focus ? (presentationModel.isFocusOverlayPresented ? 10 : 0) : 10)
             .padding(.horizontal, presentationModel.selectedPanel == .focus ? 0 : 31)
@@ -293,8 +378,8 @@ struct MediaNotchView: View {
             }
         }
         .animation(notchAnimation, value: presentationModel.isExpanded)
-        .animation(.smooth, value: compactActivity.rawValue)
-        .animation(.smooth, value: presentationModel.selectedPanel.rawValue)
+        .animation(isDragRevealing ? nil : .smooth, value: compactActivity.rawValue)
+        .animation(isDragRevealing ? nil : .smooth, value: presentationModel.selectedPanel.rawValue)
         .onChange(of: presentationModel.selectedPanel) { _, selectedPanel in
             if selectedPanel != .talk {
                 talkHeaderAccessoryController.clear()

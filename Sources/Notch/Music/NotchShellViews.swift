@@ -529,7 +529,9 @@ struct ExpandedNotchContent: View {
     @ObservedObject var presentationModel: NotchPresentationModel
     @ObservedObject var entitlementStore: NotchEntitlementStore
     @ObservedObject var talkHeaderAccessoryController: NotchHeaderAccessoryController
+    @ObservedObject var shortcutsViewModel: NotchShortcutViewModel
     let albumArtNamespace: Namespace.ID
+    let shelfBrowserHost: ShelfBrowserHost
 
     var body: some View {
         Group {
@@ -547,6 +549,12 @@ struct ExpandedNotchContent: View {
             } else if presentationModel.selectedPanel == .shelf {
                 ShelfPanelView(
                     shelf: shelf,
+                    presentationModel: presentationModel,
+                    host: shelfBrowserHost
+                )
+            } else if presentationModel.selectedPanel == .shortcuts {
+                ShortcutPanelView(
+                    viewModel: shortcutsViewModel,
                     presentationModel: presentationModel
                 )
             } else {
@@ -563,7 +571,13 @@ struct ExpandedNotchContent: View {
                 }
             }
         }
-        .transition(.opacity.combined(with: .move(edge: .top)))
+        // The shelf panel hosts a heavy NSCollectionView. Pairing a sliding
+        // transition with that view's first-time layout produced visible
+        // jitter (collection view content laying itself out while SwiftUI
+        // simultaneously moved the whole panel). A simple opacity transition
+        // is cheap to render and avoids competing with NSCollectionView
+        // initial layout / drop-driven inserts.
+        .transition(.opacity)
     }
 }
 
@@ -604,6 +618,8 @@ struct PanelSwitcher: View {
             return "bubble.left.and.bubble.right"
         case .shelf:
             return "tray.full"
+        case .shortcuts:
+            return "command"
         }
     }
 
@@ -615,6 +631,7 @@ struct PanelSwitcher: View {
             case .talk: cap = .talkConnection
             case .media: cap = .mediaControls
             case .shelf: cap = .panelAccess(.shelf)
+            case .shortcuts: cap = .panelAccess(.shortcuts)
             }
             
             let decision = entitlementStore.decision(for: cap)
@@ -657,6 +674,8 @@ struct PanelSwitcher: View {
             return "Talk"
         case .shelf:
             return ""
+        case .shortcuts:
+            return "Shortcuts"
         }
     }
 
@@ -683,7 +702,7 @@ struct PanelSwitcher: View {
             case .disconnected, .failed:
                 return nil
             }
-        case .media, .shelf:
+        case .media, .shelf, .shortcuts:
             return nil
         }
     }
@@ -745,6 +764,23 @@ private struct HeaderUtilitySwitcher: View {
             }
             .buttonStyle(.plain)
             .help("Shelf")
+
+            Button {
+                let cap = NotchCapability.panelAccess(.shortcuts)
+                let decision = entitlementStore.decision(for: cap)
+                if decision.isAllowed {
+                    presentationModel.selectPanel(.shortcuts)
+                } else {
+                    NotchProWindowController.shared.show(for: cap, entitlementStore: entitlementStore, gemini: gemini)
+                }
+            } label: {
+                utilityIcon(
+                    "command",
+                    isSelected: presentationModel.selectedPanel == .shortcuts
+                )
+            }
+            .buttonStyle(.plain)
+            .help("Shortcuts")
 
             Button {
                 AppSettingsController.shared.open(tab: .general)
@@ -929,6 +965,12 @@ struct Localization {
         "Find": ["English": "Find", "Tiếng Việt": "Tìm file"],
         "Grep": ["English": "Grep", "Tiếng Việt": "Tìm nội dung"],
         "Edit": ["English": "Edit", "Tiếng Việt": "Sửa"],
+        "Calendar": ["English": "Calendar", "Tiếng Việt": "Lịch"],
+        "Clipboard": ["English": "Clipboard", "Tiếng Việt": "Bảng tạm"],
+        "App": ["English": "App", "Tiếng Việt": "Ứng dụng"],
+        "Media": ["English": "Media", "Tiếng Việt": "Phát lại"],
+        "Screenshot": ["English": "Screenshot", "Tiếng Việt": "Chụp màn hình"],
+        "Browser": ["English": "Browser", "Tiếng Việt": "Trình duyệt"],
         "Exec": ["English": "Exec", "Tiếng Việt": "Chạy lệnh"],
         "Off": ["English": "Off", "Tiếng Việt": "Tắt"],
         "Low": ["English": "Low", "Tiếng Việt": "Thấp"],

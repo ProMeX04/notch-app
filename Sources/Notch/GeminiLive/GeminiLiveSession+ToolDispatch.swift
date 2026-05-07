@@ -29,7 +29,8 @@ extension GeminiLiveSession {
             handleCalendarCall(id: id, call: call)
         case "browserControl":
             handleBrowserControlCall(id: id, call: call)
-
+        case "localFileSearch":
+            handleLocalFileSearchCall(id: id, call: call)
         case "pomodoro":
             handlePomodoroCall(id: id, call: call)
         case "appControl":
@@ -38,10 +39,10 @@ extension GeminiLiveSession {
             handleMediaControlCall(id: id, call: call)
         case "clipboard":
             handleClipboardCall(id: id, call: call)
-        case "screenshot":
-            handleScreenshotCall(id: id, call: call)
         case "memory":
             handleMemoryCall(id: id, call: call)
+        case "appleMail":
+            handleAppleMailCall(id: id, call: call)
         default:
             sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
         }
@@ -308,6 +309,11 @@ extension GeminiLiveSession {
         let name = "pomodoro"
         let rawArgs = call["args"] as? [String: Any] ?? [:]
         let action = GeminiToolArgumentNormalizer.stringValue(in: rawArgs, keys: ["action"]) ?? "status"
+        let focusDuration = GeminiToolArgumentNormalizer.stringValue(in: rawArgs, keys: ["focusDuration"])
+        let breakDuration = GeminiToolArgumentNormalizer.stringValue(in: rawArgs, keys: ["breakDuration"])
+        let longBreakDuration = GeminiToolArgumentNormalizer.stringValue(in: rawArgs, keys: ["longBreakDuration"])
+        let cycleCount = rawArgs["cycleCount"] as? NSNumber
+        let cycleCountStr = cycleCount.map { "\($0)" }
         
         let sendableArgs = SendableToolArgs(args: rawArgs)
         toolExecutionQueue.async { [weak self] in
@@ -315,14 +321,36 @@ extension GeminiLiveSession {
             self.notifyFunctionStarted(name: name, args: sendableArgs.args)
             
             Task {
-                var cmd = "notchctl focus \(action) pomodoro"
-                if action == "start" || action == "set" {
-                    if let d = rawArgs["focusDuration"] as? String { cmd += " \(d)" }
-                    if let b = rawArgs["breakDuration"] as? String { cmd += " \(b)" }
-                    if let l = rawArgs["longBreakDuration"] as? String { cmd += " \(l)" }
-                    if let c = rawArgs["cycleCount"] as? NSNumber { cmd += " \(c)" }
+                if action == "status" {
+                    if let fetcher = self.onReadPomodoroState {
+                        let state = await fetcher()
+                        if let data = try? JSONSerialization.data(withJSONObject: state, options: .prettyPrinted),
+                           let jsonString = String(data: data, encoding: .utf8) {
+                            let result: [String: Any] = [
+                                "success": true,
+                                "stdout": jsonString,
+                                "stderr": "",
+                                "exitCode": 0
+                            ]
+                            self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
+                            self.sendFunctionResponse(id: id, name: name, result: result)
+                            return
+                        }
+                    }
+                    let result: [String: Any] = ["success": false, "error": "Pomodoro state fetcher not available."]
+                    self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
+                    self.sendFunctionResponse(id: id, name: name, result: result)
+                    return
                 }
-                let result = await self.interceptNotchctl(cmd, workingDirectory: nil) ?? ["success": false, "error": "Pomodoro command failed"]
+
+                var tokens = [action, "pomodoro"]
+                if action == "start" || action == "set" {
+                    if let d = focusDuration { tokens.append(d) }
+                    if let b = breakDuration { tokens.append(b) }
+                    if let l = longBreakDuration { tokens.append(l) }
+                    if let c = cycleCountStr { tokens.append(c) }
+                }
+                let result = await self.handleNotchURLCommand(domain: "focus", tokens: tokens)
                 self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
                 self.sendFunctionResponse(id: id, name: name, result: result)
             }
@@ -341,9 +369,11 @@ extension GeminiLiveSession {
             guard let self else { return }
             self.notifyFunctionStarted(name: name, args: sendableArgs.args)
             Task {
-                var cmd = "notchctl app \(action) \"\(appName)\""
-                if action == "move" { cmd += " \(direction)" }
-                let result = await self.interceptNotchctl(cmd, workingDirectory: nil) ?? ["success": false, "error": "App control failed"]
+                var tokens = [action, appName]
+                if action == "move" && !direction.isEmpty {
+                    tokens.append(direction)
+                }
+                let result = await self.handleAppCommand(tokens)
                 self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
                 self.sendFunctionResponse(id: id, name: name, result: result)
             }
@@ -371,22 +401,68 @@ extension GeminiLiveSession {
             guard let self else { return }
             self.notifyFunctionStarted(name: name, args: sendableArgs.args)
             Task {
-                guard action != "volume-set" || volumeLevel != nil else {
-                    let result: [String: Any] = ["success": false, "error": "volume-set requires a 'volumeLevel' argument (0-100)."]
+                // Read-only queries: call directly, skip notchctl string roundtrip
+                if action == "status" {
+                    let result: [String: Any]
+                    if let fetcher = self.onReadMediaState {
+                        result = await fetcher()
+                    } else {
+                        result = ["success": false, "error": "Media state fetcher not available."]
+                    }
                     self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
                     self.sendFunctionResponse(id: id, name: name, result: result)
                     return
                 }
-                var cmd = action == "volume-set" ? "notchctl volume set \(volumeLevel!)" :
-                          action == "volume-mute" ? "notchctl volume mute" :
-                          action == "volume-unmute" ? "notchctl volume unmute" :
-                          "notchctl media \(action)"
-                if action == "skip-forward" || action == "skip-backward" {
-                    cmd += " \(skipSeconds ?? "15")"
+                if action == "volume-get" {
+                    let result = self.handleVolumeCommand(["get"])
+                    self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
+                    self.sendFunctionResponse(id: id, name: name, result: result)
+                    return
                 }
-                let result = await self.interceptNotchctl(cmd, workingDirectory: nil) ?? ["success": false, "error": "Media control failed"]
-                self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
-                self.sendFunctionResponse(id: id, name: name, result: result)
+
+                // Volume set/mute/unmute: handle natively
+                if action == "volume-set" {
+                    guard let level = volumeLevel else {
+                        let result: [String: Any] = ["success": false, "error": "volume-set requires a 'volumeLevel' argument (0-100)."]
+                        self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
+                        self.sendFunctionResponse(id: id, name: name, result: result)
+                        return
+                    }
+                    let result = self.handleVolumeCommand(["set", level])
+                    self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
+                    self.sendFunctionResponse(id: id, name: name, result: result)
+                    return
+                }
+                if action == "volume-mute" {
+                    let result = self.handleVolumeCommand(["mute"])
+                    self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
+                    self.sendFunctionResponse(id: id, name: name, result: result)
+                    return
+                }
+                if action == "volume-unmute" {
+                    let result = self.handleVolumeCommand(["unmute"])
+                    self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
+                    self.sendFunctionResponse(id: id, name: name, result: result)
+                    return
+                }
+
+                // Playback actions: route directly via onMediaCommand
+                var params: [String: String] = [:]
+                if action == "skip-forward" || action == "skip-backward" {
+                    params["seconds"] = skipSeconds ?? "15"
+                }
+                if let handler = self.onMediaCommand {
+                    let success = await handler(action, params)
+                    let result: [String: Any] = success
+                        ? ["success": true]
+                        : ["success": false, "error": "Media command '\(action)' failed."]
+                    self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
+                    self.sendFunctionResponse(id: id, name: name, result: result)
+                } else {
+                    let result: [String: Any] = ["success": false, "error": "Media command handler not available."]
+                    self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
+                    self.sendFunctionResponse(id: id, name: name, result: result)
+                }
             }
         }
     }
@@ -461,23 +537,6 @@ extension GeminiLiveSession {
         }
     }
 
-    private func handleScreenshotCall(id: String, call: [String: Any]) {
-        let name = "screenshot"
-        let rawArgs = call["args"] as? [String: Any] ?? [:]
-        let mode = GeminiToolArgumentNormalizer.stringValue(in: rawArgs, keys: ["mode"]) ?? "interactive-region"
-        
-        let sendableArgs = SendableToolArgs(args: rawArgs)
-        toolExecutionQueue.async { [weak self] in
-            guard let self else { return }
-            self.notifyFunctionStarted(name: name, args: sendableArgs.args)
-            Task {
-                let cmd = "notchctl screen \(mode)"
-                let result = await self.interceptNotchctl(cmd, workingDirectory: nil) ?? ["success": false, "error": "Screenshot failed"]
-                self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
-                self.sendFunctionResponse(id: id, name: name, result: result)
-            }
-        }
-    }
 
     private func handleMemoryCall(id: String, call: [String: Any]) {
         let name = "memory"
@@ -511,6 +570,28 @@ extension GeminiLiveSession {
         }
     }
 
+    private func handleLocalFileSearchCall(id: String, call: [String: Any]) {
+        let name = "localFileSearch"
+        let rawArgs = call["args"] as? [String: Any] ?? [:]
+        let args = GeminiToolArgumentNormalizer.normalize(rawArgs)
+        guard let query = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["query"]) else {
+            sendFunctionResponse(id: id, name: name, result: ["error": "Missing required field: query"])
+            return
+        }
+        let limit = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["limit"])
+        let scope = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["scope"])
+        let kind = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["kind"])
+        let sendableArgs = SendableToolArgs(args: args)
+        
+        toolExecutionQueue.async { [weak self] in
+            guard let self else { return }
+            self.notifyFunctionStarted(name: name, args: sendableArgs.args)
+            let result = self.executeLocalFileSearch(query: query, limit: limit, scope: scope, kind: kind)
+            self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
+            self.sendFunctionResponse(id: id, name: name, result: result)
+        }
+    }
+
     func denyExecCall(toolCallID: String) {
         guard let pending = takePendingExecApproval(toolCallID: toolCallID) else { return }
         let result: [String: Any] = [
@@ -519,6 +600,26 @@ extension GeminiLiveSession {
         ]
         notifyFunctionExecuted(name: "exec", args: pending.args, result: result)
         sendFunctionResponse(id: toolCallID, name: "exec", result: result)
+    }
+
+    private func handleAppleMailCall(id: String, call: [String: Any]) {
+        let name = "appleMail"
+        let rawArgs = call["args"] as? [String: Any] ?? [:]
+        let args = GeminiToolArgumentNormalizer.normalize(rawArgs)
+        
+        let action = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["action"]) ?? "list_recent"
+        let query = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["query"])
+        let limit = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["limit"])
+        let messageId = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["messageId"])
+        
+        let sendableArgs = SendableToolArgs(args: args)
+        toolExecutionQueue.async { [weak self] in
+            guard let self else { return }
+            self.notifyFunctionStarted(name: name, args: sendableArgs.args)
+            let result = self.executeAppleMailSearch(action: action, query: query, limit: limit, messageId: messageId)
+            self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
+            self.sendFunctionResponse(id: id, name: name, result: result)
+        }
     }
 }
 

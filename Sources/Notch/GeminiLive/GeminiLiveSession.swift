@@ -96,6 +96,7 @@ final class GeminiLiveSession: @unchecked Sendable {
     var onNotchCommand: (@Sendable (String) async -> Bool)?
     var onReadPomodoroState: (@Sendable () async -> [String: Any])?
     var onReadMediaState: (@Sendable () async -> [String: Any])?
+    var onMediaCommand: (@Sendable (String, [String: String]) async -> Bool)?
     var onReadUserStore: (@Sendable () -> String)?
     var onReadMemoryStore: (@Sendable () -> String)?
     var onWriteUserStore: (@Sendable (_ content: String) async -> Bool)?
@@ -676,22 +677,6 @@ final class GeminiLiveSession: @unchecked Sendable {
                 ] as [String: Any]
             ])
         }
-        if enabledTools.contains(.screenshot) {
-            decls.append([
-                "name": "screenshot",
-                "description": "Take a screenshot on the user's Mac. Saves to ~/.notch/workspace/screenshots/ or copies to clipboard.",
-                "parameters": [
-                    "type": "OBJECT",
-                    "properties": [
-                        "mode": [
-                            "type": "STRING",
-                            "description": "Capture mode: 'fullscreen', 'window' (interactive), 'region' (interactive), 'fullscreen-clipboard', 'region-clipboard'."
-                        ],
-                    ],
-                    "required": ["mode"]
-                ] as [String: Any]
-            ])
-        }
         if enabledTools.contains(.browserControl) {
             decls.append([
                 "name": "browserControl",
@@ -768,6 +753,69 @@ final class GeminiLiveSession: @unchecked Sendable {
                             "type": "STRING",
                             "description": "For 'write-user' or 'write-memory': the full file content to save."
                         ],
+                    ],
+                    "required": ["action"]
+                ] as [String: Any]
+            ])
+        }
+        if enabledTools.contains(.localFileSearch) {
+            decls.append([
+                "name": "localFileSearch",
+                "description": "Search indexed local files, folders, apps, and media on the user's Mac.",
+                "parameters": [
+                    "type": "OBJECT",
+                    "properties": [
+                        "query": [
+                            "type": "STRING",
+                            "description": "Search text."
+                        ],
+                        "limit": [
+                            "type": "INTEGER",
+                            "description": "Max results (default 10, max 50)."
+                        ],
+                        "scope": [
+                            "type": "STRING",
+                            "description": "Optional: 'home', 'documents', 'desktop', 'downloads', 'applications', or 'all'."
+                        ],
+                        "kind": [
+                            "type": "STRING",
+                            "description": "Optional: 'any', 'app', 'folder', 'document', 'image', 'pdf', 'audio', or 'video'."
+                        ],
+                    ],
+                    "required": ["query"]
+                ] as [String: Any]
+            ])
+        }
+        if enabledTools.contains(.appleMail) {
+            decls.append([
+                "name": "appleMail",
+                "description": """
+                Search or list recent emails from Apple Mail.
+                Actions:
+                - "list_recent": List the most recent emails.
+                - "search": Search for emails by keyword (sender name, email, subject, or snippet).
+                - "read_content": Read the full content of a specific email.
+                Requires Full Disk Access to read the Mail database.
+                """,
+                "parameters": [
+                    "type": "OBJECT",
+                    "properties": [
+                        "action": [
+                            "type": "STRING",
+                            "description": "The action to perform: 'list_recent', 'search', or 'read_content'."
+                        ],
+                        "query": [
+                            "type": "STRING",
+                            "description": "For 'search': the search keyword. For 'read_content': the subject or sender to identify the email."
+                        ],
+                        "limit": [
+                            "type": "NUMBER",
+                            "description": "Max number of results to return (default 10)."
+                        ],
+                        "messageId": [
+                            "type": "STRING",
+                            "description": "For 'read_content': Optional database ID of the message."
+                        ]
                     ],
                     "required": ["action"]
                 ] as [String: Any]

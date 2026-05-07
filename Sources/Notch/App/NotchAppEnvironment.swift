@@ -54,12 +54,20 @@ final class NotchAppEnvironment {
                   let url = URL(string: urlString) else { return false }
             
             return await MainActor.run {
+                NotchCommandRouter.handle(
+                    url: url,
+                    handler: featureCoordinator,
+                    entitlementStore: entitlementStore
+                )
+                return true
+            }
+        }
+
+        geminiLiveViewModel.session.onMediaCommand = { [weak featureCoordinator, weak entitlementStore] action, params in
+            guard let featureCoordinator, let entitlementStore else { return false }
+            return await MainActor.run {
                 do {
-                    try NotchCommandRouter.handle(
-                        url: url,
-                        handler: featureCoordinator,
-                        entitlementStore: entitlementStore
-                    )
+                    try NotchCommandRouter.handleMedia(action: action, queryItems: params, handler: featureCoordinator, entitlementStore: entitlementStore)
                     return true
                 } catch {
                     return false

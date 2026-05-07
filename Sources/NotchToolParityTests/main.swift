@@ -858,7 +858,6 @@ enum NotchToolParityTests {
     ) -> GeminiWorkspaceCodingTools {
         GeminiWorkspaceCodingTools(
             workspaceRoot: workspaceRoot,
-            builtInSkillsDirectory: nil,
             adaptiveReadBudgetBytes: adaptiveReadBudgetBytes
         )
     }

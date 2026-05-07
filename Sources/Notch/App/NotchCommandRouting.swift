@@ -39,10 +39,11 @@ enum NotchCommandRouter {
                 try requireAccess(.deepLinkCommand(.focus), entitlementStore: entitlementStore)
                 try handleFocus(action: action, queryItems: queryItems, handler: handler)
             case "media":
-                try requireAccess(.deepLinkCommand(.media), entitlementStore: entitlementStore)
-                try handleMedia(action: action, queryItems: queryItems, handler: handler)
+                try handleMedia(action: action, queryItems: queryItems, handler: handler, entitlementStore: entitlementStore)
             case "oauth":
                 try handleOAuth(url: url, action: action, handler: handler)
+            case "debug":
+                try handleDebug(action: action)
             default:
                 throw NotchCommandError.unsupportedCommand(url.absoluteString)
             }
@@ -171,7 +172,8 @@ enum NotchCommandRouter {
         }
     }
 
-    private static func handleMedia(action: String, queryItems: [String: String], handler: NotchCommandHandling) throws {
+    static func handleMedia(action: String, queryItems: [String: String], handler: NotchCommandHandling, entitlementStore: NotchEntitlementStore) throws {
+        try requireAccess(.deepLinkCommand(.media), entitlementStore: entitlementStore)
         switch action {
         case "play":
             handler.playMedia()
@@ -211,7 +213,16 @@ enum NotchCommandRouter {
             throw NotchCommandError.invalidAction("oauth", action)
         }
     }
-
+    
+    private static func handleDebug(action: String) throws {
+        switch action {
+        case "spotlight":
+            SpotlightTestWindowController.shared.show()
+        default:
+            throw NotchCommandError.invalidAction("debug", action)
+        }
+    }
+    
     private static func requiredSeconds(queryItems: [String: String]) throws -> Double {
         guard let raw = firstNonEmpty(queryItems["seconds"], queryItems["secs"], queryItems["value"]),
               let seconds = Double(raw) else {

@@ -616,7 +616,6 @@ public struct GeminiWorkspaceCodingTools {
     }
 
     let workspaceRoot: URL
-    let builtInSkillsDirectory: URL?
     let readMaxLines: Int
     let readMaxBytes: Int
     let adaptiveReadBudgetBytes: Int
@@ -629,7 +628,6 @@ public struct GeminiWorkspaceCodingTools {
 
     public init(
         workspaceRoot: URL,
-        builtInSkillsDirectory: URL?,
         readMaxLines: Int = defaultReadMaxLines,
         readMaxBytes: Int = defaultReadMaxBytes,
         adaptiveReadBudgetBytes: Int = defaultAdaptiveReadBudgetBytes,
@@ -641,7 +639,6 @@ public struct GeminiWorkspaceCodingTools {
         fileManager: FileManager = .default
     ) {
         self.workspaceRoot = workspaceRoot
-        self.builtInSkillsDirectory = builtInSkillsDirectory
         self.readMaxLines = readMaxLines
         self.readMaxBytes = readMaxBytes
         self.adaptiveReadBudgetBytes = adaptiveReadBudgetBytes

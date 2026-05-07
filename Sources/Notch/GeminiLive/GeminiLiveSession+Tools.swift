@@ -1,4 +1,4 @@
-import Foundation
+@preconcurrency import Foundation
 @preconcurrency import EventKit
 import AppKit
 import NotchTooling
@@ -6,8 +6,7 @@ import NotchTooling
 extension GeminiLiveSession {
     private var workspaceCodingTools: GeminiWorkspaceCodingTools {
         GeminiWorkspaceCodingTools(
-            workspaceRoot: GeminiLiveStoragePaths.workspaceRoot,
-            builtInSkillsDirectory: GeminiLiveStoragePaths.builtInSkillsDirectory
+            workspaceRoot: GeminiLiveStoragePaths.workspaceRoot
         )
     }
 
@@ -86,11 +85,6 @@ extension GeminiLiveSession {
             return ["success": false, "error": "Command is empty."]
         }
 
-        // ── Intercept notchctl commands ──────────────────────────────────
-        if let interceptResult = await interceptNotchctl(trimmedCommand, workingDirectory: workingDirectory) {
-            return interceptResult
-        }
-
         // ── Normal shell execution ──────────────────────────────────────
         GeminiLiveStoragePaths.prepare(fileManager: .default)
         let timeout = min(max(timeoutSeconds ?? 15, 1), 600)
@@ -151,113 +145,12 @@ extension GeminiLiveSession {
         return result
     }
 
-    // MARK: - Notchctl Intercept
 
-    /// Parse and intercept `notchctl` commands, executing them in-process instead of spawning a shell.
-    func interceptNotchctl(_ command: String, workingDirectory: String?) async -> [String: Any]? {
-        // Match: ~/.notch/bin/notchctl <args...>  OR  notchctl <args...>
-        let notchctlPrefixes = ["~/.notch/bin/notchctl ", "$HOME/.notch/bin/notchctl ", "notchctl "]
-        var argsString: String?
-        for prefix in notchctlPrefixes {
-            if command.hasPrefix(prefix) {
-                argsString = String(command.dropFirst(prefix.count))
-                break
-            }
-        }
-        guard let rawArgs = argsString?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !rawArgs.isEmpty else {
-            return nil
-        }
-
-        let tokens = shellTokenize(rawArgs)
-        guard let domain = tokens.first else { return nil }
-
-        switch domain {
-        // ── System-level commands (handle directly in Swift) ─────────
-        case "volume":
-            return handleVolumeCommand(Array(tokens.dropFirst()))
-        case "notes":
-            return await handleNotesCommand(Array(tokens.dropFirst()))
-        case "app":
-            return await handleAppCommand(Array(tokens.dropFirst()))
-        case "clipboard":
-            return handleClipboardCommand(Array(tokens.dropFirst()), workingDirectory: workingDirectory)
-
-        // ── Special case for focus status ────────────────────────────
-        case "focus":
-            let subTokens = Array(tokens.dropFirst())
-            if subTokens.first == "status" {
-                if let fetcher = onReadPomodoroState {
-                    let state = await fetcher()
-                    if let data = try? JSONSerialization.data(withJSONObject: state, options: .prettyPrinted),
-                       let jsonString = String(data: data, encoding: .utf8) {
-                        return [
-                            "success": true,
-                            "stdout": jsonString,
-                            "stderr": "",
-                            "exitCode": 0
-                        ]
-                    }
-                }
-                return ["success": false, "error": "Pomodoro state fetcher not available."]
-            }
-            // Fallthrough to URL-scheme routing for other focus commands
-            return await handleNotchURLCommand(domain: domain, tokens: subTokens)
-
-        // ── URL-scheme commands (route through NotchCommandRouter) ───
-        case "panel", "visibility", "pin", "talk", "screen", "caption", "media":
-            return await handleNotchURLCommand(domain: domain, tokens: Array(tokens.dropFirst()))
-
-        default:
-            return nil  // Unknown domain, fall through to shell
-        }
-    }
-
-    /// Tokenize a shell command respecting quoted strings.
-    private func shellTokenize(_ input: String) -> [String] {
-        var tokens: [String] = []
-        var current = ""
-        var inDoubleQuote = false
-        var inSingleQuote = false
-        var escaped = false
-
-        for char in input {
-            if escaped {
-                current.append(char)
-                escaped = false
-                continue
-            }
-            if char == "\\" && !inSingleQuote {
-                escaped = true
-                continue
-            }
-            if char == "\"" && !inSingleQuote {
-                inDoubleQuote.toggle()
-                continue
-            }
-            if char == "'" && !inDoubleQuote {
-                inSingleQuote.toggle()
-                continue
-            }
-            if char == " " && !inDoubleQuote && !inSingleQuote {
-                if !current.isEmpty {
-                    tokens.append(current)
-                    current = ""
-                }
-                continue
-            }
-            current.append(char)
-        }
-        if !current.isEmpty {
-            tokens.append(current)
-        }
-        return tokens
-    }
 
     // MARK: - URL-Scheme Commands (media, focus, talk, panel, etc.)
 
     /// Build a `notch://` URL and route it through the in-process command handler.
-    private func handleNotchURLCommand(domain: String, tokens: [String]) async -> [String: Any] {
+    func handleNotchURLCommand(domain: String, tokens: [String]) async -> [String: Any] {
         guard let action = tokens.first else {
             return ["success": false, "error": "Missing action for '\(domain)'."]
         }
@@ -334,7 +227,7 @@ extension GeminiLiveSession {
 
     // MARK: - Volume (Native)
 
-    private func handleVolumeCommand(_ tokens: [String]) -> [String: Any] {
+    func handleVolumeCommand(_ tokens: [String]) -> [String: Any] {
         guard let action = tokens.first else {
             return ["success": false, "error": "Missing action for 'volume'. Use: get, set, mute, unmute."]
         }
@@ -381,7 +274,7 @@ extension GeminiLiveSession {
 
     // MARK: - App Control (Native)
 
-    private func handleAppCommand(_ tokens: [String]) async -> [String: Any] {
+    func handleAppCommand(_ tokens: [String]) async -> [String: Any] {
         guard !tokens.isEmpty else {
             return ["success": false, "error": "Usage: app <open|quit|check|minimize|move> <name> [args]"]
         }
@@ -781,13 +674,14 @@ extension GeminiLiveSession {
         let status = EKEventStore.authorizationStatus(for: .event)
         if status == .notDetermined {
             let semaphore = DispatchSemaphore(value: 0)
-            var granted = false
+            final class Box: @unchecked Sendable { var value = false }
+            let granted = Box()
             store.requestFullAccessToEvents { result, _ in
-                granted = result
+                granted.value = result
                 semaphore.signal()
             }
             semaphore.wait()
-            guard granted else {
+            guard granted.value else {
                 return ["success": false, "error": "Calendar access was denied by the user."]
             }
         } else if status != .fullAccess {
@@ -800,13 +694,14 @@ extension GeminiLiveSession {
             let reminderStatus = EKEventStore.authorizationStatus(for: .reminder)
             if reminderStatus == .notDetermined {
                 let semaphore = DispatchSemaphore(value: 0)
-                var granted = false
+                final class Box: @unchecked Sendable { var value = false }
+                let granted = Box()
                 store.requestFullAccessToReminders { result, _ in
-                    granted = result
+                    granted.value = result
                     semaphore.signal()
                 }
                 semaphore.wait()
-                guard granted else {
+                guard granted.value else {
                     return ["success": false, "error": "Reminders access was denied by the user."]
                 }
             } else if reminderStatus != .fullAccess {
@@ -1363,6 +1258,85 @@ extension GeminiLiveSession {
         }
         
         return result
+    }
+
+    func executeLocalFileSearch(query: String, limit: Int?, scope: String?, kind: String?) -> [String: Any] {
+        let manager = SpotlightManager()
+        return manager.search(
+            query: query,
+            limit: min(max(limit ?? 10, 1), 50),
+            scope: scope,
+            kind: kind
+        )
+    }
+
+    func executeAppleMailSearch(action: String, query: String?, limit: Int?, messageId: String? = nil) -> [String: Any] {
+        let manager = MailSQLiteManager.shared
+        let resolvedLimit = min(max(limit ?? 10, 1), 50)
+        
+        if action == "read_content" {
+            guard let q = query, !q.isEmpty else {
+                return ["success": false, "error": "read_content requires a 'query' (subject or sender) to find the email."]
+            }
+            
+            // Use AppleScript to find and read the message content
+            let escapedQuery = q.replacingOccurrences(of: "\"", with: "\\\"")
+            let script = """
+            tell application "Mail"
+                try
+                    set foundMessages to (messages of any mailbox whose subject contains "\(escapedQuery)" or sender contains "\(escapedQuery)")
+                    if (count of foundMessages) is 0 then
+                        return "error: No email found matching '\(escapedQuery)'"
+                    end if
+                    set targetMsg to item 1 of foundMessages
+                    set msgContent to content of targetMsg
+                    return msgContent
+                on error errMsg
+                    return "error: " & errMsg
+                end try
+            end tell
+            """
+            
+            let result = runAppleScriptWithStatus(script)
+            if result.success && !result.stdout.hasPrefix("error:") {
+                return [
+                    "success": true,
+                    "content": result.stdout
+                ]
+            } else {
+                return [
+                    "success": false,
+                    "error": result.stdout.replacingOccurrences(of: "error: ", with: ""),
+                    "stderr": result.errorMessage ?? ""
+                ]
+            }
+        }
+        
+        let results: [[String: Any]]
+        if action == "search", let q = query, !q.isEmpty {
+            results = manager.searchEmails(keyword: q, limit: resolvedLimit)
+        } else {
+            results = manager.fetchRecentEmails(limit: resolvedLimit)
+        }
+        
+        if results.isEmpty {
+            // Check if it's likely a permission issue
+            let home = FileManager.default.homeDirectoryForCurrentUser
+            let mailPath = home.appendingPathComponent("Library/Mail").path
+            var isDir: ObjCBool = false
+            if !FileManager.default.fileExists(atPath: mailPath, isDirectory: &isDir) || !FileManager.default.isReadableFile(atPath: mailPath) {
+                return [
+                    "success": false, 
+                    "error": "Cannot access Mail database. Please grant 'Full Disk Access' to Notch in System Settings > Privacy & Security."
+                ]
+            }
+        }
+        
+        return [
+            "success": true,
+            "count": results.count,
+            "emails": results
+        ]
     }
 }
 

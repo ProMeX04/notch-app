@@ -29,7 +29,7 @@ private struct GeminiExecApprovalPanelContentView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .overlay {
                             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                                .stroke(Color.primary.opacity(0.12), lineWidth: 1)
                         }
                 }
             } else {
@@ -45,7 +45,7 @@ private struct GeminiExecApprovalPanelMaterial: NSViewRepresentable {
         let view = NSVisualEffectView()
         view.blendingMode = .behindWindow
         view.state = .active
-        view.material = .hudWindow
+        view.material = .popover
         view.wantsLayer = true
         view.layer?.cornerRadius = 18
         view.layer?.cornerCurve = .continuous

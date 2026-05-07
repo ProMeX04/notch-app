@@ -466,11 +466,6 @@ struct VolumeControlView: View {
                 .foregroundColor(.white.opacity(0.6))
                 .frame(width: 26, alignment: .trailing)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(Capsule().fill(Color.white.opacity(0.04)))
-        .overlay(Capsule().stroke(Color.white.opacity(0.06), lineWidth: 1))
-        .clipped()
         .onAppear {
             volumeSliderValue = getSystemVolume()
         }

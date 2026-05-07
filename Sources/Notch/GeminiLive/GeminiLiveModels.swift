@@ -323,10 +323,11 @@ enum GeminiTool: String, CaseIterable, Identifiable {
     case appControl = "appControl"
     case mediaControl = "mediaControl"
     case pomodoro = "pomodoro"
-    case screenshot = "screenshot"
     case browserControl = "browserControl"
+    case localFileSearch = "localFileSearch"
     case memory = "memory"
     case exec = "exec"
+    case appleMail = "appleMail"
 
     var id: String { rawValue }
 
@@ -339,9 +340,10 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         .appControl,
         .mediaControl,
         .pomodoro,
-        .screenshot,
         .browserControl,
+        .localFileSearch,
         .memory,
+        .appleMail,
     ]
 
     static let coreToolSet: Set<GeminiTool> = Set(coreCases)
@@ -361,10 +363,11 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         case .appControl: return "App"
         case .mediaControl: return "Media"
         case .pomodoro: return "Focus"
-        case .screenshot: return "Screenshot"
         case .browserControl: return "Browser"
+        case .localFileSearch: return "Local File Search"
         case .memory: return "Memory"
         case .exec: return "Exec"
+        case .appleMail: return "Mail"
         }
     }
 
@@ -378,10 +381,11 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         case .appControl: return "macwindow"
         case .mediaControl: return "playpause"
         case .pomodoro: return "timer"
-        case .screenshot: return "camera.viewfinder"
         case .browserControl: return "safari"
+        case .localFileSearch: return "doc.text.magnifyingglass"
         case .memory: return "brain"
         case .exec: return "terminal"
+        case .appleMail: return "envelope"
         }
     }
 }

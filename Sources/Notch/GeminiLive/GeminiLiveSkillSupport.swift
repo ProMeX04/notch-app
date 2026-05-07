@@ -61,16 +61,7 @@ enum SkillImportError: LocalizedError {
     }
 }
 
-enum SkillStoreError: LocalizedError {
-    case cannotDeleteBuiltInSkill(String)
 
-    var errorDescription: String? {
-        switch self {
-        case let .cannotDeleteBuiltInSkill(name):
-            return "Built-in skill \"\(name)\" can't be deleted."
-        }
-    }
-}
 
 enum GeminiLiveStoragePaths {
     private static let preparedStorage: Void = {
@@ -112,9 +103,7 @@ enum GeminiLiveStoragePaths {
         stateRoot.appendingPathComponent("transcripts", isDirectory: true)
     }
 
-    static var builtInSkillsDirectory: URL? {
-        Bundle.module.resourceURL?.appendingPathComponent("BuiltInSkills", isDirectory: true)
-    }
+
 
     static var memoryFile: URL {
         workspaceRoot.appendingPathComponent("MEMORY.md")
@@ -205,9 +194,6 @@ enum GeminiLiveStoragePaths {
 
     static func skillPromptLocation(for skill: InstalledSkill) -> String {
         let skillFileURL = skill.rootURL.appendingPathComponent("SKILL.md")
-        if skill.metadata.category.lowercased() == "builtin" {
-            return skillFileURL.standardizedFileURL.resolvingSymlinksInPath().path
-        }
         return workspaceRelativePath(for: skillFileURL)
     }
 
@@ -216,26 +202,18 @@ enum GeminiLiveStoragePaths {
 final class SkillStore: @unchecked Sendable {
     private let fileManager: FileManager
     private let skillsDirectory: URL
-    private let builtInSkillsDirectory: URL?
-
     init(fileManager: FileManager = .default, skillsDirectory: URL = GeminiLiveStoragePaths.skillsDirectory) {
         GeminiLiveStoragePaths.prepare(fileManager: fileManager)
         self.fileManager = fileManager
         self.skillsDirectory = skillsDirectory
-        self.builtInSkillsDirectory = GeminiLiveStoragePaths.builtInSkillsDirectory
         try? ensureSkillsDirectory()
-        try? cleanupLegacySeededBuiltInSkills()
     }
 
     func listInstalledSkills() -> [InstalledSkill] {
         do {
             try ensureSkillsDirectory()
             let userSkills = try userSkillRoots().compactMap(loadSkill(at:))
-            let builtInSkills = try builtInSkillRoots().compactMap(loadSkill(at:))
-            let merged = Dictionary(
-                uniqueKeysWithValues: (builtInSkills + userSkills).map { ($0.metadata.name, $0) }
-            )
-            return merged.values
+            return userSkills
                 .sorted { $0.metadata.name.localizedCaseInsensitiveCompare($1.metadata.name) == .orderedAscending }
         } catch {
             return []
@@ -243,25 +221,13 @@ final class SkillStore: @unchecked Sendable {
     }
 
     func deleteSkill(named name: String) throws {
-        guard !isBuiltInSkill(named: name) else {
-            throw SkillStoreError.cannotDeleteBuiltInSkill(name)
-        }
         let target = skillsDirectory.appendingPathComponent(name, isDirectory: true)
         guard fileManager.fileExists(atPath: target.path) else { return }
         try fileManager.removeItem(at: target)
     }
 
     func skillExists(named name: String) -> Bool {
-        if isBuiltInSkill(named: name) {
-            return true
-        }
         let target = skillsDirectory.appendingPathComponent(name, isDirectory: true)
-        return fileManager.fileExists(atPath: target.path)
-    }
-
-    func isBuiltInSkill(named name: String) -> Bool {
-        guard let builtInSkillsDirectory else { return false }
-        let target = builtInSkillsDirectory.appendingPathComponent(name, isDirectory: true)
         return fileManager.fileExists(atPath: target.path)
     }
 
@@ -275,34 +241,6 @@ final class SkillStore: @unchecked Sendable {
             includingPropertiesForKeys: [.isDirectoryKey],
             options: [.skipsHiddenFiles]
         )
-    }
-
-    private func builtInSkillRoots() throws -> [URL] {
-        guard let builtInSkillsDirectory,
-              fileManager.fileExists(atPath: builtInSkillsDirectory.path) else {
-            return []
-        }
-        return try fileManager.contentsOfDirectory(
-            at: builtInSkillsDirectory,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        )
-    }
-
-    private func cleanupLegacySeededBuiltInSkills() throws {
-        for url in try userSkillRoots() {
-            let skillName = url.lastPathComponent
-            if let skill = loadSkill(at: url) {
-                guard skill.metadata.category == "builtin", isBuiltInSkill(named: skill.metadata.name) else { continue }
-                try? fileManager.removeItem(at: url)
-                continue
-            }
-
-            // Clean up legacy empty placeholder folders that used to represent built-in skills.
-            if skillName == "local-shell" {
-                try? fileManager.removeItem(at: url)
-            }
-        }
     }
 
     private func loadSkill(at url: URL) -> InstalledSkill? {

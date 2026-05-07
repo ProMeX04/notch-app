@@ -39,7 +39,7 @@ struct StandardActionButton: View {
             }
             .foregroundStyle(variant == .primary ? .black : tint)
             .padding(.horizontal, StandardButtonMetrics.horizontalPadding)
-            .frame(maxWidth: fillsAvailableWidth ? .infinity : nil, alignment: fillsAvailableWidth ? .leading : .center)
+            .frame(maxWidth: fillsAvailableWidth ? .infinity : nil, alignment: .center)
             .frame(height: StandardButtonMetrics.height)
             .background(
                 Capsule()

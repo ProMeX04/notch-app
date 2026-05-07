@@ -1007,11 +1007,11 @@ final class GeminiLiveViewModel: ObservableObject {
         if effectiveTools.contains(.pomodoro) {
             lines.append("- Use `pomodoro` to control the Notch Pomodoro timer: start, pause, resume, reset, set durations, check status. If the user says stop/end/cancel focus, call reset.")
         }
-        if effectiveTools.contains(.screenshot) {
-            lines.append("- Use `screenshot` to capture the screen. Use interactive modes (window, region) only when the user expects to click or drag.")
-        }
         if effectiveTools.contains(.browserControl) {
             lines.append("- Use `browserControl` to open URLs, play music via DuckDuckGo Lucky, or read the current browser tab content.")
+        }
+        if effectiveTools.contains(.localFileSearch) {
+            lines.append("- Use `localFileSearch` to search indexed local files, folders, apps, and media.")
         }
         if effectiveTools.contains(.memory) {
             lines.append("- Use `memory` to read or write persistent USER.md (identity, preferences) and MEMORY.md (durable facts, habits). Use write-user for profile updates and write-memory for broader long-term notes.")
@@ -1039,10 +1039,10 @@ final class GeminiLiveViewModel: ObservableObject {
             return ToolActionToast(label: "Controlling media…", icon: "playpause", showsInOverlay: false)
         case "pomodoro":
             return ToolActionToast(label: "Controlling timer…", icon: "timer", showsInOverlay: false)
-        case "screenshot":
-            return ToolActionToast(label: "Taking screenshot…", icon: "camera.viewfinder", showsInOverlay: false)
         case "browserControl":
             return ToolActionToast(label: "Using browser…", icon: "safari", showsInOverlay: false)
+        case "localFileSearch":
+            return ToolActionToast(label: "Searching files…", icon: "doc.text.magnifyingglass", showsInOverlay: false)
         case "memory":
             return ToolActionToast(label: "Using memory…", icon: "brain", showsInOverlay: false)
         case "exec":
@@ -1073,10 +1073,10 @@ final class GeminiLiveViewModel: ObservableObject {
             return ToolActionToast(label: "Media controlled", icon: "playpause", showsInOverlay: false)
         case "pomodoro":
             return ToolActionToast(label: "Timer controlled", icon: "timer", showsInOverlay: false)
-        case "screenshot":
-            return ToolActionToast(label: "Screenshot taken", icon: "camera.viewfinder", showsInOverlay: false)
         case "browserControl":
             return ToolActionToast(label: "Browser action", icon: "safari", showsInOverlay: false)
+        case "localFileSearch":
+            return ToolActionToast(label: "File search", icon: "doc.text.magnifyingglass", showsInOverlay: false)
         case "memory":
             return ToolActionToast(label: "Memory updated", icon: "brain", showsInOverlay: false)
         case "exec":
@@ -1102,10 +1102,10 @@ final class GeminiLiveViewModel: ObservableObject {
             return "Media control failed."
         case "pomodoro":
             return "Timer control failed."
-        case "screenshot":
-            return "Screenshot failed."
         case "browserControl":
             return "Browser control failed."
+        case "localFileSearch":
+            return "File search failed."
         case "memory":
             return "Memory failed."
         case "exec":
@@ -1804,11 +1804,7 @@ final class GeminiLiveViewModel: ObservableObject {
 
     func deleteSkill(named name: String) {
         guard canManageSkills else { return }
-        guard !skillStore.isBuiltInSkill(named: name) else {
-            lastErrorMessage = "Built-in skill \"\(name)\" can't be deleted."
-            statusText = "Skill deletion blocked."
-            return
-        }
+
 
         let alert = NSAlert()
         alert.alertStyle = .warning

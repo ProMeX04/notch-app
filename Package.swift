@@ -68,7 +68,6 @@ let package = Package(
                 .copy("Resources/mediaremote-adapter.pl"),
                 .copy("Resources/MediaRemoteAdapter.framework"),
                 .copy("Resources/MediaRemoteAdapterTestClient"),
-                .copy("Resources/BuiltInSkills"),
                 .copy("Resources/FocusSounds"),
                 .copy("Resources/MenuBar"),
                 .copy("Resources/Animations"),

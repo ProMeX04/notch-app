@@ -1284,10 +1284,25 @@ extension GeminiLiveSession {
             let script = """
             tell application "Mail"
                 try
-                    set foundMessages to (messages of any mailbox whose subject contains "\(escapedQuery)" or sender contains "\(escapedQuery)")
+                    set foundMessages to {}
+                    -- Check all accounts and their mailboxes
+                    repeat with anAccount in accounts
+                        repeat with aMailbox in mailboxes of anAccount
+                            try
+                                set msgs to (messages of aMailbox whose subject contains "\(escapedQuery)" or sender contains "\(escapedQuery)")
+                                if (count of msgs) > 0 then
+                                    set foundMessages to msgs
+                                    exit repeat
+                                end if
+                            end try
+                        end repeat
+                        if (count of foundMessages) > 0 then exit repeat
+                    end repeat
+                    
                     if (count of foundMessages) is 0 then
                         return "error: No email found matching '\(escapedQuery)'"
                     end if
+                    
                     set targetMsg to item 1 of foundMessages
                     set msgContent to content of targetMsg
                     return msgContent

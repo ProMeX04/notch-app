@@ -1437,6 +1437,8 @@ struct GeminiToolsPicker: View {
     var lockedTools: Set<GeminiTool> = []
     var isDisabled = false
     @State private var showExecWarning = false
+    @State private var showFDAWarning = false
+    @State private var pendingFDATool: GeminiTool?
     @AppStorage("app_language") private var appLanguage: String = "English"
     @AppStorage(NotchAccentColorOption.storageKey) private var accentColorID: String = NotchAccentColorOption.defaultOption.rawValue
 
@@ -1523,6 +1525,13 @@ struct GeminiToolsPicker: View {
                                         showExecWarning = true
                                         return
                                     }
+                                    if tool == .appleMail || tool == .localFileSearch {
+                                        if !SystemPermissionsManager.shared.hasFullDiskAccess() {
+                                            pendingFDATool = tool
+                                            showFDAWarning = true
+                                            return
+                                        }
+                                    }
                                     selection.insert(tool)
                                 } else {
                                     selection.remove(tool)
@@ -1552,6 +1561,20 @@ struct GeminiToolsPicker: View {
             }
         } message: {
             Text("Exec allows the AI to run arbitrary shell commands on your Mac. This is risky in a voice conversation — the AI may execute commands you don't expect. Only enable this if you fully understand the risks.")
+        }
+        .alert("🔒 Full Disk Access Required", isPresented: $showFDAWarning) {
+            Button("Cancel", role: .cancel) {
+                pendingFDATool = nil
+            }
+            Button("Open System Settings") {
+                SystemPermissionsManager.shared.openFullDiskAccessSettings()
+                // We don't insert yet because they haven't granted it yet.
+                // They'll need to toggle again after granting.
+                pendingFDATool = nil
+            }
+        } message: {
+            let toolName = pendingFDATool?.displayName ?? "This tool"
+            Text("\(toolName) requires Full Disk Access to read local data. Please add Notch to the Full Disk Access list in System Settings > Privacy & Security.")
         }
     }
 }

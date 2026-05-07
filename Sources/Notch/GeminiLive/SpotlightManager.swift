@@ -174,13 +174,22 @@ public final class SpotlightManager: NSObject, @unchecked Sendable {
 
     private func searchScopes(for scope: String) -> [String] {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        switch scope.lowercased() {
+        let lowerScope = scope.lowercased()
+        
+        switch lowerScope {
         case "all": return [NSMetadataQueryLocalComputerScope]
         case "applications": return ["/Applications", "/System/Applications"]
+        case "home": return [NSMetadataQueryUserHomeScope]
         case "documents": return [home.appendingPathComponent("Documents").path]
         case "desktop": return [home.appendingPathComponent("Desktop").path]
         case "downloads": return [home.appendingPathComponent("Downloads").path]
-        default: return [NSMetadataQueryUserHomeScope]
+        default:
+            // Handle tilde expansion and arbitrary paths
+            let expanded = (scope as NSString).expandingTildeInPath
+            if expanded.hasPrefix("/") {
+                return [expanded]
+            }
+            return [NSMetadataQueryUserHomeScope]
         }
     }
 }

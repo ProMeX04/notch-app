@@ -60,8 +60,8 @@ final class MailSQLiteManager: @unchecked Sendable {
             m.date_sent, 
             m.summary
         FROM messages m
-        JOIN subjects s ON m.subject_id = s.ROWID
-        JOIN addresses a ON m.sender_id = a.ROWID
+        JOIN subjects s ON m.subject = s.ROWID
+        JOIN addresses a ON m.sender = a.ROWID
         ORDER BY m.date_sent DESC
         LIMIT ?;
         """
@@ -74,8 +74,8 @@ final class MailSQLiteManager: @unchecked Sendable {
             
             while sqlite3_step(statement) == SQLITE_ROW {
                 let rowID = sqlite3_column_int64(statement, 0)
-                let subject = String(cString: sqlite3_column_text(statement, 1))
-                let senderEmail = String(cString: sqlite3_column_text(statement, 2))
+                let subject = sqlite3_column_text(statement, 1) != nil ? String(cString: sqlite3_column_text(statement, 1)) : "(No Subject)"
+                let senderEmail = sqlite3_column_text(statement, 2) != nil ? String(cString: sqlite3_column_text(statement, 2)) : ""
                 let senderName = sqlite3_column_text(statement, 3) != nil ? String(cString: sqlite3_column_text(statement, 3)) : ""
                 let dateSent = sqlite3_column_int64(statement, 4)
                 let summary = sqlite3_column_text(statement, 5) != nil ? String(cString: sqlite3_column_text(statement, 5)) : ""
@@ -107,8 +107,8 @@ final class MailSQLiteManager: @unchecked Sendable {
             m.date_sent, 
             m.summary
         FROM messages m
-        JOIN subjects s ON m.subject_id = s.ROWID
-        JOIN addresses a ON m.sender_id = a.ROWID
+        JOIN subjects s ON m.subject = s.ROWID
+        JOIN addresses a ON m.sender = a.ROWID
         WHERE s.subject LIKE ? OR a.address LIKE ? OR a.comment LIKE ? OR m.summary LIKE ?
         ORDER BY m.date_sent DESC
         LIMIT ?;
@@ -127,8 +127,8 @@ final class MailSQLiteManager: @unchecked Sendable {
             
             while sqlite3_step(statement) == SQLITE_ROW {
                 let rowID = sqlite3_column_int64(statement, 0)
-                let subject = String(cString: sqlite3_column_text(statement, 1))
-                let senderEmail = String(cString: sqlite3_column_text(statement, 2))
+                let subject = sqlite3_column_text(statement, 1) != nil ? String(cString: sqlite3_column_text(statement, 1)) : "(No Subject)"
+                let senderEmail = sqlite3_column_text(statement, 2) != nil ? String(cString: sqlite3_column_text(statement, 2)) : ""
                 let senderName = sqlite3_column_text(statement, 3) != nil ? String(cString: sqlite3_column_text(statement, 3)) : ""
                 let dateSent = sqlite3_column_int64(statement, 4)
                 let summary = sqlite3_column_text(statement, 5) != nil ? String(cString: sqlite3_column_text(statement, 5)) : ""

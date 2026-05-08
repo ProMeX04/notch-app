@@ -472,28 +472,11 @@ struct VolumeControlView: View {
     }
     
     private func setSystemVolume(_ level: Double) {
-        playback.setVolume(to: level) // Fallback: thử chỉnh volume của app phát nhạc trước
-        
-        let script = "set volume output volume \(Int(level * 100))"
-        var error: NSDictionary?
-        if let appleScript = NSAppleScript(source: script) {
-            appleScript.executeAndReturnError(&error)
-        }
+        playback.setVolume(to: level)
     }
-    
+
     private func getSystemVolume() -> Double {
-        let script = "output volume of (get volume settings)"
-        var error: NSDictionary?
-        if let appleScript = NSAppleScript(source: script) {
-            let descriptor = appleScript.executeAndReturnError(&error)
-            if let stringValue = descriptor.stringValue, let val = Double(stringValue) {
-                return val / 100.0
-            }
-            if descriptor.descriptorType != typeNull {
-                return Double(descriptor.int32Value) / 100.0
-            }
-        }
-        return 0.5
+        (try? SystemAudioOutput.currentVolume()) ?? playback.state.volume
     }
 
     private var volumeIcon: String {

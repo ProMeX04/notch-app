@@ -7,41 +7,32 @@ extension GeminiLiveSession {
         guard let name = call["name"] as? String,
               let id = call["id"] as? String else { return }
 
-        GeminiLiveToolLogging.debug("called tool \(name) with args \(call["args"] ?? [:])")
+        let argKeys = (call["args"] as? [String: Any])?.keys.sorted() ?? []
+        GeminiLiveToolLogging.debug("called tool \(name) id=\(id) argKeys=\(argKeys)")
         NotchLog.gemini.info("handleFunctionCall: name=\(name)")
 
         switch name {
-        case "read":
+        case GeminiLiveToolName.read:
             handleReadCall(id: id, call: call)
-        case "write":
-            handleWriteCall(id: id, call: call)
-        case "ls":
-            handleLsCall(id: id, call: call)
-        case "exec":
+        case GeminiLiveToolName.exec:
             handleExecCall(id: id, call: call)
-        case "find":
-            handleFindCall(id: id, call: call)
-        case "grep":
-            handleGrepCall(id: id, call: call)
-        case "edit":
-            handleEditCall(id: id, call: call)
-        case "calendar":
+        case GeminiLiveToolName.calendar:
             handleCalendarCall(id: id, call: call)
-        case "browserControl":
+        case GeminiLiveToolName.browserControl:
             handleBrowserControlCall(id: id, call: call)
-        case "localFileSearch":
+        case GeminiLiveToolName.localFileSearch:
             handleLocalFileSearchCall(id: id, call: call)
-        case "pomodoro":
+        case GeminiLiveToolName.pomodoro:
             handlePomodoroCall(id: id, call: call)
-        case "appControl":
+        case GeminiLiveToolName.appControl:
             handleAppControlCall(id: id, call: call)
-        case "mediaControl":
+        case GeminiLiveToolName.mediaControl:
             handleMediaControlCall(id: id, call: call)
-        case "clipboard":
+        case GeminiLiveToolName.clipboard:
             handleClipboardCall(id: id, call: call)
-        case "memory":
+        case GeminiLiveToolName.memory:
             handleMemoryCall(id: id, call: call)
-        case "appleMail":
+        case GeminiLiveToolName.appleMail:
             handleAppleMailCall(id: id, call: call)
         default:
             sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
@@ -49,7 +40,7 @@ extension GeminiLiveSession {
     }
 
     private func handleExecCall(id: String, call: [String: Any]) {
-        let name = "exec"
+        let name = GeminiLiveToolName.exec
         guard let args = call["args"] as? [String: Any],
               let command = args["command"] as? String else {
             sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
@@ -95,168 +86,27 @@ extension GeminiLiveSession {
     }
 
     private func handleReadCall(id: String, call: [String: Any]) {
-        let name = "read"
+        let name = GeminiLiveToolName.read
         guard let rawArgs = call["args"] as? [String: Any] else {
             sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
             return
         }
-
         let args = GeminiToolArgumentNormalizer.normalize(rawArgs)
-        guard let path = GeminiToolArgumentNormalizer.stringValue(in: args, keys: GeminiToolArgumentNormalizer.pathKeys) else {
-            sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
+        guard let path = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["path"]) else {
+            sendFunctionResponse(id: id, name: name, result: ["error": "Missing path parameter"])
             return
         }
-
         let offset = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["offset"])
         let limit = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["limit"])
-        let sendableArgs = SendableToolArgs(args: args)
-        toolExecutionQueue.async { [weak self] in
-            guard let self else { return }
-            self.notifyFunctionStarted(name: name, args: sendableArgs.args)
-            let result = self.executeReadFile(path: path, offset: offset, limit: limit)
-            self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
-            self.sendFunctionResponse(id: id, name: name, result: result)
-        }
-    }
 
-    private func handleWriteCall(id: String, call: [String: Any]) {
-        let name = "write"
-        guard let rawArgs = call["args"] as? [String: Any] else {
-            sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
-            return
-        }
-
-        let args = GeminiToolArgumentNormalizer.normalize(rawArgs)
-        guard let path = GeminiToolArgumentNormalizer.stringValue(in: args, keys: GeminiToolArgumentNormalizer.pathKeys),
-              let content = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["content"], allowEmpty: true) else {
-            sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
-            return
-        }
-
-        let sendableArgs = SendableToolArgs(args: args)
-        toolExecutionQueue.async { [weak self] in
-            guard let self else { return }
-            self.notifyFunctionStarted(name: name, args: sendableArgs.args)
-            let result = self.executeWriteFile(path: path, content: content)
-            self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
-            self.sendFunctionResponse(id: id, name: name, result: result)
-        }
-    }
-
-    private func handleLsCall(id: String, call: [String: Any]) {
-        let name = "ls"
-        let rawArgs = call["args"] as? [String: Any] ?? [:]
-        let args = GeminiToolArgumentNormalizer.normalize(rawArgs)
-
-        let path = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["path"])
-        let limit = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["limit"])
-        let sendableArgs = SendableToolArgs(args: args)
-        toolExecutionQueue.async { [weak self] in
-            guard let self else { return }
-            self.notifyFunctionStarted(name: name, args: sendableArgs.args)
-            let result = self.executeLs(path: path, limit: limit)
-            self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
-            self.sendFunctionResponse(id: id, name: name, result: result)
-        }
-    }
-
-    private func handleFindCall(id: String, call: [String: Any]) {
-        let name = "find"
-        guard let rawArgs = call["args"] as? [String: Any] else {
-            sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
-            return
-        }
-
-        let args = GeminiToolArgumentNormalizer.normalize(rawArgs)
-        guard let pattern = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["pattern"]) else {
-            sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
-            return
-        }
-
-        let path = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["path"])
-        let limit = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["limit"])
-        let sendableArgs = SendableToolArgs(args: args)
-        toolExecutionQueue.async { [weak self] in
-            guard let self else { return }
-            self.notifyFunctionStarted(name: name, args: sendableArgs.args)
-            let result = self.executeFind(pattern: pattern, path: path, limit: limit)
-            self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
-            self.sendFunctionResponse(id: id, name: name, result: result)
-        }
-    }
-
-    private func handleGrepCall(id: String, call: [String: Any]) {
-        let name = "grep"
-        guard let rawArgs = call["args"] as? [String: Any] else {
-            sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
-            return
-        }
-
-        let args = GeminiToolArgumentNormalizer.normalize(rawArgs)
-        guard let pattern = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["pattern"]) else {
-            sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
-            return
-        }
-
-        let path = args["path"] as? String
-        let glob = args["glob"] as? String
-        let ignoreCase = GeminiToolArgumentNormalizer.boolValue(in: args, keys: ["ignoreCase"]) ?? false
-        let literal = GeminiToolArgumentNormalizer.boolValue(in: args, keys: ["literal"]) ?? false
-        let context = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["context"]) ?? 0
-        let limit = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["limit"]) ?? 100
-        let sendableArgs = SendableToolArgs(args: args)
-        toolExecutionQueue.async { [weak self] in
-            guard let self else { return }
-            self.notifyFunctionStarted(name: name, args: sendableArgs.args)
-            let result = self.executeGrep(
-                pattern: pattern,
-                path: path,
-                glob: glob,
-                ignoreCase: ignoreCase,
-                literal: literal,
-                context: context,
-                limit: limit
-            )
-            self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
-            self.sendFunctionResponse(id: id, name: name, result: result)
-        }
-    }
-
-    private func handleEditCall(id: String, call: [String: Any]) {
-        let name = "edit"
-        guard let rawArgs = call["args"] as? [String: Any] else {
-            sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
-            return
-        }
-
-        let args = GeminiToolArgumentNormalizer.normalize(rawArgs)
-        guard let path = GeminiToolArgumentNormalizer.stringValue(in: args, keys: GeminiToolArgumentNormalizer.pathKeys) else {
-            sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
-            return
-        }
-
-        let edits = GeminiToolArgumentNormalizer.editReplacements(in: args)
-        guard !edits.isEmpty else {
-            sendFunctionResponse(
-                id: id,
-                name: name,
-                result: ["success": false, "error": "Edit tool input is invalid. edits must contain at least one replacement."]
-            )
-            return
-        }
-
-        let sendableArgs = SendableToolArgs(args: args)
-        toolExecutionQueue.async { [weak self] in
-            guard let self else { return }
-            self.notifyFunctionStarted(name: name, args: sendableArgs.args)
-            let result = self.executeEditFile(path: path, edits: edits)
-            self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
-            self.sendFunctionResponse(id: id, name: name, result: result)
-        }
+        notifyFunctionStarted(name: name, args: args)
+        let result = executeReadFile(path: path, offset: offset, limit: limit)
+        notifyFunctionExecuted(name: name, args: args, result: result)
+        sendFunctionResponse(id: id, name: name, result: result)
     }
 
     private func handleCalendarCall(id: String, call: [String: Any]) {
-        let name = "calendar"
+        let name = GeminiLiveToolName.calendar
         let rawArgs = call["args"] as? [String: Any] ?? [:]
         let args = GeminiToolArgumentNormalizer.normalize(rawArgs)
 
@@ -272,7 +122,7 @@ extension GeminiLiveSession {
     }
 
     private func handleBrowserControlCall(id: String, call: [String: Any]) {
-        let name = "browserControl"
+        let name = GeminiLiveToolName.browserControl
         let rawArgs = call["args"] as? [String: Any] ?? [:]
         let args = GeminiToolArgumentNormalizer.normalize(rawArgs)
 
@@ -306,7 +156,7 @@ extension GeminiLiveSession {
 
 
     private func handlePomodoroCall(id: String, call: [String: Any]) {
-        let name = "pomodoro"
+        let name = GeminiLiveToolName.pomodoro
         let rawArgs = call["args"] as? [String: Any] ?? [:]
         let action = GeminiToolArgumentNormalizer.stringValue(in: rawArgs, keys: ["action"]) ?? "status"
         let focusDuration = GeminiToolArgumentNormalizer.stringValue(in: rawArgs, keys: ["focusDuration"])
@@ -358,22 +208,16 @@ extension GeminiLiveSession {
     }
 
     private func handleAppControlCall(id: String, call: [String: Any]) {
-        let name = "appControl"
+        let name = GeminiLiveToolName.appControl
         let rawArgs = call["args"] as? [String: Any] ?? [:]
         let action = GeminiToolArgumentNormalizer.stringValue(in: rawArgs, keys: ["action"]) ?? "open"
         let appName = GeminiToolArgumentNormalizer.stringValue(in: rawArgs, keys: ["appName"]) ?? ""
-        let direction = GeminiToolArgumentNormalizer.stringValue(in: rawArgs, keys: ["direction"]) ?? ""
-        
         let sendableArgs = SendableToolArgs(args: rawArgs)
         toolExecutionQueue.async { [weak self] in
             guard let self else { return }
             self.notifyFunctionStarted(name: name, args: sendableArgs.args)
             Task {
-                var tokens = [action, appName]
-                if action == "move" && !direction.isEmpty {
-                    tokens.append(direction)
-                }
-                let result = await self.handleAppCommand(tokens)
+                let result = await self.handleAppCommand([action, appName])
                 self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
                 self.sendFunctionResponse(id: id, name: name, result: result)
             }
@@ -381,7 +225,7 @@ extension GeminiLiveSession {
     }
 
     private func handleMediaControlCall(id: String, call: [String: Any]) {
-        let name = "mediaControl"
+        let name = GeminiLiveToolName.mediaControl
         let rawArgs = call["args"] as? [String: Any] ?? [:]
         let action = GeminiToolArgumentNormalizer.stringValue(in: rawArgs, keys: ["action"]) ?? "play"
         // volumeLevel may arrive as a String *or* a number from the model — handle both.
@@ -468,7 +312,7 @@ extension GeminiLiveSession {
     }
 
     private func handleClipboardCall(id: String, call: [String: Any]) {
-        let name = "clipboard"
+        let name = GeminiLiveToolName.clipboard
         let rawArgs = call["args"] as? [String: Any] ?? [:]
         let args = GeminiToolArgumentNormalizer.normalize(rawArgs)
         
@@ -539,7 +383,7 @@ extension GeminiLiveSession {
 
 
     private func handleMemoryCall(id: String, call: [String: Any]) {
-        let name = "memory"
+        let name = GeminiLiveToolName.memory
         let rawArgs = call["args"] as? [String: Any] ?? [:]
         let action = GeminiToolArgumentNormalizer.stringValue(in: rawArgs, keys: ["action"]) ?? "read-user"
         let contentStr = GeminiToolArgumentNormalizer.stringValue(in: rawArgs, keys: ["content"]) ?? ""
@@ -571,7 +415,7 @@ extension GeminiLiveSession {
     }
 
     private func handleLocalFileSearchCall(id: String, call: [String: Any]) {
-        let name = "localFileSearch"
+        let name = GeminiLiveToolName.localFileSearch
         let rawArgs = call["args"] as? [String: Any] ?? [:]
         let args = GeminiToolArgumentNormalizer.normalize(rawArgs)
         guard let query = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["query"]) else {
@@ -598,12 +442,12 @@ extension GeminiLiveSession {
             "success": false,
             "error": "Command not approved by user."
         ]
-        notifyFunctionExecuted(name: "exec", args: pending.args, result: result)
-        sendFunctionResponse(id: toolCallID, name: "exec", result: result)
+        notifyFunctionExecuted(name: GeminiLiveToolName.exec, args: pending.args, result: result)
+        sendFunctionResponse(id: toolCallID, name: GeminiLiveToolName.exec, result: result)
     }
 
     private func handleAppleMailCall(id: String, call: [String: Any]) {
-        let name = "appleMail"
+        let name = GeminiLiveToolName.appleMail
         let rawArgs = call["args"] as? [String: Any] ?? [:]
         let args = GeminiToolArgumentNormalizer.normalize(rawArgs)
         

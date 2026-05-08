@@ -1,0 +1,13 @@
+enum GeminiLiveToolName {
+    static let read = "read"
+    static let exec = "exec"
+    static let calendar = "calendar"
+    static let browserControl = "browserControl"
+    static let localFileSearch = "localFileSearch"
+    static let pomodoro = "pomodoro"
+    static let appControl = "appControl"
+    static let mediaControl = "mediaControl"
+    static let clipboard = "clipboard"
+    static let memory = "memory"
+    static let appleMail = "appleMail"
+}

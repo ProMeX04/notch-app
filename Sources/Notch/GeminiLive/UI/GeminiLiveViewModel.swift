@@ -926,7 +926,7 @@ final class GeminiLiveViewModel: ObservableObject {
         let resolvedPromptBody = promptBody
         let skillPrompt = SkillPromptComposer.buildPromptSection(
             for: activeSkills,
-            canReadSkills: effectiveTools.contains(.read)
+            canReadSkills: effectiveTools.contains(.read) || effectiveTools.contains(.exec)
         )
         let userPrompt = buildInjectedPromptSection(
             title: "User profile",
@@ -992,14 +992,14 @@ final class GeminiLiveViewModel: ObservableObject {
         if effectiveTools.contains(.read) {
             lines.append("- Use `read` to examine files. It supports text files and common images.")
         }
-        if effectiveTools.contains(.ls) {
-            lines.append("- Use `ls` to inspect one directory quickly. It includes dotfiles and marks directories with `/`.")
+        if effectiveTools.contains(.appleMail) {
+            lines.append("- Use `appleMail` to search or list recent emails from Apple Mail, or read full email bodies when available; it may fall back to summary/snippet content.")
         }
         if effectiveTools.contains(.clipboard) {
             lines.append("- Use `clipboard` to read or write the macOS clipboard. Treat clipboard text as potentially sensitive.")
         }
         if effectiveTools.contains(.appControl) {
-            lines.append("- Use `appControl` to open, quit, check, minimize, or move macOS app windows. Use exact app names. Do not use for opening URLs.")
+            lines.append("- Use `appControl` to open, quit, or check macOS apps. Use exact app names. Do not use for opening URLs.")
         }
         if effectiveTools.contains(.mediaControl) {
             lines.append("- Use `mediaControl` for playback (play, pause, next, previous) and system volume. If no media app is running, say so.")

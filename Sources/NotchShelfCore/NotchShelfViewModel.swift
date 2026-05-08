@@ -1,33 +1,40 @@
 import AppKit
 import Foundation
 
-struct NotchShelfItem: Identifiable, Equatable {
+public struct NotchShelfItem: Identifiable, Equatable {
     private static let internalDragIdentityType = "dev.notch.shelf.identity"
 
-    struct FileReference: Equatable {
-        let url: URL
-        let fileIdentity: String
-        let bookmarkData: Data
-        let isTemporary: Bool
+    public struct FileReference: Equatable {
+        public let url: URL
+        public let fileIdentity: String
+        public let bookmarkData: Data
+        public let isTemporary: Bool
+
+        public init(url: URL, fileIdentity: String, bookmarkData: Data, isTemporary: Bool) {
+            self.url = url
+            self.fileIdentity = fileIdentity
+            self.bookmarkData = bookmarkData
+            self.isTemporary = isTemporary
+        }
     }
 
-    enum Kind: Equatable {
+    public enum Kind: Equatable {
         case file(FileReference)
         case link(URL)
         case text(String)
     }
 
-    let id: UUID
-    let kind: Kind
+    public let id: UUID
+    public let kind: Kind
     let identityOverride: String?
 
-    init(id: UUID = UUID(), kind: Kind, identityOverride: String? = nil) {
+    public init(id: UUID = UUID(), kind: Kind, identityOverride: String? = nil) {
         self.id = id
         self.kind = kind
         self.identityOverride = identityOverride
     }
 
-    var iconName: String {
+    public var iconName: String {
         switch kind {
         case .file:
             return "doc.fill"
@@ -38,7 +45,7 @@ struct NotchShelfItem: Identifiable, Equatable {
         }
     }
 
-    var title: String {
+    public var title: String {
         switch kind {
         case let .file(reference):
             return reference.url.lastPathComponent
@@ -53,7 +60,7 @@ struct NotchShelfItem: Identifiable, Equatable {
         }
     }
 
-    var displayName: String {
+    public var displayName: String {
         switch kind {
         case let .file(reference):
             return reference.url.lastPathComponent
@@ -69,7 +76,7 @@ struct NotchShelfItem: Identifiable, Equatable {
         }
     }
 
-    var subtitle: String {
+    public var subtitle: String {
         switch kind {
         case let .file(reference):
             return reference.url.path
@@ -81,7 +88,7 @@ struct NotchShelfItem: Identifiable, Equatable {
         }
     }
 
-    var dragItemProvider: NSItemProvider {
+    public var dragItemProvider: NSItemProvider {
         let provider: NSItemProvider
 
         switch kind {
@@ -105,7 +112,7 @@ struct NotchShelfItem: Identifiable, Equatable {
         return provider
     }
 
-    var identityKey: String {
+    public var identityKey: String {
         if let identityOverride {
             return identityOverride
         }
@@ -120,21 +127,21 @@ struct NotchShelfItem: Identifiable, Equatable {
         }
     }
 
-    var isTemporaryFile: Bool {
+    public var isTemporaryFile: Bool {
         if case let .file(reference) = kind {
             return reference.isTemporary
         }
         return false
     }
 
-    var fileURL: URL? {
+    public var fileURL: URL? {
         if case let .file(reference) = kind {
             return reference.url
         }
         return nil
     }
 
-    var pasteboardWriter: NSPasteboardWriting {
+    public var pasteboardWriter: NSPasteboardWriting {
         switch kind {
         case let .file(reference):
             return reference.url as NSURL
@@ -145,7 +152,7 @@ struct NotchShelfItem: Identifiable, Equatable {
         }
     }
 
-    static var internalDragIdentityTypeIdentifier: String {
+    public static var internalDragIdentityTypeIdentifier: String {
         internalDragIdentityType
     }
 }
@@ -154,8 +161,8 @@ struct NotchShelfItem: Identifiable, Equatable {
 
 /// A lightweight, thread-safe cache for `NSWorkspace.icon(forFile:)` results.
 /// This avoids repeated disk I/O on the main thread for the same file path.
-final class WorkspaceIconCache: @unchecked Sendable {
-    static let shared = WorkspaceIconCache()
+public final class WorkspaceIconCache: @unchecked Sendable {
+    public static let shared = WorkspaceIconCache()
 
     private let cache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
@@ -163,7 +170,7 @@ final class WorkspaceIconCache: @unchecked Sendable {
         return cache
     }()
 
-    func icon(for path: String) -> NSImage {
+    public func icon(for path: String) -> NSImage {
         let key = path as NSString
         if let cached = cache.object(forKey: key) {
             return cached
@@ -174,25 +181,32 @@ final class WorkspaceIconCache: @unchecked Sendable {
         return image
     }
 
-    func invalidate(path: String) {
+    public func invalidate(path: String) {
         cache.removeObject(forKey: path as NSString)
     }
 
-    func clearAll() {
+    public func clearAll() {
         cache.removeAllObjects()
     }
 }
 
 @MainActor
-final class NotchShelfViewModel: ObservableObject {
-    @Published private(set) var items: [NotchShelfItem] = []
-    @Published var isDropTargeted = false
-    @Published private(set) var selectedItemIDs: Set<UUID> = []
+public final class NotchShelfViewModel: ObservableObject {
+    @Published public private(set) var items: [NotchShelfItem] = []
+    @Published public var isDropTargeted = false
+    @Published public private(set) var selectedItemIDs: Set<UUID> = []
 
     private let dropService: NotchShelfDropService
     private let persistenceService: NotchShelfPersistenceService
     private var dropTask: Task<Void, Never>?
     private var persistTask: Task<Void, Never>?
+
+    public convenience init() {
+        self.init(
+            dropService: NotchShelfDropService(),
+            persistenceService: NotchShelfPersistenceService()
+        )
+    }
 
     init(
         dropService: NotchShelfDropService = NotchShelfDropService(),
@@ -225,30 +239,30 @@ final class NotchShelfViewModel: ObservableObject {
         persistTask?.cancel()
     }
 
-    var hasItems: Bool {
+    public var hasItems: Bool {
         !items.isEmpty
     }
 
-    var selectedItems: [NotchShelfItem] {
+    public var selectedItems: [NotchShelfItem] {
         items.filter { selectedItemIDs.contains($0.id) }
     }
 
-    var primarySelectedItem: NotchShelfItem? {
+    public var primarySelectedItem: NotchShelfItem? {
         selectedItems.first
     }
 
-    var previewableSelectedFileURLs: [URL] {
+    public var previewableSelectedFileURLs: [URL] {
         selectedItems.compactMap { item in
             guard case let .file(reference) = item.kind else { return nil }
             return reference.url
         }
     }
 
-    var canQuickLookSelection: Bool {
+    public var canQuickLookSelection: Bool {
         !previewableSelectedFileURLs.isEmpty
     }
 
-    func handleDrop(providers: [NSItemProvider]) -> Bool {
+    public func handleDrop(providers: [NSItemProvider]) -> Bool {
         guard !providers.isEmpty else { return false }
 
         dropTask?.cancel()
@@ -264,7 +278,7 @@ final class NotchShelfViewModel: ObservableObject {
         return true
     }
 
-    func remove(_ item: NotchShelfItem) {
+    public func remove(_ item: NotchShelfItem) {
         items.removeAll { $0.id == item.id }
         selectedItemIDs.remove(item.id)
         cleanupIfNeeded(item)
@@ -272,7 +286,7 @@ final class NotchShelfViewModel: ObservableObject {
         debouncedPersist()
     }
 
-    func clear() {
+    public func clear() {
         let removedItems = items
         guard !removedItems.isEmpty else { return }
 
@@ -283,14 +297,14 @@ final class NotchShelfViewModel: ObservableObject {
         debouncedPersist()
     }
 
-    func shutdown() {
+    public func shutdown() {
         dropTask?.cancel()
         persistTask?.cancel()
         // Final synchronous persist on shutdown.
         persistenceService.save(items)
     }
 
-    func activate(_ item: NotchShelfItem) {
+    public func activate(_ item: NotchShelfItem) {
         switch item.kind {
         case let .file(reference):
             NSWorkspace.shared.open(reference.url)
@@ -302,11 +316,11 @@ final class NotchShelfViewModel: ObservableObject {
         }
     }
 
-    func selectOnly(_ item: NotchShelfItem) {
+    public func selectOnly(_ item: NotchShelfItem) {
         selectedItemIDs = [item.id]
     }
 
-    func toggleSelection(_ item: NotchShelfItem) {
+    public func toggleSelection(_ item: NotchShelfItem) {
         if selectedItemIDs.contains(item.id) {
             selectedItemIDs.remove(item.id)
         } else {
@@ -314,20 +328,20 @@ final class NotchShelfViewModel: ObservableObject {
         }
     }
 
-    func clearSelection() {
+    public func clearSelection() {
         selectedItemIDs.removeAll()
     }
 
-    func select(ids: Set<UUID>) {
+    public func select(ids: Set<UUID>) {
         let validIDs = Set(items.map(\.id))
         selectedItemIDs = ids.intersection(validIDs)
     }
 
-    func isSelected(_ item: NotchShelfItem) -> Bool {
+    public func isSelected(_ item: NotchShelfItem) -> Bool {
         selectedItemIDs.contains(item.id)
     }
 
-    func dragItems(startingWith item: NotchShelfItem) -> [NotchShelfItem] {
+    public func dragItems(startingWith item: NotchShelfItem) -> [NotchShelfItem] {
         if selectedItemIDs.contains(item.id) {
             let selectedItems = items.filter { selectedItemIDs.contains($0.id) }
             if !selectedItems.isEmpty {
@@ -338,12 +352,12 @@ final class NotchShelfViewModel: ObservableObject {
         return [item]
     }
 
-    func prepareSelectionForDrag(startingWith item: NotchShelfItem) {
+    public func prepareSelectionForDrag(startingWith item: NotchShelfItem) {
         guard !selectedItemIDs.contains(item.id) else { return }
         selectOnly(item)
     }
 
-    func moveItems(with ids: [UUID], to destinationIndex: Int) {
+    public func moveItems(with ids: [UUID], to destinationIndex: Int) {
         guard !ids.isEmpty else { return }
 
         let draggedIDSet = Set(ids)
@@ -371,7 +385,7 @@ final class NotchShelfViewModel: ObservableObject {
         debouncedPersist()
     }
 
-    func activateSelectedItems() {
+    public func activateSelectedItems() {
         let actionableItems = selectedItems.filter {
             switch $0.kind {
             case .file, .link:
@@ -389,16 +403,16 @@ final class NotchShelfViewModel: ObservableObject {
         actionableItems.forEach(activate)
     }
 
-    func revealInFinder(_ item: NotchShelfItem) {
+    public func revealInFinder(_ item: NotchShelfItem) {
         guard case let .file(reference) = item.kind else { return }
         NSWorkspace.shared.activateFileViewerSelecting([reference.url])
     }
 
-    func copySelectedItemsToPasteboard() {
+    public func copySelectedItemsToPasteboard() {
         copyItemsToPasteboard(selectedItems)
     }
 
-    func removeSelectedItems() {
+    public func removeSelectedItems() {
         let itemsToRemove = selectedItems
         guard !itemsToRemove.isEmpty else { return }
 

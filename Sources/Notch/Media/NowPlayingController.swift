@@ -13,41 +13,57 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
     }
 
     var supportsVolumeControl: Bool {
-        let bundleID = playbackState.bundleIdentifier
-        return bundleID == "com.apple.Music" || bundleID == "com.spotify.client"
+        SystemAudioOutput.supportsVolumeControl()
     }
 
     var supportsFavorite: Bool {
-        playbackState.bundleIdentifier == "com.apple.Music"
+        false
     }
 
     private let mediaRemoteSendCommand: @convention(c) (Int, AnyObject?) -> Void
     private let mediaRemoteSetElapsedTime: @convention(c) (Double) -> Void
+    private let adapterScriptURL: URL
+    private let adapterFrameworkURL: URL
     private let timestampFormatter = ISO8601DateFormatter()
 
     private var process: Process?
     private var pipeHandler: JSONLinesPipeHandler?
     private var streamTask: Task<Void, Never>?
     private var terminationObserver: NSObjectProtocol?
+    private var isShuttingDown = false
 
     init?() {
-        guard
-            let bundle = CFBundleCreate(
-                kCFAllocatorDefault,
-                NSURL(fileURLWithPath: "/System/Library/PrivateFrameworks/MediaRemote.framework")
-            ),
-            let sendCommandPointer = CFBundleGetFunctionPointerForName(
-                bundle,
-                "MRMediaRemoteSendCommand" as CFString
-            ),
-            let setElapsedTimePointer = CFBundleGetFunctionPointerForName(
-                bundle,
-                "MRMediaRemoteSetElapsedTime" as CFString
-            )
-        else {
+        guard let adapterScriptURL = ProbeResources.mediaRemoteAdapterScriptURL else {
+            NotchLog.mediaRemote.error("NowPlaying disabled: missing mediaremote-adapter.pl")
+            return nil
+        }
+        guard let adapterFrameworkURL = ProbeResources.mediaRemoteFrameworkURL else {
+            NotchLog.mediaRemote.error("NowPlaying disabled: missing MediaRemoteAdapter.framework")
             return nil
         }
 
+        let mediaRemoteFrameworkURL = NSURL(fileURLWithPath: "/System/Library/PrivateFrameworks/MediaRemote.framework")
+        guard let bundle = CFBundleCreate(kCFAllocatorDefault, mediaRemoteFrameworkURL) else {
+            NotchLog.mediaRemote.error("NowPlaying disabled: MediaRemote.framework could not be loaded")
+            return nil
+        }
+        guard let sendCommandPointer = CFBundleGetFunctionPointerForName(
+            bundle,
+            "MRMediaRemoteSendCommand" as CFString
+        ) else {
+            NotchLog.mediaRemote.error("NowPlaying disabled: MRMediaRemoteSendCommand is unavailable")
+            return nil
+        }
+        guard let setElapsedTimePointer = CFBundleGetFunctionPointerForName(
+            bundle,
+            "MRMediaRemoteSetElapsedTime" as CFString
+        ) else {
+            NotchLog.mediaRemote.error("NowPlaying disabled: MRMediaRemoteSetElapsedTime is unavailable")
+            return nil
+        }
+
+        self.adapterScriptURL = adapterScriptURL
+        self.adapterFrameworkURL = adapterFrameworkURL
         mediaRemoteSendCommand = unsafeBitCast(sendCommandPointer, to: (@convention(c) (Int, AnyObject?) -> Void).self)
         mediaRemoteSetElapsedTime = unsafeBitCast(setElapsedTimePointer, to: (@convention(c) (Double) -> Void).self)
 
@@ -71,6 +87,9 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
     }
 
     func shutdown() {
+        guard !isShuttingDown else { return }
+        isShuttingDown = true
+
         if let terminationObserver {
             NotificationCenter.default.removeObserver(terminationObserver)
             self.terminationObserver = nil
@@ -142,37 +161,30 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
     }
 
     func setVolume(_ level: Double) async {
-        let clampedLevel = max(0.0, min(1.0, level))
-        let volumePercentage = Int(clampedLevel * 100)
-        let bundleID = playbackState.bundleIdentifier
-
-        if bundleID == "com.apple.Music" {
-            let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music")
-            if !runningApps.isEmpty {
-                let script = "tell application \"Music\" to set sound volume to \(volumePercentage)"
-                try? await AppleScriptHelper.executeVoid(script)
-            }
-        } else if bundleID == "com.spotify.client" {
-            let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: "com.spotify.client")
-            if !runningApps.isEmpty {
-                let script = "tell application \"Spotify\" to set sound volume to \(volumePercentage)"
-                try? await AppleScriptHelper.executeVoid(script)
-            }
+        do {
+            try SystemAudioOutput.setVolume(level)
+            playbackState.volume = (try? SystemAudioOutput.currentVolume()) ?? max(0.0, min(1.0, level))
+        } catch {
+            NotchLog.mediaRemote.error("Failed to set system volume: \(error.localizedDescription)")
         }
-
-        playbackState.volume = clampedLevel
     }
 
     private func setupNowPlayingObserver() async {
         let process = Process()
-        let scriptURL = ProbeResources.mediaRemoteAdapterScriptURL
-        let frameworkURL = ProbeResources.mediaRemoteFrameworkURL
 
         process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
-        process.arguments = [scriptURL.path, frameworkURL.path, "stream"]
+        process.arguments = [adapterScriptURL.path, adapterFrameworkURL.path, "stream"]
 
         let pipeHandler = JSONLinesPipeHandler()
         process.standardOutput = await pipeHandler.getPipe()
+        process.terminationHandler = { process in
+            if process.terminationStatus != 0 || process.terminationReason != .exit {
+                NotchLog.mediaRemote.error("MediaRemote adapter exited with status \(process.terminationStatus), reason \(process.terminationReason.rawValue)")
+            }
+            Task {
+                await pipeHandler.close()
+            }
+        }
 
         self.process = process
         self.pipeHandler = pipeHandler
@@ -322,47 +334,9 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
         return newPlaybackState.hasMediaContext
     }
 
-    private func fetchFavoriteStateIfSupported() async {
-        guard playbackState.bundleIdentifier == "com.apple.Music" else { return }
+    private func fetchFavoriteStateIfSupported() async {}
 
-        let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music")
-        guard !runningApps.isEmpty else { return }
-
-        let script = """
-        tell application "Music"
-            try
-                return favorited of current track
-            on error
-                return false
-            end try
-        end tell
-        """
-
-        if let result = try? await AppleScriptHelper.execute(script) {
-            var updated = playbackState
-            updated.isFavorite = result.booleanValue
-            playbackState = updated
-        }
-    }
-
-    func setFavorite(_ favorite: Bool) async {
-        guard playbackState.bundleIdentifier == "com.apple.Music" else { return }
-
-        let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music")
-        guard !runningApps.isEmpty else { return }
-
-        let script = """
-        tell application "Music"
-            try
-                set favorited of current track to \(favorite ? "true" : "false")
-            end try
-        end tell
-        """
-
-        try? await AppleScriptHelper.executeVoid(script)
-        try? await Task.sleep(for: .milliseconds(150))
-        await updatePlaybackInfo()
-    }
+    func setFavorite(_ favorite: Bool) async {}
 
     private var canControlPlayback: Bool {
         hasTrackMetadata || hasRunningSourceApp
@@ -433,7 +407,10 @@ private actor JSONLinesPipeHandler {
     ) async throws {
         while true {
             let data = try await readData()
-            guard !data.isEmpty else { break }
+            guard !data.isEmpty else {
+                NotchLog.mediaRemote.info("MediaRemote adapter stream ended")
+                break
+            }
 
             if let chunk = String(data: data, encoding: .utf8) {
                 buffer.append(chunk)

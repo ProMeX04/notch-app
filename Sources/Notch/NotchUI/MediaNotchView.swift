@@ -1,5 +1,5 @@
 import NotchFocusCore
-@testable import NotchShelfCore
+import NotchShelfCore
 import SwiftUI
 import UniformTypeIdentifiers
 

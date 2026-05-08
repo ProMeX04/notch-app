@@ -1,5 +1,5 @@
 import AppKit
-@testable import NotchShelfCore
+import NotchShelfCore
 @preconcurrency import QuickLookUI
 import SwiftUI
 import UniformTypeIdentifiers

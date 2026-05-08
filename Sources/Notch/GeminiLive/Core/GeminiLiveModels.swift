@@ -317,7 +317,6 @@ struct TranscriptOverlayInput: Equatable {
 enum GeminiTool: String, CaseIterable, Identifiable {
     case webSearch = "webSearch"
     case read = "read"
-    case ls = "ls"
     case calendar = "calendar"
     case clipboard = "clipboard"
     case appControl = "appControl"
@@ -334,7 +333,6 @@ enum GeminiTool: String, CaseIterable, Identifiable {
     static let coreCases: [GeminiTool] = [
         .webSearch,
         .read,
-        .ls,
         .calendar,
         .clipboard,
         .appControl,
@@ -357,7 +355,6 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         switch self {
         case .webSearch: return "Search"
         case .read: return "Read"
-        case .ls: return "List"
         case .calendar: return "Calendar"
         case .clipboard: return "Clipboard"
         case .appControl: return "App"
@@ -375,7 +372,6 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         switch self {
         case .webSearch: return "magnifyingglass"
         case .read: return "doc.text"
-        case .ls: return "list.bullet"
         case .calendar: return "calendar"
         case .clipboard: return "doc.on.clipboard"
         case .appControl: return "macwindow"

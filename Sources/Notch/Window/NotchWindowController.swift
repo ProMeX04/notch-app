@@ -1,7 +1,7 @@
 import AppKit
 import Combine
 import NotchFocusCore
-@testable import NotchShelfCore
+import NotchShelfCore
 import SwiftUI
 
 @MainActor

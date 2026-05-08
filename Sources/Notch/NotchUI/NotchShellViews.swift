@@ -1,6 +1,6 @@
 import AppKit
 import NotchFocusCore
-@testable import NotchShelfCore
+import NotchShelfCore
 import SwiftUI
 
 final class NotchHeaderAccessoryController: ObservableObject {

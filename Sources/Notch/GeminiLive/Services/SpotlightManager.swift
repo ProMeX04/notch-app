@@ -37,46 +37,19 @@ public final class SpotlightManager: NSObject, @unchecked Sendable {
             let query = NSMetadataQuery()
             query.searchScopes = self.searchScopes(for: scope ?? "home")
             query.predicate = self.buildPredicate(for: text, kind: kind ?? "any")
-            
-            let checkAndSignal = { (q: NSMetadataQuery, force: Bool) -> Bool in
-                self.resultLock.lock()
-                guard self.currentSearchID == searchID && !self.isCompleted else {
-                    self.resultLock.unlock(); return true 
-                }
-                
-                let results = self.extractAndRankResults(from: q, queryText: text, limit: limit)
-                let bestScore = results.map { $0["score"] as? Int ?? 0 }.max() ?? 0
-                let elapsed = Date().timeIntervalSince(startTime)
-                
-                // Full Search Exit Logic:
-                // 1. Force exit (gathering finished or manual stop)
-                // 2. Exact name match found (Score >= 1000) -> Exit early for UX
-                // 3. Otherwise, keep gathering until the very end
-                let hasExactMatch = bestScore >= 1000
-                let gatheringDone = !q.isGathering
-                
-                let shouldExit = force || (hasExactMatch && elapsed > 0.5) || gatheringDone
-                
-                if shouldExit && (results.count > 0 || gatheringDone || force) {
-                    self.searchResult = [
-                        "success": true,
-                        "results": results,
-                        "count": results.count,
-                        "query": text,
-                        "duration": String(format: "%.2fs", elapsed)
-                    ]
-                    self.isCompleted = true
-                    self.resultLock.unlock()
-                    semaphore.signal()
-                    return true
-                }
-                self.resultLock.unlock()
-                return false
-            }
 
             let center = NotificationCenter.default
-            let obs = center.addObserver(forName: .NSMetadataQueryDidFinishGathering, object: query, queue: nil) { n in
-                if let q = n.object as? NSMetadataQuery { _ = checkAndSignal(q, true) }
+            let obs = center.addObserver(forName: .NSMetadataQueryDidFinishGathering, object: query, queue: nil) { [weak self] n in
+                guard let self, let q = n.object as? NSMetadataQuery else { return }
+                _ = self.finishSearchIfNeeded(
+                    for: q,
+                    force: true,
+                    searchID: searchID,
+                    queryText: text,
+                    limit: limit,
+                    startTime: startTime,
+                    semaphore: semaphore
+                )
             }
 
             if !query.start() {
@@ -95,13 +68,31 @@ public final class SpotlightManager: NSObject, @unchecked Sendable {
             // Poll for exact matches or gathering finish
             while Date().timeIntervalSince(startTime) < timeout {
                 if self.resultLock.withLock({ self.isCompleted || self.currentSearchID != searchID }) { break }
-                if checkAndSignal(query, false) { break }
+                if self.finishSearchIfNeeded(
+                    for: query,
+                    force: false,
+                    searchID: searchID,
+                    queryText: text,
+                    limit: limit,
+                    startTime: startTime,
+                    semaphore: semaphore
+                ) {
+                    break
+                }
                 runLoop.run(mode: .default, before: Date(timeIntervalSinceNow: 0.1))
             }
 
             query.stop()
             center.removeObserver(obs)
-            _ = checkAndSignal(query, true)
+            _ = self.finishSearchIfNeeded(
+                for: query,
+                force: true,
+                searchID: searchID,
+                queryText: text,
+                limit: limit,
+                startTime: startTime,
+                semaphore: semaphore
+            )
         }
 
         thread.start()
@@ -142,6 +133,47 @@ public final class SpotlightManager: NSObject, @unchecked Sendable {
         }
     }
 
+    private func finishSearchIfNeeded(
+        for query: NSMetadataQuery,
+        force: Bool,
+        searchID: UUID,
+        queryText: String,
+        limit: Int,
+        startTime: Date,
+        semaphore: DispatchSemaphore
+    ) -> Bool {
+        resultLock.lock()
+        guard currentSearchID == searchID && !isCompleted else {
+            resultLock.unlock()
+            return true
+        }
+
+        let results = extractAndRankResults(from: query, queryText: queryText, limit: limit)
+        let bestScore = results.map { $0["score"] as? Int ?? 0 }.max() ?? 0
+        let elapsed = Date().timeIntervalSince(startTime)
+
+        let hasExactMatch = bestScore >= 1000
+        let gatheringDone = !query.isGathering
+        let shouldExit = force || (hasExactMatch && elapsed > 0.5) || gatheringDone
+
+        if shouldExit && (!results.isEmpty || gatheringDone || force) {
+            searchResult = [
+                "success": true,
+                "results": results,
+                "count": results.count,
+                "query": queryText,
+                "duration": String(format: "%.2fs", elapsed)
+            ]
+            isCompleted = true
+            resultLock.unlock()
+            semaphore.signal()
+            return true
+        }
+
+        resultLock.unlock()
+        return false
+    }
+
     private func extractAndRankResults(from query: NSMetadataQuery, queryText: String, limit: Int) -> [[String: Any]] {
         var scoredResults: [(score: Int, item: [String: Any])] = []
         let lowerQuery = queryText.lowercased()
@@ -150,12 +182,12 @@ public final class SpotlightManager: NSObject, @unchecked Sendable {
             guard let path = item.value(forAttribute: NSMetadataItemPathKey) as? String else { continue }
             let name = item.value(forAttribute: NSMetadataItemDisplayNameKey) as? String ?? URL(fileURLWithPath: path).lastPathComponent
             let lowerName = name.lowercased()
-            
+
             var score = 0
             if lowerName == lowerQuery { score += 1000 }
             else if lowerName.hasPrefix(lowerQuery) { score += 500 }
             else if lowerName.contains(lowerQuery) { score += 100 }
-            
+
             let contentType = item.value(forAttribute: NSMetadataItemContentTypeKey) as? String ?? ""
             if contentType == "com.apple.application-bundle" { score += 300 }
             else if contentType.contains("pdf") || contentType.contains("document") || contentType.contains("officedocument") {
@@ -163,7 +195,7 @@ public final class SpotlightManager: NSObject, @unchecked Sendable {
             } else if contentType.contains("image") || contentType.contains("movie") {
                 score -= 400
             }
-            
+
             if path.contains("/node_modules/") || path.contains("/Library/") || path.contains(".log") || path.contains(".tmp") {
                 score -= 900
             }

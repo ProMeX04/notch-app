@@ -2,8 +2,8 @@ import AppKit
 import Foundation
 import QuickLookThumbnailing
 
-actor NotchShelfThumbnailService {
-    static let shared = NotchShelfThumbnailService()
+public actor NotchShelfThumbnailService {
+    public static let shared = NotchShelfThumbnailService()
 
     // Exposed as internal only for @testable access from NotchShelfTests so
     // we can seed and observe cache state without doing real file I/O.
@@ -22,7 +22,7 @@ actor NotchShelfThumbnailService {
         "\(url.standardizedFileURL.path)_\(Int(size.width))x\(Int(size.height))"
     }
 
-    func thumbnail(for url: URL, size: CGSize) async -> NSImage? {
+    public func thumbnail(for url: URL, size: CGSize) async -> NSImage? {
         let cacheKey = Self.cacheKey(for: url, size: size)
 
         if let cached = cache[cacheKey] {
@@ -55,7 +55,7 @@ actor NotchShelfThumbnailService {
         return await task.value
     }
 
-    func clearCache(for url: URL) {
+    public func clearCache(for url: URL) {
         // Bug #B: cache keys are of the form "<standardizedPath>_WxH". Using
         // the bare path as a prefix matches unrelated siblings (e.g.
         // clearing "/a/b/file" would also wipe "/a/b/file2_100x100"). Appending
@@ -66,13 +66,13 @@ actor NotchShelfThumbnailService {
         pendingRequests = pendingRequests.filter { !$0.key.hasPrefix(exactPrefix) }
     }
 
-    func clearCache(for urls: [URL]) {
+    public func clearCache(for urls: [URL]) {
         for url in urls {
             clearCache(for: url)
         }
     }
 
-    func clearAllCache() {
+    public func clearAllCache() {
         cache.removeAll()
         cacheKeys.removeAll()
         pendingRequests.removeAll()

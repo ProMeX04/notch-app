@@ -556,7 +556,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func loadStatusBarTemplateImage() -> NSImage {
         guard
-            let url = Bundle.module.url(
+            let url = NotchResourceBundle.url(
                 forResource: "status-template",
                 withExtension: "png",
                 subdirectory: "MenuBar"

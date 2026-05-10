@@ -17,7 +17,7 @@ enum NotchCapabilityManifestLoader {
     private static let resourceExtension = "json"
 
     static func defaultRequirements() -> [String: NotchFeatureRequirement] {
-        guard let url = Bundle.module.url(
+        guard let url = NotchResourceBundle.url(
             forResource: resourceName,
             withExtension: resourceExtension,
             subdirectory: "Shared"

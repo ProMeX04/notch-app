@@ -89,7 +89,7 @@ struct SoundManager {
             return cachedSound
         }
 
-        guard let url = Bundle.module.url(
+        guard let url = NotchResourceBundle.url(
             forResource: option.resourceName,
             withExtension: "wav",
             subdirectory: "FocusSounds"

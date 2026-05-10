@@ -222,7 +222,11 @@ final class JarvisBackgroundWindowController {
             panel.titlebarSeparatorStyle = .none
         }
 
-        for kind in [NSWindow.ButtonType.miniaturizeButton, NSWindow.ButtonType.zoomButton] {
+        for kind in [
+            NSWindow.ButtonType.closeButton,
+            NSWindow.ButtonType.miniaturizeButton,
+            NSWindow.ButtonType.zoomButton,
+        ] {
             panel.standardWindowButton(kind)?.isHidden = true
         }
 

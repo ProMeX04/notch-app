@@ -66,11 +66,14 @@ enum GeminiLiveLifecycleState: Equatable {
         }
     }
 
+    /// Including `.connecting` keeps Gemini Talk / floating orb chrome visible while outbound
+    /// handshake runs (fresh connect or resumed session awaiting token/socket). Omitting it
+    /// briefly hid `JarvisBackgroundWindowController` (`showsConnectedSessionUI` went false).
     var preservesSessionUI: Bool {
         switch self {
-        case .live, .reconnecting:
+        case .live, .reconnecting, .connecting:
             return true
-        case .disconnected, .connecting, .failed:
+        case .disconnected, .failed:
             return false
         }
     }

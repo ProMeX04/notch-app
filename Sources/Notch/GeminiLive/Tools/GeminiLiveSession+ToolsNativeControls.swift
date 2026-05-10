@@ -8,7 +8,7 @@ extension GeminiLiveSession {
 
     func handleVolumeCommand(_ tokens: [String]) -> [String: Any] {
         guard let action = tokens.first else {
-            return ["success": false, "error": "Missing action for 'volume'. Use: get, set, mute, unmute."]
+            return ["success": false, "error": "Missing action for 'volume'. Use: get, set."]
         }
 
         do {
@@ -31,16 +31,6 @@ extension GeminiLiveSession {
                 try SystemAudioOutput.setVolume(clampedLevel / 100)
                 let volume = Int((try SystemAudioOutput.currentVolume() * 100).rounded())
                 return ["success": true, "volume": volume]
-            case "mute":
-                guard try SystemAudioOutput.setMuted(true) else {
-                    return ["success": false, "error": "Mute is unsupported on the current output device."]
-                }
-                return ["success": true, "muted": true]
-            case "unmute":
-                guard try SystemAudioOutput.setMuted(false) else {
-                    return ["success": false, "error": "Mute is unsupported on the current output device."]
-                }
-                return ["success": true, "muted": false]
             default:
                 return ["success": false, "error": "Unknown volume action '\(action)'."]
             }

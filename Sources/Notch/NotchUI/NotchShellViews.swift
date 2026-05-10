@@ -1240,12 +1240,16 @@ struct GlobalSettingsView: View {
             && gemini.selectedConnectionMethod == .managedServer
     }
     
+    private var appShortVersion: String {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "—"
+    }
+
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 10) {
                 generalSettingsSection
 
-                Text("\(Localization.get("Version", lang: appLanguage)) 1.0.0")
+                Text("\(Localization.get("Version", lang: appLanguage)) \(appShortVersion)")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.white.opacity(0.3))
                     .padding(.top, 2)

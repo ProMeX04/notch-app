@@ -183,7 +183,7 @@ extension GeminiLiveSession {
                 "description": """
                 Control media playback and system volume on the user's Mac.
                 Playback actions: play, pause, toggle, next, previous, stop, skip-forward, skip-backward, open.
-                Volume actions: volume-get, volume-set, mute, unmute.
+                Volume actions: volume-get, volume-set (0–100 only; do not use mute).
                 Use 'status' to check what is currently playing (title, artist, album, playing state, volume).
                 All actions return the current media state after execution.
                 If no supported media app is running, say so clearly instead of guessing.
@@ -193,7 +193,7 @@ extension GeminiLiveSession {
                     "properties": [
                         "action": [
                             "type": "STRING",
-                            "description": "Action: 'status', 'play', 'pause', 'toggle', 'next', 'previous', 'stop', 'skip-forward', 'skip-backward', 'open', 'volume-get', 'volume-set', 'mute', 'unmute'."
+                            "description": "Action: 'status', 'play', 'pause', 'toggle', 'next', 'previous', 'stop', 'skip-forward', 'skip-backward', 'open', 'volume-get', 'volume-set'."
                         ],
                         "volumeLevel": [
                             "type": "NUMBER",

@@ -266,7 +266,7 @@ extension GeminiLiveSession {
                     return
                 }
 
-                // Volume set/mute/unmute: handle natively
+                // Volume set: handle natively (system output mute is not exposed via this tool)
                 if action == "volume-set" {
                     guard let level = volumeLevel else {
                         let result: [String: Any] = ["success": false, "error": "volume-set requires a 'volumeLevel' argument (0-100)."]
@@ -279,14 +279,12 @@ extension GeminiLiveSession {
                     self.sendFunctionResponse(id: id, name: name, result: result)
                     return
                 }
-                if action == "volume-mute" {
-                    let result = self.handleVolumeCommand(["mute"])
-                    self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
-                    self.sendFunctionResponse(id: id, name: name, result: result)
-                    return
-                }
-                if action == "volume-unmute" {
-                    let result = self.handleVolumeCommand(["unmute"])
+                let unsupportedMuteActions: Set<String> = ["mute", "unmute", "volume-mute", "volume-unmute"]
+                if unsupportedMuteActions.contains(action) {
+                    let result: [String: Any] = [
+                        "success": false,
+                        "error": "System output mute is not supported by mediaControl. Use volume-get and volume-set (0–100)."
+                    ]
                     self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
                     self.sendFunctionResponse(id: id, name: name, result: result)
                     return

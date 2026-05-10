@@ -1,8 +1,25 @@
 import SwiftUI
 
+private extension JarvisOrbVisualStyle {
+    func localizedTitle(lang: String) -> String {
+        switch self {
+        case .ice: Localization.get("Orb style Ice", lang: lang)
+        case .ember: Localization.get("Orb style Ember", lang: lang)
+        case .nebula: Localization.get("Orb style Nebula", lang: lang)
+        case .aurora: Localization.get("Orb style Aurora", lang: lang)
+            case .mono: Localization.get("Orb style Mono", lang: lang)
+        }
+    }
+}
+
 struct AppTalkSettingsPane: View {
     @ObservedObject var gemini: GeminiLiveViewModel
     @AppStorage("app_language") private var appLanguage: String = "English"
+    @AppStorage(JarvisTalkBackgroundOrbSettings.enabledUserDefaultsKey) private var jarvisOrbBackdropEnabled = true
+    @AppStorage(JarvisTalkBackgroundOrbSettings.alwaysOnTopUserDefaultsKey) private var jarvisOrbAlwaysOnTop = true
+    @AppStorage(JarvisTalkBackgroundOrbSettings.showInDockWhenOrbVisibleDefaultsKey)
+    private var jarvisOrbShowInDockWhileVisible = false
+    @AppStorage(JarvisOrbVisualStyle.storageKey) private var jarvisOrbVisualStyleRaw: String = JarvisOrbVisualStyle.ice.rawValue
     @AppStorage(NotchAccentColorOption.storageKey) private var accentColorID: String = NotchAccentColorOption.defaultOption.rawValue
     @State private var holdShortcut = HoldToTalkShortcutStore.load()
     @State private var agentNameDraft = ""
@@ -82,6 +99,93 @@ struct AppTalkSettingsPane: View {
                             .padding(.horizontal, 14)
                             .padding(.bottom, 12)
                     }
+                }
+            }
+
+            AppSettingsCard(
+                title: Localization.get("Floating orb window", lang: appLanguage)
+            ) {
+                AppSettingsRow(showDivider: true) {
+                    Image(systemName: "circle.hexagongrid.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(tint.opacity(0.9))
+                        .frame(width: 28, height: 28)
+                        .background(tint.opacity(0.1).cornerRadius(8))
+
+                    Text(Localization.get("Show floating orb window when connected", lang: appLanguage))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.9))
+
+                    Spacer(minLength: 0)
+
+                    Toggle("", isOn: $jarvisOrbBackdropEnabled)
+                        .toggleStyle(NotchSwitchStyle(tint: tint))
+                        .labelsHidden()
+                }
+
+                AppSettingsRow(showDivider: true) {
+                    Image(systemName: "arrow.up.to.line")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(tint.opacity(jarvisOrbBackdropEnabled ? 0.9 : 0.35))
+                        .frame(width: 28, height: 28)
+                        .background(tint.opacity(jarvisOrbBackdropEnabled ? 0.1 : 0.04).cornerRadius(8))
+
+                    Text(Localization.get("Orb always on top", lang: appLanguage))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white.opacity(jarvisOrbBackdropEnabled ? 0.9 : 0.42))
+
+                    Spacer(minLength: 0)
+
+                    Toggle("", isOn: $jarvisOrbAlwaysOnTop)
+                        .toggleStyle(NotchSwitchStyle(tint: tint))
+                        .labelsHidden()
+                        .disabled(!jarvisOrbBackdropEnabled)
+                        .opacity(jarvisOrbBackdropEnabled ? 1 : 0.45)
+                }
+
+                AppSettingsRow(showDivider: true) {
+                    Image(systemName: "dock.rectangle")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(tint.opacity(jarvisOrbBackdropEnabled ? 0.9 : 0.35))
+                        .frame(width: 28, height: 28)
+                        .background(tint.opacity(jarvisOrbBackdropEnabled ? 0.1 : 0.04).cornerRadius(8))
+
+                    Text(Localization.get("Show Notch in Dock when orb visible", lang: appLanguage))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white.opacity(jarvisOrbBackdropEnabled ? 0.9 : 0.42))
+
+                    Spacer(minLength: 0)
+
+                    Toggle("", isOn: $jarvisOrbShowInDockWhileVisible)
+                        .toggleStyle(NotchSwitchStyle(tint: tint))
+                        .labelsHidden()
+                        .disabled(!jarvisOrbBackdropEnabled)
+                        .opacity(jarvisOrbBackdropEnabled ? 1 : 0.45)
+                }
+
+                AppSettingsRow(showDivider: false) {
+                    Image(systemName: "paintpalette.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(tint.opacity(jarvisOrbBackdropEnabled ? 0.9 : 0.35))
+                        .frame(width: 28, height: 28)
+                        .background(tint.opacity(jarvisOrbBackdropEnabled ? 0.1 : 0.04).cornerRadius(8))
+
+                    Text(Localization.get("Orb appearance", lang: appLanguage))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white.opacity(jarvisOrbBackdropEnabled ? 0.9 : 0.42))
+
+                    Spacer(minLength: 0)
+
+                    Picker("", selection: $jarvisOrbVisualStyleRaw) {
+                        ForEach(JarvisOrbVisualStyle.allCases) { style in
+                            Text(style.localizedTitle(lang: appLanguage)).tag(style.rawValue)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(minWidth: 160, alignment: .trailing)
+                    .labelsHidden()
+                    .disabled(!jarvisOrbBackdropEnabled)
+                    .opacity(jarvisOrbBackdropEnabled ? 1 : 0.45)
                 }
             }
 

@@ -1,11 +1,8 @@
 const apiBaseUrlInput = document.getElementById("api-base-url");
 const saveButton = document.getElementById("save-button");
 const testButton = document.getElementById("test-button");
-const connectionText = document.getElementById("connection-text");
-const focusText = document.getElementById("focus-text");
-const phaseText = document.getElementById("phase-text");
-const countText = document.getElementById("count-text");
-const detailText = document.getElementById("detail-text");
+const statusCard = document.getElementById("status-card");
+const statusText = document.getElementById("status-text");
 
 saveButton.addEventListener("click", saveApiBaseUrl);
 testButton.addEventListener("click", refreshState);
@@ -36,20 +33,26 @@ async function refreshState() {
   render(response.state);
 }
 
-function render(state) {
-  connectionText.textContent = state.connected ? "Connected" : "Offline";
-  focusText.textContent = state.focusActive ? "Blocking active" : "Not blocking";
-  phaseText.textContent = state.phase || "-";
-  countText.textContent = String((state.blockedHosts || []).length);
+function setStatusVariant(variant) {
+  const map = {
+    offline: "status--offline",
+    focus: "status--focus",
+    break: "status--break",
+    ok: "status--ok",
+    idle: "status--idle"
+  };
+  statusCard.className =
+    "status " + (map[variant] || "status--idle");
+}
 
-  if (!state.connected) {
-    detailText.textContent = state.error
-      ? `Bridge error: ${state.error}`
-      : "The extension cannot reach the Notch app bridge.";
+function render(state) {
+  const { summary } = globalThis.notchBridgeStatus || {};
+  if (!summary) {
+    statusText.textContent = "Thiếu bridge-status.js.";
     return;
   }
 
-  detailText.textContent = state.focusActive
-    ? "A running focus phase is active in Notch. Matching tabs will be redirected immediately."
-    : "Connected to Notch. Blocking starts only during the running focus phase.";
+  const { variant, text } = summary(state);
+  setStatusVariant(variant);
+  statusText.textContent = text;
 }

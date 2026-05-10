@@ -10,4 +10,5 @@ enum GeminiLiveToolName {
     static let clipboard = "clipboard"
     static let memory = "memory"
     static let appleMail = "appleMail"
+    static let showResult = "showResult"
 }

@@ -24,6 +24,8 @@ final class NotchWindowController {
     private let geminiExecApprovalPanel = GeminiExecApprovalPanelController()
 
     private(set) var isVisible = true
+    /// Emits whenever `show()`, `hide()`, or equivalent changes visibility (including initial transitions).
+    let visibilityDidChange = PassthroughSubject<Bool, Never>()
 
     init(
         playbackViewModel: MediaProbeViewModel,
@@ -111,12 +113,14 @@ final class NotchWindowController {
 
     func show() {
         isVisible = true
+        visibilityDidChange.send(true)
         updateWindowFrame(animated: false)
         window.orderFrontRegardless()
     }
 
     func hide() {
         isVisible = false
+        visibilityDidChange.send(false)
         window.orderOut(nil)
     }
 

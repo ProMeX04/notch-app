@@ -40,18 +40,29 @@ export async function executeBrowserCommand(command) {
         const query = args.query || "";
         const searchUrl = `https://www.google.com/search?btnI=I%27m+Feeling+Lucky&q=${encodeURIComponent(query)}`;
         const tab = await chrome.tabs.create({ url: searchUrl, active: true });
-        return { ...resultBase, success: true, result: { tabId: tab.id, url: searchUrl } };
+        const followResult = await followGoogleRedirectNotice(tab.id);
+        return {
+          ...resultBase,
+          success: true,
+          result: {
+            tabId: tab.id,
+            url: followResult.url || searchUrl,
+            redirected: followResult.redirected
+          }
+        };
       }
 
       case "read-tab": {
         const tabId = args.tabId ? Number(args.tabId) : null;
-        const tab = tabId
+        let tab = tabId
           ? await chrome.tabs.get(tabId)
           : (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0];
 
         if (!tab) {
           return { ...resultBase, errorMessage: "No active tab found." };
         }
+
+        tab = await waitForTabLoaded(tab.id);
 
         let text = "";
         let screenshotData = "";
@@ -71,7 +82,13 @@ export async function executeBrowserCommand(command) {
             });
             text = injection?.result || "";
 
-            // Capture visible area as JPEG to keep size reasonable.
+            // Focus Chrome + shutter flash *before* capture so the user sees it; overlay is gone before JPEG is taken.
+            await bringTabToFront(tab.id, tab.windowId);
+            await new Promise((r) => setTimeout(r, 80));
+            console.log("[notch] read-tab: shutter flash starting on tab", tab.id);
+            await awaitShutterFlash(tab.id);
+            console.log("[notch] read-tab: shutter flash done, capturing");
+
             screenshotData = await chrome.tabs.captureVisibleTab(tab.windowId, {
               format: "jpeg",
               quality: 50
@@ -351,6 +368,222 @@ export async function openAutoUrls(urls) {
 
 // ── Internal utilities ────────────────────────────────────────────────────────
 
+/** Bring the tab + browser window forward so the shutter is visible (e.g. when triggered from Notch). */
+async function bringTabToFront(tabId, windowId) {
+  if (tabId != null) {
+    try {
+      await chrome.tabs.update(tabId, { active: true });
+    } catch {
+      /* ignore */
+    }
+  }
+  if (windowId == null) return;
+  try {
+    await chrome.windows.update(windowId, { focused: true });
+  } catch {
+    /* ignore — missing windows permission or invalid id */
+  }
+}
+
+/**
+ * Subtle "screenshot taken" cue: a soft blue glow on the viewport edges.
+ * No flash — just a brief inner border highlight then fade out.
+ */
+async function awaitShutterFlash(tabId) {
+  if (tabId == null) return;
+  try {
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      func: () => {
+        return new Promise((resolve) => {
+          try {
+            const ROOT_ID = "notch-bridge-shutter-root";
+            document.getElementById(ROOT_ID)?.remove();
+
+            const importantAll = (obj) =>
+              Object.entries(obj)
+                .map(([k, v]) => `${k}:${v} !important`)
+                .join(";");
+
+            const root = document.createElement("div");
+            root.id = ROOT_ID;
+            root.setAttribute("aria-hidden", "true");
+            root.style.cssText = importantAll({
+              position: "fixed",
+              left: "0",
+              top: "0",
+              right: "0",
+              bottom: "0",
+              "z-index": "2147483647",
+              "pointer-events": "none",
+              overflow: "hidden",
+              opacity: "1",
+              transition: "opacity 720ms ease-out"
+            });
+
+            const border = document.createElement("div");
+            border.style.cssText = importantAll({
+              position: "absolute",
+              left: "0",
+              top: "0",
+              right: "0",
+              bottom: "0",
+              "box-shadow":
+                "inset 0 0 0 3px rgba(64, 156, 255, 0.95), " +
+                "inset 0 0 28px 6px rgba(64, 156, 255, 0.45)",
+              "border-radius": "2px"
+            });
+
+            root.appendChild(border);
+            const host = document.body || document.documentElement;
+            host.appendChild(root);
+
+            // Force reflow so the opacity transition runs from 1 → 0.
+            void root.offsetWidth;
+
+            const HOLD_MS = 480;
+            const FADE_MS = 720;
+
+            setTimeout(() => {
+              try {
+                root.style.setProperty("opacity", "0", "important");
+              } catch {}
+            }, HOLD_MS);
+
+            setTimeout(() => {
+              try {
+                root.remove();
+              } catch {}
+              resolve({ ok: true });
+            }, HOLD_MS + FADE_MS + 40);
+          } catch (e) {
+            resolve({ ok: false, error: String(e && e.message || e) });
+          }
+        });
+      }
+    });
+    if (res?.result && res.result.ok === false) {
+      console.warn("[notch] shutter flash error inside page:", res.result.error);
+    }
+  } catch (err) {
+    console.warn("[notch] shutter flash skipped:", err?.message || err);
+  }
+}
+
+function waitForTabLoaded(tabId, timeoutMs = 10000) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timeoutId = null;
+    let listening = false;
+
+    const settle = async () => {
+      if (settled) return;
+      settled = true;
+      if (listening) chrome.tabs.onUpdated.removeListener(handleUpdated);
+      if (timeoutId) clearTimeout(timeoutId);
+      try {
+        resolve(await chrome.tabs.get(tabId));
+      } catch (error) {
+        reject(error);
+      }
+    };
+
+    const handleUpdated = (updatedTabId, changeInfo) => {
+      if (updatedTabId === tabId && changeInfo.status === "complete") {
+        settle();
+      }
+    };
+
+    chrome.tabs.get(tabId).then(tab => {
+      if (tab.status === "complete") {
+        settle();
+        return;
+      }
+      chrome.tabs.onUpdated.addListener(handleUpdated);
+      listening = true;
+      timeoutId = setTimeout(settle, timeoutMs);
+    }).catch(reject);
+  });
+}
+
+async function followGoogleRedirectNotice(tabId, timeoutMs = 3500) {
+  if (tabId == null) return { redirected: false, url: "" };
+
+  let tab = null;
+  try {
+    tab = await waitForTabLoaded(tabId, timeoutMs);
+  } catch {
+    tab = await chrome.tabs.get(tabId).catch(() => null);
+  }
+
+  if (!tab) return { redirected: false, url: "" };
+
+  const targetUrl =
+    extractGoogleRedirectTargetFromUrl(tab.url) ||
+    await extractGoogleRedirectTargetFromPage(tabId).catch(() => null);
+
+  if (!targetUrl) {
+    return { redirected: false, url: tab.url || "" };
+  }
+
+  await chrome.tabs.update(tabId, { url: targetUrl });
+  return { redirected: true, url: targetUrl };
+}
+
+function extractGoogleRedirectTargetFromUrl(urlString) {
+  try {
+    const url = new URL(urlString);
+    if (!isGoogleHost(url.hostname) || !url.pathname.endsWith("/url")) return null;
+
+    return sanitizeExternalHttpUrl(url.searchParams.get("url") || url.searchParams.get("q"));
+  } catch {
+    return null;
+  }
+}
+
+async function extractGoogleRedirectTargetFromPage(tabId) {
+  const [injection] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      const host = location.hostname.toLowerCase();
+      const isGoogle =
+        host === "google.com" ||
+        host.endsWith(".google.com") ||
+        host.startsWith("www.google.") ||
+        host.includes(".google.");
+
+      if (!isGoogle) return null;
+
+      const pageText = `${document.title}\n${document.body?.innerText || ""}`;
+      if (!/redirect notice|thông báo chuyển hướng|chuyển hướng/i.test(pageText)) {
+        return null;
+      }
+
+      const anchors = Array.from(document.querySelectorAll("a[href]"));
+      const externalAnchor = anchors.find((anchor) => {
+        try {
+          const url = new URL(anchor.href);
+          const anchorHost = url.hostname.toLowerCase();
+          const anchorIsGoogle =
+            anchorHost === "google.com" ||
+            anchorHost.endsWith(".google.com") ||
+            anchorHost.startsWith("www.google.") ||
+            anchorHost.includes(".google.");
+
+          return (url.protocol === "http:" || url.protocol === "https:") && !anchorIsGoogle;
+        } catch {
+          return false;
+        }
+      });
+
+      return externalAnchor?.href || null;
+    }
+  });
+
+  return sanitizeExternalHttpUrl(injection?.result);
+}
+
 function ensureFullUrl(url) {
   if (!url) return "about:blank";
   const trimmed = url.trim();
@@ -362,6 +595,29 @@ function ensureFullUrl(url) {
     return trimmed;
   }
   return `https://${trimmed}`;
+}
+
+function sanitizeExternalHttpUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== "string") return null;
+
+  try {
+    const url = new URL(rawUrl.trim());
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (isGoogleHost(url.hostname)) return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+function isGoogleHost(hostname) {
+  const host = String(hostname || "").toLowerCase();
+  return (
+    host === "google.com" ||
+    host.endsWith(".google.com") ||
+    host.startsWith("www.google.") ||
+    host.includes(".google.")
+  );
 }
 
 function isBlockedHost(hostname, blockedHosts, allowlist = []) {

@@ -1,509 +1,127 @@
-#!/usr/bin/env python3
+# To run this code you need to install the following dependencies:
+# pip install google-genai
 
-import argparse
-import asyncio
-import base64
-import json
+import mimetypes
 import os
-import signal
-import subprocess
-import sys
-import time
-from contextlib import suppress
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
-
-import websockets
+import re
+import struct
+from google import genai
+from google.genai import types
 
 
-DEFAULT_MODEL = "gemini-3.1-flash-live-preview"
-KEYCHAIN_SERVICE = "dev.notch"
-KEYCHAIN_ACCOUNT = "GeminiLiveAPIKey"
+def save_binary_file(file_name, data):
+    f = open(file_name, "wb")
+    f.write(data)
+    f.close()
+    print(f"File saved to to: {file_name}")
 
 
-def read_api_key() -> str:
-    env_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if env_key:
-        return env_key
+import requests
 
-    try:
-        result = subprocess.run(
-            [
-                "security",
-                "find-generic-password",
-                "-s",
-                KEYCHAIN_SERVICE,
-                "-a",
-                KEYCHAIN_ACCOUNT,
-                "-w",
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-    except OSError as e:
-        raise RuntimeError(
-            "Không gọi được lệnh `security` (Keychain). "
-            f"Đặt biến môi trường GEMINI_API_KEY hoặc chạy trên macOS. Chi tiết: {e}"
-        ) from e
-
-    if result.returncode != 0:
-        # 44 = errSecItemNotFound — chưa lưu key trong Keychain giống app Notch
-        hint = (
-            "Không đọc được API key từ Keychain (exit "
-            f"{result.returncode}). Cách nhanh: export GEMINI_API_KEY='...' rồi chạy lại probe. "
-            f"Hoặc thêm generic password: service={KEYCHAIN_SERVICE!r}, account={KEYCHAIN_ACCOUNT!r} "
-            "(đúng như app Notch dùng)."
-        )
-        if result.stderr.strip():
-            hint += f" stderr: {result.stderr.strip()}"
-        raise RuntimeError(hint)
-
-    key = result.stdout.strip()
-    if not key:
-        raise RuntimeError(
-            "Keychain trả về rỗng. Đặt GEMINI_API_KEY hoặc kiểm tra mục Keychain dev.notch / GeminiLiveAPIKey."
-        )
-    return key
-
-
-def request_ephemeral_token(backend_url: str, client_token: str | None, model: str) -> str:
-    trimmed = backend_url.rstrip("/")
-    url = f"{trimmed}/v1/gemini-live/session-token"
-    body = json.dumps(
-        {
-            "model": model,
-            "response_modalities": ["AUDIO"],
-        }
-    ).encode("utf-8")
-
+def generate():
+    api_key = "sk-7998c866dcc082b3-wm2mg7-948958e6"
+    url = "http://localhost:20128/v1/audio/speech"
+    
     headers = {
         "Content-Type": "application/json",
-        "Accept": "application/json",
+        "Authorization": f"Bearer {api_key}"
     }
-    if client_token:
-        headers["Authorization"] = f"Bearer {client_token}"
+    
+    data = {
+        "model": "gemini/gemini-2.5-flash-preview-tts/Zephyr",
+        "input": "xin chào các bạn, đây là bài kiểm tra giọng nói.",
+        "response_format": "mp3"
+    }
 
-    request = Request(url, method="POST", data=body, headers=headers)
+    print(f"Đang gửi yêu cầu tới {url}...")
+    response = requests.post(url, headers=headers, json=data)
 
-    try:
-        with urlopen(request, timeout=20) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except HTTPError as e:
-        detail = e.read().decode("utf-8", errors="replace").strip()
-        raise RuntimeError(f"Backend token API trả HTTP {e.code}: {detail}") from e
-    except URLError as e:
-        raise RuntimeError(f"Không gọi được backend token API: {e.reason}") from e
-
-    token = str(payload.get("name", "")).strip()
-    if not token.startswith("auth_tokens/"):
-        raise RuntimeError(f"Backend không trả ephemeral token hợp lệ: {payload}")
-    return token
-
-
-async def send_json(ws, payload: dict) -> None:
-    await ws.send(json.dumps(payload))
+    if response.status_code == 200:
+        file_name = "speech.mp3"
+        with open(file_name, "wb") as f:
+            f.write(response.content)
+        print(f"Thành công! File đã được lưu tại: {file_name}")
+    else:
+        print(f"Lỗi: {response.status_code}")
+        print(response.text)
 
 
-async def send_realtime_text(ws, user_text: str) -> None:
-    """Gửi text input theo luồng realtime của Live API.
+def convert_to_wav(audio_data: bytes, mime_type: str) -> bytes:
+    """Generates a WAV file header for the given audio data and parameters.
 
-    Với `gemini-3.1-flash-live-preview`, tài liệu capability yêu cầu dùng
-    `send_realtime_input(text=...)` cho text trong hội thoại. Ở raw WebSocket,
-    payload tương ứng là `{"realtimeInput": {"text": ...}}`.
+    Args:
+        audio_data: The raw audio data as a bytes object.
+        mime_type: Mime type of the audio data.
+
+    Returns:
+        A bytes object representing the WAV file header.
     """
-    await send_json(
-        ws,
-        {
-            "realtimeInput": {
-                "text": user_text,
-            }
-        },
+    parameters = parse_audio_mime_type(mime_type)
+    bits_per_sample = parameters["bits_per_sample"]
+    sample_rate = parameters["rate"]
+    num_channels = 1
+    data_size = len(audio_data)
+    bytes_per_sample = bits_per_sample // 8
+    block_align = num_channels * bytes_per_sample
+    byte_rate = sample_rate * block_align
+    chunk_size = 36 + data_size  # 36 bytes for header fields before data chunk size
+
+    # http://soundfile.sapp.org/doc/WaveFormat/
+
+    header = struct.pack(
+        "<4sI4s4sIHHIIHH4sI",
+        b"RIFF",          # ChunkID
+        chunk_size,       # ChunkSize (total file size - 8 bytes)
+        b"WAVE",          # Format
+        b"fmt ",          # Subchunk1ID
+        16,               # Subchunk1Size (16 for PCM)
+        1,                # AudioFormat (1 for PCM)
+        num_channels,     # NumChannels
+        sample_rate,      # SampleRate
+        byte_rate,        # ByteRate
+        block_align,      # BlockAlign
+        bits_per_sample,  # BitsPerSample
+        b"data",          # Subchunk2ID
+        data_size         # Subchunk2Size (size of audio data)
     )
+    return header + audio_data
 
+def parse_audio_mime_type(mime_type: str) -> dict[str, int | None]:
+    """Parses bits per sample and rate from an audio MIME type string.
 
-async def capture_audio(ws, args, summary: dict) -> None:
-    """Gửi PCM từ ffmpeg. Phải gọi sau khi server đã gửi setupComplete (giống Notch Swift)."""
-    ffmpeg_cmd = [
-        "ffmpeg",
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-f",
-        "avfoundation",
-        "-i",
-        args.device,
-        "-ac",
-        "1",
-        "-ar",
-        "16000",
-        "-f",
-        "s16le",
-        "-",
-    ]
+    Assumes bits per sample is encoded like "L16" and rate as "rate=xxxxx".
 
-    proc = await asyncio.create_subprocess_exec(
-        *ffmpeg_cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    Args:
+        mime_type: The audio MIME type string (e.g., "audio/L16;rate=24000").
 
-    summary["ffmpeg_pid"] = proc.pid
-    started_at = time.monotonic()
+    Returns:
+        A dictionary with "bits_per_sample" and "rate" keys. Values will be
+        integers if found, otherwise None.
+    """
+    bits_per_sample = 16
+    rate = 24000
 
-    try:
-        while True:
-            if time.monotonic() - started_at >= args.duration:
-                break
-
-            chunk = await proc.stdout.read(args.chunk_bytes)
-            if not chunk:
-                break
-
-            summary["audio_chunks"] += 1
-            summary["audio_bytes"] += len(chunk)
+    # Extract rate from parameters
+    parts = mime_type.split(";")
+    for param in parts: # Skip the main type part
+        param = param.strip()
+        if param.lower().startswith("rate="):
             try:
-                await send_json(
-                    ws,
-                    {
-                        "realtimeInput": {
-                            "audio": {
-                                "data": base64.b64encode(chunk).decode("ascii"),
-                                "mimeType": "audio/pcm;rate=16000",
-                            }
-                        }
-                    },
-                )
-            except websockets.ConnectionClosed as e:
-                summary["audio_send_stopped"] = repr(e)
-                print(f"[probe] WebSocket đóng khi gửi audio: {e}", file=sys.stderr)
-                break
-
-        with suppress(websockets.ConnectionClosed):
-            await send_json(ws, {"realtimeInput": {"audioStreamEnd": True}})
-    finally:
-        with suppress(ProcessLookupError):
-            proc.send_signal(signal.SIGINT)
-        with suppress(asyncio.TimeoutError):
-            await asyncio.wait_for(proc.wait(), timeout=2)
-        if proc.returncode is None:
-            proc.kill()
-            await proc.wait()
-
-        stderr = await proc.stderr.read()
-        if stderr:
-            summary["ffmpeg_stderr"] = stderr.decode("utf-8", errors="replace").strip()
-
-
-async def receive_events(
-    ws,
-    args,
-    summary: dict,
-    *,
-    recv_until: dict[str, float],
-    setup_gate: asyncio.Event | None = None,
-    setup_fail: list[str | None] | None = None,
-    text_input_mode: bool = False,
-) -> None:
-    def release_setup_gate(message: str | None) -> None:
-        if setup_gate is None or setup_gate.is_set():
-            return
-        if message is not None and setup_fail is not None:
-            setup_fail[0] = message
-        setup_gate.set()
-
-    while time.monotonic() < recv_until["t"]:
-        timeout = max(0.1, recv_until["t"] - time.monotonic())
-        try:
-            message = await asyncio.wait_for(ws.recv(), timeout=timeout)
-        except asyncio.TimeoutError:
-            continue
-        except websockets.ConnectionClosed as e:
-            summary["ws_closed"] = repr(e)
-            release_setup_gate(f"WebSocket đóng trước setupComplete: {e}")
-            break
-
-        if isinstance(message, bytes):
-            message = message.decode("utf-8", errors="replace")
-
-        try:
-            payload = json.loads(message)
-        except json.JSONDecodeError:
-            print(f"[raw] {message}")
-            continue
-
-        if getattr(args, "debug_ws", False):
-            print(f"[debug-ws] top-level keys: {sorted(payload.keys())}")
-
-        if "setupComplete" in payload:
-            print("[probe] setupComplete")
-            release_setup_gate(None)
-
-        error = payload.get("error")
-        if error:
-            msg = error.get("message", error) if isinstance(error, dict) else str(error)
-            print(f"[error] {msg}")
-            summary["errors"].append(error)
-            release_setup_gate(str(msg))
-            continue
-
-        server = payload.get("serverContent") or {}
-
-        if server.get("interrupted"):
-            print("[server] interrupted=true")
-
-        input_tx = server.get("inputTranscription") or {}
-        if input_tx.get("text"):
-            text = input_tx["text"]
-            summary["user_transcripts"].append(text)
-            print(f"[you] {text}")
-
-        output_tx = server.get("outputTranscription") or {}
-        if output_tx.get("text"):
-            text = output_tx["text"]
-            summary["model_transcripts"].append(text)
-            print(f"[gemini] {text}")
-
-        model_turn = server.get("modelTurn") or {}
-        for part in model_turn.get("parts") or []:
-            raw_text = part.get("text")
-            if raw_text and text_input_mode:
-                summary["model_text_parts"].append(raw_text)
-                print(f"[model-text] {raw_text}")
-
-            executable_code = part.get("executableCode") or {}
-            if executable_code.get("code"):
-                summary["executable_code_parts"].append(executable_code["code"])
-                print(f"[exec-code]\n{executable_code['code']}")
-
-            code_result = part.get("codeExecutionResult") or {}
-            if code_result.get("output"):
-                summary["code_execution_outputs"].append(code_result["output"])
-                print(f"[exec-result]\n{code_result['output']}")
-
-            inline = part.get("inlineData") or {}
-            data = inline.get("data")
-            if data:
-                try:
-                    decoded = base64.b64decode(data)
-                except Exception:
-                    decoded = b""
-                summary["output_audio_bytes"] += len(decoded)
-                if len(decoded) > 0:
-                    print(f"[audio] {len(decoded)} bytes")
-
-
-async def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Probe Gemini Live: mic (ffmpeg) hoặc gửi text qua realtimeInput.text sau setupComplete."
-    )
-    parser.add_argument("--model", default=DEFAULT_MODEL, help=f"Model Live API để test. Default: {DEFAULT_MODEL}")
-    parser.add_argument("--device", default=":0", help="FFmpeg avfoundation input, default ':0' for the first mic.")
-    parser.add_argument("--duration", type=float, default=12.0, help="Seconds to capture microphone audio.")
-    parser.add_argument("--tail-seconds", type=float, default=8.0, help="Seconds to keep listening after mic capture stops.")
-    parser.add_argument("--chunk-bytes", type=int, default=4096, help="PCM bytes to batch into each websocket frame.")
-    parser.add_argument(
-        "--request-text-modality",
-        action="store_true",
-        help=(
-            "Thử responseModalities TEXT+AUDIO (vẫn có speechConfig). "
-            "Với gemini-3.1-flash-live-preview thường bị đóng WebSocket 1011 ngay sau setup — chỉ để thử API."
-        ),
-    )
-    parser.add_argument(
-        "--send-text",
-        default=None,
-        metavar="MSG",
-        help=(
-            "Sau setupComplete gửi text qua realtimeInput.text (không bật mic/ffmpeg). "
-            "Dùng '-' để đọc nội dung từ stdin. Thời gian chờ phản hồi: --tail-seconds (tối thiểu 30s nội bộ nếu tail nhỏ)."
-        ),
-    )
-    parser.add_argument(
-        "--debug-ws",
-        action="store_true",
-        help="In top-level keys của mỗi JSON nhận từ server (debug).",
-    )
-    parser.add_argument(
-        "--backend-url",
-        default=os.environ.get("NOTCH_GEMINI_LIVE_BACKEND_URL", "").strip() or None,
-        help="Gemini Live backend URL để xin ephemeral token, ví dụ https://laihieu2714.ddns.net/notch",
-    )
-    parser.add_argument(
-        "--client-token",
-        default=os.environ.get("NOTCH_GEMINI_LIVE_CLIENT_TOKEN", "").strip() or None,
-        help="Bearer token cho backend ephemeral-token API (nếu backend yêu cầu).",
-    )
-    parser.add_argument(
-        "--enable-google-search",
-        action="store_true",
-        help="Bật built-in Google Search tool trực tiếp trong Live API setup.",
-    )
-    args = parser.parse_args()
-
-    user_text_turn: str | None
-    if args.send_text is None:
-        user_text_turn = None
-    elif args.send_text.strip() == "-":
-        user_text_turn = sys.stdin.read().strip()
-    else:
-        user_text_turn = args.send_text.strip()
-
-    if args.send_text is not None and not user_text_turn:
-        print("[probe] --send-text cần nội dung không rỗng (hoặc stdin khi dùng '-').", file=sys.stderr)
-        return 2
-
-    if args.backend_url:
-        connection_credential = request_ephemeral_token(args.backend_url, args.client_token, args.model)
-        url = (
-            "wss://generativelanguage.googleapis.com/ws/"
-            "google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained"
-            f"?access_token={connection_credential}"
-        )
-        print(f"[probe] dùng ephemeral token từ backend {args.backend_url}")
-    else:
-        api_key = read_api_key()
-        url = (
-            "wss://generativelanguage.googleapis.com/ws/"
-            "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
-            f"?key={api_key}"
-        )
-        print("[probe] dùng API key trực tiếp")
-
-    summary = {
-        "audio_chunks": 0,
-        "audio_bytes": 0,
-        "output_audio_bytes": 0,
-        "user_transcripts": [],
-        "model_transcripts": [],
-        "model_text_parts": [],
-        "executable_code_parts": [],
-        "code_execution_outputs": [],
-        "errors": [],
-        "ffmpeg_stderr": "",
-    }
-
-    # TEXT+AUDIO trong setup hay gây 1011 (internal error) trước setupComplete — mặc định chỉ AUDIO.
-    if args.request_text_modality:
-        modalities = ["TEXT", "AUDIO"]
-        print(
-            "[probe] cảnh báo: --request-text-modality hay bị server trả 1011.",
-            file=sys.stderr,
-        )
-    else:
-        modalities = ["AUDIO"]
-
-    base_instruction = "You are a concise voice assistant. Keep spoken replies brief."
-    tools = [{"google_search": {}}] if args.enable_google_search else None
-
-    print("[probe] connecting to Gemini Live...")
-    async with websockets.connect(url, max_size=None) as ws:
-        setup_payload = {
-            "setup": {
-                "model": f"models/{args.model}",
-                "inputAudioTranscription": {},
-                "outputAudioTranscription": {},
-                "generationConfig": {
-                    "responseModalities": modalities,
-                    "speechConfig": {
-                        "voiceConfig": {
-                            "prebuiltVoiceConfig": {
-                                "voiceName": "Kore",
-                            }
-                        }
-                    },
-                },
-                "systemInstruction": {
-                    "parts": [
-                        {
-                            "text": base_instruction,
-                        }
-                    ]
-                },
-            }
-        }
-        if tools:
-            setup_payload["setup"]["tools"] = tools
-            print("[probe] bật built-in Google Search tool")
-
-        await send_json(ws, setup_payload)
-        print("[probe] đã gửi setup — chờ setupComplete từ server...")
-
-        # Hạn nhận: ban đầu rộng để không cắt ngang lúc chờ setup; main sẽ thu hẹp sau setupComplete.
-        recv_until: dict[str, float] = {"t": time.monotonic() + 600.0}
-
-        setup_gate = asyncio.Event()
-        setup_fail: list[str | None] = [None]
-        text_input_mode = user_text_turn is not None
-        receiver = asyncio.create_task(
-            receive_events(
-                ws,
-                args,
-                summary,
-                recv_until=recv_until,
-                setup_gate=setup_gate,
-                setup_fail=setup_fail,
-                text_input_mode=text_input_mode,
-            )
-        )
-        try:
-            await asyncio.wait_for(setup_gate.wait(), timeout=30.0)
-        except asyncio.TimeoutError:
-            print("[probe] Hết thời gian chờ setupComplete (30s).", file=sys.stderr)
-            receiver.cancel()
-            with suppress(asyncio.CancelledError):
-                await receiver
-            return 1
-
-        if setup_fail[0]:
-            print(f"[probe] Setup không thành công: {setup_fail[0]}", file=sys.stderr)
-            receiver.cancel()
-            with suppress(asyncio.CancelledError):
-                await receiver
-            return 1
-
-        now = time.monotonic()
-        if user_text_turn is not None:
-            listen = max(args.tail_seconds, 30.0)
-            recv_until["t"] = now + listen
+                rate_str = param.split("=", 1)[1]
+                rate = int(rate_str)
+            except (ValueError, IndexError):
+                # Handle cases like "rate=" with no value or non-integer value
+                pass # Keep rate as default
+        elif param.startswith("audio/L"):
             try:
-                await send_realtime_text(ws, user_text_turn)
-            except websockets.ConnectionClosed as e:
-                print(f"[probe] WebSocket đóng khi gửi text: {e}", file=sys.stderr)
-                receiver.cancel()
-                with suppress(asyncio.CancelledError):
-                    await receiver
-                return 1
-            print(f"[probe] đã gửi realtimeInput.text ({len(user_text_turn)} chars) — chờ model (~{listen:.0f}s)...")
-        else:
-            recv_until["t"] = now + args.duration + args.tail_seconds
-            print("[probe] speak now...")
-            await capture_audio(ws, args, summary)
+                bits_per_sample = int(param.split("L", 1)[1])
+            except (ValueError, IndexError):
+                pass # Keep bits_per_sample as default if conversion fails
 
-        await receiver
-
-    print(
-        "[summary] "
-        f"chunks={summary['audio_chunks']} "
-        f"in_bytes={summary['audio_bytes']} "
-        f"out_audio_bytes={summary['output_audio_bytes']} "
-        f"user_tx={len(summary['user_transcripts'])} "
-        f"model_tx={len(summary['model_transcripts'])} "
-        f"model_text_parts={len(summary['model_text_parts'])} "
-        f"exec_code_parts={len(summary['executable_code_parts'])} "
-        f"exec_outputs={len(summary['code_execution_outputs'])} "
-        f"errors={len(summary['errors'])}"
-    )
-    if summary["ffmpeg_stderr"]:
-        print(f"[ffmpeg] {summary['ffmpeg_stderr']}")
-    return 0
+    return {"bits_per_sample": bits_per_sample, "rate": rate}
 
 
 if __name__ == "__main__":
-    try:
-        raise SystemExit(asyncio.run(main()))
-    except RuntimeError as e:
-        print(f"[probe] {e}", file=sys.stderr)
-        raise SystemExit(1)
-    except KeyboardInterrupt:
-        raise SystemExit(130)
+    generate()
+
+

@@ -314,11 +314,11 @@ struct CustomSlider: View {
     var body: some View {
         GeometryReader { geometry in
             let width = geometry.size.width
-            let height = CGFloat(dragging ? 8 : 5)
+            let height = CGFloat(5)
             let rangeSpan = range.upperBound - range.lowerBound
             let progress = rangeSpan == .zero ? 0 : (value - range.lowerBound) / rangeSpan
             let filledTrackWidth = min(max(progress, 0), 1) * width
-            let dotSize = CGFloat(dragging ? 12 : 0)
+            let dotSize = CGFloat(0)
 
             ZStack(alignment: .leading) {
                 // Track empty
@@ -345,9 +345,7 @@ struct CustomSlider: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { gesture in
-                        withAnimation {
-                            dragging = true
-                        }
+                        dragging = true
                         let newValue = range.lowerBound + Double(gesture.location.x / width) * rangeSpan
                         value = min(max(newValue, range.lowerBound), range.upperBound)
                         onDragChange?(value)
@@ -358,7 +356,6 @@ struct CustomSlider: View {
                         lastDragged = Date()
                     }
             )
-            .animation(.spring(response: 0.35, dampingFraction: 0.7), value: dragging)
         }
     }
 }

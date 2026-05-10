@@ -1,148 +1,129 @@
 :root {
   color-scheme: dark;
   font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --bg: #111318;
-  --panel: #1a1f27;
-  --panel-border: rgba(255, 255, 255, 0.08);
-  --text: #f4f7fb;
-  --muted: rgba(244, 247, 251, 0.64);
+  --text: #eef2f8;
+  --muted: rgba(238, 242, 248, 0.55);
+  --panel: #161a22;
+  --border: rgba(255, 255, 255, 0.08);
   --accent: #ff6f61;
-  --accent-2: #ffb36b;
   --ok: #5de2a5;
+  --warn: #ffb36b;
+  --bad: #ff6b6b;
 }
 
 body {
   margin: 0;
-  min-width: 340px;
-  background:
-    radial-gradient(circle at top right, rgba(255, 111, 97, 0.24), transparent 42%),
-    linear-gradient(160deg, #101217, #171b23 70%);
+  min-width: 220px;
+  background: linear-gradient(165deg, #0c0e12, #141820);
   color: var(--text);
 }
 
 .popup {
-  padding: 18px;
+  padding: 14px;
   display: grid;
-  gap: 14px;
+  gap: 12px;
 }
 
-.hero {
+.top {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 4px;
+  gap: 10px;
 }
 
-.app-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+.icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
 }
 
-.hero-text {
-  flex: 1;
-}
-
-.hero h1 {
-  margin: 2px 0 0;
-  font-size: 20px;
-  letter-spacing: -0.01em;
-}
-
-.eyebrow,
-.section-label {
-  margin: 0;
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--muted);
+.name {
+  font-size: 17px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
 }
 
 .status {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--muted);
+}
+
+.status-text {
   margin: 0;
   font-size: 13px;
   font-weight: 600;
+  line-height: 1.4;
+  word-break: break-word;
 }
 
-.status-connected {
-  color: var(--ok);
+.status--idle .status-dot {
+  background: rgba(255, 255, 255, 0.35);
 }
 
-.status-active {
-  color: var(--accent-2);
+.status--offline .status-dot {
+  background: var(--bad);
+  box-shadow: 0 0 10px rgba(255, 107, 107, 0.4);
 }
 
-.status-idle {
-  color: var(--muted);
+.status--offline {
+  border-color: rgba(255, 99, 99, 0.2);
 }
 
-.panel {
-  background: var(--panel);
-  border: 1px solid var(--panel-border);
-  border-radius: 16px;
-  padding: 14px;
-  display: grid;
-  gap: 10px;
+.status--ok .status-dot {
+  background: var(--ok);
+  box-shadow: 0 0 10px rgba(93, 226, 165, 0.35);
 }
 
-.row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 13px;
+.status--ok {
+  border-color: rgba(93, 226, 165, 0.22);
 }
 
-.row span {
-  color: var(--muted);
+.status--focus .status-dot {
+  background: var(--accent);
+  box-shadow: 0 0 12px rgba(255, 111, 97, 0.45);
 }
 
-.row code {
-  font-size: 11px;
-  color: #ffd8c5;
+.status--focus {
+  border-color: rgba(255, 111, 97, 0.25);
 }
 
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.status--break .status-dot {
+  background: var(--warn);
+  box-shadow: 0 0 10px rgba(255, 179, 107, 0.35);
 }
 
-.chips.empty {
-  color: var(--muted);
-  font-size: 13px;
+.status--break {
+  border-color: rgba(255, 179, 107, 0.22);
 }
 
-.chip {
-  border-radius: 999px;
-  padding: 6px 10px;
-  font-size: 12px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-button {
+.btn {
   appearance: none;
-  border: 0;
-  border-radius: 12px;
-  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 12px;
   font: inherit;
-  font-weight: 700;
+  font-weight: 650;
+  font-size: 13px;
   cursor: pointer;
-}
-
-button.primary {
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #1c120d;
-}
-
-button.secondary {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--text);
+}
+
+.btn:hover {
+  background: rgba(255, 255, 255, 0.1);
 }

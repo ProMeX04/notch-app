@@ -2,6 +2,7 @@
 import AppKit
 import Combine
 import Foundation
+import NotchChatHistoryCore
 @preconcurrency import ScreenCaptureKit
 import Security
 import SwiftUI
@@ -59,6 +60,7 @@ final class GeminiLiveViewModel: ObservableObject {
     @Published private(set) var currentContextTokenCount = 0
     @Published private(set) var responseTokenCount = 0
     @Published private(set) var totalTokenCount = 0
+    @Published private(set) var userTurnSequence = 0
 
     // Per-preset: reading reflects the active preset; writing updates that preset and persists.
     @Published var thinkingLevel: GeminiThinkingLevel = .off {
@@ -396,12 +398,17 @@ final class GeminiLiveViewModel: ObservableObject {
 
         session.onUserTranscript = { [weak self] text in
             DispatchQueue.main.async {
-                self?.userTranscript = text
+                guard let self else { return }
+                if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   text != self.userTranscript {
+                    self.userTurnSequence += 1
+                }
+                self.userTranscript = text
                 TranscriptSessionLogger.shared.setPendingUserText(text)
                 
                 let lowerText = text.lowercased()
                 if lowerText.contains("tắt mic") || lowerText.contains("stop listening") || lowerText.contains("stop recording") {
-                    self?.setMicrophoneEnabled(false)
+                    self.setMicrophoneEnabled(false)
                 }
             }
         }
@@ -994,9 +1001,6 @@ final class GeminiLiveViewModel: ObservableObject {
         }
         if effectiveTools.contains(.appleMail) {
             lines.append("- Use `appleMail` to search or list recent emails from Apple Mail, or read full email bodies when available; it may fall back to summary/snippet content.")
-        }
-        if effectiveTools.contains(.clipboard) {
-            lines.append("- Use `clipboard` to read or write the macOS clipboard. Treat clipboard text as potentially sensitive.")
         }
         if effectiveTools.contains(.appControl) {
             lines.append("- Use `appControl` to open, quit, or check macOS apps. Use exact app names. Do not use for opening URLs.")
@@ -1741,6 +1745,7 @@ final class GeminiLiveViewModel: ObservableObject {
         guard !trimmed.isEmpty else { return false }
         guard canSendLiveInput else { return false }
         session.sendClientTextTurn(trimmed)
+        userTurnSequence += 1
         userTranscript = trimmed
         isModelThinking = true
         TranscriptSessionLogger.shared.recordUserText(trimmed)

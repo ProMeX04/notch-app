@@ -327,6 +327,7 @@ enum GeminiTool: String, CaseIterable, Identifiable {
     case memory = "memory"
     case exec = "exec"
     case appleMail = "appleMail"
+    case showResult = "showResult"
 
     var id: String { rawValue }
 
@@ -342,6 +343,7 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         .localFileSearch,
         .memory,
         .appleMail,
+        .showResult,
     ]
 
     static let coreToolSet: Set<GeminiTool> = Set(coreCases)
@@ -365,6 +367,7 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         case .memory: return "Memory"
         case .exec: return "Exec"
         case .appleMail: return "Mail"
+        case .showResult: return "Show Result"
         }
     }
 
@@ -382,6 +385,7 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         case .memory: return "brain"
         case .exec: return "terminal"
         case .appleMail: return "envelope"
+        case .showResult: return "tray.full"
         }
     }
 }

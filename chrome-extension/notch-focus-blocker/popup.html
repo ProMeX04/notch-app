@@ -1,52 +1,27 @@
 <!doctype html>
-<html lang="en">
+<html lang="vi">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Notch Focus Blocker</title>
+    <title>Notch</title>
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <main class="popup">
-      <section class="hero">
-        <img src="icons/icon48.png" alt="Notch Focus Icon" class="app-icon" />
-        <div class="hero-text">
-          <p class="eyebrow">Notch Bridge</p>
-          <h1>Focus Blocker</h1>
-        </div>
-        <p id="connection-status" class="status status-idle">Checking local app…</p>
+      <header class="top">
+        <img src="icons/icon48.png" alt="" class="icon" width="36" height="36" />
+        <span class="name">Notch</span>
+      </header>
+
+      <section id="status-card" class="status status--idle" aria-live="polite">
+        <span class="status-dot" aria-hidden="true"></span>
+        <p id="status-text" class="status-text">Đang kiểm tra…</p>
       </section>
 
-      <section class="panel">
-        <div class="row">
-          <span>Focus state</span>
-          <strong id="focus-state">Unknown</strong>
-        </div>
-        <div class="row">
-          <span>Phase</span>
-          <strong id="phase">-</strong>
-        </div>
-        <div class="row">
-          <span>Blocked domains</span>
-          <strong id="blocked-count">0</strong>
-        </div>
-        <div class="row">
-          <span>Bridge URL</span>
-          <code id="bridge-url">ws://127.0.0.1:44991/v1/ws</code>
-        </div>
-      </section>
-
-      <section class="panel">
-        <p class="section-label">Current list</p>
-        <div id="blocked-hosts" class="chips empty">No synced domains.</div>
-      </section>
-
-      <section class="actions">
-        <button id="refresh-button" class="primary" type="button">Refresh status</button>
-        <button id="options-button" class="secondary" type="button">Open settings</button>
-      </section>
+      <button id="options-button" class="btn" type="button">Cài đặt</button>
     </main>
 
+    <script src="bridge-status.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

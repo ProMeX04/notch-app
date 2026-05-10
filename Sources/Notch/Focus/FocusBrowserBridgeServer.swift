@@ -438,12 +438,91 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
 
         var dict: [String: Any] = [:]
         for (key, val) in result.result ?? [:] { dict[key] = val.value }
-        if let contentBlocks = result.contentBlocks?.compactMap({ $0.value }) {
+
+        // Pull contentBlocks from either the top-level result or the inline `result` payload
+        // (the extension currently nests them inside `result.contentBlocks`).
+        var contentBlocks: [Any] = []
+        if let outer = result.contentBlocks?.compactMap({ $0.value }) {
+            contentBlocks.append(contentsOf: outer)
+        }
+        if let nested = dict["contentBlocks"] as? [Any] {
+            contentBlocks.append(contentsOf: nested)
+            dict.removeValue(forKey: "contentBlocks")
+        }
+
+        if !contentBlocks.isEmpty {
+            let savedPaths = Self.persistScreenshotBlocks(contentBlocks, action: action)
+            if !savedPaths.isEmpty {
+                dict["screenshotPaths"] = savedPaths
+                dict["screenshotPath"] = savedPaths.first
+                if let savedNote = Self.makeSavedScreenshotNote(savedPaths) {
+                    contentBlocks.append(savedNote)
+                }
+            }
             dict["contentBlocks"] = contentBlocks
         }
+
         if let errorMessage = result.errorMessage { dict["errorMessage"] = errorMessage }
         dict["success"] = result.success
         return dict
+    }
+
+    // MARK: - Screenshot persistence
+
+    /// Decode any image content blocks returned from the extension and save them to
+    /// `~/.notch/workspace/screenshots/`. Returns the absolute paths of saved files,
+    /// in the same order they appeared in the response.
+    private static func persistScreenshotBlocks(_ blocks: [Any], action: String) -> [String] {
+        let directory = GeminiLiveStoragePaths.screenshotsDirectory
+        let fileManager = FileManager.default
+        try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let timestamp = ScreenshotFilename.formatter.string(from: .now)
+        var saved: [String] = []
+        var index = 0
+
+        for raw in blocks {
+            guard let block = raw as? [String: Any] else { continue }
+            guard (block["type"] as? String) == "image" else { continue }
+            guard let base64 = block["data"] as? String, !base64.isEmpty else { continue }
+            guard let data = Data(base64Encoded: base64) else { continue }
+
+            let mime = block["mimeType"] as? String ?? "image/jpeg"
+            let ext = mime.lowercased().contains("png") ? "png" : "jpg"
+            let displayName = (block["displayName"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            let baseName = displayName.flatMap { (($0 as NSString).deletingPathExtension as String).isEmpty ? nil : ($0 as NSString).deletingPathExtension as String } ?? "tab"
+            let cleanedBase = baseName.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: " ", with: "-")
+            let suffix = blocks.count > 1 ? "-\(index)" : ""
+            let filename = "\(timestamp)-\(action)-\(cleanedBase)\(suffix).\(ext)"
+            let url = directory.appendingPathComponent(filename)
+
+            do {
+                try data.write(to: url, options: .atomic)
+                saved.append(url.path)
+                index += 1
+            } catch {
+                NotchLog.app.error("Failed to save screenshot to \(url.path): \(error.localizedDescription)")
+            }
+        }
+
+        return saved
+    }
+
+    /// Build a short text content block listing where each screenshot was saved, so
+    /// the model and the user can see the on-disk location alongside the image.
+    private static func makeSavedScreenshotNote(_ paths: [String]) -> [String: Any]? {
+        guard !paths.isEmpty else { return nil }
+        let homePath = FileManager.default.homeDirectoryForCurrentUser.path
+        let pretty = paths.map { path -> String in
+            path.hasPrefix(homePath) ? "~" + path.dropFirst(homePath.count) : path
+        }
+        let body: String
+        if pretty.count == 1 {
+            body = "Screenshot saved: \(pretty[0])"
+        } else {
+            body = "Screenshots saved:\n- " + pretty.joined(separator: "\n- ")
+        }
+        return ["type": "text", "text": body]
     }
 
     // MARK: - WebSocket
@@ -612,4 +691,15 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
     }
 
     private static let bridgeVersion = 2
+}
+
+private enum ScreenshotFilename {
+    /// File-name-safe timestamp like "2026-05-09_013700".
+    static let formatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone.current
+        f.dateFormat = "yyyy-MM-dd_HHmmss"
+        return f
+    }()
 }

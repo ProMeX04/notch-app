@@ -52,6 +52,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         keyEquivalent: ""
     )
 
+    private lazy var agentResultsItem = NSMenuItem(
+        title: "Show Agent Results",
+        action: #selector(showAgentResultsPanel),
+        keyEquivalent: ""
+    )
+
     private lazy var togglePomodoroItem = NSMenuItem(
         title: "Start Focus Timer",
         action: #selector(togglePomodoro),
@@ -100,6 +106,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         pomodoroItem.target = self
         talkItem.target = self
         shelfItem.target = self
+        agentResultsItem.target = self
         togglePomodoroItem.target = self
         toggleTalkItem.target = self
         manageServiceKeysItem.target = self
@@ -119,6 +126,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             .separator(),
             mediaItem,
             shelfItem,
+            agentResultsItem,
             .separator(),
             talkItem,
             toggleTalkItem,
@@ -159,6 +167,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         pomodoroItem.state = featureCoordinator.presentationModel.selectedPanel == .focus ? .on : .off
         talkItem.state = featureCoordinator.presentationModel.selectedPanel == .talk ? .on : .off
         shelfItem.state = featureCoordinator.presentationModel.selectedPanel == .shelf ? .on : .off
+        agentResultsItem.state = AgentResultsWindowController.shared.isVisible ? .on : .off
         launchAtLoginItem.state = launchAtLoginController.isEnabled ? .on : .off
 
         if featureCoordinator.geminiLiveViewModel.canDisconnectSession {
@@ -209,6 +218,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc
     private func showShelfPanel() {
         featureCoordinator.showShelfPanel()
+    }
+
+    @objc
+    private func showAgentResultsPanel() {
+        AgentResultsWindowController.shared.show()
     }
 
     @objc

@@ -24,6 +24,10 @@ let package = Package(
             name: "NotchMailParserCore",
             targets: ["NotchMailParserCore"]
         ),
+        .library(
+            name: "NotchChatHistoryCore",
+            targets: ["NotchChatHistoryCore"]
+        ),
         .executable(
             name: "Notch",
             targets: ["Notch"]
@@ -43,6 +47,10 @@ let package = Package(
         .executable(
             name: "NotchMailParserTests",
             targets: ["NotchMailParserTests"]
+        ),
+        .executable(
+            name: "NotchChatHistoryTests",
+            targets: ["NotchChatHistoryTests"]
         ),
     ],
     dependencies: [
@@ -71,6 +79,7 @@ let package = Package(
                 "NotchShelfCore",
                 "NotchBridgeParserCore",
                 "NotchMailParserCore",
+                "NotchChatHistoryCore",
                 .product(name: "LiveKitWebRTC", package: "webrtc-xcframework"),
             ],
             resources: [
@@ -102,6 +111,9 @@ let package = Package(
         .target(
             name: "NotchMailParserCore"
         ),
+        .target(
+            name: "NotchChatHistoryCore"
+        ),
         .executableTarget(
             name: "NotchBridgeParserTests",
             dependencies: ["NotchBridgeParserCore"],
@@ -111,6 +123,11 @@ let package = Package(
             name: "NotchMailParserTests",
             dependencies: ["NotchMailParserCore"],
             path: "Tests/NotchMailParserTests"
+        ),
+        .executableTarget(
+            name: "NotchChatHistoryTests",
+            dependencies: ["NotchChatHistoryCore"],
+            path: "Tests/NotchChatHistoryTests"
         ),
     ]
 )

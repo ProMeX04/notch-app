@@ -20,6 +20,7 @@ const DEFAULT_BRIDGE_URL = "ws://127.0.0.1:44991/v1/ws";
 let focusState = {
   apiBaseUrl: DEFAULT_BRIDGE_URL,
   connected: false,
+  bridgeVersion: null,
   focusActive: false,
   isRunning: false,
   hasActiveSession: false,
@@ -76,6 +77,10 @@ export function applyFocusStatePush(payload) {
   focusState = {
     ...focusState,
     connected: true,
+    bridgeVersion:
+      payload.bridgeVersion != null && payload.bridgeVersion !== ""
+        ? String(payload.bridgeVersion)
+        : focusState.bridgeVersion,
     focusActive: Boolean(payload.focusActive),
     isRunning: Boolean(payload.isRunning),
     hasActiveSession: Boolean(payload.hasActiveSession),

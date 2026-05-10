@@ -1007,6 +1007,46 @@ struct Localization {
         "Gemini Live": ["English": "Gemini Live", "Tiếng Việt": "Gemini Live"],
         "Gemini Account": ["English": "Gemini Account", "Tiếng Việt": "Tài khoản Gemini"],
         "Talk": ["English": "Talk", "Tiếng Việt": "Trò chuyện"],
+        "Floating orb window": [
+            "English": "Floating orb window",
+            "Tiếng Việt": "Cửa sổ orb nổi",
+        ],
+        "Show floating orb window when connected": [
+            "English": "Show floating orb when session is connected",
+            "Tiếng Việt": "Hiện cửa sổ orb nổi khi phiên đang kết nối",
+        ],
+        "Orb always on top": [
+            "English": "Orb always on top",
+            "Tiếng Việt": "Orb luôn nổi trên cửa sổ thường",
+        ],
+        "Show Notch in Dock when orb visible": [
+            "English": "Show Notch in Dock while orb window is visible",
+            "Tiếng Việt": "Hiện Notch trong Dock khi đang có cửa sổ orb",
+        ],
+        "Orb appearance": [
+            "English": "Orb appearance",
+            "Tiếng Việt": "Kiểu orb",
+        ],
+        "Orb style Ice": [
+            "English": "Ice",
+            "Tiếng Việt": "Băng",
+        ],
+        "Orb style Ember": [
+            "English": "Ember",
+            "Tiếng Việt": "Than lửa",
+        ],
+        "Orb style Nebula": [
+            "English": "Nebula",
+            "Tiếng Việt": "Tinh vân",
+        ],
+        "Orb style Aurora": [
+            "English": "Aurora",
+            "Tiếng Việt": "Cực quang",
+        ],
+        "Orb style Mono": [
+            "English": "Mono",
+            "Tiếng Việt": "Đơn sắc",
+        ],
         "Appearance": ["English": "Appearance", "Tiếng Việt": "Giao diện"],
         "Notch Pro": ["English": "Notch Pro", "Tiếng Việt": "Notch Pro"],
         "Subscribed": ["English": "Subscribed", "Tiếng Việt": "Đã đăng ký"],

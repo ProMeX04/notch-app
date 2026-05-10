@@ -125,9 +125,9 @@ extension GeminiLiveSession {
                 Read or write the macOS system clipboard, or copy file references to it.
                 Actions:
                 - "read": Return the current clipboard text.
-                - "write": Copy plain text to the clipboard for pasting elsewhere (Cmd+V). Use this for normal "copy this" requests.
-                - "copy-file": Copy one or more file references to the clipboard so the user can paste them into Finder, Mail, Slack, etc. as attachments. Use this only when the user explicitly wants the file itself pasted, not the file's text contents.
-                Treat clipboard text as potentially sensitive. Tell the user briefly what was placed on the clipboard.
+                - "write": Copy plain text to the clipboard.
+                - "copy-file": Copy one or more file path references to the clipboard.
+                Treat clipboard content as potentially sensitive.
                 """,
                 "parameters": [
                     "type": "OBJECT",
@@ -386,6 +386,41 @@ extension GeminiLiveSession {
                         ]
                     ],
                     "required": ["action"]
+                ] as [String: Any]
+            ])
+        }
+        if enabledTools.contains(.showResult) {
+            decls.append([
+                "name": GeminiLiveToolName.showResult,
+                "description": """
+                Show one or more user-visible results (text summaries, clickable links, or local file attachments) in the Notch Results panel so the user can review, save, or act on them. Use after substantive work products: summaries, extracted data, diagrams described as exports, downloads, paths the user asked to open, etc. Each item has a kind: 'text' (plain Markdown or plain body), 'link' (https URL), or 'file' (absolute path readable on disk). Omit this tool only when no tangible output is meant for the tray.
+                """,
+                "parameters": [
+                    "type": "OBJECT",
+                    "properties": [
+                        "items": [
+                            "type": "ARRAY",
+                            "items": [
+                                "type": "OBJECT",
+                                "properties": [
+                                    "kind": [
+                                        "type": "STRING",
+                                        "description": "One of: 'text', 'link', 'file'.",
+                                    ],
+                                    "title": [
+                                        "type": "STRING",
+                                        "description": "Optional short headline for this item.",
+                                    ],
+                                    "content": [
+                                        "type": "STRING",
+                                        "description": "For 'text': body copy. For 'link': absolute http(s) URL. For 'file': absolute POSIX path (~ allowed).",
+                                    ],
+                                ]
+                            ],
+                            "description": "Non-empty ordered list of result payloads to append as one tray batch.",
+                        ]
+                    ],
+                    "required": ["items"],
                 ] as [String: Any]
             ])
         }

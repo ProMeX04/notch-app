@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import NotchChatHistoryCore
 import SwiftUI
 
 /// Accepts keyboard focus so the chat `TextField` works on a borderless panel.

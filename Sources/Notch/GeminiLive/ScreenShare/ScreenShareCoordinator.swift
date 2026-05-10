@@ -228,8 +228,16 @@ final class ScreenShareCoordinator: ObservableObject {
             guard let display = Self.bestDisplay(in: shareableContent.displays, for: requestedRect) else { return nil }
 
             let displayFrame = display.frame.standardized
-            let sourceRect = requestedRect.intersection(displayFrame).standardized
-            guard !sourceRect.isNull, sourceRect.width > 0, sourceRect.height > 0 else { return nil }
+            let screenRect = requestedRect.intersection(displayFrame).standardized
+            guard !screenRect.isNull, screenRect.width > 0, screenRect.height > 0 else { return nil }
+
+            let sourceRect = CGRect(
+                x: screenRect.minX - displayFrame.minX,
+                y: screenRect.minY - displayFrame.minY,
+                width: screenRect.width,
+                height: screenRect.height
+            ).standardized
+            guard sourceRect.width > 0, sourceRect.height > 0 else { return nil }
 
             let streamConfiguration = SCStreamConfiguration()
             let scaleX = CGFloat(display.width) / max(displayFrame.width, 1)

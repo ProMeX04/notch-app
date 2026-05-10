@@ -313,7 +313,7 @@ final class TranscriptOverlayWindowController {
             backing: .buffered,
             defer: false
         )
-        panel.level = .floating
+        panel.level = NotchHUDWindowLevels.aboveOrb
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = true

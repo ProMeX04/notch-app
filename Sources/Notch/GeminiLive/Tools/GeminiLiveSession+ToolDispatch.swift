@@ -34,6 +34,8 @@ extension GeminiLiveSession {
             handleMemoryCall(id: id, call: call)
         case GeminiLiveToolName.appleMail:
             handleAppleMailCall(id: id, call: call)
+        case GeminiLiveToolName.showResult:
+            handleShowResultCall(id: id, call: call)
         default:
             sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
         }

@@ -28,6 +28,10 @@ let package = Package(
             name: "NotchChatHistoryCore",
             targets: ["NotchChatHistoryCore"]
         ),
+        .library(
+            name: "NotchScreenShareCore",
+            targets: ["NotchScreenShareCore"]
+        ),
         .executable(
             name: "Notch",
             targets: ["Notch"]
@@ -51,6 +55,10 @@ let package = Package(
         .executable(
             name: "NotchChatHistoryTests",
             targets: ["NotchChatHistoryTests"]
+        ),
+        .executable(
+            name: "NotchScreenShareTests",
+            targets: ["NotchScreenShareTests"]
         ),
     ],
     dependencies: [
@@ -80,6 +88,7 @@ let package = Package(
                 "NotchBridgeParserCore",
                 "NotchMailParserCore",
                 "NotchChatHistoryCore",
+                "NotchScreenShareCore",
                 .product(name: "LiveKitWebRTC", package: "webrtc-xcframework"),
             ],
             resources: [
@@ -114,6 +123,9 @@ let package = Package(
         .target(
             name: "NotchChatHistoryCore"
         ),
+        .target(
+            name: "NotchScreenShareCore"
+        ),
         .executableTarget(
             name: "NotchBridgeParserTests",
             dependencies: ["NotchBridgeParserCore"],
@@ -128,6 +140,11 @@ let package = Package(
             name: "NotchChatHistoryTests",
             dependencies: ["NotchChatHistoryCore"],
             path: "Tests/NotchChatHistoryTests"
+        ),
+        .executableTarget(
+            name: "NotchScreenShareTests",
+            dependencies: ["NotchScreenShareCore"],
+            path: "Tests/NotchScreenShareTests"
         ),
     ]
 )

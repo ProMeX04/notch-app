@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import Foundation
+import NotchScreenShareCore
 @preconcurrency import ScreenCaptureKit
 
 enum ScreenShareMode {
@@ -28,6 +29,15 @@ final class ScreenShareCoordinator: ObservableObject {
     var onErrorMessageChange: (@MainActor (String?) -> Void)?
     var connectionStateProvider: (@MainActor () -> GeminiLiveConnectionState)?
 
+    init() {
+        highlightController.onRectChanged = { [weak self] rect in
+            guard let self, self.isActive, self.mode == .selectedRegion else { return }
+            let movedRegion = rect.integral
+            self.selectedRegion = movedRegion
+            self.highlightRect = movedRegion
+        }
+    }
+
     func startFullScreen() {
         guard ensurePermission() else { return }
         regionSelectionController.cancelSelection(notify: false)
@@ -48,7 +58,7 @@ final class ScreenShareCoordinator: ObservableObject {
 
         pauseCapture()
         updateHighlight()
-        setStatusMessage("Drag to select a screen region. Press Esc to cancel.")
+        setStatusMessage("Drag to select a screen region. You can move the blue border while sharing. Press Esc to cancel.")
 
         regionSelectionController.beginSelection { [weak self] rect in
             guard let self else { return }
@@ -225,26 +235,24 @@ final class ScreenShareCoordinator: ObservableObject {
 
         do {
             let shareableContent = try await SCShareableContent.current
-            guard let display = Self.bestDisplay(in: shareableContent.displays, for: requestedRect) else { return nil }
-
-            let displayFrame = display.frame.standardized
-            let screenRect = requestedRect.intersection(displayFrame).standardized
-            guard !screenRect.isNull, screenRect.width > 0, screenRect.height > 0 else { return nil }
-
-            let sourceRect = CGRect(
-                x: screenRect.minX - displayFrame.minX,
-                y: screenRect.minY - displayFrame.minY,
-                width: screenRect.width,
-                height: screenRect.height
-            ).standardized
-            guard sourceRect.width > 0, sourceRect.height > 0 else { return nil }
+            let displayDescriptors = shareableContent.displays.map {
+                ScreenShareDisplayDescriptor(
+                    id: $0.displayID,
+                    frame: $0.frame,
+                    pixelWidth: $0.width,
+                    pixelHeight: $0.height
+                )
+            }
+            guard let capturePlan = ScreenShareCaptureGeometry.resolveCapturePlan(
+                requestedRect: requestedRect,
+                displays: displayDescriptors
+            ) else { return nil }
+            guard let display = shareableContent.displays.first(where: { $0.displayID == capturePlan.displayID }) else { return nil }
 
             let streamConfiguration = SCStreamConfiguration()
-            let scaleX = CGFloat(display.width) / max(displayFrame.width, 1)
-            let scaleY = CGFloat(display.height) / max(displayFrame.height, 1)
-            streamConfiguration.sourceRect = sourceRect
-            streamConfiguration.width = max(Int((sourceRect.width * scaleX).rounded(.up)), 1)
-            streamConfiguration.height = max(Int((sourceRect.height * scaleY).rounded(.up)), 1)
+            streamConfiguration.sourceRect = capturePlan.sourceRect
+            streamConfiguration.width = capturePlan.outputWidth
+            streamConfiguration.height = capturePlan.outputHeight
             streamConfiguration.showsCursor = false
 
             let contentFilter = SCContentFilter(display: display, excludingWindows: [])
@@ -269,18 +277,6 @@ final class ScreenShareCoordinator: ObservableObject {
     }
 
     private nonisolated static let jpegContext = CIContext(options: [.useSoftwareRenderer: false])
-
-    private nonisolated static func bestDisplay(in displays: [SCDisplay], for rect: CGRect) -> SCDisplay? {
-        displays.max { lhs, rhs in
-            intersectionArea(lhs.frame, rect) < intersectionArea(rhs.frame, rect)
-        }
-    }
-
-    private nonisolated static func intersectionArea(_ lhs: CGRect, _ rhs: CGRect) -> CGFloat {
-        let intersection = lhs.intersection(rhs)
-        guard !intersection.isNull else { return 0 }
-        return intersection.width * intersection.height
-    }
 
     private nonisolated static func encodeJPEG(from fullImage: CGImage) -> Data? {
         let maxWidth: CGFloat = 1280

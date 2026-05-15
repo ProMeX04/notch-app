@@ -21,15 +21,20 @@ export default async function AdminLayout({
   }
 
   return (
-    <div className="min-h-screen relative overflow-hidden bg-slate-50">
-      {/* Decorative background elements */}
-      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-500 rounded-full mix-blend-multiply filter blur-[120px] opacity-20 pointer-events-none"></div>
-      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-500 rounded-full mix-blend-multiply filter blur-[120px] opacity-20 pointer-events-none"></div>
-
-      <div className="relative z-10 flex h-screen">
+    <div className="min-h-screen bg-[#f8fafd] text-[#202124]">
+      <div className="fixed left-0 right-0 top-0 z-50 flex h-16 items-center border-b border-[#dadce0] bg-white px-4 shadow-[0_1px_2px_rgba(60,64,67,0.12)] sm:px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#dadce0] bg-white text-sm font-black text-[#1a73e8]">N</div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-[#3c4043]">Notch Admin Console</p>
+            <p className="truncate text-xs text-[#5f6368]">Quản lý người dùng và doanh thu</p>
+          </div>
+        </div>
+      </div>
+      <div className="flex flex-col pt-16 lg:flex-row">
         <AdminSidebar />
-        <main className="flex-1 pl-64 h-full overflow-y-auto">
-          <div className="m-4 min-h-[calc(100vh-2rem)] rounded-3xl glass-card p-8">
+        <main className="min-h-[calc(100vh-4rem)] min-w-0 flex-1 lg:pl-64">
+          <div className="mx-auto max-w-[1440px] px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
             {children}
           </div>
         </main>

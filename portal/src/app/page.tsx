@@ -7,20 +7,23 @@ import {
   Clock3,
   FolderKanban,
   Music,
-  ArrowRight,
   Sparkles,
-  ChevronRight,
-  Cpu,
-  ShieldCheck,
-  Layout,
-  PlayCircle
+  ChevronRight
 } from 'lucide-react';
 import { PortalLogo } from '@/components/portal/PortalLogo';
 import { usePortalAuth } from '@/components/portal/PortalAuthProvider';
 
+type PortalCapability = {
+  key: string;
+  name: string;
+  description: string;
+  isProOnly: boolean;
+  isEnabled: boolean;
+};
+
 export default function Home() {
   const { isAuthenticated } = usePortalAuth();
-  const [capabilities, setCapabilities] = useState<any[]>([]);
+  const [capabilities, setCapabilities] = useState<PortalCapability[]>([]);
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {

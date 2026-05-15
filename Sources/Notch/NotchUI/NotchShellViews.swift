@@ -625,15 +625,11 @@ struct PanelSwitcher: View {
 
     private func switcherButton(icon: String, panel: NotchPanel) -> some View {
         return Button {
-            let cap: NotchCapability
-            switch panel {
-            case .focus: cap = .focusPomodoro
-            case .talk: cap = .talkConnection
-            case .media: cap = .mediaControls
-            case .shelf: cap = .panelAccess(.shelf)
-            case .shortcuts: cap = .panelAccess(.shortcuts)
+            guard let cap = capability(for: panel) else {
+                presentationModel.selectPanel(panel)
+                return
             }
-            
+
             let decision = entitlementStore.decision(for: cap)
             if decision.isAllowed {
                 presentationModel.selectPanel(panel)
@@ -662,6 +658,21 @@ struct PanelSwitcher: View {
         }
         .buttonStyle(.plain)
         .help(switcherTitle(for: panel))
+    }
+
+    private func capability(for panel: NotchPanel) -> NotchCapability? {
+        switch panel {
+        case .media:
+            return .mediaControls
+        case .focus:
+            return .focusPomodoro
+        case .talk:
+            return .talkConnection
+        case .shelf:
+            return .shelf
+        case .shortcuts:
+            return nil
+        }
     }
 
     private func switcherTitle(for panel: NotchPanel) -> String {
@@ -749,7 +760,7 @@ private struct HeaderUtilitySwitcher: View {
     var body: some View {
         HStack(spacing: 3) {
             Button {
-                let cap = NotchCapability.panelAccess(.shelf)
+                let cap = NotchCapability.shelf
                 let decision = entitlementStore.decision(for: cap)
                 if decision.isAllowed {
                     presentationModel.selectPanel(.shelf)
@@ -766,13 +777,7 @@ private struct HeaderUtilitySwitcher: View {
             .help("Shelf")
 
             Button {
-                let cap = NotchCapability.panelAccess(.shortcuts)
-                let decision = entitlementStore.decision(for: cap)
-                if decision.isAllowed {
-                    presentationModel.selectPanel(.shortcuts)
-                } else {
-                    NotchProWindowController.shared.show(for: cap, entitlementStore: entitlementStore, gemini: gemini)
-                }
+                presentationModel.selectPanel(.shortcuts)
             } label: {
                 utilityIcon(
                     "command",
@@ -938,13 +943,11 @@ struct Localization {
         "Always": ["English": "Always", "Tiếng Việt": "Luôn"],
         "Enable All": ["English": "Enable All", "Tiếng Việt": "Bật tất cả"],
         "Disable All": ["English": "Disable All", "Tiếng Việt": "Tắt tất cả"],
-        "Manage skills": ["English": "Manage skills", "Tiếng Việt": "Quản lý Skill"],
         "All skills": ["English": "All skills", "Tiếng Việt": "Tất cả Skill"],
         "All tools": ["English": "All tools", "Tiếng Việt": "Tất cả công cụ"],
         "Core Tools": ["English": "Core Tools", "Tiếng Việt": "Công cụ cốt lõi"],
         "New Skill": ["English": "New Skill", "Tiếng Việt": "Kỹ năng mới"],
         "No skills installed": ["English": "No skills installed", "Tiếng Việt": "Chưa cài kỹ năng nào"],
-        "No user skills": ["English": "No user skills", "Tiếng Việt": "Không có kỹ năng người dùng"],
         "Share App Window": ["English": "Share App Window", "Tiếng Việt": "Chia sẻ cửa sổ app"],
         "Share Full Screen": ["English": "Share Full Screen", "Tiếng Việt": "Chia sẻ toàn màn hình"],
         "Share Selected Region": ["English": "Share Selected Region", "Tiếng Việt": "Chia sẻ vùng chọn"],
@@ -954,7 +957,6 @@ struct Localization {
         "Edit System Prompt": ["English": "Edit System Prompt", "Tiếng Việt": "Sửa lời nhắc hệ thống"],
         "No skills": ["English": "No skills", "Tiếng Việt": "Không có Skill"],
         "No tools": ["English": "No tools", "Tiếng Việt": "Không có công cụ"],
-        "Add Skill": ["English": "Add Skill", "Tiếng Việt": "Thêm Skill"],
         "Clear": ["English": "Clear", "Tiếng Việt": "Xóa trắng"],
         "Change Photo": ["English": "Change Photo", "Tiếng Việt": "Đổi ảnh"],
         "Default": ["English": "Default", "Tiếng Việt": "Mặc định"],
@@ -971,6 +973,9 @@ struct Localization {
         "Media": ["English": "Media", "Tiếng Việt": "Phát lại"],
         "Screenshot": ["English": "Screenshot", "Tiếng Việt": "Chụp màn hình"],
         "Browser": ["English": "Browser", "Tiếng Việt": "Trình duyệt"],
+        "Local File Search": ["English": "Local File Search", "Tiếng Việt": "Tìm file cục bộ"],
+        "Show Result": ["English": "Show Result", "Tiếng Việt": "Hiển thị kết quả"],
+        "Skill Writer": ["English": "Skill Writer", "Tiếng Việt": "Tạo Skill"],
         "Exec": ["English": "Exec", "Tiếng Việt": "Chạy lệnh"],
         "Off": ["English": "Off", "Tiếng Việt": "Tắt"],
         "Low": ["English": "Low", "Tiếng Việt": "Thấp"],
@@ -1046,6 +1051,19 @@ struct Localization {
         "Orb style Mono": [
             "English": "Mono",
             "Tiếng Việt": "Đơn sắc",
+        ],
+        "Orb style Particle Wave": [
+            "English": "Particle Wave",
+            "Tiếng Việt": "Sóng hạt",
+        ],
+        "Orb menu": ["English": "Orb", "Tiếng Việt": "Orb"],
+        "Orb menu Show in Dock": [
+            "English": "Show Notch in Dock while orb visible",
+            "Tiếng Việt": "Hiện Notch trong Dock khi đang có orb",
+        ],
+        "Orb menu Open Talk settings": [
+            "English": "Open Talk settings…",
+            "Tiếng Việt": "Mở cài đặt Talk…",
         ],
         "Appearance": ["English": "Appearance", "Tiếng Việt": "Giao diện"],
         "Notch Pro": ["English": "Notch Pro", "Tiếng Việt": "Notch Pro"],

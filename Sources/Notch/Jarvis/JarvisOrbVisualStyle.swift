@@ -7,6 +7,8 @@ enum JarvisOrbVisualStyle: String, CaseIterable, Identifiable {
     case nebula
     case aurora
     case mono
+    /// Sphere point cloud + noise shader (“Particle Wave” / nền tối).
+    case particleWave
 
     static let storageKey = "jarvisTalkBackgroundOrbVisualStyleRaw"
 
@@ -21,7 +23,9 @@ enum JarvisOrbVisualStyle: String, CaseIterable, Identifiable {
 
     var backdropNSCalibratedColor: NSColor {
         let rgb = backdropRGBComponents
-        return NSColor(calibratedRed: CGFloat(rgb.r), green: CGFloat(rgb.g), blue: CGFloat(rgb.b), alpha: 1)
+        // Particle Wave: nền đen chỉ trong “hình chiếu” quả cầu (WebGL); phần máy ngoài trong suốt.
+        let alpha: CGFloat = self == .particleWave ? 0 : 1
+        return NSColor(calibratedRed: CGFloat(rgb.r), green: CGFloat(rgb.g), blue: CGFloat(rgb.b), alpha: alpha)
     }
 
     /// Màu nền HTML + renderer (`#RRGGBB`).
@@ -32,6 +36,7 @@ enum JarvisOrbVisualStyle: String, CaseIterable, Identifiable {
         case .nebula: "#06040c"
         case .aurora: "#040a08"
         case .mono: "#050505"
+        case .particleWave: "#000000"
         }
     }
 
@@ -42,6 +47,7 @@ enum JarvisOrbVisualStyle: String, CaseIterable, Identifiable {
         case .nebula: (6.0 / 255.0, 4.0 / 255.0, 12.0 / 255.0)
         case .aurora: (4.0 / 255.0, 10.0 / 255.0, 8.0 / 255.0)
         case .mono: (5.0 / 255.0, 5.0 / 255.0, 5.0 / 255.0)
+        case .particleWave: (0, 0, 0)
         }
     }
 
@@ -58,11 +64,19 @@ enum JarvisOrbVisualStyle: String, CaseIterable, Identifiable {
             "const ORB_CFG = { bg: \"#040a08\", base: \"#34d399\", think: \"#6ee7b7\", speak: \"#2dd4bf\", electron: \"#ecfdf5\" };"
         case .mono:
             "const ORB_CFG = { bg: \"#050505\", base: \"#9ca3af\", think: \"#d1d5db\", speak: \"#f3f4f6\", electron: \"#ffffff\" };"
+        case .particleWave:
+            // Embedded HTML không dùng ORB_CFG (shader orb riêng).
+            ""
         }
     }
 
     static func makeEmbeddedWebHTML(theme: JarvisOrbVisualStyle) -> String {
-        JarvisOrbWebHTML.makeDocument(backgroundHex: theme.backdropHex, orbCfgLine: theme.webOrbConfigAssignment)
+        switch theme {
+        case .particleWave:
+            JarvisOrbParticleWaveHTML.makeDocument()
+        default:
+            JarvisOrbWebHTML.makeDocument(backgroundHex: theme.backdropHex, orbCfgLine: theme.webOrbConfigAssignment)
+        }
     }
 }
 

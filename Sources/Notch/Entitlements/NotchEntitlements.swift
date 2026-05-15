@@ -62,46 +62,13 @@ enum NotchPermissionRecoveryAction: Equatable {
     case none
 }
 
-enum NotchCommandCapability: Equatable {
-    case panel
-    case focus
-    case media
-    case talk
-    case screen
-    case caption
-    case visibility
-    case pin
-
-    var policyKey: String {
-        switch self {
-        case .panel:
-            return "panel"
-        case .focus:
-            return "focus"
-        case .media:
-            return "media"
-        case .talk:
-            return "talk"
-        case .screen:
-            return "screen"
-        case .caption:
-            return "caption"
-        case .visibility:
-            return "visibility"
-        case .pin:
-            return "pin"
-        }
-    }
-}
-
 enum NotchCapability: Equatable {
     case talkConnection
     case focusPomodoro
     case focusWebsiteBlocklist
     case browserBridge
     case mediaControls
-    case panelAccess(NotchPanel)
-    case deepLinkCommand(NotchCommandCapability)
+    case shelf
 
     var policyKey: String {
         switch self {
@@ -115,10 +82,8 @@ enum NotchCapability: Equatable {
             return "browser_bridge"
         case .mediaControls:
             return "media_controls"
-        case let .panelAccess(panel):
-            return "panel_\(panel.rawValue)"
-        case let .deepLinkCommand(command):
-            return "deep_link_\(command.policyKey)"
+        case .shelf:
+            return "panel_shelf"
         }
     }
 
@@ -134,10 +99,8 @@ enum NotchCapability: Equatable {
             return "browser bridge"
         case .mediaControls:
             return "media controls"
-        case let .panelAccess(panel):
-            return "\(panel.rawValue) panel"
-        case let .deepLinkCommand(command):
-            return "\(command.policyKey) command"
+        case .shelf:
+            return "Shelf"
         }
     }
 }

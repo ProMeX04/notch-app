@@ -22,21 +22,17 @@ enum NotchCommandRouter {
             case "panel":
                 try handlePanel(action: action, queryItems: queryItems, handler: handler, entitlementStore: entitlementStore)
             case "visibility":
-                try requireAccess(.deepLinkCommand(.visibility), entitlementStore: entitlementStore)
                 try handleVisibility(action: action, handler: handler)
             case "pin":
-                try requireAccess(.deepLinkCommand(.pin), entitlementStore: entitlementStore)
                 try handlePin(action: action, handler: handler)
             case "talk":
                 try handleTalk(action: action, handler: handler, entitlementStore: entitlementStore)
             case "screen":
-                try requireAccess(.deepLinkCommand(.screen), entitlementStore: entitlementStore)
                 try handleScreen(action: action, handler: handler)
             case "caption":
-                try requireAccess(.deepLinkCommand(.caption), entitlementStore: entitlementStore)
                 try handleCaption(action: action, handler: handler)
             case "focus":
-                try requireAccess(.deepLinkCommand(.focus), entitlementStore: entitlementStore)
+                try requireAccess(.focusPomodoro, entitlementStore: entitlementStore)
                 try handleFocus(action: action, queryItems: queryItems, handler: handler)
             case "media":
                 try handleMedia(action: action, queryItems: queryItems, handler: handler, entitlementStore: entitlementStore)
@@ -62,8 +58,7 @@ enum NotchCommandRouter {
         guard let panel = panelName.flatMap(NotchPanel.init(rawValue:)) else {
             throw NotchCommandError.invalidValue("panel", action)
         }
-        try requireAccess(.panelAccess(panel), entitlementStore: entitlementStore)
-        try requireAccess(.deepLinkCommand(.panel), entitlementStore: entitlementStore)
+        try requireAccess(capability(for: panel), entitlementStore: entitlementStore)
         handler.showPanel(panel)
     }
 
@@ -98,7 +93,6 @@ enum NotchCommandRouter {
         handler: NotchCommandHandling,
         entitlementStore: NotchEntitlementStore
     ) throws {
-        try requireAccess(.deepLinkCommand(.talk), entitlementStore: entitlementStore)
         switch action {
         case "show":
             handler.showTalkPanel()
@@ -173,7 +167,7 @@ enum NotchCommandRouter {
     }
 
     static func handleMedia(action: String, queryItems: [String: String], handler: NotchCommandHandling, entitlementStore: NotchEntitlementStore) throws {
-        try requireAccess(.deepLinkCommand(.media), entitlementStore: entitlementStore)
+        try requireAccess(.mediaControls, entitlementStore: entitlementStore)
         switch action {
         case "play":
             handler.playMedia()
@@ -231,10 +225,26 @@ enum NotchCommandRouter {
         return seconds
     }
 
-    private static func requireAccess(_ capability: NotchCapability, entitlementStore: NotchEntitlementStore) throws {
+    private static func requireAccess(_ capability: NotchCapability?, entitlementStore: NotchEntitlementStore) throws {
+        guard let capability else { return }
         let decision = entitlementStore.decision(for: capability)
         guard decision.isAllowed else {
             throw NotchCommandError.permissionDenied(decision.message)
+        }
+    }
+
+    private static func capability(for panel: NotchPanel) -> NotchCapability? {
+        switch panel {
+        case .media:
+            return .mediaControls
+        case .focus:
+            return .focusPomodoro
+        case .talk:
+            return .talkConnection
+        case .shelf:
+            return .shelf
+        case .shortcuts:
+            return nil
         }
     }
 

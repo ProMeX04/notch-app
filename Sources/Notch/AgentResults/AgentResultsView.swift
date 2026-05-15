@@ -26,7 +26,7 @@ struct AgentResultsView: View {
                     .padding(.trailing, 10)
             }
         }
-        .frame(minWidth: 320, minHeight: 100)
+        .frame(minWidth: 160, minHeight: 100)
         .ignoresSafeArea(.container, edges: .top)
         .background(
             VisualEffectView(material: .underWindowBackground, blendingMode: .behindWindow, cornerRadius: 0)
@@ -75,7 +75,7 @@ struct AgentResultsView: View {
     }
 
     private var resultStack: some View {
-        LazyVStack(alignment: .leading, spacing: 12) {
+        LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(Array(visibleItems.enumerated()), id: \.element.id) { index, item in
                 AgentResultListItem(
                     item: item,
@@ -84,7 +84,7 @@ struct AgentResultsView: View {
                 )
             }
         }
-        .padding(.bottom, 10)
+        .padding(.bottom, 0)
     }
 
     private var visibleItems: [AgentResultItem] {
@@ -97,13 +97,22 @@ private struct AgentResultsOverlayActions: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            CopyFeedbackButton(help: "Copy all visible items") {
-                copyVisibleItems()
+            if visibleItemCount > 1 {
+                CopyFeedbackButton(systemName: "square.on.square", badge: visibleItemCount, help: "Copy all visible items") {
+                    copyVisibleItems()
+                }
+            }
+            IconActionButton(systemName: "xmark", help: "Close results") {
+                AgentResultsWindowController.shared.hide()
             }
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 4)
         .background(.ultraThinMaterial, in: Capsule())
+    }
+
+    private var visibleItemCount: Int {
+        store.visibleBatches.reduce(0) { $0 + $1.items.count }
     }
 
     private func copyVisibleItems() {
@@ -175,54 +184,6 @@ private struct AgentResultsSlideShow: View {
                         flushImageTopCorners: true
                     )
 
-                    if items.count > 1 {
-                        HStack(alignment: .center, spacing: 0) {
-                            AgentResultsSlideNavButton(
-                                systemName: "chevron.left",
-                                enabled: safeIndex > 0,
-                                help: "Previous"
-                            ) {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    slideIndex = safeIndex - 1
-                                }
-                            }
-
-                            Spacer(minLength: 0).allowsHitTesting(false)
-
-                            AgentResultsSlideNavButton(
-                                systemName: "chevron.right",
-                                enabled: safeIndex < items.count - 1,
-                                help: "Next"
-                            ) {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    slideIndex = safeIndex + 1
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 2)
-                    }
-
-                    if shouldShowPagination {
-                        VStack(spacing: 0) {
-                            Spacer(minLength: 0).allowsHitTesting(false)
-                            AgentResultsSlidePageIndicator(
-                                count: items.count,
-                                index: safeIndex,
-                                showsHistoryMore: showsHistoryMore,
-                                onSelect: { index in
-                                    withAnimation(.easeInOut(duration: 0.2)) {
-                                        slideIndex = index
-                                    }
-                                },
-                                onMore: {
-                                    withAnimation(.easeInOut(duration: 0.2)) {
-                                        store.showingHistory = true
-                                    }
-                                }
-                            )
-                                .padding(.bottom, 6)
-                        }
-                    }
                 }
             }
         }
@@ -347,6 +308,13 @@ private func agentResultKindIcon(_ kind: AgentResultKind) -> String {
     }
 }
 
+private func isImageFile(_ url: URL) -> Bool {
+    guard let resourceValues = try? url.resourceValues(forKeys: [.contentTypeKey]),
+          let contentType = resourceValues.contentType
+    else { return false }
+    return contentType.conforms(to: .image)
+}
+
 private enum AgentResultChromeMetrics {
     static let captionMaxWidth: CGFloat = 220
     /// Inner row height matches toolbar icon buttons (22pt).
@@ -365,39 +333,43 @@ private struct AgentResultInteractiveContent: View {
         agentResultCaptionLabel(item)
     }
 
+    @State private var isHovering = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            slideBody(for: item, flushImageTopCorners: flushImageTopCorners)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    openItemIfPossible(item)
-                }
-
-            HStack(alignment: .center, spacing: 8) {
-                if let caption {
-                    HStack(spacing: 6) {
-                        Image(systemName: agentResultKindIcon(item.kind))
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                        Text(caption)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
+            if shouldShowBody(for: item) {
+                ZStack {
+                    slideBody(for: item, flushImageTopCorners: flushImageTopCorners)
+                    if shouldUseContainerHoverOverlay(for: item) && isHovering {
+                        resultHoverOverlay
                     }
-                    .frame(minHeight: AgentResultChromeMetrics.chromeCapsuleContentMinHeight, alignment: .center)
-                    .frame(maxWidth: AgentResultChromeMetrics.captionMaxWidth, alignment: .leading)
-                    .padding(.horizontal, AgentResultChromeMetrics.chromeCapsulePaddingH)
-                    .padding(.vertical, AgentResultChromeMetrics.chromeCapsulePaddingV)
-                    .background(.ultraThinMaterial, in: Capsule())
                 }
-
-                Spacer(minLength: 0)
-
-                actionsRow
+                .onHover { hovering in
+                    guard shouldUseContainerHoverOverlay(for: item) else { return }
+                    withAnimation(.easeOut(duration: 0.12)) {
+                        isHovering = hovering
+                    }
+                }
             }
-            .padding(.horizontal, 10)
-            .padding(.bottom, 6)
+        }
+    }
+
+    private func shouldShowBody(for item: AgentResultItem) -> Bool {
+        true
+    }
+
+    private func shouldShowChromeRow(for item: AgentResultItem) -> Bool {
+        false
+    }
+
+    private func shouldUseContainerHoverOverlay(for item: AgentResultItem) -> Bool {
+        switch item.kind {
+        case .text:
+            return true
+        case let .file(url):
+            return !isImageFile(url)
+        case .link:
+            return false
         }
     }
 
@@ -416,7 +388,8 @@ private struct AgentResultInteractiveContent: View {
                 url: url,
                 maxImageHeight: 300,
                 compact: false,
-                flushTopCornersWhenImage: flushImageTopCorners
+                flushTopCornersWhenImage: flushImageTopCorners,
+                usesHoverControlsWhenImage: true
             )
         }
     }
@@ -430,23 +403,51 @@ private struct AgentResultInteractiveContent: View {
         }
     }
 
-    private var actionsRow: some View {
-        HStack(spacing: 6) {
-            if case .file = item.kind {
-                IconActionButton(systemName: "magnifyingglass", help: "Reveal in Finder") {
-                    if let url = item.localFileURL {
-                        NSWorkspace.shared.activateFileViewerSelecting([url])
+    private var resultHoverOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.42)
+            VStack(spacing: 10) {
+                if let caption {
+                    Text(caption)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                }
+                HStack(spacing: 8) {
+                    if case let .file(url) = item.kind {
+                        Button {
+                            NSWorkspace.shared.open(url)
+                        } label: {
+                            Label("Open", systemImage: "arrow.up.right.square")
+                                .labelStyle(.iconOnly)
+                                .font(.system(size: 12, weight: .semibold))
+                                .frame(width: 28, height: 24)
+                        }
+                        .buttonStyle(.plain)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .help("Open file")
+
+                        Button {
+                            NSWorkspace.shared.activateFileViewerSelecting([url])
+                        } label: {
+                            Label("Reveal", systemImage: "magnifyingglass")
+                                .labelStyle(.iconOnly)
+                                .font(.system(size: 12, weight: .semibold))
+                                .frame(width: 28, height: 24)
+                        }
+                        .buttonStyle(.plain)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .help("Reveal in Finder")
                     }
+                    CopyFeedbackButton(help: "Copy") {
+                        copyToPasteboard()
+                    }
+                    .background(.ultraThinMaterial, in: Capsule())
                 }
             }
-            CopyFeedbackButton(help: "Copy") {
-                copyToPasteboard()
-            }
+            .padding(14)
         }
-        .frame(minHeight: AgentResultChromeMetrics.chromeCapsuleContentMinHeight, alignment: .center)
-        .padding(.horizontal, AgentResultChromeMetrics.chromeCapsulePaddingH)
-        .padding(.vertical, AgentResultChromeMetrics.chromeCapsulePaddingV)
-        .background(.ultraThinMaterial, in: Capsule())
     }
 
     private func copyToPasteboard() {
@@ -543,21 +544,79 @@ private struct AgentResultsMarkdownText: View {
 private struct LinkBody: View {
     let url: URL
     let title: String?
+    @State private var isHovering = false
+
+    private var displayTitle: String {
+        if let title {
+            let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { return trimmed }
+        }
+        return url.host ?? url.absoluteString
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            if title == nil {
-                Text(url.absoluteString)
-                    .font(.system(size: 12, weight: .semibold))
-                    .lineLimit(1)
-                    .foregroundStyle(.primary)
+        ZStack {
+            placeholder
+
+            if isHovering {
+                hoverOverlay
             }
-            Text(url.host ?? url.absoluteString)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.12)) {
+                isHovering = hovering
+            }
+        }
+    }
+
+    private var placeholder: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color.primary.opacity(0.10), Color.primary.opacity(0.04)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            Image(systemName: "link")
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundStyle(.secondary)
+        }
+        .frame(height: 120)
+    }
+
+    private var hoverOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.42)
+            VStack(spacing: 10) {
+                Text(displayTitle)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                HStack(spacing: 8) {
+                    Button {
+                        NSWorkspace.shared.open(url)
+                    } label: {
+                        Label("Open", systemImage: "arrow.up.right.square")
+                            .labelStyle(.iconOnly)
+                            .font(.system(size: 12, weight: .semibold))
+                            .frame(width: 28, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .help("Open link")
+
+                    CopyFeedbackButton(help: "Copy link") {
+                        let pasteboard = NSPasteboard.general
+                        pasteboard.clearContents()
+                        pasteboard.setString(url.absoluteString, forType: .string)
+                        pasteboard.writeObjects([url as NSURL])
+                    }
+                    .background(.ultraThinMaterial, in: Capsule())
+                }
+            }
+            .padding(14)
+        }
     }
 }
 
@@ -565,8 +624,10 @@ private struct FileBody: View {
     let url: URL
     var maxImageHeight: CGFloat = 260
     var compact: Bool = false
-    /// When showing a full-width image preview (not compact), square off top corners so the bitmap meets the panel top edge.
+    /// When showing a full-width image preview (not compact), square off top corners so the bitmap meets the panel edge.
     var flushTopCornersWhenImage: Bool = false
+    var usesHoverControlsWhenImage = false
+    @State private var isHovering = false
     @State private var icon: NSImage?
     @State private var previewImage: NSImage?
     @State private var thumbnailLoadTask: Task<Void, Never>?
@@ -574,40 +635,40 @@ private struct FileBody: View {
     var body: some View {
         Group {
             if let previewImage {
-                Group {
-                    if compact {
-                        Image(nsImage: previewImage)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(maxWidth: .infinity)
-                            .frame(height: maxImageHeight)
-                            .clipped()
-                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    } else if flushTopCornersWhenImage {
-                        Image(nsImage: previewImage)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxWidth: .infinity)
-                            .frame(maxHeight: maxImageHeight)
-                            .clipShape(
-                                UnevenRoundedRectangle(
-                                    topLeadingRadius: 0,
-                                    bottomLeadingRadius: 8,
-                                    bottomTrailingRadius: 8,
-                                    topTrailingRadius: 0,
-                                    style: .continuous
-                                )
-                            )
-                    } else {
-                        Image(nsImage: previewImage)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxWidth: .infinity)
-                            .frame(maxHeight: maxImageHeight)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                ZStack {
+                    Group {
+                        if compact {
+                            Image(nsImage: previewImage)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(maxWidth: .infinity)
+                                .frame(height: maxImageHeight)
+                                .clipped()
+                        } else if flushTopCornersWhenImage {
+                            Image(nsImage: previewImage)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxWidth: .infinity)
+                                .frame(maxHeight: maxImageHeight)
+                        } else {
+                            Image(nsImage: previewImage)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxWidth: .infinity)
+                                .frame(maxHeight: maxImageHeight)
+                        }
+                    }
+                    if usesHoverControlsWhenImage && isHovering && isImageFile(url) {
+                        imageHoverOverlay
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .onHover { hovering in
+                    guard usesHoverControlsWhenImage && isImageFile(url) else { return }
+                    withAnimation(.easeOut(duration: 0.12)) {
+                        isHovering = hovering
+                    }
+                }
             } else {
                 HStack {
                     Spacer(minLength: 0)
@@ -628,19 +689,8 @@ private struct FileBody: View {
                 }
                 .frame(maxWidth: .infinity, minHeight: compact ? 72 : max(150, maxImageHeight * 0.55))
                 .background(
-                    RoundedRectangle(cornerRadius: flushTopCornersWhenImage ? 0 : 8, style: .continuous)
+                    Rectangle()
                         .fill(Color.primary.opacity(0.035))
-                )
-                .clipShape(
-                    flushTopCornersWhenImage
-                        ? AnyShape(UnevenRoundedRectangle(
-                            topLeadingRadius: 0,
-                            bottomLeadingRadius: 8,
-                            bottomTrailingRadius: 8,
-                            topTrailingRadius: 0,
-                            style: .continuous
-                        ))
-                        : AnyShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 )
             }
         }
@@ -652,6 +702,51 @@ private struct FileBody: View {
         }
         .onDrag {
             NSItemProvider(object: url as NSURL)
+        }
+    }
+
+    private var imageHoverOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.42)
+            VStack(spacing: 10) {
+                Text(url.lastPathComponent)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                HStack(spacing: 8) {
+                    Button {
+                        NSWorkspace.shared.open(url)
+                    } label: {
+                        Label("Open", systemImage: "arrow.up.right.square")
+                            .labelStyle(.iconOnly)
+                            .font(.system(size: 12, weight: .semibold))
+                            .frame(width: 28, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .help("Open image")
+
+                    Button {
+                        NSWorkspace.shared.activateFileViewerSelecting([url])
+                    } label: {
+                        Label("Reveal", systemImage: "magnifyingglass")
+                            .labelStyle(.iconOnly)
+                            .font(.system(size: 12, weight: .semibold))
+                            .frame(width: 28, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .help("Reveal in Finder")
+
+                    CopyFeedbackButton(help: "Copy image") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.writeObjects([url as NSURL])
+                    }
+                    .background(.ultraThinMaterial, in: Capsule())
+                }
+            }
+            .padding(14)
         }
     }
 
@@ -754,6 +849,8 @@ private struct IconActionButton: View {
 }
 
 private struct CopyFeedbackButton: View {
+    var systemName = "doc.on.doc"
+    var badge: Int? = nil
     let help: String
     let action: () -> Void
     @State private var copied = false
@@ -770,10 +867,21 @@ private struct CopyFeedbackButton: View {
                 }
             }
         } label: {
-            Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                .font(.system(size: 11, weight: .semibold))
-                .frame(width: 22, height: 22)
-                .contentShape(Rectangle())
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: copied ? "checkmark" : systemName)
+                    .font(.system(size: 11, weight: .semibold))
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+                if let badge, badge > 1, !copied {
+                    Text("\(badge)")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 4)
+                        .frame(minWidth: 13, minHeight: 13)
+                        .background(Color.accentColor, in: Capsule())
+                        .offset(x: 5, y: -4)
+                }
+            }
         }
         .buttonStyle(.plain)
         .foregroundStyle(copied ? .green : .secondary)

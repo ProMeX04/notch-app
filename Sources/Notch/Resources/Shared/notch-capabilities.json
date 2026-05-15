@@ -3,111 +3,39 @@
   "capabilities": [
     {
       "key": "talk_connection",
-      "name": "Gemini Live (Talk)",
-      "description": "Su dung Gemini AI truc tiep tu notch",
+      "name": "Gemini Live",
+      "description": "Trò chuyện với AI trực tiếp từ Notch",
       "requirement": "pro"
     },
     {
       "key": "focus_pomodoro",
-      "name": "Focus Mode (Pomodoro)",
-      "description": "Cai dat Pomodoro nang cao",
+      "name": "Focus Pomodoro",
+      "description": "Hỗ trợ tập trung và quản lý phiên làm việc",
       "requirement": "free"
     },
     {
       "key": "focus_website_blocklist",
-      "name": "Website Blocking",
-      "description": "Chan trang web gay xao nhang",
+      "name": "Chặn website",
+      "description": "Chặn trang web gây xao nhãng",
       "requirement": "free"
     },
     {
       "key": "media_controls",
-      "name": "Media Controls",
-      "description": "Dieu khien nhac tren notch",
+      "name": "Điều khiển nhạc",
+      "description": "Điều khiển nhạc trên Notch",
       "requirement": "free"
     },
     {
       "key": "browser_bridge",
-      "name": "Browser Bridge",
-      "description": "Ket noi ung dung voi trinh duyet",
-      "requirement": "free"
-    },
-    {
-      "key": "panel_media",
-      "name": "Media Panel",
-      "description": "Mo media panel tu deep link",
-      "requirement": "free"
-    },
-    {
-      "key": "panel_focus",
-      "name": "Focus Panel",
-      "description": "Mo focus panel tu deep link",
-      "requirement": "free"
-    },
-    {
-      "key": "panel_talk",
-      "name": "Talk Panel",
-      "description": "Mo talk panel tu deep link",
+      "name": "Kết nối trình duyệt",
+      "description": "Kết nối ứng dụng với trình duyệt",
       "requirement": "free"
     },
     {
       "key": "panel_shelf",
       "name": "Shelf",
-      "description": "Luu tam file, text va link trong notch",
+      "description": "Lưu tạm file, văn bản và đường dẫn trong Notch",
       "requirement": "pro"
-    },
-    {
-      "key": "panel_shortcuts",
-      "name": "Shortcuts",
-      "description": "Tao va chay shortcut tu notch",
-      "requirement": "free"
-    },
-    {
-      "key": "deep_link_panel",
-      "name": "Panel Commands",
-      "description": "Dieu huong panel bang deep link",
-      "requirement": "free"
-    },
-    {
-      "key": "deep_link_focus",
-      "name": "Focus Commands",
-      "description": "Dieu khien focus bang deep link",
-      "requirement": "free"
-    },
-    {
-      "key": "deep_link_media",
-      "name": "Media Commands",
-      "description": "Dieu khien media bang deep link",
-      "requirement": "free"
-    },
-    {
-      "key": "deep_link_talk",
-      "name": "Talk Commands",
-      "description": "Dieu khien talk bang deep link",
-      "requirement": "free"
-    },
-    {
-      "key": "deep_link_screen",
-      "name": "Screen Share Commands",
-      "description": "Dieu khien screen share bang deep link",
-      "requirement": "free"
-    },
-    {
-      "key": "deep_link_caption",
-      "name": "Caption Commands",
-      "description": "Dieu khien caption bang deep link",
-      "requirement": "free"
-    },
-    {
-      "key": "deep_link_visibility",
-      "name": "Visibility Commands",
-      "description": "Dieu khien hien an notch bang deep link",
-      "requirement": "free"
-    },
-    {
-      "key": "deep_link_pin",
-      "name": "Pin Commands",
-      "description": "Dieu khien trang thai ghim bang deep link",
-      "requirement": "free"
     }
   ]
 }

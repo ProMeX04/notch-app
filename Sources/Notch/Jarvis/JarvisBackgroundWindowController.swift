@@ -61,9 +61,15 @@ final class JarvisBackgroundWindowController {
     private var currentEnergyState: JarvisEnergyState = .idle
     private var currentSignalLevel = 0.0
 
+    func refreshOrbPresentationFromDefaults() {
+        guard orbPanel != nil else { return }
+        refreshOrbPresentationForActiveOrbWindow()
+    }
+
     var isVisible: Bool {
         orbPanel?.isVisible == true
     }
+
 
     private init() {}
 

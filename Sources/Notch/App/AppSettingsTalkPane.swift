@@ -1,25 +1,23 @@
 import SwiftUI
+import NotchGeminiSkillStorage
 
-private extension JarvisOrbVisualStyle {
-    func localizedTitle(lang: String) -> String {
+private enum TalkSkillEditorRoute: Identifiable, Equatable {
+    case create
+    case edit(skillID: String)
+
+    var id: String {
         switch self {
-        case .ice: Localization.get("Orb style Ice", lang: lang)
-        case .ember: Localization.get("Orb style Ember", lang: lang)
-        case .nebula: Localization.get("Orb style Nebula", lang: lang)
-        case .aurora: Localization.get("Orb style Aurora", lang: lang)
-            case .mono: Localization.get("Orb style Mono", lang: lang)
+        case .create: return "skill-editor-create"
+        case let .edit(skillID): return "skill-editor-\(skillID)"
         }
     }
 }
+
 
 struct AppTalkSettingsPane: View {
     @ObservedObject var gemini: GeminiLiveViewModel
     @AppStorage("app_language") private var appLanguage: String = "English"
     @AppStorage(JarvisTalkBackgroundOrbSettings.enabledUserDefaultsKey) private var jarvisOrbBackdropEnabled = true
-    @AppStorage(JarvisTalkBackgroundOrbSettings.alwaysOnTopUserDefaultsKey) private var jarvisOrbAlwaysOnTop = true
-    @AppStorage(JarvisTalkBackgroundOrbSettings.showInDockWhenOrbVisibleDefaultsKey)
-    private var jarvisOrbShowInDockWhileVisible = false
-    @AppStorage(JarvisOrbVisualStyle.storageKey) private var jarvisOrbVisualStyleRaw: String = JarvisOrbVisualStyle.ice.rawValue
     @AppStorage(NotchAccentColorOption.storageKey) private var accentColorID: String = NotchAccentColorOption.defaultOption.rawValue
     @State private var holdShortcut = HoldToTalkShortcutStore.load()
     @State private var agentNameDraft = ""
@@ -30,6 +28,8 @@ struct AppTalkSettingsPane: View {
 
     @State private var isUserProfileExpanded = false
     @State private var isMemoryExpanded = false
+    @State private var isSystemPromptExpanded = false
+    @State private var skillEditorRoute: TalkSkillEditorRoute?
 
     private var tint: Color {
         settingsAccentColor(from: accentColorID)
@@ -105,7 +105,7 @@ struct AppTalkSettingsPane: View {
             AppSettingsCard(
                 title: Localization.get("Floating orb window", lang: appLanguage)
             ) {
-                AppSettingsRow(showDivider: true) {
+                AppSettingsRow(showDivider: false) {
                     Image(systemName: "circle.hexagongrid.fill")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(tint.opacity(0.9))
@@ -121,71 +121,6 @@ struct AppTalkSettingsPane: View {
                     Toggle("", isOn: $jarvisOrbBackdropEnabled)
                         .toggleStyle(NotchSwitchStyle(tint: tint))
                         .labelsHidden()
-                }
-
-                AppSettingsRow(showDivider: true) {
-                    Image(systemName: "arrow.up.to.line")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(tint.opacity(jarvisOrbBackdropEnabled ? 0.9 : 0.35))
-                        .frame(width: 28, height: 28)
-                        .background(tint.opacity(jarvisOrbBackdropEnabled ? 0.1 : 0.04).cornerRadius(8))
-
-                    Text(Localization.get("Orb always on top", lang: appLanguage))
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white.opacity(jarvisOrbBackdropEnabled ? 0.9 : 0.42))
-
-                    Spacer(minLength: 0)
-
-                    Toggle("", isOn: $jarvisOrbAlwaysOnTop)
-                        .toggleStyle(NotchSwitchStyle(tint: tint))
-                        .labelsHidden()
-                        .disabled(!jarvisOrbBackdropEnabled)
-                        .opacity(jarvisOrbBackdropEnabled ? 1 : 0.45)
-                }
-
-                AppSettingsRow(showDivider: true) {
-                    Image(systemName: "dock.rectangle")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(tint.opacity(jarvisOrbBackdropEnabled ? 0.9 : 0.35))
-                        .frame(width: 28, height: 28)
-                        .background(tint.opacity(jarvisOrbBackdropEnabled ? 0.1 : 0.04).cornerRadius(8))
-
-                    Text(Localization.get("Show Notch in Dock when orb visible", lang: appLanguage))
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white.opacity(jarvisOrbBackdropEnabled ? 0.9 : 0.42))
-
-                    Spacer(minLength: 0)
-
-                    Toggle("", isOn: $jarvisOrbShowInDockWhileVisible)
-                        .toggleStyle(NotchSwitchStyle(tint: tint))
-                        .labelsHidden()
-                        .disabled(!jarvisOrbBackdropEnabled)
-                        .opacity(jarvisOrbBackdropEnabled ? 1 : 0.45)
-                }
-
-                AppSettingsRow(showDivider: false) {
-                    Image(systemName: "paintpalette.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(tint.opacity(jarvisOrbBackdropEnabled ? 0.9 : 0.35))
-                        .frame(width: 28, height: 28)
-                        .background(tint.opacity(jarvisOrbBackdropEnabled ? 0.1 : 0.04).cornerRadius(8))
-
-                    Text(Localization.get("Orb appearance", lang: appLanguage))
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white.opacity(jarvisOrbBackdropEnabled ? 0.9 : 0.42))
-
-                    Spacer(minLength: 0)
-
-                    Picker("", selection: $jarvisOrbVisualStyleRaw) {
-                        ForEach(JarvisOrbVisualStyle.allCases) { style in
-                            Text(style.localizedTitle(lang: appLanguage)).tag(style.rawValue)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .frame(minWidth: 160, alignment: .trailing)
-                    .labelsHidden()
-                    .disabled(!jarvisOrbBackdropEnabled)
-                    .opacity(jarvisOrbBackdropEnabled ? 1 : 0.45)
                 }
             }
 
@@ -303,6 +238,11 @@ struct AppTalkSettingsPane: View {
             }
         } message: {
             Text("Delete \"\(settingsFormattedAgentDisplayName(gemini.selectedSystemPromptPreset.title))\"?")
+        }
+        .sheet(item: $skillEditorRoute) { route in
+            TalkSkillEditorSheet(gemini: gemini, route: route, appLanguage: appLanguage, tint: tint) {
+                skillEditorRoute = nil
+            }
         }
     }
 
@@ -423,33 +363,70 @@ struct AppTalkSettingsPane: View {
 
                 Divider().overlay(Color.white.opacity(0.07))
 
-                HStack(spacing: 12) {
-                    Picker(Localization.get("Model", lang: appLanguage), selection: $gemini.selectedModel) {
-                        ForEach(GeminiLiveModel.allCases, id: \.self) { Text($0.displayName).tag($0) }
-                    }
-                    .pickerStyle(.menu)
-                    Picker(Localization.get("Voice", lang: appLanguage), selection: $gemini.selectedVoice) {
-                        ForEach(GeminiVoice.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                    }
-                    .pickerStyle(.menu)
-                    Picker(Localization.get("Thinking", lang: appLanguage), selection: $gemini.thinkingLevel) {
-                        ForEach(GeminiThinkingLevel.allCases, id: \.self) {
-                            Text(Localization.get($0.rawValue, lang: appLanguage)).tag($0)
+                VStack(spacing: 12) {
+                    agentModelVoiceThinkingRow(icon: "cpu", titleKey: "Model") {
+                        fixedWidthAgentMenu(title: gemini.selectedModel.displayName) {
+                            ForEach(GeminiLiveModel.allCases, id: \.self) { model in
+                                Button(model.displayName) {
+                                    gemini.selectedModel = model
+                                }
+                            }
                         }
                     }
-                    .pickerStyle(.menu)
+
+                    agentModelVoiceThinkingRow(icon: "waveform", titleKey: "Voice") {
+                        fixedWidthAgentMenu(title: gemini.selectedVoice.rawValue) {
+                            ForEach(GeminiVoice.allCases, id: \.self) { voice in
+                                Button(voice.rawValue) {
+                                    gemini.selectedVoice = voice
+                                }
+                            }
+                        }
+                    }
+
+                    agentModelVoiceThinkingRow(icon: "lightbulb", titleKey: "Thinking") {
+                        fixedWidthAgentMenu(title: Localization.get(gemini.thinkingLevel.rawValue, lang: appLanguage)) {
+                            ForEach(GeminiThinkingLevel.allCases, id: \.self) { level in
+                                Button(Localization.get(level.rawValue, lang: appLanguage)) {
+                                    gemini.thinkingLevel = level
+                                }
+                            }
+                        }
+                    }
                 }
 
                 Divider().overlay(Color.white.opacity(0.07))
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(Localization.get("System Prompt", lang: appLanguage))
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.42))
-                    GeminiFileTextEditor(text: $agentPromptDraft)
-                        .onChange(of: agentPromptDraft) { _, newValue in
-                            _ = gemini.saveSystemPrompt(id: currentPromptID, title: agentNameDraft, content: newValue)
+                VStack(alignment: .leading, spacing: 10) {
+                    Button {
+                        withAnimation(.snappy(duration: 0.25)) {
+                            isSystemPromptExpanded.toggle()
                         }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "doc.text.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(tint.opacity(0.9))
+                                .frame(width: 28, height: 28)
+                                .background(tint.opacity(0.1).cornerRadius(8))
+                            Text(Localization.get("System Prompt", lang: appLanguage))
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.9))
+                            Spacer()
+                            Image(systemName: isSystemPromptExpanded ? "chevron.down" : "chevron.right")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.4))
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    if isSystemPromptExpanded {
+                        GeminiFileTextEditor(text: $agentPromptDraft)
+                            .onChange(of: agentPromptDraft) { _, newValue in
+                                _ = gemini.saveSystemPrompt(id: currentPromptID, title: agentNameDraft, content: newValue)
+                            }
+                    }
                 }
 
                 Divider().overlay(Color.white.opacity(0.07))
@@ -463,11 +440,12 @@ struct AppTalkSettingsPane: View {
                 VStack(alignment: .leading, spacing: 8) {
                     GeminiSkillsPicker(
                         installedSkills: gemini.installedSkills,
-                        userSkillNames: Set(gemini.userInstalledSkills.map(\.metadata.name)),
-                        selection: $gemini.enabledSkillNames,
+                        selection: $gemini.enabledSkillIDs,
                         isDisabled: !gemini.canManageSkills,
-                        onImport: { gemini.importSkill() },
-                        onDeleteName: { gemini.deleteSkill(named: $0) }
+                        onCreateInEditor: { skillEditorRoute = .create },
+                        onEdit: { skillEditorRoute = .edit(skillID: $0) },
+                        onDuplicate: { gemini.duplicateSkillFromPicker(id: $0) },
+                        onDelete: { gemini.deleteSkill(id: $0) }
                     )
                 }
             }
@@ -487,6 +465,187 @@ struct AppTalkSettingsPane: View {
         let selected = gemini.selectedSystemPromptPreset
         agentNameDraft = selected.title
         agentPromptDraft = selected.content
+    }
+
+    @ViewBuilder
+    private func agentModelVoiceThinkingRow<Content: View>(
+        icon: String,
+        titleKey: String,
+        @ViewBuilder valueMenu: () -> Content
+    ) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(tint.opacity(0.9))
+                .frame(width: 28, height: 28)
+                .background(tint.opacity(0.1).cornerRadius(8))
+            Text(Localization.get(titleKey, lang: appLanguage))
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.9))
+            Spacer(minLength: 8)
+            valueMenu()
+                .labelsHidden()
+                .frame(width: 150, alignment: .trailing)
+        }
+        .padding(.vertical, 2)
+    }
+
+    @ViewBuilder
+    private func fixedWidthAgentMenu<Items: View>(
+        title: String,
+        @ViewBuilder items: () -> Items
+    ) -> some View {
+        Menu {
+            items()
+        } label: {
+            HStack(spacing: 6) {
+                Text(title)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.62))
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.92))
+            .padding(.horizontal, 10)
+            .frame(width: 150, height: 28)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(Color.white.opacity(0.12))
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct TalkSkillEditorSheet: View {
+    @ObservedObject var gemini: GeminiLiveViewModel
+    let route: TalkSkillEditorRoute
+    let appLanguage: String
+    let tint: Color
+    let onDismiss: () -> Void
+
+    @State private var skillNameText = ""
+    @State private var skillDescriptionText = ""
+    @State private var skillInstructionsText = ""
+
+    private var editedSkillID: String? {
+        if case let .edit(id) = route { return id }
+        return nil
+    }
+
+    private var isBuiltin: Bool {
+        guard let editedSkillID else { return false }
+        return gemini.skillRecord(for: editedSkillID)?.source == .builtin
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(titleKey)
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(.primary)
+
+            VStack(spacing: 10) {
+                editorField(title: "Name", text: $skillNameText)
+                editorField(title: "Description", text: $skillDescriptionText)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(Localization.get("Instructions", lang: appLanguage))
+                        .font(.system(size: 12, weight: .semibold))
+                    TextEditor(text: $skillInstructionsText)
+                        .font(.system(size: 11, weight: .regular, design: .monospaced))
+                        .frame(minHeight: 220)
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.25)))
+                        .disabled(isBuiltin)
+                }
+            }
+
+            if isBuiltin {
+                Text(Localization.get("Built-in skills are read-only. Duplicate this skill from the picker to edit a personal copy.", lang: appLanguage))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                Spacer()
+                Button(Localization.get("Cancel", lang: appLanguage)) {
+                    onDismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+                if !isBuiltin {
+                    Button(Localization.get("Save", lang: appLanguage)) {
+                        saveDraft()
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!canAttemptSave)
+                }
+            }
+        }
+        .padding(20)
+        .frame(width: 520)
+        .onAppear(perform: loadInitialDraft)
+    }
+
+    private var titleKey: String {
+        switch route {
+        case .create:
+            Localization.get("New skill", lang: appLanguage)
+        case .edit:
+            Localization.get("Edit skill", lang: appLanguage)
+        }
+    }
+
+    private var canAttemptSave: Bool {
+        !skillNameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            !skillInstructionsText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    @ViewBuilder
+    private func editorField(title key: String, text: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(Localization.get(key, lang: appLanguage))
+                .font(.system(size: 12, weight: .semibold))
+            TextField("", text: text)
+                .textFieldStyle(.roundedBorder)
+                .disabled(isBuiltin)
+        }
+    }
+
+    private func loadInitialDraft() {
+        switch route {
+        case .create:
+            skillNameText = ""
+            skillDescriptionText = ""
+            skillInstructionsText = ""
+        case let .edit(id):
+            guard let draft = gemini.resolvedSkillDraft(forSkillID: id) else {
+                skillNameText = ""
+                skillDescriptionText = ""
+                skillInstructionsText = ""
+                return
+            }
+            skillNameText = draft.name
+            skillDescriptionText = draft.description
+            skillInstructionsText = draft.instructions
+        }
+    }
+
+    private func saveDraft() {
+        let draft = SkillDraft(
+            name: skillNameText,
+            description: skillDescriptionText,
+            category: "general",
+            instructions: skillInstructionsText
+        )
+        do {
+            try gemini.persistSkillDraftFromEditor(skillID: editedSkillID, draft: draft)
+            onDismiss()
+        } catch {
+            gemini.ingestSkillsEditorSaveFailure(error)
+        }
     }
 }
 

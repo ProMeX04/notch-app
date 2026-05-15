@@ -109,6 +109,9 @@ final class AgentResultsWindowController {
         panel.title = ""
         panel.titlebarAppearsTransparent = true
         panel.titleVisibility = .hidden
+        panel.standardWindowButton(.closeButton)?.isHidden = true
+        panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        panel.standardWindowButton(.zoomButton)?.isHidden = true
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.isFloatingPanel = true
@@ -117,7 +120,7 @@ final class AgentResultsWindowController {
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         panel.isReleasedWhenClosed = false
         panel.becomesKeyOnlyIfNeeded = true
-        panel.minSize = NSSize(width: 320, height: 120)
+        panel.minSize = NSSize(width: 160, height: 120)
 
         let hosting = NSHostingController(rootView: makeRootView())
         panel.contentViewController = hosting

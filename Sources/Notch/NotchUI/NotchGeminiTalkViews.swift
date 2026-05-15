@@ -436,7 +436,7 @@ private struct GeminiTalkDisconnectedHomeView: View {
                             leftTitle: "\(gemini.enabledTools.count) \(Localization.get("Công cụ", lang: appLanguage))",
                             leftSubtitle: Localization.get("Được sử dụng", lang: appLanguage),
                             rightIcon: "sparkles",
-                            rightTitle: "\(gemini.enabledSkillNames.count) \(Localization.get("Kỹ năng", lang: appLanguage))",
+                            rightTitle: "\(gemini.enabledSkillIDs.count) \(Localization.get("Kỹ năng", lang: appLanguage))",
                             rightSubtitle: Localization.get("Sẵn sàng hỗ trợ", lang: appLanguage),
                             tint: themeAccent
                         )
@@ -1450,8 +1450,18 @@ struct GeminiToolsPicker: View {
         Set(GeminiTool.coreCases).union(GeminiTool.restrictedTools).subtracting(lockedTools)
     }
 
+    /// Bulk "Enable All" never turns on shell (`exec`) silently; user must confirm via the exec row.
+    /// FDA-gated tools are skipped when access is missing (no Settings deep link spam).
+    private var bulkEnableTools: Set<GeminiTool> {
+        var base = allSelectableTools.subtracting([.exec])
+        if !SystemPermissionsManager.shared.hasFullDiskAccess() {
+            base.subtract([.appleMail, .localFileSearch])
+        }
+        return base
+    }
+
     private var hasAllToolsSelected: Bool {
-        selection.isSuperset(of: allSelectableTools)
+        !bulkEnableTools.isEmpty && selection.isSuperset(of: bulkEnableTools)
     }
 
     private var allToolsList: [GeminiTool] {
@@ -1483,7 +1493,7 @@ struct GeminiToolsPicker: View {
                     if hasAllToolsSelected {
                         selection = []
                     } else {
-                        selection = allSelectableTools
+                        selection = bulkEnableTools
                     }
                 } label: {
                     Text(Localization.get(hasAllToolsSelected ? "Disable All" : "Enable All", lang: appLanguage))
@@ -1521,7 +1531,8 @@ struct GeminiToolsPicker: View {
                             set: { newValue in
                                 guard !isLocked else { return }
                                 if newValue {
-                                    if GeminiTool.restrictedTools.contains(tool) {
+                                    // Only exec uses the shell warning; skillWriter enables like other tools.
+                                    if tool == .exec {
                                         showExecWarning = true
                                         return
                                     }
@@ -1606,12 +1617,13 @@ struct NotchSwitchStyle: ToggleStyle {
 
 struct GeminiSkillsPicker: View {
     let installedSkills: [InstalledSkill]
-    var userSkillNames: Set<String> = []
     @Binding var selection: Set<String>
     var isDisabled = false
-    var onImport: (() -> Void)? = nil
-    var onDeleteName: ((String) -> Void)? = nil
-    
+    var onCreateInEditor: (() -> Void)? = nil
+    var onEdit: ((String) -> Void)? = nil
+    var onDuplicate: ((String) -> Void)? = nil
+    var onDelete: ((String) -> Void)? = nil
+
     @AppStorage("app_language") private var appLanguage: String = "English"
     @AppStorage(NotchAccentColorOption.storageKey) private var accentColorID: String = NotchAccentColorOption.defaultOption.rawValue
 
@@ -1619,20 +1631,24 @@ struct GeminiSkillsPicker: View {
         themedNotchAccentColor(from: accentColorID)
     }
 
-    private var allSkillNames: Set<String> {
-        Set(installedSkills.map(\.metadata.name))
+    private var allSkillIDs: Set<String> {
+        Set(installedSkills.map(\.id))
     }
 
     private var hasAllSkillsSelected: Bool {
-        !installedSkills.isEmpty && selection.isSuperset(of: allSkillNames)
+        !installedSkills.isEmpty && selection.isSuperset(of: allSkillIDs)
+    }
+
+    private func isUserManaged(_ skill: InstalledSkill) -> Bool {
+        skill.source != .builtin
     }
 
     private var sortedSkills: [InstalledSkill] {
         installedSkills.sorted { s1, s2 in
-            let isU1 = userSkillNames.contains(s1.metadata.name)
-            let isU2 = userSkillNames.contains(s2.metadata.name)
-            if isU1 != isU2 {
-                return isU1 // User skills first
+            let u1 = isUserManaged(s1)
+            let u2 = isUserManaged(s2)
+            if u1 != u2 {
+                return u1
             }
             return s1.metadata.name < s2.metadata.name
         }
@@ -1644,11 +1660,11 @@ struct GeminiSkillsPicker: View {
                 Text(Localization.get("Skills", lang: appLanguage))
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(.white.opacity(0.4))
-                
+
                 Spacer()
 
-                if let onImport = onImport {
-                    Button(action: onImport) {
+                if let onCreateInEditor {
+                    Button(action: onCreateInEditor) {
                         HStack(spacing: 4) {
                             Image(systemName: "plus")
                             Text(Localization.get("New Skill", lang: appLanguage))
@@ -1662,12 +1678,12 @@ struct GeminiSkillsPicker: View {
                     .buttonStyle(.plain)
                     .disabled(isDisabled)
                 }
-                
+
                 Button {
                     if hasAllSkillsSelected {
                         selection = []
                     } else {
-                        selection = allSkillNames
+                        selection = allSkillIDs
                     }
                 } label: {
                     Text(Localization.get(hasAllSkillsSelected ? "Disable All" : "Enable All", lang: appLanguage))
@@ -1685,54 +1701,77 @@ struct GeminiSkillsPicker: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 10)
             } else {
-                ForEach(sortedSkills, id: \.metadata.name) { skill in
-                    let isSelected = selection.contains(skill.metadata.name)
-                    let isUserSkill = userSkillNames.contains(skill.metadata.name)
-                    
+                ForEach(sortedSkills, id: \.id) { skill in
+                    let isSelected = selection.contains(skill.id)
+
                     HStack(spacing: 8) {
-                        Image(systemName: skill.metadata.icon)
-                            .font(.system(size: 10, weight: .bold))
-                            .frame(width: 14)
-                            .foregroundStyle(isSelected ? themeAccent : .white.opacity(0.4))
-                        
+                        Color.clear
+                            .frame(width: 14, height: 12)
+
                         Text(skill.metadata.name)
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(isSelected ? .white : .white.opacity(0.6))
-                        
-                        if isUserSkill {
+
+                        if isUserManaged(skill) {
                             Text("User")
                                 .font(.system(size: 8, weight: .bold))
                                 .padding(.horizontal, 4)
                                 .background(themeAccent.opacity(0.2))
                                 .cornerRadius(4)
+                        } else if skill.source == .builtin {
+                            Text("Built-in")
+                                .font(.system(size: 8, weight: .bold))
+                                .padding(.horizontal, 4)
+                                .background(Color.white.opacity(0.08))
+                                .cornerRadius(4)
                         }
 
                         Spacer()
-                        
+
+                        if onEdit != nil || onDuplicate != nil || onDelete != nil {
+                            Menu {
+                                if let onEdit {
+                                    Button {
+                                        onEdit(skill.id)
+                                    } label: {
+                                        Label(Localization.get("Edit", lang: appLanguage), systemImage: "pencil")
+                                    }
+                                }
+                                if let onDuplicate {
+                                    Button {
+                                        onDuplicate(skill.id)
+                                    } label: {
+                                        Label(Localization.get("Duplicate", lang: appLanguage), systemImage: "doc.on.doc")
+                                    }
+                                }
+                                if isUserManaged(skill), let onDelete {
+                                    Button(role: .destructive) {
+                                        onDelete(skill.id)
+                                    } label: {
+                                        Label(Localization.get("Delete", lang: appLanguage), systemImage: "trash")
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: "ellipsis.circle")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.35))
+                            }
+                            .menuStyle(.borderlessButton)
+                            .disabled(isDisabled)
+                        }
+
                         Toggle("", isOn: Binding(
                             get: { isSelected },
                             set: { newValue in
                                 if newValue {
-                                    selection.insert(skill.metadata.name)
+                                    selection.insert(skill.id)
                                 } else {
-                                    selection.remove(skill.metadata.name)
+                                    selection.remove(skill.id)
                                 }
                             }
                         ))
                         .toggleStyle(NotchSwitchStyle(tint: themeAccent))
                         .disabled(isDisabled)
-
-                        if isUserSkill, let onDeleteName = onDeleteName {
-                            Button {
-                                onDeleteName(skill.metadata.name)
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(.white.opacity(0.25))
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.leading, 4)
-                        }
                     }
                     .padding(.horizontal, 10)
                     .frame(height: 28)
@@ -1744,65 +1783,6 @@ struct GeminiSkillsPicker: View {
             }
         }
         .frame(maxWidth: .infinity)
-    }
-}
-
-struct GeminiSkillManagementMenu: View {
-    let installedSkills: [InstalledSkill]
-    let isDisabled: Bool
-    let onImport: () -> Void
-    let onDelete: (InstalledSkill) -> Void
-    
-    @AppStorage("app_language") private var appLanguage: String = "English"
-    @AppStorage(NotchAccentColorOption.storageKey) private var accentColorID: String = NotchAccentColorOption.defaultOption.rawValue
-
-    private var themeAccent: Color {
-        themedNotchAccentColor(from: accentColorID)
-    }
-
-    var body: some View {
-        Menu {
-            Button(action: onImport) {
-                Label(Localization.get("Add Skill", lang: appLanguage), systemImage: "plus")
-            }
-
-            Divider()
-
-            if installedSkills.isEmpty {
-                Text(Localization.get("No user skills", lang: appLanguage))
-            } else {
-                ForEach(installedSkills, id: \.metadata.name) { skill in
-                    Button(role: .destructive) {
-                        onDelete(skill)
-                    } label: {
-                        Label("\(Localization.get("Delete", lang: appLanguage)) \(skill.metadata.name)", systemImage: "trash")
-                    }
-                }
-            }
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "square.and.arrow.down")
-                    .font(.system(size: 11, weight: .bold))
-                Text(Localization.get("Manage skills", lang: appLanguage))
-                    .font(.system(size: 11, weight: .bold))
-                    .lineLimit(1)
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.black.opacity(0.5))
-            }
-            .foregroundStyle(.black.opacity(0.85))
-            .padding(.horizontal, 12)
-            .frame(height: 26)
-            .background(
-                Capsule()
-                    .fill(themeAccent)
-                    .shadow(color: .black.opacity(0.1), radius: 1, x: 0, y: 1)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(isDisabled)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

@@ -6,7 +6,7 @@ import NotchChatHistoryCore
 @preconcurrency import ScreenCaptureKit
 import Security
 import SwiftUI
-import UniformTypeIdentifiers
+import NotchGeminiSkillStorage
 
 @MainActor
 final class GeminiLiveViewModel: ObservableObject {
@@ -95,11 +95,12 @@ final class GeminiLiveViewModel: ObservableObject {
             persistSettings()
         }
     }
-    @Published var enabledSkillNames: Set<String> = [] {
+    @Published var enabledSkillIDs: Set<String> = [] {
         didSet {
-            normalizeEnabledSkillNames()
+            normalizeEnabledSkillIDs()
             if let idx = systemPromptPresets.firstIndex(where: { $0.id == selectedSystemPromptID }) {
-                systemPromptPresets[idx].enabledSkillNames = enabledSkillNames.sorted()
+                systemPromptPresets[idx].enabledSkillIDs = enabledSkillIDs.sorted()
+                systemPromptPresets[idx].enabledSkillNames = []
             }
             persistSettings()
         }
@@ -144,7 +145,7 @@ final class GeminiLiveViewModel: ObservableObject {
     }
     let toolingController: GeminiLiveToolingController
     private var currentSkillSnapshot: SkillSessionSnapshot?
-    private var isNormalizingEnabledSkillNames = false
+    private var isNormalizingEnabledSkillIDs = false
 
     private var storedAPIKey: String?
     private var storedBackendConfiguration: GeminiLiveBackendConfiguration?
@@ -162,7 +163,7 @@ final class GeminiLiveViewModel: ObservableObject {
     private var settingsStore: GeminiLiveSettingsStore { settingsController.settingsStore }
     private var agentAvatarStore: GeminiAgentAvatarStore { toolingController.agentAvatarStore }
     private var skillStore: SkillStore { toolingController.skillStore }
-    private var skillPackageService: SkillPackageService { toolingController.skillPackageService }
+    private var skillsRepository: GeminiSkillsRepository { toolingController.skillsRepository }
     private var userStore: UserStore { toolingController.userStore }
     private var memoryStore: MemoryStore { toolingController.memoryStore }
 
@@ -216,7 +217,7 @@ final class GeminiLiveViewModel: ObservableObject {
         backendURLText = GeminiLiveHostedBackend.defaultURL
         backendClientTokenText = ""
         backendAuthEmailText = ""
-        installedSkills = toolingController.skillStore.listInstalledSkills()
+        installedSkills = (try? toolingController.skillsRepository.listInstalledSkillsSorted()) ?? []
 
         let savedSettings = settingsController.settingsStore.read()
         if let savedSettings {
@@ -262,16 +263,8 @@ final class GeminiLiveViewModel: ObservableObject {
         recomputeProEntitlement()
         syncConfiguredConnectionState(updateStatus: true)
 
+        migrateEnabledSkillsFromLegacyPresetFieldsIfNeeded()
         normalizeSystemPromptSelection()
-        // Load all per-preset settings without triggering write-through didSets.
-        let active = selectedSystemPromptPreset
-        _thinkingLevel = Published(initialValue: active.thinkingEnum)
-        _selectedVoice = Published(initialValue: active.voiceEnum)
-        _selectedModel = Published(initialValue: active.modelEnum)
-        _enabledTools = Published(initialValue: active.toolSet)
-        _enabledSkillNames = Published(initialValue: Set(active.enabledSkillNames))
-        normalizeEnabledSkillNames()
-        syncEnabledSkillNamesToActivePreset()
         session.setOutputVolume(outputVolume)
         execApprovals.$pending.assign(to: &$pendingExecApprovals)
         execApprovals.onApprove = { [weak self] toolCallID in
@@ -558,6 +551,7 @@ final class GeminiLiveViewModel: ObservableObject {
         }
         
         configureExecApprovalCallbacks()
+        configureSkillWriterCallbacks()
 
         // Derive overlayInput from all relevant publishers so observers subscribe to one source.
         Publishers.CombineLatest(
@@ -728,11 +722,12 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     var activeInstalledSkills: [InstalledSkill] {
-        installedSkills.filter { enabledSkillNames.contains($0.metadata.name) }
+        let lookup = Dictionary(uniqueKeysWithValues: installedSkills.map { ($0.id, $0) })
+        return enabledSkillIDs.sorted().compactMap { lookup[$0] }
     }
 
     var userInstalledSkills: [InstalledSkill] {
-        installedSkills.filter { $0.metadata.category.lowercased() != "builtin" }
+        installedSkills.filter { $0.source != .builtin }
     }
 
     var effectiveEnabledTools: Set<GeminiTool> {
@@ -764,14 +759,7 @@ final class GeminiLiveViewModel: ObservableObject {
         guard selectedSystemPromptID != id else { return }
         selectedSystemPromptID = id
         systemPromptPresets[existingIndex].lastUsedAt = Date()
-        let active = systemPromptPresets[existingIndex]
-        _thinkingLevel = Published(initialValue: active.thinkingEnum)
-        _selectedVoice = Published(initialValue: active.voiceEnum)
-        _selectedModel = Published(initialValue: active.modelEnum)
-        _enabledTools = Published(initialValue: active.toolSet)
-        _enabledSkillNames = Published(initialValue: Set(active.enabledSkillNames))
-        normalizeEnabledSkillNames()
-        syncEnabledSkillNamesToActivePreset()
+        applySelectedPresetRuntimeState()
         persistSettings()
     }
 
@@ -789,11 +777,7 @@ final class GeminiLiveViewModel: ObservableObject {
         )
         systemPromptPresets.append(preset)
         selectedSystemPromptID = preset.id
-        _thinkingLevel = Published(initialValue: .off)
-        _selectedVoice = Published(initialValue: .kore)
-        _selectedModel = Published(initialValue: .flashLivePreview)
-        _enabledTools = Published(initialValue: [])
-        _enabledSkillNames = Published(initialValue: [])
+        applySelectedPresetRuntimeState()
         persistSettings()
         return preset
     }
@@ -872,11 +856,6 @@ final class GeminiLiveViewModel: ObservableObject {
             )
             systemPromptPresets.append(preset)
             selectedSystemPromptID = preset.id
-            _thinkingLevel = Published(initialValue: .off)
-            _selectedVoice = Published(initialValue: .kore)
-            _selectedModel = Published(initialValue: .flashLivePreview)
-            _enabledTools = Published(initialValue: [])
-            _enabledSkillNames = Published(initialValue: [])
         }
 
         normalizeSystemPromptSelection()
@@ -921,6 +900,20 @@ final class GeminiLiveViewModel: ObservableObject {
         if !systemPromptPresets.contains(where: { $0.id == selectedSystemPromptID }) {
             selectedSystemPromptID = systemPromptPresets.first?.id ?? GeminiSystemPromptPreset.defaultPreset.id
         }
+
+        applySelectedPresetRuntimeState()
+    }
+
+    /// Restore thinking level, voice, model, tools, and skills UI from the selected preset (`@Published` didSets assume selection is already aligned).
+    private func applySelectedPresetRuntimeState() {
+        let active = selectedSystemPromptPreset
+        _thinkingLevel = Published(initialValue: active.thinkingEnum)
+        _selectedVoice = Published(initialValue: active.voiceEnum)
+        _selectedModel = Published(initialValue: active.modelEnum)
+        _enabledTools = Published(initialValue: active.toolSet)
+        _enabledSkillIDs = Published(initialValue: Set(active.enabledSkillIDs))
+        normalizeEnabledSkillIDs()
+        syncEnabledSkillIDsToActivePreset()
     }
 
     private func buildSystemPrompt(
@@ -1023,6 +1016,9 @@ final class GeminiLiveViewModel: ObservableObject {
         if effectiveTools.contains(.exec) {
             lines.append("- Use `exec` to run shell commands. Every command requires explicit user approval before execution. Prefer native tools over exec when possible.")
         }
+        if effectiveTools.contains(.skillWriter) {
+            lines.append("- Use `skillWriter` only to persist reusable skills the user confirms. Saves require explicit approval in Notch; never claim a skill saved until the approval flow succeeds.")
+        }
 
         return lines.joined(separator: "\n")
     }
@@ -1051,6 +1047,8 @@ final class GeminiLiveViewModel: ObservableObject {
             return ToolActionToast(label: "Using memory…", icon: "brain", showsInOverlay: false)
         case "exec":
             return ToolActionToast(label: "Running command…", icon: "terminal", showsInOverlay: false)
+        case "skillWriter":
+            return ToolActionToast(label: "Skill writer pending approval…", icon: "wand.and.rays.inverse", showsInOverlay: false)
         default:
             return nil
         }
@@ -1085,6 +1083,8 @@ final class GeminiLiveViewModel: ObservableObject {
             return ToolActionToast(label: "Memory updated", icon: "brain", showsInOverlay: false)
         case "exec":
             return ToolActionToast(label: "Command executed", icon: "terminal", showsInOverlay: false)
+        case "skillWriter":
+            return ToolActionToast(label: message ?? "Skill saved", icon: "wand.and.rays.inverse", showsInOverlay: false)
         default:
             return nil
         }
@@ -1114,6 +1114,8 @@ final class GeminiLiveViewModel: ObservableObject {
             return "Memory failed."
         case "exec":
             return "Command failed."
+        case "skillWriter":
+            return "Skill writer failed."
         default:
             return "Tool failed."
         }
@@ -1770,70 +1772,83 @@ final class GeminiLiveViewModel: ObservableObject {
         screenShare.stop()
     }
 
-    func importSkill() {
+    func deleteSkill(id: String) {
         guard canManageSkills else { return }
-
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: "skill") ?? .zip]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = true
-        panel.prompt = "Import"
-        panel.message = "Choose a .skill package or a folder containing SKILL.md."
-
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            let installed: InstalledSkill
-            do {
-                installed = try skillPackageService.importSkillSource(from: url)
-            } catch SkillImportError.duplicateSkill(let name) {
-                let alert = NSAlert()
-                alert.alertStyle = .warning
-                alert.messageText = "Replace existing skill?"
-                alert.informativeText = "A skill named \"\(name)\" is already installed. Replace it with this package?"
-                alert.addButton(withTitle: "Replace")
-                alert.addButton(withTitle: "Cancel")
-                guard alert.runModal() == .alertFirstButtonReturn else { return }
-                installed = try skillPackageService.importSkillSource(from: url, replacingExisting: true)
-            }
-
-            reloadInstalledSkills()
-            enabledSkillNames.insert(installed.metadata.name)
-            statusText = "Imported skill \"\(installed.metadata.name)\"."
-            lastErrorMessage = nil
-        } catch {
-            lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            statusText = "Skill import failed."
-        }
-    }
-
-    func deleteSkill(named name: String) {
-        guard canManageSkills else { return }
-
+        guard let skill = installedSkills.first(where: { $0.id == id }) else { return }
 
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "Delete skill?"
-        alert.informativeText = "Delete \"\(name)\" from Notch? This removes the skill package from your Mac."
+        alert.informativeText = "Delete \"\(skill.metadata.name)\" from Notch? You can recreate it anytime."
         alert.addButton(withTitle: "Delete")
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
 
         do {
-            try skillStore.deleteSkill(named: name)
+            try skillsRepository.deleteSkill(id: skill.id)
             for i in systemPromptPresets.indices {
-                systemPromptPresets[i].enabledSkillNames.removeAll { $0 == name }
+                systemPromptPresets[i].enabledSkillIDs.removeAll { $0 == skill.id }
+                systemPromptPresets[i].enabledSkillNames.removeAll()
             }
-            enabledSkillNames.remove(name)
+            enabledSkillIDs.remove(skill.id)
             reloadInstalledSkills()
-            statusText = "Deleted skill \"\(name)\"."
+            statusText = "Deleted skill \"\(skill.metadata.name)\"."
             lastErrorMessage = nil
         } catch {
-            lastErrorMessage = "Couldn't delete skill \"\(name)\": \(error.localizedDescription)"
+            lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             statusText = "Skill deletion failed."
         }
     }
 
+    func ingestSkillsEditorSaveFailure(_ error: Error) {
+        lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+    }
+
+    func persistSkillDraftFromEditor(skillID: String?, draft: SkillDraft) throws {
+        if let sid = skillID {
+            _ = try skillsRepository.updateSkill(id: sid, draft: draft, allowUpdatingBuiltin: false)
+        } else {
+            _ = try skillsRepository.createSkill(draft: draft, source: .user)
+        }
+        reloadInstalledSkills()
+        statusText = "Skill saved."
+        lastErrorMessage = nil
+    }
+
+    func duplicateSkill(id: String) throws {
+        _ = try skillsRepository.duplicateSkill(id: id)
+        reloadInstalledSkills()
+        statusText = "Duplicated skill."
+        lastErrorMessage = nil
+    }
+
+    func duplicateSkillFromPicker(id: String) {
+        do {
+            try duplicateSkill(id: id)
+        } catch {
+            lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            statusText = "Couldn't duplicate skill."
+        }
+    }
+
+    func skillRecord(for id: String) -> SkillRecord? {
+        skillsRepository.record(id: id)
+    }
+
+    func resolvedSkillDraft(forSkillID id: String) -> SkillDraft? {
+        guard let record = skillsRepository.record(id: id) else { return nil }
+        return SkillDraft(
+            name: record.name,
+            description: record.description,
+            category: record.category,
+            instructions: record.instructions
+        )
+    }
+
+    func deleteSkill(named name: String) {
+        guard let match = installedSkills.first(where: { $0.metadata.name == name }) else { return }
+        deleteSkill(id: match.id)
+    }
     func reloadKeyDrafts() {
         let currentBackendConfiguration = backendConfigStore.read()
         storedBackendConfiguration = currentBackendConfiguration
@@ -1951,37 +1966,63 @@ final class GeminiLiveViewModel: ObservableObject {
     }
 
     private func reloadInstalledSkills() {
-        installedSkills = skillStore.listInstalledSkills()
-        normalizeEnabledSkillNames()
+        installedSkills = (try? skillsRepository.listInstalledSkillsSorted()) ?? []
+        normalizeEnabledSkillIDs()
     }
 
     private func makeSkillSessionSnapshot() -> SkillSessionSnapshot {
-        let skillsByName = Dictionary(uniqueKeysWithValues: activeInstalledSkills.map { ($0.metadata.name, $0) })
-        let enabledNames = activeInstalledSkills.map(\.metadata.name).sorted()
+        let skillsById = Dictionary(uniqueKeysWithValues: activeInstalledSkills.map { ($0.id, $0) })
+        let enabledIDs = activeInstalledSkills.map(\.id).sorted()
         return SkillSessionSnapshot(
-            skillsByName: skillsByName,
-            enabledSkillNames: enabledNames,
+            skillsById: skillsById,
+            enabledSkillIDs: enabledIDs,
             effectiveTools: effectiveEnabledTools
         )
     }
 
-    private func normalizeEnabledSkillNames() {
-        guard !isNormalizingEnabledSkillNames else { return }
-        isNormalizingEnabledSkillNames = true
-        defer { isNormalizingEnabledSkillNames = false }
+    private func normalizeEnabledSkillIDs() {
+        guard !isNormalizingEnabledSkillIDs else { return }
+        isNormalizingEnabledSkillIDs = true
+        defer { isNormalizingEnabledSkillIDs = false }
 
-        let validNames = Set(installedSkills.map(\.metadata.name))
-        let filtered = enabledSkillNames.intersection(validNames)
-        if filtered != enabledSkillNames {
-            enabledSkillNames = filtered
+        let valid = Set(installedSkills.map(\.id))
+        let filtered = enabledSkillIDs.intersection(valid)
+        if filtered != enabledSkillIDs {
+            enabledSkillIDs = filtered
         }
     }
 
-    private func syncEnabledSkillNamesToActivePreset() {
+    private func syncEnabledSkillIDsToActivePreset() {
         guard let idx = systemPromptPresets.firstIndex(where: { $0.id == selectedSystemPromptID }) else { return }
-        systemPromptPresets[idx].enabledSkillNames = enabledSkillNames.sorted()
+        systemPromptPresets[idx].enabledSkillIDs = enabledSkillIDs.sorted()
+        systemPromptPresets[idx].enabledSkillNames = []
     }
 
+    private func migrateEnabledSkillsFromLegacyPresetFieldsIfNeeded() {
+        guard !installedSkills.isEmpty else { return }
+        let map = Dictionary(
+            installedSkills.map {
+                ($0.metadata.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), $0.id)
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+        var changed = false
+        for index in systemPromptPresets.indices where systemPromptPresets[index].enabledSkillIDs.isEmpty
+            && !systemPromptPresets[index].enabledSkillNames.isEmpty {
+            let ids = systemPromptPresets[index].enabledSkillNames.compactMap { legacyName in
+                let key = legacyName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                return map[key]
+            }
+            if !ids.isEmpty {
+                systemPromptPresets[index].enabledSkillIDs = ids
+                systemPromptPresets[index].enabledSkillNames = []
+                changed = true
+            }
+        }
+        if changed {
+            persistSettings()
+        }
+    }
     private var draftBackendURL: String? {
         let trimmedInput = backendURLText.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmedInput.isEmpty ? nil : trimmedInput
@@ -2145,6 +2186,67 @@ final class GeminiLiveViewModel: ObservableObject {
             completion(false)
         @unknown default:
             completion(false)
+        }
+    }
+}
+
+@MainActor
+extension GeminiLiveViewModel {
+    func configureSkillWriterCallbacks() {
+        let repo = toolingController.skillsRepository
+        session.skillDraftValidationRecordsProvider = {
+            repo.allRecords()
+        }
+        session.onSkillWriterApprovalRequested = { [weak self] request in
+            DispatchQueue.main.async {
+                self?.presentSkillWriterApprovalAlert(for: request)
+            }
+        }
+        session.onSkillWriterExecuteApproved = { [weak self] pending, reply in
+            Task { @MainActor [weak self] in
+                guard let self else {
+                    reply(["success": false, "error": "Skill writer handler unavailable."])
+                    return
+                }
+                reply(self.persistSkillDraftAfterToolApproval(pending))
+            }
+        }
+    }
+
+    private func persistSkillDraftAfterToolApproval(_ pending: PendingSkillWriterCall) -> [String: Any] {
+        do {
+            let record = try skillsRepository.applyToolWrite(action: pending.action, draft: pending.draft, skillId: pending.existingSkillID)
+            reloadInstalledSkills()
+            return [
+                "success": true,
+                "skillId": record.id,
+                "name": record.name,
+                "message": "Skill saved to Notch Settings.",
+            ]
+        } catch {
+            return ["success": false, "error": (error as? LocalizedError)?.errorDescription ?? error.localizedDescription]
+        }
+    }
+
+    private func presentSkillWriterApprovalAlert(for request: SkillWriterApprovalRequest) {
+        NSApp.activate(ignoringOtherApps: true)
+        postToolAction(
+            label: "Skill write approval needed",
+            icon: "wand.and.rays.inverse",
+            showsInOverlay: false,
+            autoClearAfter: nil
+        )
+        onExecApprovalAttentionRequested?()
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = request.summary
+        alert.informativeText = request.preview
+        alert.addButton(withTitle: "Allow Save")
+        alert.addButton(withTitle: "Deny")
+        if alert.runModal() == .alertFirstButtonReturn {
+            session.approveSkillWriterCall(toolCallID: request.toolCallID)
+        } else {
+            session.denySkillWriterCall(toolCallID: request.toolCallID)
         }
     }
 }

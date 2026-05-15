@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import NotchGeminiSkillStorage
 import NotchTooling
 
 extension GeminiLiveSession {
@@ -36,6 +37,8 @@ extension GeminiLiveSession {
             handleAppleMailCall(id: id, call: call)
         case GeminiLiveToolName.showResult:
             handleShowResultCall(id: id, call: call)
+        case GeminiLiveToolName.skillWriter:
+            handleSkillWriterCall(id: id, call: call)
         default:
             sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
         }
@@ -464,6 +467,66 @@ extension GeminiLiveSession {
             self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
             self.sendFunctionResponse(id: id, name: name, result: result)
         }
+    }
+
+    private func handleSkillWriterCall(id: String, call: [String: Any]) {
+        let name = GeminiLiveToolName.skillWriter
+        guard let rawArgs = call["args"] as? [String: Any] else {
+            sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
+            return
+        }
+        let args = GeminiToolArgumentNormalizer.normalize(rawArgs)
+        let actionRaw = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["action"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+        guard let action = SkillWriterToolAction(rawValue: actionRaw) else {
+            sendFunctionResponse(id: id, name: name, result: ["success": false, "error": "Invalid action; use create or update."])
+            return
+        }
+        let skillId = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["skillId", "skill_id", "id"])
+        if action == .update, (skillId?.isEmpty ?? true) {
+            sendFunctionResponse(id: id, name: name, result: ["success": false, "error": "update requires skillId."])
+            return
+        }
+        let skillName = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["name"]) ?? ""
+        let description = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["description"]) ?? ""
+        let instructions = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["instructions"]) ?? ""
+        let draft = SkillDraft(name: skillName, description: description, category: "general", instructions: instructions)
+        let records = skillDraftValidationRecordsProvider?() ?? []
+        let excludingRecordID = action == .update ? skillId : nil
+        let validation = SkillDraftValidator.validate(
+            draft: draft,
+            existingRecords: records,
+            excludingRecordID: excludingRecordID,
+            requireNonEmptyInstructions: true
+        )
+        if case let .failure(err) = validation {
+            sendFunctionResponse(id: id, name: name, result: ["success": false, "error": err.errorDescription ?? "Validation failed."])
+            return
+        }
+        let pending = PendingSkillWriterCall(
+            toolCallID: id,
+            args: args,
+            action: action,
+            draft: draft,
+            existingSkillID: skillId
+        )
+        enqueuePendingSkillWriterApproval(pending)
+        let previewLimit = 900
+        let previewBody: String
+        if draft.instructions.count > previewLimit {
+            previewBody = String(draft.instructions.prefix(previewLimit)) + "\n…"
+        } else {
+            previewBody = draft.instructions
+        }
+        let summary: String
+        switch action {
+        case .create:
+            summary = "Allow saving a new skill named \"\(draft.name)\"?"
+        case .update:
+            summary = "Allow updating skill \"\(draft.name)\" (\(skillId ?? "missing id"))?"
+        }
+        onSkillWriterApprovalRequested?(SkillWriterApprovalRequest(toolCallID: id, summary: summary, preview: previewBody))
     }
 }
 

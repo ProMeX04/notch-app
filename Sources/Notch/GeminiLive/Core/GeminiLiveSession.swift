@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 import Foundation
+import NotchGeminiSkillStorage
 import NotchTooling
 
 struct PendingExecApprovalCall {
@@ -90,6 +91,10 @@ final class GeminiLiveSession: @unchecked Sendable {
     var onFunctionExecuted: (@Sendable (_ name: String, _ args: [String: Any], _ result: [String: Any]) -> Void)?
     var onShouldAutoApproveExec: (@Sendable (_ command: String, _ workingDirectory: String?) -> Bool)?
     var onExecApprovalRequested: (@Sendable (ExecApprovalRequest) -> Void)?
+    var onSkillWriterApprovalRequested: (@Sendable (SkillWriterApprovalRequest) -> Void)?
+    var onSkillWriterExecuteApproved: (@Sendable (PendingSkillWriterCall, @escaping @Sendable ([String: Any]) -> Void) -> Void)?
+    /// Used to validate Gemini-proposed drafts (duplicate names etc.) against the live skill store snapshot.
+    var skillDraftValidationRecordsProvider: (@Sendable () -> [SkillRecord])?
 
     /// Intercept handler for `notchctl` URL-scheme commands (media, focus, talk, panel, etc.).
     /// Returns `true` if the command was handled in-process, `false` to fall through to shell.
@@ -194,6 +199,8 @@ final class GeminiLiveSession: @unchecked Sendable {
     private var hasLoggedUnstableConnection = false
     private let execApprovalQueue = DispatchQueue(label: "dev.notch.gemini.exec-approval")
     private var pendingExecApprovalsByID: [String: PendingExecApprovalCall] = [:]
+    private let skillWriterApprovalQueue = DispatchQueue(label: "dev.notch.gemini.skill-writer")
+    private var pendingSkillWritesByID: [String: PendingSkillWriterCall] = [:]
 
     var currentResumptionHandle: String? {
         guard latestSessionHandleIsResumable else { return nil }
@@ -274,6 +281,7 @@ final class GeminiLiveSession: @unchecked Sendable {
             reconnectAttemptCount = 0
             hasLoggedUnstableConnection = false
             clearPendingExecApprovals()
+            clearPendingSkillWrites()
             isResumingConnection = false
             // Fire the disconnected state right away so the UI button/label
             // updates instantly even if the audio stack is still winding down.
@@ -633,6 +641,48 @@ final class GeminiLiveSession: @unchecked Sendable {
         execApprovalQueue.sync {
             pendingExecApprovalsByID.removeAll()
         }
+    }
+
+    func enqueuePendingSkillWriterApproval(_ pending: PendingSkillWriterCall) {
+        skillWriterApprovalQueue.sync {
+            pendingSkillWritesByID[pending.toolCallID] = pending
+        }
+    }
+
+    func takePendingSkillWriterCall(toolCallID: String) -> PendingSkillWriterCall? {
+        skillWriterApprovalQueue.sync {
+            pendingSkillWritesByID.removeValue(forKey: toolCallID)
+        }
+    }
+
+    func clearPendingSkillWrites() {
+        skillWriterApprovalQueue.sync {
+            pendingSkillWritesByID.removeAll()
+        }
+    }
+
+    func approveSkillWriterCall(toolCallID: String) {
+        let name = GeminiLiveToolName.skillWriter
+        guard let pending = takePendingSkillWriterCall(toolCallID: toolCallID) else { return }
+        let args = pending.args
+        notifyFunctionStarted(name: name, args: args)
+        let auditedArgs = SendableToolArgs(args: args)
+        onSkillWriterExecuteApproved?(pending, { @Sendable [weak self] result in
+            guard let self else { return }
+            self.notifyFunctionExecuted(name: name, args: auditedArgs.args, result: result)
+            self.sendFunctionResponse(id: toolCallID, name: name, result: result)
+        })
+    }
+
+    func denySkillWriterCall(toolCallID: String) {
+        let name = GeminiLiveToolName.skillWriter
+        _ = takePendingSkillWriterCall(toolCallID: toolCallID)
+        let result: [String: Any] = [
+            "success": false,
+            "error": "Skill write denied by user.",
+        ]
+        notifyFunctionExecuted(name: name, args: [:], result: result)
+        sendFunctionResponse(id: toolCallID, name: name, result: result)
     }
 
     func beginHeartbeatAfterSetup() {

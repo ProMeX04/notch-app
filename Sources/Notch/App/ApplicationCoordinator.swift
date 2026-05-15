@@ -142,21 +142,23 @@ final class ApplicationCoordinator {
         JarvisBackgroundWindowController.shared.show()
         JarvisBackgroundWindowController.shared.reloadOrbEmbeddedWebIfStoredPresetChanged()
 
-        let state: JarvisEnergyState
-        if gemini.isModelSpeaking {
-            state = .speaking
-        } else if gemini.isModelThinking {
-            state = .thinking
-        } else if gemini.isActivelyListening || (gemini.canSendLiveInput && gemini.effectiveMicrophoneEnabled) {
-            state = .listening
-        } else {
-            state = .idle
-        }
-
+        let energyState = Self.jarvisOrbEnergyState(for: gemini)
         JarvisBackgroundWindowController.shared.setEnergyState(
-            state,
+            energyState,
             signalLevel: gemini.microphoneInputLevel
         )
+    }
+
+    private static func jarvisOrbEnergyState(for gemini: GeminiLiveViewModel) -> JarvisEnergyState {
+        if gemini.isModelSpeaking {
+            .speaking
+        } else if gemini.isModelThinking {
+            .thinking
+        } else if gemini.isActivelyListening || (gemini.canSendLiveInput && gemini.effectiveMicrophoneEnabled) {
+            .listening
+        } else {
+            .idle
+        }
     }
 
     private func refreshProStatus() {

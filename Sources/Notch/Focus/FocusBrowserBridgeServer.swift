@@ -388,7 +388,7 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
 
     /// Enqueue a browser command. If the extension has an active WebSocket connection, push it immediately.
     /// Returns the result dictionary, or nil if the extension doesn't respond within the timeout.
-    func enqueueBrowserCommand(action: String, args: [String: Any], timeout: TimeInterval = 5) async -> [String: Any]? {
+    func enqueueBrowserCommand(action: String, args: [String: Any], timeout: TimeInterval = 15) async -> [String: Any]? {
         let id = UUID().uuidString
         let jsonArgs = args.mapValues { value -> JSONValue in
             switch value {
@@ -544,6 +544,12 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
             return
         }
 
+        let hasActiveConnection = commandQueue.sync { wsConnection != nil && wsConnected }
+        guard !hasActiveConnection else {
+            sendPlainTextResponse(status: "409 Conflict", body: "Another browser bridge client is already connected.", to: connection)
+            return
+        }
+
         let key = keyLine.split(separator: ":", maxSplits: 1).dropFirst().joined().trimmingCharacters(in: .whitespacesAndNewlines)
         let accept = webSocketAcceptKey(for: key)
         let response = [
@@ -556,7 +562,6 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
         ].joined(separator: "\r\n")
 
         commandQueue.sync {
-            wsConnection?.cancel()
             wsConnection = connection
             wsConnected = true
         }

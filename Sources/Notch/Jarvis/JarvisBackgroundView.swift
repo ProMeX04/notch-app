@@ -32,6 +32,11 @@ private final class JarvisOrbWKWebView: WKWebView {
         }
         super.mouseDown(with: event)
     }
+
+    override func rightMouseDown(with event: NSEvent) {
+        let menu = JarvisOrbContextMenu.makeOrbMenu()
+        NSMenu.popUpContextMenu(menu, with: event, for: self)
+    }
 }
 
 @MainActor

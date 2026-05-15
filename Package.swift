@@ -29,6 +29,10 @@ let package = Package(
             targets: ["NotchChatHistoryCore"]
         ),
         .library(
+            name: "NotchGeminiSkillStorage",
+            targets: ["NotchGeminiSkillStorage"]
+        ),
+        .library(
             name: "NotchScreenShareCore",
             targets: ["NotchScreenShareCore"]
         ),
@@ -51,6 +55,10 @@ let package = Package(
         .executable(
             name: "NotchMailParserTests",
             targets: ["NotchMailParserTests"]
+        ),
+        .executable(
+            name: "NotchSkillsTests",
+            targets: ["NotchSkillsTests"]
         ),
         .executable(
             name: "NotchChatHistoryTests",
@@ -79,10 +87,19 @@ let package = Package(
                 .unsafeFlags(["-enable-testing"]),
             ]
         ),
+        .target(
+            name: "NotchGeminiSkillStorage"
+        ),
+        .executableTarget(
+            name: "NotchSkillsTests",
+            dependencies: ["NotchGeminiSkillStorage"],
+            path: "Tests/NotchSkillsTests"
+        ),
         .executableTarget(
             name: "Notch",
             dependencies: [
                 "NotchTooling",
+                "NotchGeminiSkillStorage",
                 "NotchFocusCore",
                 "NotchShelfCore",
                 "NotchBridgeParserCore",

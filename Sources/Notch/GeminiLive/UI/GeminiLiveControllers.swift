@@ -49,7 +49,7 @@ final class GeminiLiveToolingController {
     let execApprovals: ExecApprovalCoordinator
     let agentAvatarStore: GeminiAgentAvatarStore
     let skillStore: SkillStore
-    let skillPackageService: SkillPackageService
+    let skillsRepository: GeminiSkillsRepository
     let userStore: UserStore
     let memoryStore: MemoryStore
 
@@ -58,7 +58,7 @@ final class GeminiLiveToolingController {
         execApprovals = ExecApprovalCoordinator(store: execApprovalStore)
         agentAvatarStore = GeminiAgentAvatarStore()
         skillStore = SkillStore()
-        skillPackageService = SkillPackageService(skillStore: skillStore)
+        skillsRepository = GeminiSkillsRepository()
         userStore = UserStore()
         memoryStore = MemoryStore()
     }

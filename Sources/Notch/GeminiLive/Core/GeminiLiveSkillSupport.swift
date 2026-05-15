@@ -1,10 +1,9 @@
-import AppKit
 import Foundation
+import NotchGeminiSkillStorage
 
 struct SkillFrontmatter: Hashable, Sendable {
     let name: String
     let description: String
-    let icon: String
     let category: String
     let requiredTools: Set<GeminiTool>
     let usesMemory: Bool
@@ -12,51 +11,35 @@ struct SkillFrontmatter: Hashable, Sendable {
 }
 
 struct InstalledSkill: Identifiable, Hashable, Sendable {
+    let recordId: String
     let metadata: SkillFrontmatter
     let instructions: String
     let rootURL: URL
+    let source: SkillSource
 
-    var id: String { metadata.name }
+    var id: String { recordId }
 }
 
 struct SkillSessionSnapshot: Sendable {
-    let skillsByName: [String: InstalledSkill]
-    let enabledSkillNames: [String]
+    let skillsById: [String: InstalledSkill]
+    let enabledSkillIDs: [String]
     let effectiveTools: Set<GeminiTool>
 
     var activeSkills: [InstalledSkill] {
-        enabledSkillNames.compactMap { skillsByName[$0] }
+        enabledSkillIDs.compactMap { skillsById[$0] }
     }
 }
 
 enum SkillImportError: LocalizedError {
-    case invalidArchive
-    case invalidSkillFolder
-    case missingSkillMarkdown
-    case multipleSkillMarkdown
     case duplicateSkill(String)
     case invalidFrontmatter(String)
-    case invalidSkillName
-    case extractionFailed(String)
 
     var errorDescription: String? {
         switch self {
-        case .invalidArchive:
-            return "The selected .skill package couldn't be read."
-        case .invalidSkillFolder:
-            return "The selected folder doesn't look like a valid skill."
-        case .missingSkillMarkdown:
-            return "The selected skill source is missing SKILL.md."
-        case .multipleSkillMarkdown:
-            return "The selected folder contains more than one SKILL.md. Choose one specific skill folder, not the parent skills directory."
         case let .duplicateSkill(name):
             return "A skill named \"\(name)\" is already installed."
         case let .invalidFrontmatter(message):
             return message
-        case .invalidSkillName:
-            return "Skill name may only contain letters, numbers, hyphens, and underscores."
-        case let .extractionFailed(message):
-            return "Couldn't extract the .skill package: \(message)"
         }
     }
 }
@@ -70,6 +53,8 @@ enum GeminiLiveStoragePaths {
             try fileManager.createDirectory(at: stateRoot, withIntermediateDirectories: true)
             try fileManager.createDirectory(at: workspaceRoot, withIntermediateDirectories: true)
             try fileManager.createDirectory(at: skillsDirectory, withIntermediateDirectories: true)
+            try fileManager.createDirectory(at: skillsV2Root, withIntermediateDirectories: true)
+            try fileManager.createDirectory(at: skillsV2RenderedDirectory, withIntermediateDirectories: true)
             try fileManager.createDirectory(at: screenshotsDirectory, withIntermediateDirectories: true)
             try fileManager.createDirectory(at: agentAvatarsDirectory, withIntermediateDirectories: true)
             try fileManager.createDirectory(at: transcriptsDirectory, withIntermediateDirectories: true)
@@ -89,6 +74,20 @@ enum GeminiLiveStoragePaths {
 
     static var skillsDirectory: URL {
         workspaceRoot.appendingPathComponent("skills", isDirectory: true)
+    }
+
+    /// Managed JSON-backed skills (`skills.json`) plus rendered `SKILL.md` snapshots under `skills-v2/rendered/`.
+    static var skillsV2Root: URL {
+        workspaceRoot.appendingPathComponent("skills-v2", isDirectory: true)
+    }
+
+    static var skillsV2StoreFile: URL {
+        skillsV2Root.appendingPathComponent("skills.json", isDirectory: false)
+    }
+
+    /// Rendered SKILL.md snapshots for Gemini `read`; each skill id has its own subfolder containing `SKILL.md`.
+    static var skillsV2RenderedDirectory: URL {
+        skillsV2Root.appendingPathComponent("rendered", isDirectory: true)
     }
 
     static var screenshotsDirectory: URL {
@@ -251,137 +250,16 @@ final class SkillStore: @unchecked Sendable {
         guard let parsed = try? SkillFrontmatterParser.parse(content) else {
             return nil
         }
-        return InstalledSkill(metadata: parsed.frontmatter, instructions: parsed.instructions, rootURL: url)
+        let inferredSource: SkillSource = parsed.frontmatter.category.lowercased() == "builtin" ? .builtin : .user
+        return InstalledSkill(
+            recordId: url.lastPathComponent,
+            metadata: parsed.frontmatter,
+            instructions: parsed.instructions,
+            rootURL: url,
+            source: inferredSource
+        )
     }
 
-}
-
-final class SkillPackageService: @unchecked Sendable {
-    private let fileManager: FileManager
-    private let skillStore: SkillStore
-
-    init(fileManager: FileManager = .default, skillStore: SkillStore) {
-        self.fileManager = fileManager
-        self.skillStore = skillStore
-    }
-
-    @discardableResult
-    func importSkillPackage(from archiveURL: URL, replacingExisting: Bool = false) throws -> InstalledSkill {
-        try importSkillSource(from: archiveURL, replacingExisting: replacingExisting)
-    }
-
-    @discardableResult
-    func importSkillSource(from sourceURL: URL, replacingExisting: Bool = false) throws -> InstalledSkill {
-        try sourceURL.accessSecurityScopedResource { url in
-            var cleanupURL: URL?
-            let sourceRoot: URL
-            if try isDirectory(url) {
-                sourceRoot = url
-            } else {
-                let extractedRoot = try extractPackage(from: url)
-                cleanupURL = extractedRoot.deletingLastPathComponent()
-                sourceRoot = extractedRoot
-            }
-
-            defer {
-                if let cleanupURL {
-                    try? fileManager.removeItem(at: cleanupURL)
-                }
-            }
-
-            let validated = try validatedImportedSkill(in: sourceRoot)
-
-            if skillStore.skillExists(named: validated.frontmatter.name) {
-                guard replacingExisting else {
-                    throw SkillImportError.duplicateSkill(validated.frontmatter.name)
-                }
-                try skillStore.deleteSkill(named: validated.frontmatter.name)
-            }
-
-            let destination = GeminiLiveStoragePaths.skillsDirectory.appendingPathComponent(validated.frontmatter.name, isDirectory: true)
-            try fileManager.createDirectory(at: GeminiLiveStoragePaths.skillsDirectory, withIntermediateDirectories: true)
-            try fileManager.copyItem(at: validated.skillRoot, to: destination)
-            return InstalledSkill(
-                metadata: validated.frontmatter,
-                instructions: validated.instructions,
-                rootURL: destination
-            )
-        }
-    }
-
-    private func extractPackage(from archiveURL: URL) throws -> URL {
-        let tempRoot = fileManager.temporaryDirectory
-            .appendingPathComponent("NotchSkillImport-\(UUID().uuidString)", isDirectory: true)
-        let extractedRoot = tempRoot.appendingPathComponent("extracted", isDirectory: true)
-        try fileManager.createDirectory(at: extractedRoot, withIntermediateDirectories: true)
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        process.arguments = ["-x", "-k", archiveURL.path, extractedRoot.path]
-        let stderr = Pipe()
-        process.standardError = stderr
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            throw SkillImportError.invalidArchive
-        }
-
-        guard process.terminationStatus == 0 else {
-            let message = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? "Unknown extraction error."
-            throw SkillImportError.extractionFailed(message)
-        }
-
-        return extractedRoot
-    }
-
-    private func locateSkillMarkdown(in root: URL) throws -> URL {
-        guard try isDirectory(root) else {
-            throw SkillImportError.invalidSkillFolder
-        }
-
-        guard let enumerator = fileManager.enumerator(
-            at: root,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            throw SkillImportError.missingSkillMarkdown
-        }
-
-        var matches: [URL] = []
-        for case let url as URL in enumerator where url.lastPathComponent == "SKILL.md" {
-            matches.append(url)
-        }
-
-        switch matches.count {
-        case 0:
-            throw SkillImportError.missingSkillMarkdown
-        case 1:
-            return matches[0]
-        default:
-            throw SkillImportError.multipleSkillMarkdown
-        }
-    }
-
-    private func validatedImportedSkill(in root: URL) throws -> (frontmatter: SkillFrontmatter, instructions: String, skillRoot: URL) {
-        let skillMarkdown = try locateSkillMarkdown(in: root)
-        let skillRoot = skillMarkdown.deletingLastPathComponent()
-        let content = try String(contentsOf: skillMarkdown, encoding: .utf8)
-        let parsed = try SkillFrontmatterParser.parse(content)
-
-        guard SkillFrontmatterParser.isValidSkillIdentifier(parsed.frontmatter.name) else {
-            throw SkillImportError.invalidSkillName
-        }
-
-        return (parsed.frontmatter, parsed.instructions, skillRoot)
-    }
-
-    private func isDirectory(_ url: URL) throws -> Bool {
-        let values = try url.resourceValues(forKeys: [.isDirectoryKey])
-        return values.isDirectory == true
-    }
 }
 
 enum SkillFrontmatterParser {
@@ -419,14 +297,12 @@ enum SkillFrontmatterParser {
         }
 
         let category = requiredField("category", in: fields) ?? "general"
-        let icon = fields["icon"].flatMap { $0.isEmpty ? nil : $0 } ?? "sparkles"
         let requiredTools = try parseRequiredTools(fields["requiredTools"] ?? "[]")
         let usesMemory = parseBool(fields["memory"]) ?? false
         let version = fields["version"].flatMap { $0.isEmpty ? nil : $0 }
         let frontmatter = SkillFrontmatter(
             name: name,
             description: description,
-            icon: icon,
             category: category,
             requiredTools: requiredTools,
             usesMemory: usesMemory,
@@ -531,7 +407,6 @@ enum SkillPromptComposer {
             lines.append("  <skill>")
             lines.append("    <name>\(escape(skill.metadata.name))</name>")
             lines.append("    <description>\(escape(skill.metadata.description))</description>")
-            lines.append("    <category>\(escape(skill.metadata.category))</category>")
             let skillLocation = GeminiLiveStoragePaths.skillPromptLocation(for: skill)
             lines.append("    <location>\(escape(skillLocation))</location>")
             lines.append("  </skill>")

@@ -389,6 +389,44 @@ extension GeminiLiveSession {
                 ] as [String: Any]
             ])
         }
+        if enabledTools.contains(.skillWriter) {
+            decls.append([
+                "name": GeminiLiveToolName.skillWriter,
+                "description": """
+                Proposes creating or updating a Notch Skill (instructions the model may read via the `read` tool). Writes only after validation and explicit user confirmation in Notch.
+
+                Important:
+                - This does not toggle macOS permissions or Gemini tools automatically.
+                - Use sparingly — skills should be reusable playbooks rather than ephemeral chat transcripts.
+                """,
+                "parameters": [
+                    "type": "OBJECT",
+                    "properties": [
+                        "action": [
+                            "type": "STRING",
+                            "description": "Either \"create\" to add a new skill, or \"update\" to overwrite an existing one.",
+                        ],
+                        "skillId": [
+                            "type": "STRING",
+                            "description": "Required when action is \"update\": the SkillRecord id from the Skills list / prior tool responses.",
+                        ],
+                        "name": [
+                            "type": "STRING",
+                            "description": "Short skill title shown in Notch Settings.",
+                        ],
+                        "description": [
+                            "type": "STRING",
+                            "description": "One-line summary describing when to use this skill.",
+                        ],
+                        "instructions": [
+                            "type": "STRING",
+                            "description": "Markdown-friendly instructions loaded when this skill is read.",
+                        ],
+                    ],
+                    "required": ["action", "name", "description", "instructions"],
+                ] as [String: Any],
+            ])
+        }
         if enabledTools.contains(.showResult) {
             decls.append([
                 "name": GeminiLiveToolName.showResult,

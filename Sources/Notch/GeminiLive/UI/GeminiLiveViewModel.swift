@@ -195,31 +195,19 @@ final class GeminiLiveViewModel: ObservableObject {
         entitlementStore.decision(for: .talkConnection)
     }
 
-    init(
-        processInfo: ProcessInfo = .processInfo,
-        session: GeminiLiveSession = GeminiLiveSession(),
-        entitlementStore: NotchEntitlementStore = NotchEntitlementStore()
-    ) {
-        let settingsController = GeminiLiveSettingsController(processInfo: processInfo)
-        let accountController = GeminiLiveAccountController(
-            processInfo: processInfo,
-            entitlementStore: entitlementStore
-        )
-        let sessionController = GeminiLiveSessionController(session: session)
-        let toolingController = GeminiLiveToolingController()
-
-        self.entitlementStore = entitlementStore
-        self.settingsController = settingsController
-        self.accountController = accountController
-        self.sessionController = sessionController
-        self.toolingController = toolingController
+    init(dependencies: GeminiLiveViewModelDependencies) {
+        self.entitlementStore = dependencies.entitlementStore
+        self.settingsController = dependencies.settingsController
+        self.accountController = dependencies.accountController
+        self.sessionController = dependencies.sessionController
+        self.toolingController = dependencies.toolingController
         apiKeyText = ""
         backendURLText = GeminiLiveHostedBackend.defaultURL
         backendClientTokenText = ""
         backendAuthEmailText = ""
-        installedSkills = (try? toolingController.skillsRepository.listInstalledSkillsSorted()) ?? []
+        installedSkills = (try? dependencies.toolingController.skillsRepository.listInstalledSkillsSorted()) ?? []
 
-        let savedSettings = settingsController.settingsStore.read()
+        let savedSettings = dependencies.settingsController.settingsStore.read()
         if let savedSettings {
             isMicrophoneEnabled = savedSettings.isMicrophoneEnabled
             inputMode = savedSettings.inputMode
@@ -232,12 +220,12 @@ final class GeminiLiveViewModel: ObservableObject {
             selectedSystemPromptID = savedSettings.selectedSystemPromptID
         }
 
-        userProfileContent = toolingController.userStore.readUserProfile()
-        memoryContent = toolingController.memoryStore.readMainMemory()
+        userProfileContent = dependencies.toolingController.userStore.readUserProfile()
+        memoryContent = dependencies.toolingController.memoryStore.readMainMemory()
 
-        let currentGeminiKey = settingsController.keyStore.read()?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let currentGeminiKey = dependencies.settingsController.keyStore.read()?.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedCurrentGeminiKey = (currentGeminiKey?.isEmpty == false) ? currentGeminiKey : nil
-        let backend = accountController.backend
+        let backend = dependencies.accountController.backend
         storedAPIKey = normalizedCurrentGeminiKey
         apiKeyText = normalizedCurrentGeminiKey ?? ""
         backendAuthEmailText = backend.authenticatedEmail ?? backend.lastKnownEmail
@@ -247,7 +235,7 @@ final class GeminiLiveViewModel: ObservableObject {
         backendSignedInSummary = backend.signedInSummary
         isProFromBackend = backend.isProFromBackend
 
-        if let storedBackend = settingsController.backendConfigStore.read() {
+        if let storedBackend = dependencies.settingsController.backendConfigStore.read() {
             storedBackendConfiguration = storedBackend
             backendURLText = GeminiLiveHostedBackend.defaultURL
             backendClientTokenText = ""

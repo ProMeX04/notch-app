@@ -19,7 +19,10 @@ final class NotchAppEnvironment {
 
     init() {
         entitlementStore = NotchEntitlementStore()
-        geminiLiveViewModel = GeminiLiveViewModel(entitlementStore: entitlementStore)
+        let geminiDependencies = GeminiLiveViewModelDependencies.live(
+            entitlementStore: entitlementStore
+        )
+        geminiLiveViewModel = GeminiLiveViewModel(dependencies: geminiDependencies)
         learningStatsStore = LearningStatsStore()
         playbackViewModel = MediaProbeViewModel()
         pomodoroViewModel = PomodoroViewModel(learningStatsStore: learningStatsStore)

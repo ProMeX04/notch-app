@@ -31,8 +31,8 @@ extension GeminiLiveSession {
         if enabledTools.contains(.read) {
             decls.append([
                 "name": GeminiLiveToolName.read,
-                "description": GeminiWorkspaceCodingTools.openClawReadToolDescription,
-                "parameters": GeminiWorkspaceCodingTools.openClawReadToolParameters
+                "description": GeminiWorkspaceReadTool.openClawReadToolDescription,
+                "parameters": GeminiWorkspaceReadTool.openClawReadToolParameters
             ])
         }
         if enabledTools.contains(.calendar) {

@@ -71,8 +71,8 @@ struct NotchMarkdownView: View {
 
     @ViewBuilder
     private func proseText(_ raw: String) -> some View {
-        let textView = Text(LocalizedStringKey(raw))
-            .font(.system(size: 13, weight: .medium, design: .rounded))
+        let attributed = buildAttributed(markdown: raw, proseFontSize: 13)
+        let textView = Text(attributed)
             .foregroundStyle(proseColor)
             .multilineTextAlignment(isUser ? .trailing : .leading)
 
@@ -80,11 +80,65 @@ struct NotchMarkdownView: View {
         case .fillParent:
             textView.fixedSize(horizontal: false, vertical: true)
         case let .hugContent(maxW):
-            // `fixedSize(horizontal: true)` prevents multiline wrap — use max width + vertical growth.
             textView
                 .frame(maxWidth: maxW, alignment: isUser ? .trailing : .leading)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private func buildAttributed(markdown: String, proseFontSize: CGFloat) -> AttributedString {
+        var options = AttributedString.MarkdownParsingOptions()
+        options.interpretedSyntax = .full
+        options.failurePolicy = .returnPartiallyParsedIfPossible
+
+        guard var attributed = try? AttributedString(markdown: markdown, options: options) else {
+            return AttributedString(markdown)
+        }
+
+        let runsSnapshot = Array(attributed.runs)
+        for run in runsSnapshot {
+            var attrs = AttributeContainer()
+
+            let inlineCode = run.inlinePresentationIntent?.contains(.code) == true
+            let blockCode = codeBlockDepth(run.presentationIntent) != nil
+
+            if blockCode || inlineCode {
+                attrs.font = .system(size: 12, design: .monospaced)
+            } else if let level = headerLevel(run.presentationIntent) {
+                let scale: CGFloat = switch level {
+                case 1: 1.28
+                case 2: 1.18
+                default: 1.1
+                }
+                attrs.font = .system(size: proseFontSize * scale, weight: .semibold)
+            } else {
+                attrs.font = .system(size: proseFontSize, weight: .medium, design: .rounded)
+            }
+
+            attributed[run.range].mergeAttributes(attrs, mergePolicy: .keepNew)
+        }
+
+        return attributed
+    }
+
+    private func headerLevel(_ intent: PresentationIntent?) -> Int? {
+        guard let intent else { return nil }
+        for component in intent.components {
+            if case .header(let level) = component.kind {
+                return level
+            }
+        }
+        return nil
+    }
+
+    private func codeBlockDepth(_ intent: PresentationIntent?) -> Int? {
+        guard let intent else { return nil }
+        for component in intent.components {
+            if case .codeBlock = component.kind {
+                return 1
+            }
+        }
+        return nil
     }
 
     private func parseMarkdown(_ text: String) -> [MarkdownBlock] {
@@ -93,14 +147,12 @@ struct NotchMarkdownView: View {
         for (i, part) in parts.enumerated() {
             var content = part
             if i % 2 == 1 {
-                // It's a code block, try to strip language line
                 let lines = part.components(separatedBy: .newlines)
                 if lines.count > 1, !lines[0].contains(" "), !lines[0].isEmpty {
                     content = lines.dropFirst().joined(separator: "\n")
                 }
                 content = content.trimmingCharacters(in: .whitespacesAndNewlines)
             }
-            // Add block
             if !content.isEmpty || parts.count == 1 {
                 result.append(MarkdownBlock(id: i, content: content, isCode: i % 2 == 1))
             }

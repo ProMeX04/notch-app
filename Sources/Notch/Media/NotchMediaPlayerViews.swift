@@ -109,7 +109,7 @@ struct ExpandedMediaControlsView: View {
         VStack(alignment: .leading, spacing: 4) {
             // Header
             HStack(spacing: 4) {
-                Image(systemName: "music.note.square.fill")
+                Image(systemName: "music.note")
                     .font(.system(size: 10, weight: .semibold))
                 Text("ĐANG PHÁT")
                     .font(.system(size: 11, weight: .bold, design: .rounded))

@@ -421,7 +421,8 @@ struct GeminiTalkPanelView: View {
     @ObservedObject var entitlementStore: NotchEntitlementStore
     @ObservedObject var headerAccessoryController: NotchHeaderAccessoryController
     @ObservedObject var presentationModel: NotchPresentationModel
-    
+    var appSettingsController: AppSettingsControlling = AppSettingsController.shared
+
     @AppStorage("app_language") private var appLanguage: String = "English"
     @AppStorage(NotchAccentColorOption.storageKey) private var accentColorID: String = NotchAccentColorOption.defaultOption.rawValue
     @State private var setupViewMode: GeminiSetupViewMode = .home
@@ -466,7 +467,7 @@ struct GeminiTalkPanelView: View {
     }
 
     private func openSettingsPanel() {
-        AppSettingsController.shared.open(tab: .talk)
+        appSettingsController.open(tab: .talk)
     }
 
     @ViewBuilder

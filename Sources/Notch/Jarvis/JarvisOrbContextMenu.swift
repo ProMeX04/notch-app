@@ -34,6 +34,7 @@ private enum JarvisOrbParsedMenuSelection {
 @MainActor
 final class JarvisOrbContextMenuActions: NSObject {
     static let shared = JarvisOrbContextMenuActions()
+    var appSettingsController: AppSettingsControlling = AppSettingsController.shared
 
     private override init() {
         super.init()
@@ -59,7 +60,7 @@ final class JarvisOrbContextMenuActions: NSObject {
                 forKey: JarvisTalkBackgroundOrbSettings.showInDockWhenOrbVisibleDefaultsKey
             )
         case .openTalkSettings:
-            AppSettingsController.shared.open(tab: .talk)
+            appSettingsController.open(tab: .talk)
         case let .selectStyle(index):
             let styles = JarvisOrbVisualStyle.allCases
             guard styles.indices.contains(index) else { return }

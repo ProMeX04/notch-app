@@ -42,9 +42,18 @@ private final class JarvisOrbPanel: NSPanel {
     }
 }
 
+@MainActor
+protocol JarvisBackgroundWindowControlling: AnyObject {
+    func show()
+    func hide()
+    func reposition()
+    func reloadOrbEmbeddedWebIfStoredPresetChanged()
+    func setEnergyState(_ state: JarvisEnergyState, signalLevel: Double)
+}
+
 /// Điều khiển cửa sổ nổi hiển thị orb Gemini Live — resize cạnh + pseudo-fullscreen trong Space hiện tại.
 @MainActor
-final class JarvisBackgroundWindowController {
+final class JarvisBackgroundWindowController: JarvisBackgroundWindowControlling {
     static let shared = JarvisBackgroundWindowController()
 
     private static let minimumOrbWindowSize = NSSize(width: 260, height: 300)

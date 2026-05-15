@@ -1,9 +1,14 @@
 import Foundation
 import AppKit
 
-final class SystemPermissionsManager: Sendable {
+protocol SystemPermissionsManaging: Sendable {
+    func hasFullDiskAccess() -> Bool
+    func openFullDiskAccessSettings()
+}
+
+final class SystemPermissionsManager: SystemPermissionsManaging {
     static let shared = SystemPermissionsManager()
-    
+
     /// Checks if the application has Full Disk Access.
     /// A common way is to try and list a protected directory like ~/Library/Mail.
     func hasFullDiskAccess() -> Bool {

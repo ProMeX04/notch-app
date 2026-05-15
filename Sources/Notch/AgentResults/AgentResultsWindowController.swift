@@ -3,9 +3,16 @@ import Combine
 import SwiftUI
 
 @MainActor
-final class AgentResultsWindowController {
-    static let shared = AgentResultsWindowController()
+protocol AgentResultsWindowControlling: AnyObject {
+    func observeStore()
+    func hide()
+}
 
+@MainActor
+final class AgentResultsWindowController: AgentResultsWindowControlling {
+    static let shared = AgentResultsWindowController(store: .shared)
+
+    private let store: AgentResultStore
     private var window: NSPanel?
     private var hostingController: NSHostingController<AgentResultsView>?
     private var cancellables = Set<AnyCancellable>()
@@ -20,7 +27,9 @@ final class AgentResultsWindowController {
     private let panelHeight: CGFloat = 360
     private let frameDefaultsKey = "dev.notch.agent-results.frame"
 
-    private init() {}
+    private init(store: AgentResultStore) {
+        self.store = store
+    }
 
     var isVisible: Bool {
         window?.isVisible ?? false
@@ -32,7 +41,6 @@ final class AgentResultsWindowController {
         guard !hasSubscribed else { return }
         hasSubscribed = true
 
-        let store = AgentResultStore.shared
         lastObservedBatchCount = store.batchAppendCount
 
         store.$batchAppendCount
@@ -193,7 +201,7 @@ final class AgentResultsWindowController {
     }
 
     private func makeRootView() -> AgentResultsView {
-        AgentResultsView(store: AgentResultStore.shared) { [weak self] size in
+        AgentResultsView(store: store) { [weak self] size in
             Task { @MainActor [weak self] in
                 self?.contentSizeDidChange(size)
             }

@@ -19,4 +19,5 @@ protocol MediaControllerProtocol: ObservableObject {
     func setVolume(_ level: Double) async
     func isActive() -> Bool
     func updatePlaybackInfo() async
+    func shutdown()
 }

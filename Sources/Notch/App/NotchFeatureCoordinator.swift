@@ -55,19 +55,22 @@ final class NotchFeatureCoordinator: NotchCommandHandling {
     let presentationModel: NotchPresentationModel
 
     private let windowController: NotchWindowController
+    private let appSettingsController: AppSettingsControlling
 
     init(
         windowController: NotchWindowController,
         playbackViewModel: MediaProbeViewModel,
         pomodoroViewModel: PomodoroViewModel,
         geminiLiveViewModel: GeminiLiveViewModel,
-        presentationModel: NotchPresentationModel
+        presentationModel: NotchPresentationModel,
+        appSettingsController: AppSettingsControlling = AppSettingsController.shared
     ) {
         self.windowController = windowController
         self.playbackViewModel = playbackViewModel
         self.pomodoroViewModel = pomodoroViewModel
         self.geminiLiveViewModel = geminiLiveViewModel
         self.presentationModel = presentationModel
+        self.appSettingsController = appSettingsController
     }
 
     var isVisible: Bool {
@@ -78,8 +81,8 @@ final class NotchFeatureCoordinator: NotchCommandHandling {
         geminiLiveViewModel.onExecApprovalAttentionRequested = { [weak self] in
             self?.windowController.presentExecApproval()
         }
-        geminiLiveViewModel.onOpenAppSettingsRequested = {
-            AppSettingsController.shared.open(tab: .talk)
+        geminiLiveViewModel.onOpenAppSettingsRequested = { [weak self] in
+            self?.appSettingsController.open(tab: .talk)
         }
     }
 
@@ -282,7 +285,7 @@ final class NotchFeatureCoordinator: NotchCommandHandling {
     }
 
     func openAppSettings() {
-        AppSettingsController.shared.open(tab: .general)
+        appSettingsController.open(tab: .general)
     }
 
     func handleOAuthCallback(_ url: URL) {

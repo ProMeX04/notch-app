@@ -35,6 +35,7 @@ struct GeminiToolsPicker: View {
     @Binding var selection: Set<GeminiTool>
     var lockedTools: Set<GeminiTool> = []
     var isDisabled = false
+    var permissionsManager: SystemPermissionsManaging = SystemPermissionsManager.shared
     @State private var showExecWarning = false
     @State private var showFDAWarning = false
     @State private var pendingFDATool: GeminiTool?
@@ -53,7 +54,7 @@ struct GeminiToolsPicker: View {
     /// FDA-gated tools are skipped when access is missing (no Settings deep link spam).
     private var bulkEnableTools: Set<GeminiTool> {
         var base = allSelectableTools.subtracting([.exec])
-        if !SystemPermissionsManager.shared.hasFullDiskAccess() {
+        if !permissionsManager.hasFullDiskAccess() {
             base.subtract([.appleMail, .localFileSearch])
         }
         return base
@@ -136,7 +137,7 @@ struct GeminiToolsPicker: View {
                                         return
                                     }
                                     if tool == .appleMail || tool == .localFileSearch {
-                                        if !SystemPermissionsManager.shared.hasFullDiskAccess() {
+                                        if !permissionsManager.hasFullDiskAccess() {
                                             pendingFDATool = tool
                                             showFDAWarning = true
                                             return
@@ -177,7 +178,7 @@ struct GeminiToolsPicker: View {
                 pendingFDATool = nil
             }
             Button("Open System Settings") {
-                SystemPermissionsManager.shared.openFullDiskAccessSettings()
+                permissionsManager.openFullDiskAccessSettings()
                 // We don't insert yet because they haven't granted it yet.
                 // They'll need to toggle again after granting.
                 pendingFDATool = nil

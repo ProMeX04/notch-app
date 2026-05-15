@@ -85,7 +85,12 @@ final class AgentResultPersistenceService {
 }
 
 @MainActor
-final class AgentResultStore: ObservableObject {
+protocol AgentResultStoreControlling: AnyObject {
+    func shutdown()
+}
+
+@MainActor
+final class AgentResultStore: ObservableObject, AgentResultStoreControlling {
     static let shared = AgentResultStore()
 
     /// Newest items at index 0 (descending by `createdAt`).

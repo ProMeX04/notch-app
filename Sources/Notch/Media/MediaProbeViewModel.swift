@@ -15,14 +15,19 @@ final class MediaProbeViewModel: ObservableObject {
     
     @AppStorage("app_language") private var appLanguage: String = "English"
 
-    private let controller: NowPlayingController?
+    private let controller: (any MediaControllerProtocol)?
+    private let workspace: MediaWorkspaceProtocol
     private var cancellables = Set<AnyCancellable>()
     private var artworkComputationToken: UUID?
     private var debounceIdleTask: Task<Void, Never>?
     private var visualSignature = VisualSignature.empty
 
-    init() {
-        controller = NowPlayingController()
+    init(
+        controller: (any MediaControllerProtocol)? = NowPlayingController(),
+        workspace: MediaWorkspaceProtocol = MediaWorkspace.shared
+    ) {
+        self.controller = controller
+        self.workspace = workspace
         updateVisualState(for: state)
 
         controller?.playbackStatePublisher
@@ -188,13 +193,13 @@ final class MediaProbeViewModel: ObservableObject {
         let bundleID = state.bundleIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !bundleID.isEmpty else { return }
 
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
+        guard let url = workspace.applicationURL(forBundleIdentifier: bundleID) else {
             return
         }
 
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
-        NSWorkspace.shared.openApplication(at: url, configuration: configuration)
+        workspace.openApplication(at: url, configuration: configuration)
     }
 
     func shutdown() {
@@ -218,12 +223,12 @@ final class MediaProbeViewModel: ObservableObject {
 
     private func updateAppIcon(for bundleIdentifier: String) {
         guard !bundleIdentifier.isEmpty,
-              let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) else {
+              let appURL = workspace.applicationURL(forBundleIdentifier: bundleIdentifier) else {
             appIcon = nil
             return
         }
 
-        appIcon = NSWorkspace.shared.icon(forFile: appURL.path)
+        appIcon = workspace.icon(forFile: appURL.path)
     }
 
     private func updateAlbumArt(using state: PlaybackState) {

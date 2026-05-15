@@ -44,7 +44,21 @@ enum AppSettingsTab: String, CaseIterable, Identifiable {
 }
 
 @MainActor
-final class AppSettingsController: ObservableObject {
+protocol AppSettingsControlling: AnyObject {
+    func configure(
+        presentationModel: NotchPresentationModel,
+        pomodoro: PomodoroViewModel,
+        focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore,
+        learningStats: LearningStatsStore,
+        gemini: GeminiLiveViewModel,
+        entitlementStore: NotchEntitlementStore,
+        shortcutStore: ShortcutStore
+    )
+    func open(tab: AppSettingsTab)
+}
+
+@MainActor
+final class AppSettingsController: ObservableObject, AppSettingsControlling {
     static let shared = AppSettingsController()
 
     private struct Dependencies {

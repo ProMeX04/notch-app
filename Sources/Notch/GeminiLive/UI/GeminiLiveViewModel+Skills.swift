@@ -1,0 +1,142 @@
+import AppKit
+import Foundation
+import NotchGeminiSkillStorage
+
+extension GeminiLiveViewModel {
+    func deleteSkill(id: String) {
+        guard canManageSkills else { return }
+        guard let skill = installedSkills.first(where: { $0.id == id }) else { return }
+
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Delete skill?"
+        alert.informativeText = "Delete \"\(skill.metadata.name)\" from Notch? You can recreate it anytime."
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        do {
+            try skillsRepository.deleteSkill(id: skill.id)
+            for i in systemPromptPresets.indices {
+                systemPromptPresets[i].enabledSkillIDs.removeAll { $0 == skill.id }
+                systemPromptPresets[i].enabledSkillNames.removeAll()
+            }
+            enabledSkillIDs.remove(skill.id)
+            reloadInstalledSkills()
+            statusText = "Deleted skill \"\(skill.metadata.name)\"."
+            lastErrorMessage = nil
+        } catch {
+            lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            statusText = "Skill deletion failed."
+        }
+    }
+
+    func ingestSkillsEditorSaveFailure(_ error: Error) {
+        lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+    }
+
+    func persistSkillDraftFromEditor(skillID: String?, draft: SkillDraft) throws {
+        if let sid = skillID {
+            _ = try skillsRepository.updateSkill(id: sid, draft: draft, allowUpdatingBuiltin: false)
+        } else {
+            _ = try skillsRepository.createSkill(draft: draft, source: .user)
+        }
+        reloadInstalledSkills()
+        statusText = "Skill saved."
+        lastErrorMessage = nil
+    }
+
+    func duplicateSkill(id: String) throws {
+        _ = try skillsRepository.duplicateSkill(id: id)
+        reloadInstalledSkills()
+        statusText = "Duplicated skill."
+        lastErrorMessage = nil
+    }
+
+    func duplicateSkillFromPicker(id: String) {
+        do {
+            try duplicateSkill(id: id)
+        } catch {
+            lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            statusText = "Couldn't duplicate skill."
+        }
+    }
+
+    func skillRecord(for id: String) -> SkillRecord? {
+        skillsRepository.record(id: id)
+    }
+
+    func resolvedSkillDraft(forSkillID id: String) -> SkillDraft? {
+        guard let record = skillsRepository.record(id: id) else { return nil }
+        return SkillDraft(
+            name: record.name,
+            description: record.description,
+            category: record.category,
+            instructions: record.instructions
+        )
+    }
+
+    func deleteSkill(named name: String) {
+        guard let match = installedSkills.first(where: { $0.metadata.name == name }) else { return }
+        deleteSkill(id: match.id)
+    }
+
+    func reloadInstalledSkills() {
+        installedSkills = (try? skillsRepository.listInstalledSkillsSorted()) ?? []
+        normalizeEnabledSkillIDs()
+    }
+
+    func makeSkillSessionSnapshot() -> SkillSessionSnapshot {
+        let skillsById = Dictionary(uniqueKeysWithValues: activeInstalledSkills.map { ($0.id, $0) })
+        let enabledIDs = activeInstalledSkills.map(\.id).sorted()
+        return SkillSessionSnapshot(
+            skillsById: skillsById,
+            enabledSkillIDs: enabledIDs,
+            effectiveTools: effectiveEnabledTools
+        )
+    }
+
+    func normalizeEnabledSkillIDs() {
+        guard !isNormalizingEnabledSkillIDs else { return }
+        isNormalizingEnabledSkillIDs = true
+        defer { isNormalizingEnabledSkillIDs = false }
+
+        let valid = Set(installedSkills.map(\.id))
+        let filtered = enabledSkillIDs.intersection(valid)
+        if filtered != enabledSkillIDs {
+            enabledSkillIDs = filtered
+        }
+    }
+
+    func syncEnabledSkillIDsToActivePreset() {
+        guard let idx = systemPromptPresets.firstIndex(where: { $0.id == selectedSystemPromptID }) else { return }
+        systemPromptPresets[idx].enabledSkillIDs = enabledSkillIDs.sorted()
+        systemPromptPresets[idx].enabledSkillNames = []
+    }
+
+    func migrateEnabledSkillsFromLegacyPresetFieldsIfNeeded() {
+        guard !installedSkills.isEmpty else { return }
+        let map = Dictionary(
+            installedSkills.map {
+                ($0.metadata.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), $0.id)
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+        var changed = false
+        for index in systemPromptPresets.indices where systemPromptPresets[index].enabledSkillIDs.isEmpty
+            && !systemPromptPresets[index].enabledSkillNames.isEmpty {
+            let ids = systemPromptPresets[index].enabledSkillNames.compactMap { legacyName in
+                let key = legacyName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                return map[key]
+            }
+            if !ids.isEmpty {
+                systemPromptPresets[index].enabledSkillIDs = ids
+                systemPromptPresets[index].enabledSkillNames = []
+                changed = true
+            }
+        }
+        if changed {
+            persistSettings()
+        }
+    }
+}

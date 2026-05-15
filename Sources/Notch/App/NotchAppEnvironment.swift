@@ -16,8 +16,10 @@ final class NotchAppEnvironment {
     let notchController: NotchWindowController
     let featureCoordinator: NotchFeatureCoordinator
     let focusBrowserBridgeServer: FocusBrowserBridgeServer
+    let appSettingsController: AppSettingsControlling
 
-    init() {
+    init(appSettingsController: AppSettingsControlling = AppSettingsController.shared) {
+        self.appSettingsController = appSettingsController
         entitlementStore = NotchEntitlementStore()
         let geminiDependencies = GeminiLiveViewModelDependencies.live(
             entitlementStore: entitlementStore
@@ -48,7 +50,8 @@ final class NotchAppEnvironment {
             playbackViewModel: playbackViewModel,
             pomodoroViewModel: pomodoroViewModel,
             geminiLiveViewModel: geminiLiveViewModel,
-            presentationModel: presentationModel
+            presentationModel: presentationModel,
+            appSettingsController: appSettingsController
         )
 
         focusBrowserBridgeServer = FocusBrowserBridgeServer(

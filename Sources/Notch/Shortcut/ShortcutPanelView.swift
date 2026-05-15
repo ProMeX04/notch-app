@@ -3,6 +3,7 @@ import SwiftUI
 struct ShortcutPanelView: View {
     @ObservedObject var viewModel: NotchShortcutViewModel
     @ObservedObject var presentationModel: NotchPresentationModel
+    var appSettingsController: AppSettingsControlling = AppSettingsController.shared
 
     private let columns = [
         GridItem(.adaptive(minimum: 64, maximum: 72), spacing: 1)
@@ -100,7 +101,7 @@ struct ShortcutPanelView: View {
 
     private var addButton: some View {
         Button {
-            AppSettingsController.shared.open(tab: .shortcuts)
+            appSettingsController.open(tab: .shortcuts)
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 11, weight: .bold))

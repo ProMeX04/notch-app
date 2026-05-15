@@ -5,14 +5,23 @@ import Combine
 final class ApplicationCoordinator {
     let environment: NotchAppEnvironment
     private let singleInstanceCoordinator: SingleInstanceCoordinator
+    private let jarvisBackgroundWindowController: JarvisBackgroundWindowControlling
+    private let agentResultsWindowController: AgentResultsWindowControlling
+    private let agentResultStore: AgentResultStoreControlling
     private var cancellables = Set<AnyCancellable>()
 
     init(
         environment: NotchAppEnvironment,
-        singleInstanceCoordinator: SingleInstanceCoordinator
+        singleInstanceCoordinator: SingleInstanceCoordinator,
+        jarvisBackgroundWindowController: JarvisBackgroundWindowControlling = JarvisBackgroundWindowController.shared,
+        agentResultsWindowController: AgentResultsWindowControlling = AgentResultsWindowController.shared,
+        agentResultStore: AgentResultStoreControlling = AgentResultStore.shared
     ) {
         self.environment = environment
         self.singleInstanceCoordinator = singleInstanceCoordinator
+        self.jarvisBackgroundWindowController = jarvisBackgroundWindowController
+        self.agentResultsWindowController = agentResultsWindowController
+        self.agentResultStore = agentResultStore
     }
 
     func start() {
@@ -35,9 +44,9 @@ final class ApplicationCoordinator {
         singleInstanceCoordinator.unregisterActivationHandler()
         environment.featureCoordinator.stop()
         environment.focusBrowserBridgeServer.stop()
-        JarvisBackgroundWindowController.shared.hide()
-        AgentResultsWindowController.shared.hide()
-        AgentResultStore.shared.shutdown()
+        jarvisBackgroundWindowController.hide()
+        agentResultsWindowController.hide()
+        agentResultStore.shutdown()
         environment.notchController.shutdown()
     }
 
@@ -47,7 +56,7 @@ final class ApplicationCoordinator {
 
     func screenConfigurationDidChange() {
         environment.notchController.reposition()
-        JarvisBackgroundWindowController.shared.reposition()
+        jarvisBackgroundWindowController.reposition()
     }
 
     func handle(urls: [URL]) {
@@ -78,14 +87,11 @@ final class ApplicationCoordinator {
     }
 
     private func configureAgentResultsPanel() {
-        // Touching the singleton triggers persisted load + TTL prune;
-        // observing here lets the panel auto-flash when new batches arrive.
-        _ = AgentResultStore.shared
-        AgentResultsWindowController.shared.observeStore()
+        agentResultsWindowController.observeStore()
         environment.geminiLiveViewModel.$userTurnSequence
             .dropFirst()
-            .sink { _ in
-                AgentResultsWindowController.shared.hide()
+            .sink { [weak self] _ in
+                self?.agentResultsWindowController.hide()
             }
             .store(in: &cancellables)
     }
@@ -134,16 +140,16 @@ final class ApplicationCoordinator {
         let shouldShowJarvis = orbEnabled && gemini.showsConnectedSessionUI
 
         guard shouldShowJarvis else {
-            JarvisBackgroundWindowController.shared.setEnergyState(.idle)
-            JarvisBackgroundWindowController.shared.hide()
+            jarvisBackgroundWindowController.setEnergyState(.idle, signalLevel: 0)
+            jarvisBackgroundWindowController.hide()
             return
         }
 
-        JarvisBackgroundWindowController.shared.show()
-        JarvisBackgroundWindowController.shared.reloadOrbEmbeddedWebIfStoredPresetChanged()
+        jarvisBackgroundWindowController.show()
+        jarvisBackgroundWindowController.reloadOrbEmbeddedWebIfStoredPresetChanged()
 
         let energyState = Self.jarvisOrbEnergyState(for: gemini)
-        JarvisBackgroundWindowController.shared.setEnergyState(
+        jarvisBackgroundWindowController.setEnergyState(
             energyState,
             signalLevel: gemini.microphoneInputLevel
         )

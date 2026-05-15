@@ -41,10 +41,6 @@ let package = Package(
             targets: ["Notch"]
         ),
         .executable(
-            name: "NotchToolParityTests",
-            targets: ["NotchToolParityTests"]
-        ),
-        .executable(
             name: "NotchShelfTests",
             targets: ["NotchShelfTests"]
         ),
@@ -117,10 +113,6 @@ let package = Package(
                 .copy("Resources/Animations"),
                 .copy("Resources/Shared"),
             ]
-        ),
-        .executableTarget(
-            name: "NotchToolParityTests",
-            dependencies: ["NotchTooling"]
         ),
         .executableTarget(
             name: "NotchShelfTests",

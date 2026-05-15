@@ -4,14 +4,14 @@ import AppKit
 import NotchTooling
 
 extension GeminiLiveSession {
-    private var workspaceCodingTools: GeminiWorkspaceCodingTools {
-        GeminiWorkspaceCodingTools(
+    private var workspaceReadTool: GeminiWorkspaceReadTool {
+        GeminiWorkspaceReadTool(
             workspaceRoot: GeminiLiveStoragePaths.workspaceRoot
         )
     }
 
     func executeReadFile(path: String, offset: Int? = nil, limit: Int? = nil) -> [String: Any] {
-        workspaceCodingTools.executeReadFile(path: path, offset: offset, limit: limit)
+        workspaceReadTool.executeReadFile(path: path, offset: offset, limit: limit)
     }
 
     nonisolated(unsafe) static let calendarStore = EKEventStore()

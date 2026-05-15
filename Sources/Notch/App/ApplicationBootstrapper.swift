@@ -31,7 +31,7 @@ final class ApplicationBootstrapper {
         }
         notificationCenter.delegate = notificationDelegate
 
-        AppSettingsController.shared.configure(
+        environment.appSettingsController.configure(
             presentationModel: environment.presentationModel,
             pomodoro: environment.pomodoroViewModel,
             focusWebsiteBlocklistStore: environment.focusWebsiteBlocklistStore,

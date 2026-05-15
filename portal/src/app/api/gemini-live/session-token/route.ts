@@ -1,6 +1,7 @@
 import { GoogleGenAI, Modality } from '@google/genai'
 import { NextResponse } from 'next/server'
 
+import { logAppEvent } from '@/lib/event-logger'
 import { getAuthenticatedUser, getFeatureRequirement } from '@/lib/notch-auth'
 
 type SessionTokenRequest = {
@@ -36,14 +37,40 @@ function normalizeModality(raw: string): Modality | null {
 export async function POST(req: Request) {
   const auth = await getAuthenticatedUser(req)
   if (!auth) {
+    await logAppEvent({
+      req,
+      eventType: 'gemini_live.session_token_rejected',
+      outcome: 'rejected',
+      source: 'desktop',
+      statusCode: 401,
+      metadata: { reason: 'invalid_session' },
+    })
     return NextResponse.json({ detail: 'Invalid or expired session token.' }, { status: 401 })
   }
 
   const requirement = await getFeatureRequirement('talk_connection')
   if (requirement === 'disabled') {
+    await logAppEvent({
+      req,
+      eventType: 'gemini_live.session_token_rejected',
+      outcome: 'rejected',
+      source: 'desktop',
+      actorUserId: auth.user.id,
+      statusCode: 403,
+      metadata: { reason: 'feature_disabled' },
+    })
     return NextResponse.json({ detail: 'This feature is currently disabled.' }, { status: 403 })
   }
   if (requirement === 'pro' && !auth.user.isPro) {
+    await logAppEvent({
+      req,
+      eventType: 'gemini_live.session_token_rejected',
+      outcome: 'rejected',
+      source: 'desktop',
+      actorUserId: auth.user.id,
+      statusCode: 403,
+      metadata: { reason: 'pro_required' },
+    })
     return NextResponse.json({ detail: 'Notch Pro is required to create a Gemini Live session token.' }, { status: 403 })
   }
 
@@ -52,6 +79,15 @@ export async function POST(req: Request) {
     const now = Date.now()
     const model = typeof body.model === 'string' ? body.model.trim() : ''
     if (!model) {
+      await logAppEvent({
+        req,
+        eventType: 'gemini_live.session_token_rejected',
+        outcome: 'rejected',
+        source: 'desktop',
+        actorUserId: auth.user.id,
+        statusCode: 400,
+        metadata: { reason: 'missing_model' },
+      })
       return NextResponse.json({ detail: 'Model is required.' }, { status: 400 })
     }
     const expireTime = new Date(now + 30 * 60 * 1000).toISOString()
@@ -106,6 +142,23 @@ export async function POST(req: Request) {
       }
     }
 
+    await logAppEvent({
+      req,
+      eventType: 'gemini_live.session_token_requested',
+      outcome: 'success',
+      source: 'desktop',
+      actorUserId: auth.user.id,
+      statusCode: 200,
+      metadata: {
+        model,
+        responseModalities,
+        modalityCount: responseModalities.length,
+        hasVoice: Boolean(trimmedVoiceName),
+        hasThinkingBudget: thinkingBudget !== null && thinkingBudget > 0,
+        requirement,
+      },
+    })
+
     const token = await geminiClient().authTokens.create({
       config: {
         uses,
@@ -134,6 +187,15 @@ export async function POST(req: Request) {
     })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Internal server error'
+    await logAppEvent({
+      req,
+      eventType: 'gemini_live.session_token_failed',
+      outcome: 'failure',
+      source: 'desktop',
+      actorUserId: auth.user.id,
+      statusCode: 500,
+      metadata: { errorName: error instanceof Error ? error.name : 'UnknownError' },
+    })
     return NextResponse.json({ detail: message }, { status: 500 })
   }
 }

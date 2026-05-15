@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { applyAuthCookies } from '@/lib/auth-cookies';
 import { createAuthPayload } from '@/lib/notch-auth';
+import { logAppEvent } from '@/lib/event-logger';
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -14,12 +15,20 @@ export async function GET(req: Request) {
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 
-    (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : 
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ||
+    (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` :
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'));
   const redirectUri = `${appUrl}/api/auth/google/callback`;
 
   if (!clientId || !clientSecret) {
+    await logAppEvent({
+      req,
+      eventType: 'auth.google_login_failed',
+      outcome: 'failure',
+      source: 'oauth',
+      statusCode: 500,
+      metadata: { reason: 'google_oauth_not_configured' },
+    });
     return NextResponse.json({ error: 'Google Client ID/Secret not configured' }, { status: 500 });
   }
 
@@ -43,6 +52,14 @@ export async function GET(req: Request) {
 
     if (!tokenResponse.ok) {
       console.error('Google token error:', tokenData);
+      await logAppEvent({
+        req,
+        eventType: 'auth.google_login_failed',
+        outcome: 'failure',
+        source: 'oauth',
+        statusCode: 400,
+        metadata: { reason: 'token_exchange_failed' },
+      });
       return NextResponse.redirect(new URL(`/?error=Failed to exchange token`, req.url));
     }
 
@@ -59,6 +76,14 @@ export async function GET(req: Request) {
 
     if (!profileResponse.ok || !profileData.email) {
       console.error('Google profile error:', profileData);
+      await logAppEvent({
+        req,
+        eventType: 'auth.google_login_failed',
+        outcome: 'failure',
+        source: 'oauth',
+        statusCode: 400,
+        metadata: { reason: 'profile_fetch_failed' },
+      });
       return NextResponse.redirect(new URL(`/?error=Failed to fetch profile`, req.url));
     }
 
@@ -75,6 +100,7 @@ export async function GET(req: Request) {
       },
     });
 
+    const isNewUser = !user;
     if (!user) {
       user = await prisma.user.create({
         data: {
@@ -91,6 +117,21 @@ export async function GET(req: Request) {
       device: { device_id: 'google-oauth', device_name: 'Browser', platform: 'Web' },
     });
 
+    await logAppEvent({
+      req,
+      eventType: isNewUser ? 'auth.google_signup_succeeded' : 'auth.google_login_succeeded',
+      outcome: 'success',
+      source: 'oauth',
+      actorUserId: user.id,
+      sessionId: payload.session.id,
+      deviceId: payload.session.device_id,
+      statusCode: 302,
+      metadata: {
+        emailDomain: email.split('@')[1] ?? null,
+        trustedDevice: Boolean(payload.session.trusted_at),
+      },
+    });
+
     // 5. Determine redirect destination
     // If state has oauth parameters, we redirect back to /oauth/authorize to finish the flow
     let redirectDestination = '/pro';
@@ -104,6 +145,14 @@ export async function GET(req: Request) {
     
   } catch (error) {
     console.error('Google OAuth error:', error);
+    await logAppEvent({
+      req,
+      eventType: 'auth.google_login_failed',
+      outcome: 'failure',
+      source: 'oauth',
+      statusCode: 500,
+      metadata: { reason: 'internal_error' },
+    });
     return NextResponse.redirect(new URL('/?error=Internal Server Error', req.url));
   }
 }

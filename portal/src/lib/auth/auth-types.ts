@@ -49,6 +49,7 @@ export type NotchAuthPayload = {
     name: string | null
     created_at: string
     is_pro: boolean
+    permission_policy: Awaited<ReturnType<typeof import('@/lib/capabilities/policy-service').getRemotePermissionPolicy>>
   }
   session: {
     id: string

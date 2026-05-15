@@ -21,6 +21,7 @@ import {
   hashToken,
   readBearerToken,
 } from '@/lib/auth/token-service'
+import { readCookie } from '@/lib/auth/token-service'
 import { serializeUser } from '@/lib/auth/user-service'
 import { getAuthenticatedUser } from '@/lib/auth/session-query-service'
 import prisma from '@/lib/prisma'
@@ -28,6 +29,7 @@ import prisma from '@/lib/prisma'
 const ACCESS_TOKEN_TTL_MS = 60 * 60 * 1000
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000
 const BRIDGE_TOKEN_TTL_MS = 5 * 60 * 1000
+const ACCESS_COOKIE = 'notch_access_token'
 
 async function buildAuthPayload(args: {
   accessToken: string
@@ -53,7 +55,7 @@ async function buildAuthPayload(args: {
     expires_at: expiresAt,
     refresh_token: args.refreshToken,
     refresh_expires_at: refreshExpiresAt,
-    user: await serializeUser(args.user) as any,
+    user: await serializeUser(args.user),
     session: {
       id: args.session.id,
       device_id: args.session.deviceId,
@@ -335,8 +337,9 @@ function normalizedLogoutTokens(
 
 export async function revokeAuthSessions(req: Request) {
   const bearerToken = readBearerToken(req)
+  const cookieToken = readCookie(req, ACCESS_COOKIE)
   const body = await req.clone().json().catch(() => null) as LogoutRequestBody | null
-  const tokens = normalizedLogoutTokens(body, bearerToken)
+  const tokens = normalizedLogoutTokens(body, bearerToken || cookieToken)
 
   if (!body?.device_id && !body?.session_id && tokens.length === 0) {
     return {
@@ -345,12 +348,32 @@ export async function revokeAuthSessions(req: Request) {
     }
   }
 
-  const auth = bearerToken ? await getAuthenticatedUser(req) : null
+  const auth = await getAuthenticatedUser(req)
   const now = new Date()
+  let eventUserId = auth?.user.id ?? null
+  let eventSessionId = auth?.sessionId ?? null
+  let eventDeviceId = body?.device_id?.trim() || null
 
   let revokedCount = 0
   if (tokens.length > 0) {
     const tokenHashes = tokens.map(hashToken)
+    const eventSession = await prisma.authSession.findFirst({
+      where: {
+        OR: [
+          { tokenHash: { in: tokenHashes } },
+          { accessTokenHash: { in: tokenHashes } },
+        ],
+      },
+      select: {
+        id: true,
+        userId: true,
+        deviceId: true,
+      },
+    })
+    eventUserId = eventUserId ?? eventSession?.userId ?? null
+    eventSessionId = eventSessionId ?? eventSession?.id ?? null
+    eventDeviceId = eventDeviceId ?? eventSession?.deviceId ?? null
+
     const result = await prisma.authSession.updateMany({
       where: {
         OR: [
@@ -400,6 +423,9 @@ export async function revokeAuthSessions(req: Request) {
   return {
     hasTokens: true,
     revokedCount,
+    userId: eventUserId,
+    sessionId: eventSessionId,
+    deviceId: eventDeviceId,
   }
 }
 

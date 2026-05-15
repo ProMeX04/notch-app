@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 
 import { applyAuthCookies, clearAuthCookies, readRefreshTokenCookie } from '@/lib/auth-cookies'
+import { logAppEvent } from '@/lib/event-logger'
 import { refreshAuthSessionWithToken } from '@/lib/notch-auth'
 
 export async function POST(req: Request) {
@@ -27,8 +28,28 @@ export async function POST(req: Request) {
   const refreshToken = body?.refresh_token?.trim() || readRefreshTokenCookie(req) || ''
   const payload = await refreshAuthSessionWithToken(req, refreshToken, device)
   if (!payload) {
+    await logAppEvent({
+      req,
+      eventType: 'auth.refresh_failed',
+      outcome: 'failure',
+      source: 'web',
+      statusCode: 401,
+      metadata: { reason: 'invalid_or_expired' },
+    })
     return clearAuthCookies(NextResponse.json({ detail: 'Refresh token is invalid or expired.' }, { status: 401 }))
   }
+
+  await logAppEvent({
+    req,
+    eventType: 'auth.refresh_succeeded',
+    outcome: 'success',
+    source: 'web',
+    actorUserId: payload.user.id,
+    sessionId: payload.session.id,
+    deviceId: payload.session.device_id,
+    statusCode: 200,
+    metadata: { platform: payload.session.platform },
+  })
 
   return applyAuthCookies(
     NextResponse.json(payload),

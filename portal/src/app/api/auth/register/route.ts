@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import prisma from '@/lib/prisma';
 import { applyAuthCookies } from '@/lib/auth-cookies';
 import { isValidEmail, normalizeEmail } from '@/lib/email';
+import { logAppEvent } from '@/lib/event-logger';
 import { AuthDeviceLimitError, authPayloadUserResponse, createAuthPayload } from '@/lib/notch-auth';
 
 export async function POST(req: Request) {
@@ -13,10 +14,26 @@ export async function POST(req: Request) {
     const normalizedName = typeof name === 'string' ? name.trim() : '';
 
     if (!email || !password) {
+      await logAppEvent({
+        req,
+        eventType: 'auth.signup_rejected',
+        outcome: 'rejected',
+        source: 'web',
+        statusCode: 400,
+        metadata: { reason: 'missing_credentials' },
+      });
       return NextResponse.json({ error: 'Vui lòng nhập đầy đủ email và mật khẩu' }, { status: 400 });
     }
 
     if (!isValidEmail(email)) {
+      await logAppEvent({
+        req,
+        eventType: 'auth.signup_rejected',
+        outcome: 'rejected',
+        source: 'web',
+        statusCode: 400,
+        metadata: { reason: 'invalid_email' },
+      });
       return NextResponse.json({ error: 'Email không hợp lệ' }, { status: 400 });
     }
 
@@ -30,6 +47,15 @@ export async function POST(req: Request) {
     });
 
     if (existingUser?.password) {
+      await logAppEvent({
+        req,
+        eventType: 'auth.signup_rejected',
+        outcome: 'rejected',
+        source: 'web',
+        actorUserId: existingUser.id,
+        statusCode: 400,
+        metadata: { reason: 'email_in_use' },
+      });
       return NextResponse.json({ error: 'Email này đã được sử dụng' }, { status: 400 });
     }
 
@@ -85,12 +111,34 @@ export async function POST(req: Request) {
       req,
       device: body,
     });
+    await logAppEvent({
+      req,
+      eventType: 'auth.signup_succeeded',
+      outcome: 'success',
+      source: 'web',
+      actorUserId: user.id,
+      sessionId: payload.session.id,
+      deviceId: payload.session.device_id,
+      statusCode: 201,
+      metadata: {
+        platform: payload.session.platform,
+        trustedDevice: Boolean(payload.session.trusted_at),
+      },
+    });
     return applyAuthCookies(
       NextResponse.json(authPayloadUserResponse(payload.user, payload.session.id), { status: 201 }),
       payload,
     );
   } catch (error) {
     if (error instanceof AuthDeviceLimitError) {
+      await logAppEvent({
+        req,
+        eventType: 'auth.signup_rejected',
+        outcome: 'rejected',
+        source: 'web',
+        statusCode: error.statusCode,
+        metadata: { reason: 'device_limit' },
+      });
       return NextResponse.json({ error: error.message }, { status: error.statusCode });
     }
     console.error('Registration error:', error);

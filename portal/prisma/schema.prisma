@@ -23,6 +23,7 @@ model User {
   appBridgeTokens AuthAppBridgeToken[]
   oauthAuthorizationCodes OAuthAuthorizationCode[]
   payments     PaymentTransaction[]
+  events       AppEvent[]
 }
 
 model FeatureConfig {
@@ -134,4 +135,27 @@ model PaymentTransaction {
   @@index([guestEmail])
   @@index([userId])
   @@index([status])
+}
+
+model AppEvent {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  eventType     String
+  outcome       String
+  source        String
+  actorUserId   String?
+  actorUser     User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  sessionId     String?
+  deviceId      String?
+  requestPath   String?
+  requestMethod String?
+  statusCode    Int?
+  ipHash        String?
+  userAgent     String?
+  metadata      Json?
+
+  @@index([createdAt])
+  @@index([eventType])
+  @@index([outcome])
+  @@index([actorUserId])
 }

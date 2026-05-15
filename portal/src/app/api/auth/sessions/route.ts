@@ -6,6 +6,7 @@ import {
   revokeDeviceSessions,
   setTrustedDevice,
 } from '@/lib/notch-auth'
+import { logAppEvent } from '@/lib/event-logger'
 
 type SessionActionBody = {
   action?: 'trust' | 'untrust' | 'revoke'
@@ -42,17 +43,45 @@ export async function PATCH(req: Request) {
       deviceId,
       trusted: true,
     })
+    await logAppEvent({
+      req,
+      eventType: 'session.trust_added',
+      outcome: 'success',
+      source: 'web',
+      actorUserId: auth.user.id,
+      sessionId: auth.sessionId,
+      deviceId,
+    })
   } else if (action === 'untrust') {
     await setTrustedDevice({
       userId: auth.user.id,
       deviceId,
       trusted: false,
     })
+    await logAppEvent({
+      req,
+      eventType: 'session.trust_removed',
+      outcome: 'success',
+      source: 'web',
+      actorUserId: auth.user.id,
+      sessionId: auth.sessionId,
+      deviceId,
+    })
   } else if (action === 'revoke') {
     await revokeDeviceSessions({
       userId: auth.user.id,
       deviceId,
       exceptSessionId: auth.sessionId,
+    })
+    await logAppEvent({
+      req,
+      eventType: 'session.revoked',
+      outcome: 'success',
+      source: 'web',
+      actorUserId: auth.user.id,
+      sessionId: auth.sessionId,
+      deviceId,
+      metadata: { deviceId },
     })
   } else {
     return NextResponse.json({ detail: 'Unsupported action.' }, { status: 400 })

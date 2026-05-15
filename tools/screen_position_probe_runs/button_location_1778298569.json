@@ -1,0 +1,23 @@
+{
+  "model": "gemini-robotics-er-1.6-preview",
+  "image": "tools/screen_position_probe_runs/screenshot_1778298563_1920x1080.png",
+  "annotated_image": "tools/screen_position_probe_runs/button_location_1778298569.svg",
+  "coordinate_space": [
+    1920,
+    1080
+  ],
+  "target": "Review",
+  "x": 1730.0,
+  "y": 893.0,
+  "confidence": 0.9,
+  "reason": "The 'Review' button is clearly visible in the bottom right corner of the AI panel.",
+  "prompt": "You are analyzing a screenshot of the user's current screen.\n\nThe user's screen is 16:9 with a logical coordinate space of exactly 1920x1080 pixels.\nUse screen coordinates with origin at the top-left corner: x grows right, y grows down.\n\nFind the center point of this button or clickable UI control:\nReview\n\nReturn JSON only in this exact shape:\n{\"target\":\"Review\",\"x\":123,\"y\":456,\"confidence\":0.0,\"reason\":\"short visual evidence\"}\n\nRules:\n- x and y must be numbers in the 1920x1080 coordinate space.\n- If there are multiple matching controls, choose the most prominent visible one.\n- If the target is not visible, still return your best estimate and set confidence below 0.4.\n- Do not include Markdown or explanations outside JSON.",
+  "response_text": "{\"target\":\"Review\",\"x\":1730,\"y\":893,\"confidence\":0.9,\"reason\":\"The 'Review' button is clearly visible in the bottom right corner of the AI panel.\"}",
+  "parsed": {
+    "target": "Review",
+    "x": 1730,
+    "y": 893,
+    "confidence": 0.9,
+    "reason": "The 'Review' button is clearly visible in the bottom right corner of the AI panel."
+  }
+}

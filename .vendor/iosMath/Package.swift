@@ -17,14 +17,14 @@ let package = Package(
         .target(
             name: "iosMath",
             path: "iosMath",
+            exclude: ["include"],
             resources: [
                 .copy("fonts"),
             ],
-            publicHeadersPath: "include",
+            publicHeadersPath: "render",
             cSettings: [
-                .headerSearchPath("lib"),
-                .headerSearchPath("render"),
                 .headerSearchPath("render/internal"),
+                .headerSearchPath("lib"),
             ]
         ),
         .testTarget(

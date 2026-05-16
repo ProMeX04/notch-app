@@ -1,0 +1,14 @@
+module iosMath {
+    header "MTConfig.h"
+    header "MTFont.h"
+    header "MTFontManager.h"
+    header "MTLabel.h"
+    header "MTMathUILabel.h"
+    header "MTMathListDisplay.h"
+    header "../lib/MTMathAtomFactory.h"
+    header "../lib/MTMathList.h"
+    header "../lib/MTMathListBuilder.h"
+    header "../lib/MTMathListIndex.h"
+    header "../lib/MTUnicode.h"
+    export *
+}

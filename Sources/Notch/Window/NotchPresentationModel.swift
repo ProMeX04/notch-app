@@ -118,6 +118,33 @@ enum NotchScreenDisplayMode: String, CaseIterable, Identifiable {
     }
 }
 
+enum NotchInvisibilityMode: String, CaseIterable, Identifiable {
+    static let storageKey = "dev.notch.invisibility-mode"
+
+    case off
+    case fullscreenOnly
+    case always
+
+    static let defaultOption: Self = .off
+
+    var id: String { rawValue }
+
+    var displayNameKey: String {
+        switch self {
+        case .off:
+            return "Off"
+        case .fullscreenOnly:
+            return "Fullscreen"
+        case .always:
+            return "Invisible Always"
+        }
+    }
+
+    static func resolve(rawValue: String) -> Self {
+        Self(rawValue: rawValue) ?? defaultOption
+    }
+}
+
 enum NotchPanel: String {
     case media
     case focus
@@ -141,6 +168,7 @@ final class NotchPresentationModel: ObservableObject {
     @Published private(set) var isExpanded = false
     @Published private(set) var activeScreenID: NotchScreenID?
     @Published private var closedNotchSizeByScreenID: [NotchScreenID: CGSize] = [:]
+    @Published private var fullscreenScreenIDs = Set<NotchScreenID>()
     @Published var closedNotchSize: CGSize = CGSize(width: 184, height: 32)
     @Published var selectedPanel: NotchPanel = .media
     @Published var isFocusOverlayPresented = false
@@ -148,8 +176,7 @@ final class NotchPresentationModel: ObservableObject {
     @Published private(set) var autoCollapseDelayMilliseconds: Double
     @Published private(set) var accentColorID: String
     @Published private(set) var screenDisplayModeID: String
-    @Published private(set) var hideInFullscreen: Bool
-    @Published private(set) var invisibleClosedNotch: Bool
+    @Published private(set) var invisibilityModeID: String
 
     private var collapseTask: Task<Void, Never>?
     private var hoverOpenTask: Task<Void, Never>?
@@ -179,8 +206,15 @@ final class NotchPresentationModel: ObservableObject {
             rawValue: defaults.string(forKey: NotchScreenDisplayMode.storageKey) ?? ""
         ).rawValue
 
-        hideInFullscreen = defaults.bool(forKey: Self.hideInFullscreenKey)
-        invisibleClosedNotch = defaults.bool(forKey: Self.invisibleClosedNotchKey)
+        if let storedInvisibilityMode = defaults.string(forKey: NotchInvisibilityMode.storageKey) {
+            invisibilityModeID = NotchInvisibilityMode.resolve(rawValue: storedInvisibilityMode).rawValue
+        } else if defaults.bool(forKey: Self.invisibleClosedNotchKey) {
+            invisibilityModeID = NotchInvisibilityMode.always.rawValue
+        } else if defaults.bool(forKey: Self.hideInFullscreenKey) {
+            invisibilityModeID = NotchInvisibilityMode.fullscreenOnly.rawValue
+        } else {
+            invisibilityModeID = NotchInvisibilityMode.defaultOption.rawValue
+        }
     }
 
     var hoverOpenDelaySeconds: Double {
@@ -203,12 +237,36 @@ final class NotchPresentationModel: ObservableObject {
         NotchScreenDisplayMode.resolve(rawValue: screenDisplayModeID)
     }
 
+    var selectedInvisibilityMode: NotchInvisibilityMode {
+        NotchInvisibilityMode.resolve(rawValue: invisibilityModeID)
+    }
+
+    var hideInFullscreen: Bool {
+        selectedInvisibilityMode == .fullscreenOnly
+    }
+
+    var invisibleClosedNotch: Bool {
+        selectedInvisibilityMode == .always
+    }
+
     func isExpanded(on screenID: NotchScreenID) -> Bool {
         isExpanded && activeScreenID == screenID
     }
 
     func closedNotchSize(for screenID: NotchScreenID) -> CGSize {
         closedNotchSizeByScreenID[screenID] ?? closedNotchSize
+    }
+
+    func isFullscreenActive(on screenID: NotchScreenID) -> Bool {
+        fullscreenScreenIDs.contains(screenID)
+    }
+
+    func setFullscreenActive(_ active: Bool, for screenID: NotchScreenID) {
+        if active {
+            fullscreenScreenIDs.insert(screenID)
+        } else {
+            fullscreenScreenIDs.remove(screenID)
+        }
     }
 
     func setClosedNotchSize(_ size: CGSize, for screenID: NotchScreenID) {
@@ -220,6 +278,7 @@ final class NotchPresentationModel: ObservableObject {
 
     func removeScreenState(for screenID: NotchScreenID) {
         closedNotchSizeByScreenID.removeValue(forKey: screenID)
+        fullscreenScreenIDs.remove(screenID)
         if activeScreenID == screenID {
             activeScreenID = nil
             isExpanded = false
@@ -265,14 +324,11 @@ final class NotchPresentationModel: ObservableObject {
         UserDefaults.standard.set(option.rawValue, forKey: NotchScreenDisplayMode.storageKey)
     }
 
-    func setHideInFullscreen(_ hide: Bool) {
-        hideInFullscreen = hide
-        UserDefaults.standard.set(hide, forKey: Self.hideInFullscreenKey)
-    }
-
-    func setInvisibleClosedNotch(_ invisible: Bool) {
-        invisibleClosedNotch = invisible
-        UserDefaults.standard.set(invisible, forKey: Self.invisibleClosedNotchKey)
+    func setInvisibilityMode(_ option: NotchInvisibilityMode) {
+        invisibilityModeID = option.rawValue
+        UserDefaults.standard.set(option.rawValue, forKey: NotchInvisibilityMode.storageKey)
+        UserDefaults.standard.set(option == .fullscreenOnly, forKey: Self.hideInFullscreenKey)
+        UserDefaults.standard.set(option == .always, forKey: Self.invisibleClosedNotchKey)
     }
 
     func reveal(on screenID: NotchScreenID? = nil) {

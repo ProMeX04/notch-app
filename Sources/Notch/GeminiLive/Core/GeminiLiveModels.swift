@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import NotchGeminiLiveCore
 import NotchGeminiSkillStorage
 import SwiftUI
 
@@ -130,19 +131,33 @@ enum GeminiThinkingLevel: String, CaseIterable {
     }
 }
 
-enum GeminiLiveModel: String, CaseIterable {
-    case flashLivePreview = "gemini-3.1-flash-live-preview"
-    case nativeAudioPreview = "gemini-2.5-flash-native-audio-preview-12-2025"
+struct GeminiLiveModel: Identifiable, Hashable, Codable {
+    static let defaultModelID = "gemini-3.1-flash-live-preview"
 
-    var apiName: String { rawValue }
+    let id: String
+    let name: String
+    let displayName: String
+    let supportedGenerationMethods: [String]
 
-    var displayName: String {
-        switch self {
-        case .flashLivePreview:
-            return "3.1 Flash Live"
-        case .nativeAudioPreview:
-            return "2.5 Native Audio"
-        }
+    init(
+        id: String,
+        name: String? = nil,
+        displayName: String? = nil,
+        supportedGenerationMethods: [String] = []
+    ) {
+        let normalizedID = GeminiLiveModel.normalizedModelID(id)
+        self.id = normalizedID
+        self.name = name ?? "models/\(normalizedID)"
+        self.displayName = displayName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            ? displayName!
+            : normalizedID
+        self.supportedGenerationMethods = supportedGenerationMethods
+    }
+
+    var apiName: String { id }
+
+    static func normalizedModelID(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "models/", with: "")
     }
 }
 
@@ -191,16 +206,6 @@ struct ToolActionToast: Equatable {
     var showsInOverlay: Bool = true
 }
 
-struct ExecApprovalRequest: Identifiable, Equatable, Sendable {
-    let toolCallID: String
-    let command: String
-    let workingDirectory: String?
-    let timeoutSeconds: Double
-
-    var id: String { toolCallID }
-    var commandFamily: String? { execCommandFamily(for: command) }
-}
-
 struct SkillWriterApprovalRequest: Identifiable, Equatable, Sendable {
     let toolCallID: String
     let summary: String
@@ -220,100 +225,6 @@ struct PendingSkillWriterCall: @unchecked Sendable {
     let action: SkillWriterToolAction
     let draft: SkillDraft
     let existingSkillID: String?
-}
-
-func execCommandFamily(for command: String) -> String? {
-    let tokens = shellStyleTokens(from: command, maxTokens: 12)
-    guard !tokens.isEmpty else { return nil }
-
-    var index = 0
-    if tokens[index] == "env" {
-        index += 1
-    }
-
-    while index < tokens.count, isShellEnvAssignment(tokens[index]) {
-        index += 1
-    }
-
-    guard index < tokens.count else { return nil }
-    let executable = tokens[index]
-    let basename = URL(fileURLWithPath: executable).lastPathComponent
-    let trimmed = basename.trimmingCharacters(in: .whitespacesAndNewlines)
-    return trimmed.isEmpty ? nil : trimmed.lowercased()
-}
-
-private func isShellEnvAssignment(_ token: String) -> Bool {
-    guard let equalIndex = token.firstIndex(of: "="), equalIndex != token.startIndex else { return false }
-    let name = token[..<equalIndex]
-    guard let first = name.first, first == "_" || first.isLetter else { return false }
-    return name.dropFirst().allSatisfy { $0 == "_" || $0.isLetter || $0.isNumber }
-}
-
-private func shellStyleTokens(from raw: String, maxTokens: Int) -> [String] {
-    let characters = Array(raw)
-    var tokens: [String] = []
-    var current = ""
-    var index = 0
-    var quote: Character?
-
-    while index < characters.count {
-        let character = characters[index]
-
-        if let quote {
-            if character == quote {
-                selfConsumingAdvance(&index)
-                selfAppendIfNeeded()
-                continue
-            }
-            if character == "\\", quote == "\"", index + 1 < characters.count {
-                current.append(characters[index + 1])
-                index += 2
-                continue
-            }
-            current.append(character)
-            index += 1
-            continue
-        }
-
-        if character.isWhitespace {
-            if !current.isEmpty {
-                tokens.append(current)
-                if tokens.count >= maxTokens { return tokens }
-                current.removeAll(keepingCapacity: true)
-            }
-            index += 1
-            continue
-        }
-
-        if character == "'" || character == "\"" {
-            quote = character
-            index += 1
-            continue
-        }
-
-        if character == "\\", index + 1 < characters.count {
-            current.append(characters[index + 1])
-            index += 2
-            continue
-        }
-
-        current.append(character)
-        index += 1
-    }
-
-    if !current.isEmpty, tokens.count < maxTokens {
-        tokens.append(current)
-    }
-    return tokens
-
-    func selfConsumingAdvance(_ index: inout Int) {
-        quote = nil
-        index += 1
-    }
-
-    func selfAppendIfNeeded() {
-        // Intentionally empty. Closing a quote only changes parser state.
-    }
 }
 
 /// Single snapshot of everything the transcript overlay needs.
@@ -457,7 +368,7 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
     var enabledSkillNames: [String]
     /// GeminiVoice.rawValue for this preset.
     var voice: String
-    /// GeminiLiveModel.rawValue for this preset.
+    /// Gemini Live model id for this preset.
     var model: String
     /// GeminiThinkingLevel.rawValue for this preset.
     var thinkingLevel: String
@@ -476,7 +387,7 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         enabledSkillIDs: [String] = [],
         enabledSkillNames: [String] = [],
         voice: String = GeminiVoice.kore.rawValue,
-        model: String = GeminiLiveModel.flashLivePreview.rawValue,
+        model: String = GeminiLiveModel.defaultModelID,
         thinkingLevel: String = GeminiThinkingLevel.off.rawValue,
         avatarSymbolName: String = GeminiSystemPromptPreset.defaultAvatarSymbolName,
         avatarImageFilename: String? = nil,
@@ -509,7 +420,7 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         enabledSkillIDs = try c.decodeIfPresent([String].self, forKey: .enabledSkillIDs) ?? []
         enabledSkillNames = try c.decodeIfPresent([String].self, forKey: .enabledSkillNames) ?? []
         voice = try c.decodeIfPresent(String.self, forKey: .voice) ?? GeminiVoice.kore.rawValue
-        model = try c.decodeIfPresent(String.self, forKey: .model) ?? GeminiLiveModel.flashLivePreview.rawValue
+        model = try c.decodeIfPresent(String.self, forKey: .model) ?? GeminiLiveModel.defaultModelID
         thinkingLevel = try c.decodeIfPresent(String.self, forKey: .thinkingLevel) ?? GeminiThinkingLevel.off.rawValue
         avatarSymbolName = try c.decodeIfPresent(String.self, forKey: .avatarSymbolName) ?? GeminiSystemPromptPreset.defaultAvatarSymbolName
         avatarImageFilename = try c.decodeIfPresent(String.self, forKey: .avatarImageFilename)
@@ -540,8 +451,8 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         GeminiVoice(rawValue: voice) ?? .kore
     }
 
-    var modelEnum: GeminiLiveModel {
-        GeminiLiveModel(rawValue: model) ?? .flashLivePreview
+    var modelAPIName: String {
+        GeminiLiveModel.normalizedModelID(model)
     }
 
     var thinkingEnum: GeminiThinkingLevel {
@@ -570,7 +481,7 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         enabledTools: GeminiTool.defaultEnabledCases.map(\.rawValue),
         enabledSkillIDs: [SkillRecord.gettingStartedBuiltinID],
         voice: GeminiVoice.kore.rawValue,
-        model: GeminiLiveModel.flashLivePreview.rawValue,
+        model: GeminiLiveModel.defaultModelID,
         thinkingLevel: GeminiThinkingLevel.high.rawValue
     )
 

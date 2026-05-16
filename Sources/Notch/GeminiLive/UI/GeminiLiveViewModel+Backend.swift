@@ -206,6 +206,62 @@ extension GeminiLiveViewModel {
         }
     }
 
+    func refreshLiveModelsOnLaunchIfPossible() async {
+        guard configuredAPIKey != nil else { return }
+        await refreshAvailableLiveModels(silent: true)
+    }
+
+    @discardableResult
+    func refreshAvailableLiveModels(silent: Bool = false) async -> Bool {
+        guard let apiKey = configuredAPIKey else {
+            lastLiveModelRefreshMessage = "Gemini API key is missing."
+            if !silent {
+                lastErrorMessage = "Gemini API key is missing."
+                statusText = "Save your Gemini API key before updating models."
+            }
+            return false
+        }
+
+        isRefreshingLiveModels = true
+        if !silent {
+            lastErrorMessage = nil
+            statusText = "Updating Gemini Live models..."
+        }
+        defer { isRefreshingLiveModels = false }
+
+        do {
+            let models = try await fetchAvailableLiveModels(apiKey: apiKey)
+            guard !models.isEmpty else {
+                lastLiveModelRefreshMessage = "No Gemini Live models were returned."
+                if !silent {
+                    lastErrorMessage = "No Gemini Live models were returned."
+                    statusText = "Gemini Live model update found no supported models."
+                }
+                return false
+            }
+
+            availableLiveModels = models
+            if !models.contains(where: { $0.apiName == selectedModelID }) {
+                selectedModel = models[0]
+            }
+
+            lastLiveModelRefreshMessage = "Updated \(models.count) Gemini Live models."
+            if !silent {
+                lastErrorMessage = nil
+                statusText = "Updated \(models.count) Gemini Live models."
+            }
+            return true
+        } catch {
+            let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            lastLiveModelRefreshMessage = message
+            if !silent {
+                lastErrorMessage = message
+                statusText = "Gemini Live model update failed."
+            }
+            return false
+        }
+    }
+
     func logoutBackendAccount() async {
         await backend.logout()
         backendAuthPasswordText = ""
@@ -314,12 +370,74 @@ extension GeminiLiveViewModel {
         }
     }
 
+    private func fetchAvailableLiveModels(apiKey: String) async throws -> [GeminiLiveModel] {
+        guard var components = URLComponents(string: "https://generativelanguage.googleapis.com/v1beta/models") else {
+            throw GeminiAPIKeyValidationError.invalidRequest
+        }
+        components.queryItems = [
+            URLQueryItem(name: "key", value: apiKey),
+            URLQueryItem(name: "pageSize", value: "1000"),
+        ]
+
+        guard let url = components.url else {
+            throw GeminiAPIKeyValidationError.invalidRequest
+        }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 20
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw GeminiAPIKeyValidationError.invalidResponse
+        }
+
+        guard (200 ... 299).contains(httpResponse.statusCode) else {
+            if let apiError = try? JSONDecoder().decode(GeminiAPIErrorEnvelope.self, from: data),
+               !apiError.error.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                throw GeminiAPIKeyValidationError.server(apiError.error.message)
+            }
+            throw GeminiAPIKeyValidationError.server("Gemini returned HTTP \(httpResponse.statusCode) while updating models.")
+        }
+
+        let payload = try JSONDecoder().decode(GeminiModelListEnvelope.self, from: data)
+        return payload.models
+            .filter { model in
+                (model.supportedGenerationMethods ?? []).contains { method in
+                    method.caseInsensitiveCompare("bidiGenerateContent") == .orderedSame
+                }
+            }
+            .map { model in
+                GeminiLiveModel(
+                    id: model.name,
+                    name: model.name,
+                    displayName: model.displayName,
+                    supportedGenerationMethods: model.supportedGenerationMethods ?? []
+                )
+            }
+            .sorted { lhs, rhs in
+                if lhs.apiName.contains("latest") != rhs.apiName.contains("latest") {
+                    return lhs.apiName.contains("latest")
+                }
+                return lhs.displayName.localizedStandardCompare(rhs.displayName) == .orderedAscending
+            }
+    }
+
     private struct GeminiAPIErrorEnvelope: Decodable {
         struct APIError: Decodable {
             let message: String
         }
 
         let error: APIError
+    }
+
+    private struct GeminiModelListEnvelope: Decodable {
+        struct Model: Decodable {
+            let name: String
+            let displayName: String?
+            let supportedGenerationMethods: [String]?
+        }
+
+        let models: [Model]
     }
 
     private enum GeminiAPIKeyValidationError: LocalizedError {

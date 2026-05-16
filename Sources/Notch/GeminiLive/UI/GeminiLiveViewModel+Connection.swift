@@ -118,7 +118,7 @@ extension GeminiLiveViewModel {
                     do {
                         let token = try await self.requestManagedServerSessionToken(
                             configuration: configuredBackend,
-                            model: preset.modelEnum.apiName,
+                            model: preset.modelAPIName,
                             systemInstruction: systemInstruction.isEmpty ? nil : systemInstruction,
                             voiceName: preset.voiceEnum.apiName,
                             thinkingBudget: preset.thinkingEnum.budget > 0 ? preset.thinkingEnum.budget : nil
@@ -163,7 +163,7 @@ extension GeminiLiveViewModel {
                 connectionCredential: connectionCredential,
                 restAPIKey: restAPIKey,
                 backendConfiguration: backendConfiguration,
-                model: preset.modelEnum.apiName,
+                model: preset.modelAPIName,
                 systemPrompt: systemPrompt,
                 microphoneEnabled: self.effectiveMicrophoneEnabled && self.hasMicrophonePermission,
                 microphonePrewarmingEnabled: self.inputMode == .pushToTalk,

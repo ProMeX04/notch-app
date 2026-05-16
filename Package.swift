@@ -36,6 +36,10 @@ let package = Package(
             name: "NotchScreenShareCore",
             targets: ["NotchScreenShareCore"]
         ),
+        .library(
+            name: "NotchGeminiLiveCore",
+            targets: ["NotchGeminiLiveCore"]
+        ),
         .executable(
             name: "Notch",
             targets: ["Notch"]
@@ -64,6 +68,10 @@ let package = Package(
             name: "NotchScreenShareTests",
             targets: ["NotchScreenShareTests"]
         ),
+        .executable(
+            name: "NotchGeminiLiveTests",
+            targets: ["NotchGeminiLiveTests"]
+        ),
     ],
     dependencies: [
         .package(url: "https://github.com/livekit/webrtc-xcframework.git", exact: "144.7559.02"),
@@ -86,6 +94,9 @@ let package = Package(
         .target(
             name: "NotchGeminiSkillStorage"
         ),
+        .target(
+            name: "NotchGeminiLiveCore"
+        ),
         .executableTarget(
             name: "NotchSkillsTests",
             dependencies: ["NotchGeminiSkillStorage"],
@@ -96,6 +107,7 @@ let package = Package(
             dependencies: [
                 "NotchTooling",
                 "NotchGeminiSkillStorage",
+                "NotchGeminiLiveCore",
                 "NotchFocusCore",
                 "NotchShelfCore",
                 "NotchBridgeParserCore",
@@ -154,6 +166,11 @@ let package = Package(
             name: "NotchScreenShareTests",
             dependencies: ["NotchScreenShareCore"],
             path: "Tests/NotchScreenShareTests"
+        ),
+        .executableTarget(
+            name: "NotchGeminiLiveTests",
+            dependencies: ["NotchGeminiLiveCore"],
+            path: "Tests/NotchGeminiLiveTests"
         ),
     ]
 )

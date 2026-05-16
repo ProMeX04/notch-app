@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -rn \"func.*{\\\\s*$\" /Users/promex04/Documents/NO/notch-app --include=\"*.swift\" -A 50)",
+      "Bash(awk 'NR%51==0 && /{/')",
+      "Bash(grep -rn \"^\\\\s*guard.*else\\\\s*{\\\\s*$\" /Users/promex04/Documents/NO/notch-app/Sources --include=\"*.swift\" -A 3)",
+      "Bash(awk -F: '{print $2, $3}')",
+      "Bash(sort -t: -k2 -n)",
+      "Bash(grep -rn \"0x[0-9a-fA-F]\\\\{4,\\\\}\\\\|[0-9]\\\\{5,\\\\}\\\\|[0-9]\\\\{3\\\\}\\\\s*\\\\*\\\\s*[0-9]\\\\{3\\\\}\" /Users/promex04/Documents/NO/notch-app --include=\"*.swift\")",
+      "Bash(grep -E \"^--$|func [a-zA-Z]\")",
+      "Bash(awk 'NR==1{funcname=$0} NR>1{if\\(/^--$/\\){print funcname; funcname=$0} else if\\(/^func /\\){funcname=$0}}')",
+      "Bash(awk '/func [a-zA-Z]/{f=$0; n=1; next} n{f++; if\\(f>80\\) print f, FILENAME, f\":\"$0}' /Users/promex04/Documents/NO/notch-app/Sources/**/*.swift)",
+      "Bash(grep -rnE \"[a-zA-Z0-9\\\\\\)]!$\" /Users/promex04/Documents/NO/notch-app/Sources --include=\"*.swift\")",
+      "Bash(awk 'BEGIN{FS=\"\\\\n\"; RS=\"func \"} length>80*15 {print NR-1, FILENAME, substr\\($0,1,80\\)}' /Users/promex04/Documents/NO/notch-app/Sources/**/*.swift)",
+      "Bash(python3 -c ' *)",
+      "Bash(grep -rnE \"^[0-9]{5,}|[0-9]{3}\\\\s*\\\\*\\\\s*[0-9]{3}\" /Users/promex04/Documents/NO/notch-app/Sources --include=\"*.swift\")",
+      "Bash(grep -rn \"!$\" /Users/promex04/Documents/NO/notch-app/Sources --include=\"*.swift\")",
+      "Bash(grep -rn \"^\\\\s*[a-zA-Z].*!$\" /Users/promex04/Documents/NO/notch-app/Sources --include=\"*.swift\")",
+      "Bash(grep -rn \"^\\\\s*if let.*=.*\\\\?.*\\\\.$\" /Users/promex04/Documents/NO/notch-app/Sources --include=\"*.swift\")",
+      "Bash(xxd)",
+      "Bash(grep -n \"presentExecApproval\\\\|ExecApprovalPanel\" /Users/promex04/Documents/NO/notch-app/Sources/Notch -type f -name \"*.swift\")",
+      "Bash(git commit -m ' *)",
+      "Bash(RELEASE=1 ./build-dmg.sh)",
+      "Bash(git tag *)",
+      "Bash(gh release create v1.0.8 dist/Notch-1.0.8.dmg --title 'Notch v1.0.8' --notes ' *)",
+      "Bash(git push *)",
+      "Bash(gh repo *)",
+      "Bash(ls \"/opt/homebrew/Library/Taps/promex04/homebrew-tap/Casks\" 2>/dev/null || true)",
+      "Read(//opt/homebrew/Library/Taps/promex04/homebrew-tap/Casks/**)",
+      "Bash(ditto -c -k --keepParent \"dist/Notch.app\" \"dist/Notch-1.0.8.zip\")",
+      "Bash(shasum -a 256 \"dist/Notch-1.0.8.zip\")",
+      "Bash(gh release create v1.0.8 dist/Notch-1.0.8.zip --repo ProMeX04/notch-releases --title 'Notch v1.0.8' --notes ' *)",
+      "Bash(git -C /tmp/homebrew-tap-notch-update status --short)",
+      "Bash(git -C /tmp/homebrew-tap-notch-update diff -- Casks/notch.rb)",
+      "Bash(git -C /tmp/homebrew-tap-notch-update add Casks/notch.rb)",
+      "Bash(git -C /tmp/homebrew-tap-notch-update commit -m ' *)",
+      "Bash(git -C /tmp/homebrew-tap-notch-update push origin main)"
+    ]
+  }
+}

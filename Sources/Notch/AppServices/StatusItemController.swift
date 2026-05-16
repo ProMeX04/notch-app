@@ -22,11 +22,22 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         keyEquivalent: ""
     )
 
-    private lazy var invisibleClosedNotchItem = NSMenuItem(
-        title: "Invisible Notch",
-        action: #selector(toggleInvisibleClosedNotch),
-        keyEquivalent: ""
-    )
+    private lazy var invisibleNotchMenuItem: NSMenuItem = {
+        let item = NSMenuItem(title: "Invisible", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        NotchInvisibilityMode.allCases.forEach { mode in
+            let modeItem = NSMenuItem(
+                title: modeMenuTitle(for: mode),
+                action: #selector(selectInvisibilityMode(_:)),
+                keyEquivalent: ""
+            )
+            modeItem.representedObject = mode.rawValue
+            modeItem.target = self
+            submenu.addItem(modeItem)
+        }
+        item.submenu = submenu
+        return item
+    }()
 
     private lazy var screenDisplayModeItem = NSMenuItem(
         title: "Show on All Screens",
@@ -113,7 +124,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.delegate = self
 
         visibilityItem.target = self
-        invisibleClosedNotchItem.target = self
         screenDisplayModeItem.target = self
         mediaItem.target = self
         pomodoroItem.target = self
@@ -136,7 +146,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         menu.items = [
             visibilityItem,
-            invisibleClosedNotchItem,
+            invisibleNotchMenuItem,
             screenDisplayModeItem,
             repositionItem,
             manageServiceKeysItem,
@@ -167,7 +177,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         launchAtLoginController.refreshStatus()
         visibilityItem.title = featureCoordinator.isVisible ? "Hide Notch" : "Show Notch"
-        invisibleClosedNotchItem.state = featureCoordinator.presentationModel.invisibleClosedNotch ? .on : .off
+        refreshInvisibilityMenuState()
         screenDisplayModeItem.title = featureCoordinator.presentationModel.selectedScreenDisplayMode == .allScreens ? "Show on One Screen" : "Show on All Screens"
         mediaItem.state = featureCoordinator.presentationModel.selectedPanel == .media ? .on : .off
         pomodoroItem.state = featureCoordinator.presentationModel.selectedPanel == .focus ? .on : .off
@@ -202,9 +212,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     @objc
-    private func toggleInvisibleClosedNotch() {
-        let presentationModel = featureCoordinator.presentationModel
-        presentationModel.setInvisibleClosedNotch(!presentationModel.invisibleClosedNotch)
+    private func selectInvisibilityMode(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? String else { return }
+        featureCoordinator.presentationModel.setInvisibilityMode(
+            NotchInvisibilityMode.resolve(rawValue: rawValue)
+        )
     }
 
     @objc
@@ -469,6 +481,24 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func refreshAllFocusStatusItems() {
         updatePomodoroStatusItem()
+    }
+
+    private func refreshInvisibilityMenuState() {
+        invisibleNotchMenuItem.submenu?.items.forEach { item in
+            guard let rawValue = item.representedObject as? String else { return }
+            item.state = rawValue == featureCoordinator.presentationModel.invisibilityModeID ? .on : .off
+        }
+    }
+
+    private func modeMenuTitle(for mode: NotchInvisibilityMode) -> String {
+        switch mode {
+        case .off:
+            return "Off"
+        case .fullscreenOnly:
+            return "Fullscreen Only"
+        case .always:
+            return "Always"
+        }
     }
 
     private func updatePomodoroStatusItem() {

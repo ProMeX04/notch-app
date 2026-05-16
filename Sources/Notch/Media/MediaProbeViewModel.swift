@@ -242,12 +242,6 @@ final class MediaProbeViewModel: ObservableObject {
             return
         }
 
-        if let appIcon {
-            albumArt = appIcon
-            usingAppIconForArtwork = true
-            return
-        }
-
         albumArt = nil
         usingAppIconForArtwork = false
     }

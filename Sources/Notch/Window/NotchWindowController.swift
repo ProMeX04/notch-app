@@ -18,6 +18,7 @@ final class NotchWindowController {
 
     private let hostingView: NotchHostingView<MediaNotchView>
     private let window: NotchFloatingPanel
+    private var fullscreenProbeTask: Task<Void, Never>?
     private(set) var screen: NSScreen
     let screenID: NotchScreenID
     private var cancellables = Set<AnyCancellable>()
@@ -81,20 +82,15 @@ final class NotchWindowController {
         hostingView.autoresizingMask = [.width, .height]
         window.contentView = hostingView
 
-        presentationModel.$hideInFullscreen
-            .sink { [weak window] hide in
-                guard let window = window else { return }
-                var behavior: NSWindow.CollectionBehavior = [
-                    .stationary,
-                    .ignoresCycle
-                ]
-                if hide {
-                    behavior.insert(.moveToActiveSpace)
-                } else {
-                    behavior.insert(.canJoinAllSpaces)
-                    behavior.insert(.fullScreenAuxiliary)
-                }
-                window.collectionBehavior = behavior
+        updateCollectionBehavior()
+        updateFullscreenProbe(for: presentationModel.selectedInvisibilityMode)
+
+        presentationModel.$invisibilityModeID
+            .map(NotchInvisibilityMode.resolve(rawValue:))
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] mode in
+                self?.updateFullscreenProbe(for: mode)
             }
             .store(in: &cancellables)
 
@@ -134,6 +130,64 @@ final class NotchWindowController {
         updateWindowFrame(animated: false)
     }
 
+    private func updateCollectionBehavior() {
+        window.collectionBehavior = [
+            .stationary,
+            .ignoresCycle,
+            .canJoinAllSpaces,
+            .fullScreenAuxiliary
+        ]
+    }
+
+    private func updateFullscreenProbe(for mode: NotchInvisibilityMode) {
+        guard mode == .fullscreenOnly else {
+            stopFullscreenProbe()
+            return
+        }
+
+        startFullscreenProbe()
+    }
+
+    private func startFullscreenProbe() {
+        guard fullscreenProbeTask == nil else { return }
+        presentationModel.setFullscreenActive(detectFullscreenWindow(), for: screenID)
+        fullscreenProbeTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                presentationModel.setFullscreenActive(detectFullscreenWindow(), for: screenID)
+                try? await Task.sleep(for: .milliseconds(350))
+            }
+        }
+    }
+
+    private func stopFullscreenProbe() {
+        fullscreenProbeTask?.cancel()
+        fullscreenProbeTask = nil
+        presentationModel.setFullscreenActive(false, for: screenID)
+    }
+
+    private func detectFullscreenWindow() -> Bool {
+        let screenFrame = screen.frame.integral
+        let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+
+        return windowList.contains { windowInfo in
+            guard
+                let layer = windowInfo[kCGWindowLayer as String] as? Int,
+                layer == 0,
+                let ownerPID = windowInfo[kCGWindowOwnerPID as String] as? pid_t,
+                ownerPID != getpid(),
+                let bounds = windowInfo[kCGWindowBounds as String] as? [String: CGFloat],
+                let x = bounds["X"],
+                let y = bounds["Y"],
+                let width = bounds["Width"],
+                let height = bounds["Height"]
+            else { return false }
+
+            let frame = CGRect(x: x, y: y, width: width, height: height).integral
+            return frame.contains(screenFrame) || frame.equalTo(screenFrame)
+        }
+    }
+
     func reposition() {
         updateWindowFrame(animated: false)
     }
@@ -146,6 +200,7 @@ final class NotchWindowController {
             pomodoroViewModel.shutdown()
             geminiLiveViewModel.shutdown()
         }
+        stopFullscreenProbe()
         cancellables.removeAll()
     }
 

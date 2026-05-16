@@ -1,4 +1,5 @@
 import AppKit
+import NotchGeminiLiveCore
 import SwiftUI
 
 struct GeminiExecApprovalCard: View {

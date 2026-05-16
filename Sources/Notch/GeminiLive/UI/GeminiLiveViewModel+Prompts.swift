@@ -59,7 +59,7 @@ extension GeminiLiveViewModel {
             content: "",
             enabledTools: [],
             voice: GeminiVoice.kore.rawValue,
-            model: GeminiLiveModel.flashLivePreview.rawValue,
+            model: GeminiLiveModel.defaultModelID,
             thinkingLevel: GeminiThinkingLevel.off.rawValue,
             lastUsedAt: Date()
         )
@@ -136,7 +136,7 @@ extension GeminiLiveViewModel {
                 content: trimmedContent,
                 enabledTools: [],
                 voice: GeminiVoice.kore.rawValue,
-                model: GeminiLiveModel.flashLivePreview.rawValue,
+                model: GeminiLiveModel.defaultModelID,
                 thinkingLevel: GeminiThinkingLevel.off.rawValue,
                 lastUsedAt: Date()
             )
@@ -194,7 +194,7 @@ extension GeminiLiveViewModel {
         let active = selectedSystemPromptPreset
         thinkingLevel = active.thinkingEnum
         selectedVoice = active.voiceEnum
-        selectedModel = active.modelEnum
+        selectedModelID = active.modelAPIName
         enabledTools = active.toolSet
         enabledSkillIDs = Set(active.enabledSkillIDs)
         normalizeEnabledSkillIDs()

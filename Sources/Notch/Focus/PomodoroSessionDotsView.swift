@@ -14,19 +14,19 @@ struct PomodoroSessionDotsView: View {
     var body: some View {
         HStack(spacing: spacing) {
             ForEach(0..<total, id: \.self) { index in
-                Circle()
+                Capsule()
                     .fill(fillColor(for: index))
-                    .frame(width: dotSize, height: dotSize)
+                    .frame(width: indicatorSize, height: dotSize)
                     .overlay {
                         if isFocus && index == current {
-                            Circle()
+                            Capsule()
                                 .stroke(tint.opacity(0.4), lineWidth: 1.5)
-                                .frame(width: indicatorSize, height: indicatorSize)
-                                .scaleEffect(pulse ? 1.2 : 1.0)
+                                .frame(width: indicatorSize + 4, height: dotSize + 4)
+                                .scaleEffect(pulse ? 1.08 : 1.0)
                                 .opacity(pulse ? 0.6 : 1.0)
                         }
                     }
-                    .frame(width: indicatorSize, height: indicatorSize)
+                    .frame(width: indicatorSize + 4, height: dotSize + 4)
             }
         }
         .onAppear {

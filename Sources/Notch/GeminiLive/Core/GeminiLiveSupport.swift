@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import NotchGeminiLiveCore
 import Security
 
 enum GeminiLiveHostedBackend {
@@ -202,6 +203,7 @@ struct GeminiLiveSettings {
     let connectionMethod: GeminiLiveConnectionMethod
     let systemPromptPresets: [GeminiSystemPromptPreset]
     let selectedSystemPromptID: String
+    let availableLiveModels: [GeminiLiveModel]
 }
 
 final class GeminiLiveSettingsStore {
@@ -234,7 +236,8 @@ final class GeminiLiveSettingsStore {
             outputVolume: payload.outputVolume ?? 1,
             connectionMethod: payload.connectionMethod ?? .userAPIKey,
             systemPromptPresets: presets,
-            selectedSystemPromptID: payload.selectedSystemPromptID ?? GeminiSystemPromptPreset.defaultPreset.id
+            selectedSystemPromptID: payload.selectedSystemPromptID ?? GeminiSystemPromptPreset.defaultPreset.id,
+            availableLiveModels: payload.availableLiveModels ?? []
         )
     }
 
@@ -248,7 +251,8 @@ final class GeminiLiveSettingsStore {
             outputVolume: settings.outputVolume,
             connectionMethod: settings.connectionMethod,
             systemPromptPresets: settings.systemPromptPresets,
-            selectedSystemPromptID: settings.selectedSystemPromptID
+            selectedSystemPromptID: settings.selectedSystemPromptID,
+            availableLiveModels: settings.availableLiveModels
         )
 
         guard let data = try? JSONEncoder().encode(payload) else { return }
@@ -265,6 +269,7 @@ final class GeminiLiveSettingsStore {
         let connectionMethod: GeminiLiveConnectionMethod?
         let systemPromptPresets: [GeminiSystemPromptPreset]?
         let selectedSystemPromptID: String?
+        let availableLiveModels: [GeminiLiveModel]?
         /// Legacy: skills lived at root; migrated into each preset on read. Not written on save.
         let enabledSkillNames: [String]?
 
@@ -277,7 +282,8 @@ final class GeminiLiveSettingsStore {
             outputVolume: Double,
             connectionMethod: GeminiLiveConnectionMethod,
             systemPromptPresets: [GeminiSystemPromptPreset],
-            selectedSystemPromptID: String
+            selectedSystemPromptID: String,
+            availableLiveModels: [GeminiLiveModel]
         ) {
             self.isMicrophoneEnabled = isMicrophoneEnabled
             self.inputMode = inputMode
@@ -288,6 +294,7 @@ final class GeminiLiveSettingsStore {
             self.connectionMethod = connectionMethod
             self.systemPromptPresets = systemPromptPresets
             self.selectedSystemPromptID = selectedSystemPromptID
+            self.availableLiveModels = availableLiveModels
             self.enabledSkillNames = nil
         }
 
@@ -302,6 +309,7 @@ final class GeminiLiveSettingsStore {
             try container.encodeIfPresent(connectionMethod, forKey: .connectionMethod)
             try container.encodeIfPresent(systemPromptPresets, forKey: .systemPromptPresets)
             try container.encodeIfPresent(selectedSystemPromptID, forKey: .selectedSystemPromptID)
+            try container.encodeIfPresent(availableLiveModels, forKey: .availableLiveModels)
         }
 
         init(from decoder: Decoder) throws {
@@ -315,6 +323,7 @@ final class GeminiLiveSettingsStore {
             connectionMethod = try container.decodeIfPresent(GeminiLiveConnectionMethod.self, forKey: .connectionMethod)
             systemPromptPresets = try container.decodeIfPresent([GeminiSystemPromptPreset].self, forKey: .systemPromptPresets)
             selectedSystemPromptID = try container.decodeIfPresent(String.self, forKey: .selectedSystemPromptID)
+            availableLiveModels = try container.decodeIfPresent([GeminiLiveModel].self, forKey: .availableLiveModels)
             enabledSkillNames = try container.decodeIfPresent([String].self, forKey: .enabledSkillNames)
         }
 
@@ -328,6 +337,7 @@ final class GeminiLiveSettingsStore {
             case connectionMethod
             case systemPromptPresets
             case selectedSystemPromptID
+            case availableLiveModels
             case enabledSkillNames
         }
     }
@@ -364,6 +374,45 @@ final class GeminiLiveExecApprovalStore: @unchecked Sendable {
         var updated = approvedKeys
         updated.insert(familyApprovalKey(family: family, workingDirectory: workingDirectory))
         persist(updated)
+    }
+
+    func removeApproval(key: String) {
+        var updated = approvedKeys
+        updated.remove(key)
+        persist(updated)
+    }
+
+    func allApprovedEntries() -> [ApprovedEntry] {
+        approvedKeys.map { key in
+            let afterPrefix: String
+            let type: ApprovedEntry.ApprovalType
+            if key.hasPrefix("exact:") {
+                afterPrefix = String(key.dropFirst(6))
+                type = .exact
+            } else if key.hasPrefix("family:") {
+                afterPrefix = String(key.dropFirst(7))
+                type = .family
+            } else {
+                return ApprovedEntry(key: key, type: .exact, workingDirectory: "", commandOrFamily: key)
+            }
+            let idx = afterPrefix.firstIndex(of: "\n")
+            let wd = idx.map { String(afterPrefix[..<$0]) } ?? ""
+            let cmd = idx.map { String(afterPrefix[afterPrefix.index(after: $0)...]) } ?? ""
+            return ApprovedEntry(key: key, type: type, workingDirectory: wd, commandOrFamily: cmd)
+        }.sorted { $0.type == .family && $1.type == .exact }
+    }
+
+    public struct ApprovedEntry: Identifiable {
+        public let key: String
+        public let type: ApprovalType
+        public let workingDirectory: String
+        public let commandOrFamily: String
+
+        public var id: String { key }
+        public enum ApprovalType: String {
+            case exact
+            case family
+        }
     }
 
     private var cachedKeys: Set<String>?

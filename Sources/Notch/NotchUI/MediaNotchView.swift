@@ -156,7 +156,15 @@ struct MediaNotchView: View {
     }
 
     private var isClosedNotchInvisible: Bool {
-        !isExpanded && presentationModel.invisibleClosedNotch
+        guard !isExpanded else { return false }
+        switch presentationModel.selectedInvisibilityMode {
+        case .off:
+            return false
+        case .fullscreenOnly:
+            return presentationModel.isFullscreenActive(on: screenID)
+        case .always:
+            return true
+        }
     }
 
     var body: some View {
@@ -338,8 +346,9 @@ struct MediaNotchView: View {
             alignment: .top
         )
         .background {
-            Color.black.opacity(isClosedNotchInvisible ? 0.01 : 1)
+            Color.black
         }
+        .opacity(isClosedNotchInvisible ? (isHovering ? 0.12 : 0.01) : 1)
         .clipShape(
             NotchShape(
                 topCornerRadius: topCornerRadius,
@@ -365,6 +374,7 @@ struct MediaNotchView: View {
             color: (isExpanded || (isHovering && !isClosedNotchInvisible)) ? .black.opacity(0.7) : .clear,
             radius: 6
         )
+        .animation(.easeInOut(duration: 0.22), value: isHovering)
         .frame(height: isExpanded ? NotchMetrics.openHeight(for: presentationModel.selectedPanel) : nil)
         .contentShape(Rectangle())
         .onHover { hovering in

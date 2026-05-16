@@ -30,6 +30,9 @@ struct AppTalkSettingsPane: View {
     @State private var isMemoryExpanded = false
     @State private var isSystemPromptExpanded = false
     @State private var skillEditorRoute: TalkSkillEditorRoute?
+    @State private var isShellApprovalsExpanded = false
+    @State private var shellApprovalEntries: [GeminiLiveExecApprovalStore.ApprovedEntry] = []
+    @State private var pendingShellApprovalRemoval: String?
 
     private var tint: Color {
         settingsAccentColor(from: accentColorID)
@@ -218,6 +221,14 @@ struct AppTalkSettingsPane: View {
             }
 
             AppSettingsCard(
+                title: Localization.get("Shell Approvals", lang: appLanguage)
+            ) {
+                shellApprovalCard
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+            }
+
+            AppSettingsCard(
                 title: Localization.get("Agents", lang: appLanguage)
             ) {
                 agentEditorPanel
@@ -242,6 +253,86 @@ struct AppTalkSettingsPane: View {
         .sheet(item: $skillEditorRoute) { route in
             TalkSkillEditorSheet(gemini: gemini, route: route, appLanguage: appLanguage, tint: tint) {
                 skillEditorRoute = nil
+            }
+        }
+        .alert(Localization.get("Remove Approval?", lang: appLanguage), isPresented: .init(
+            get: { pendingShellApprovalRemoval != nil },
+            set: { if !$0 { pendingShellApprovalRemoval = nil } }
+        )) {
+            Button(Localization.get("Cancel", lang: appLanguage), role: .cancel) {
+                pendingShellApprovalRemoval = nil
+            }
+            Button(Localization.get("Remove", lang: appLanguage), role: .destructive) {
+                if let key = pendingShellApprovalRemoval {
+                    gemini.execApprovals.removeApprovedEntry(key: key)
+                    shellApprovalEntries = gemini.execApprovals.allApprovedEntries()
+                }
+                pendingShellApprovalRemoval = nil
+            }
+        } message: {
+            Text(Localization.get("This command will require approval before running again.", lang: appLanguage))
+        }
+    }
+
+    @ViewBuilder
+    private var shellApprovalCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.snappy(duration: 0.25)) {
+                    isShellApprovalsExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "terminal.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(tint.opacity(0.9))
+                        .frame(width: 28, height: 28)
+                        .background(tint.opacity(0.1).cornerRadius(8))
+                    Text(Localization.get("Approved Shell Commands", lang: appLanguage))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.9))
+                    Spacer()
+                    Text("\(shellApprovalEntries.count)")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.4))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.white.opacity(0.08).cornerRadius(8))
+                    Image(systemName: isShellApprovalsExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.4))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .onChange(of: isShellApprovalsExpanded) { _, isExpanded in
+                if isExpanded {
+                    shellApprovalEntries = gemini.execApprovals.allApprovedEntries()
+                }
+            }
+
+            if isShellApprovalsExpanded {
+                if shellApprovalEntries.isEmpty {
+                    Text(Localization.get("No approved commands. Commands run via Talk will require approval each time.", lang: appLanguage))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.4))
+                        .padding(.top, 10)
+                } else {
+                    ScrollView {
+                        VStack(spacing: 6) {
+                            ForEach(shellApprovalEntries) { entry in
+                                ShellApprovalEntryRow(
+                                    entry: entry,
+                                    tint: tint
+                                ) {
+                                    pendingShellApprovalRemoval = entry.key
+                                }
+                            }
+                        }
+                        .padding(.top, 10)
+                    }
+                    .frame(maxHeight: 200)
+                }
             }
         }
     }
@@ -366,11 +457,26 @@ struct AppTalkSettingsPane: View {
                 VStack(spacing: 12) {
                     agentModelVoiceThinkingRow(icon: "cpu", titleKey: "Model") {
                         fixedWidthAgentMenu(title: gemini.selectedModel.displayName) {
-                            ForEach(GeminiLiveModel.allCases, id: \.self) { model in
-                                Button(model.displayName) {
-                                    gemini.selectedModel = model
+                            if gemini.availableLiveModels.isEmpty {
+                                Text(Localization.get("No local Live models found.", lang: appLanguage))
+                            } else {
+                                ForEach(gemini.availableLiveModels) { model in
+                                    Button(model.displayName) {
+                                        gemini.selectedModel = model
+                                    }
                                 }
                             }
+                        }
+                    }
+
+                    if let message = gemini.lastLiveModelRefreshMessage, !message.isEmpty {
+                        HStack(spacing: 8) {
+                            Spacer(minLength: 0)
+                            Text(Localization.get(message, lang: appLanguage))
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.46))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
                         }
                     }
 
@@ -459,6 +565,7 @@ struct AppTalkSettingsPane: View {
         userProfileDraft = gemini.userProfileContent
         memoryDraft = gemini.memoryContent
         holdShortcut = HoldToTalkShortcutStore.load()
+        shellApprovalEntries = gemini.execApprovals.allApprovedEntries()
     }
 
     private func syncAgentDrafts() {
@@ -645,6 +752,57 @@ private struct TalkSkillEditorSheet: View {
             onDismiss()
         } catch {
             gemini.ingestSkillsEditorSaveFailure(error)
+        }
+    }
+    }
+
+
+struct ShellApprovalEntryRow: View {
+    let entry: GeminiLiveExecApprovalStore.ApprovedEntry
+    let tint: Color
+    let onRemove: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: entry.type == .family ? "folder.fill" : "terminal.fill")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(entry.type == .family ? Color(nsColor: .systemTeal) : Color(nsColor: .systemGreen))
+                .frame(width: 20)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(entry.commandOrFamily)
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if !entry.workingDirectory.isEmpty {
+                    Text(entry.workingDirectory)
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.35))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+
+            Spacer()
+
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.white.opacity(0.25))
+            }
+            .buttonStyle(.plain)
+            .help(Localization.get("Remove approval", lang: "English"))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.white.opacity(0.04))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.white.opacity(0.06), lineWidth: 1)
         }
     }
 }

@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import NotchGeminiLiveCore
 import NotchGeminiSkillStorage
 import NotchTooling
 

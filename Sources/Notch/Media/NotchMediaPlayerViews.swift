@@ -4,52 +4,33 @@ import SwiftUI
 struct ExpandedAlbumArtView: View {
     @ObservedObject var playback: MediaProbeViewModel
     let albumArtNamespace: Namespace.ID
+    private let expandedArtSize: CGFloat = 128
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            if playback.hasTrack, let albumArt = playback.albumArt {
-                Image(nsImage: albumArt)
-                    .resizable()
-                    .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .aspectRatio(1, contentMode: .fit)
-                    .scaleEffect(x: 1.1, y: 1.1)
-                    .blur(radius: 40)
-                    .opacity(0.5)
+            Group {
+                if let albumArt = playback.albumArt {
+                    Image(nsImage: albumArt)
+                        .resizable()
+                        .clipped()
+                        .aspectRatio(1, contentMode: .fit)
+                        .scaleEffect(x: 1.1, y: 1.1)
+                        .matchedGeometryEffect(id: "albumArt", in: albumArtNamespace)
+                } else {
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color.white.opacity(0.06))
+                }
             }
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .frame(width: expandedArtSize, height: expandedArtSize)
+            .shadow(color: Color(nsColor: playback.accentColor).opacity(0.4), radius: 20, x: 0, y: 4)
 
             Button {
                 playback.openCurrentApp()
             } label: {
-                ZStack(alignment: .bottomTrailing) {
-                    Group {
-                        if let albumArt = playback.albumArt {
-                            Image(nsImage: albumArt)
-                                .resizable()
-                                .aspectRatio(1, contentMode: .fill)
-                                .matchedGeometryEffect(id: "albumArt", in: albumArtNamespace)
-                        } else {
-                            RoundedRectangle(cornerRadius: 16)
-                                .fill(Color.white.opacity(0.06))
-                        }
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .frame(width: 118, height: 118)
-                    .shadow(color: Color(nsColor: playback.accentColor).opacity(0.4), radius: 20, x: 0, y: 4)
-
-                    if let appIcon = playback.appIcon, !playback.usingAppIconForArtwork {
-                        Image(nsImage: appIcon)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 28, height: 28)
-                            .background(Color.white)
-                            .clipShape(Circle())
-                            .overlay(Circle().stroke(Color.black.opacity(0.1), lineWidth: 1))
-                            .offset(x: 8, y: 8)
-                            .transition(.scale.combined(with: .opacity))
-                            .zIndex(2)
-                    }
-                }
+                Color.clear
+                    .frame(width: expandedArtSize, height: expandedArtSize)
+                    .contentShape(RoundedRectangle(cornerRadius: 16))
             }
             .buttonStyle(.plain)
             .scaleEffect(playback.isPlaying ? 1 : 0.95)
@@ -57,10 +38,9 @@ struct ExpandedAlbumArtView: View {
             Rectangle()
                 .fill(Color.black)
                 .opacity(playback.isPlaying ? 0 : 0.3)
-                .blur(radius: 50)
-                .frame(width: 118, height: 118)
+                .frame(width: expandedArtSize, height: expandedArtSize)
         }
-        .frame(width: 128, height: 128)
+        .frame(width: expandedArtSize, height: expandedArtSize)
     }
 }
 
@@ -69,6 +49,7 @@ struct ExpandedMediaControlsView: View {
     @State private var sliderValue: Double = 0
     @State private var dragging = false
     @State private var lastDragged: Date = .distantPast
+    private let trackInfoHeight: CGFloat = 48
     
     @AppStorage("app_language") private var appLanguage: String = "English"
 
@@ -105,6 +86,14 @@ struct ExpandedMediaControlsView: View {
         Color(nsColor: playback.accentColor).ensureMinimumBrightness(factor: 0.72)
     }
 
+    private var secondaryAccent: Color {
+        accent.opacity(0.72)
+    }
+
+    private var showsSourceBadge: Bool {
+        sourceLabel == "YouTube Music" || secondaryText.lowercased().contains("vevo")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             // Header
@@ -118,35 +107,40 @@ struct ExpandedMediaControlsView: View {
             .foregroundColor(accent)
             .padding(.bottom, -2)
             
-            // Track Info
-            VStack(alignment: .leading, spacing: 2) {
-                MarqueeText(
-                    .constant(primaryText),
-                    font: .system(size: 17, weight: .bold, design: .rounded),
-                    nsFont: .title2,
-                    textColor: .white,
-                    frameWidth: 320
-                )
-                
-                HStack(spacing: 4) {
+            GeometryReader { geometry in
+                let textWidth = max(1, geometry.size.width)
+                let secondaryWidth = showsSourceBadge ? max(1, textWidth - 22) : textWidth
+
+                VStack(alignment: .leading, spacing: 2) {
                     MarqueeText(
-                        .constant(secondaryText),
-                        font: .system(size: 13, weight: .medium, design: .rounded),
-                        nsFont: .body,
-                        textColor: .white.opacity(0.6),
-                        frameWidth: 300
+                        .constant(primaryText),
+                        font: .system(size: 17, weight: .bold, design: .rounded),
+                        nsFont: .title2,
+                        textColor: .white,
+                        frameWidth: textWidth
                     )
-                    
-                    if sourceLabel == "YouTube Music" || secondaryText.lowercased().contains("vevo") {
-                        Image(systemName: "checkmark.seal.fill")
-                            .foregroundColor(accent)
-                            .font(.system(size: 13))
-                            .offset(y: -1)
+
+                    HStack(spacing: 4) {
+                        MarqueeText(
+                            .constant(secondaryText),
+                            font: .system(size: 13, weight: .medium, design: .rounded),
+                            nsFont: .body,
+                            textColor: secondaryAccent,
+                            frameWidth: secondaryWidth
+                        )
+
+                        if showsSourceBadge {
+                            Image(systemName: "checkmark.seal.fill")
+                                .foregroundColor(accent)
+                                .font(.system(size: 13))
+                                .offset(y: -1)
+                        }
                     }
                 }
             }
+            .frame(height: trackInfoHeight)
             
-            Spacer().frame(height: 4)
+            Spacer().frame(height: 0)
 
             // Slider with inline text
             TimelineView(.animation(minimumInterval: playback.state.playbackRate > 0 ? 0.1 : nil)) { timeline in
@@ -176,7 +170,8 @@ struct ExpandedMediaControlsView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, 8)
+        .padding(.top, 2)
+        .padding(.bottom, 14)
         .padding(.leading, 8)
         .padding(.trailing, 16)
         .buttonStyle(.plain)
@@ -185,10 +180,8 @@ struct ExpandedMediaControlsView: View {
     @ViewBuilder
     private func slotView(for slot: MediaControlSlot) -> some View {
         switch slot {
-        case .shuffle:
-            HoverButton(icon: "shuffle", iconColor: accent, scale: .medium, isEnabled: false) {}
         case .previous:
-            HoverButton(icon: "backward.end.fill", iconColor: .white.opacity(0.6), scale: .medium, isEnabled: playback.canSkipToPreviousTrack) {
+            HoverButton(icon: "backward.end.fill", iconColor: secondaryAccent, scale: .medium, isEnabled: playback.canSkipToPreviousTrack) {
                 playback.previousTrack()
             }
         case .playPause:
@@ -218,7 +211,7 @@ struct ExpandedMediaControlsView: View {
             .opacity(playback.canTogglePlayback ? 1.0 : 0.5)
             .disabled(!playback.canTogglePlayback)
         case .next:
-            HoverButton(icon: "forward.end.fill", iconColor: .white.opacity(0.6), scale: .medium, isEnabled: playback.canSkipToNextTrack) {
+            HoverButton(icon: "forward.end.fill", iconColor: secondaryAccent, scale: .medium, isEnabled: playback.canSkipToNextTrack) {
                 playback.nextTrack()
             }
         case .favorite:
@@ -226,15 +219,13 @@ struct ExpandedMediaControlsView: View {
         case .volume:
             Color.clear
         case .goBackward:
-            HoverButton(icon: "gobackward.10", iconColor: .white.opacity(0.6), scale: .medium, isEnabled: playback.canSkipBackward15Seconds) {
+            HoverButton(icon: "gobackward.10", iconColor: secondaryAccent, scale: .medium, isEnabled: playback.canSkipBackward15Seconds) {
                 playback.skip(seconds: -10)
             }
         case .goForward:
-            HoverButton(icon: "goforward.10", iconColor: .white.opacity(0.6), scale: .medium, isEnabled: playback.canSkipForward15Seconds) {
+            HoverButton(icon: "goforward.10", iconColor: secondaryAccent, scale: .medium, isEnabled: playback.canSkipForward15Seconds) {
                 playback.skip(seconds: 10)
             }
-        case .repeatMode:
-            HoverButton(icon: "repeat", iconColor: accent, scale: .medium, isEnabled: false) {}
         case .stop:
             Color.clear
         case .none:
@@ -273,7 +264,7 @@ struct MediaSliderView: View {
 
             Text(timeString(from: duration))
                 .font(.system(size: 11, weight: .bold, design: .rounded).monospacedDigit())
-                .foregroundColor(.white.opacity(0.6))
+                .foregroundColor(labelColor)
                 .fixedSize(horizontal: true, vertical: false)
         }
         .onChange(of: currentDate) { _, newDate in
@@ -460,8 +451,10 @@ struct VolumeControlView: View {
             
             Text("\(Int(volumeSliderValue * 100))%")
                 .font(.system(size: 10, weight: .bold, design: .rounded).monospacedDigit())
-                .foregroundColor(.white.opacity(0.6))
-                .frame(width: 26, alignment: .trailing)
+                .foregroundColor(accent.opacity(0.72))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(width: 34, alignment: .trailing)
         }
         .onAppear {
             volumeSliderValue = getSystemVolume()
@@ -490,13 +483,11 @@ struct VolumeControlView: View {
 }
 
 enum MediaControlSlot: String, CaseIterable, Identifiable {
-    case shuffle
     case previous
     case goBackward
     case playPause
     case goForward
     case next
-    case repeatMode
     case volume
     case favorite
     case stop
@@ -505,13 +496,11 @@ enum MediaControlSlot: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     static let allControls: [MediaControlSlot] = [
-        .shuffle,
         .previous,
         .goBackward,
         .playPause,
         .goForward,
-        .next,
-        .repeatMode
+        .next
     ]
 }
 
@@ -568,8 +557,17 @@ struct MarqueeText: View {
         textSize.width > frameWidth
     }
 
+    private var lineHeight: CGFloat {
+        let measuredHeight = textSize.height > 0
+            ? textSize.height
+            : NSFont.preferredFont(forTextStyle: nsFont).pointSize
+        return measuredHeight * 1.3
+    }
+
     var body: some View {
-        GeometryReader { _ in
+        GeometryReader { geometry in
+            let effectiveFrameWidth = max(1, min(frameWidth, geometry.size.width))
+
             ZStack(alignment: .leading) {
                 HStack(spacing: 20) {
                     Text(text)
@@ -606,9 +604,9 @@ struct MarqueeText: View {
                     }
                 }
             }
-            .frame(width: frameWidth, alignment: .leading)
+            .frame(width: effectiveFrameWidth, alignment: .leading)
             .clipped()
         }
-        .frame(height: textSize.height * 1.3)
+        .frame(width: frameWidth, height: lineHeight, alignment: .leading)
     }
 }

@@ -132,7 +132,7 @@ final class NotchWindowManager {
         let targetScreens: [NSScreen]
         switch displayMode {
         case .oneScreen:
-            targetScreens = [repositionSingleToCursor ? (NotchMetrics.preferredScreen() ?? screens.first) : (activeController()?.screen ?? controllers.values.first?.screen ?? NotchMetrics.preferredScreen() ?? screens.first)].compactMap { $0 }
+            targetScreens = preferredSingleScreens(repositionSingleToCursor: repositionSingleToCursor, fallbackScreens: screens)
         case .allScreens:
             targetScreens = screens
         }
@@ -163,6 +163,20 @@ final class NotchWindowManager {
                 }
             }
         }
+    }
+
+    private func preferredSingleScreens(repositionSingleToCursor: Bool, fallbackScreens: [NSScreen]) -> [NSScreen] {
+        if repositionSingleToCursor, let preferredScreen = NotchMetrics.preferredScreen() {
+            return [preferredScreen]
+        }
+
+        if !repositionSingleToCursor {
+            if let screen = activeController()?.screen ?? controllers.values.first?.screen ?? NotchMetrics.preferredScreen() {
+                return [screen]
+            }
+        }
+
+        return fallbackScreens.prefix(1).map { $0 }
     }
 
     private func makeController(screen: NSScreen) -> NotchWindowController {

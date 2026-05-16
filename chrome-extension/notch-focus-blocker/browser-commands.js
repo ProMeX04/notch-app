@@ -256,7 +256,7 @@ export async function maybeBlockTab(tabId, url, focusState) {
   if (!focusState.focusActive || !focusState.connected || !isHttpUrl(url)) return;
 
   const hostname = parseHostname(url);
-  if (!hostname || !isBlockedHost(hostname, focusState.blockedHosts, focusState.allowedHosts)) return;
+  if (!hostname || !isBlockedHost(hostname, focusState.blockedHosts, focusState.allowedHosts, focusState.accessMode)) return;
 
   const iconUrl = chrome.runtime.getURL("icons/icon128.png");
 
@@ -620,20 +620,20 @@ function isGoogleHost(hostname) {
   );
 }
 
-function isBlockedHost(hostname, blockedHosts, allowlist = []) {
-  if (
-    allowlist.some(rule => {
-      const normalized = rule.trim().toLowerCase();
-      return normalized && (hostname === normalized || hostname.endsWith(`.${normalized}`));
-    })
-  ) {
+function isBlockedHost(hostname, blockedHosts, allowlist = [], accessMode = "allowAllExceptBlocked") {
+  const isAllowed = allowlist.some(rule => hostMatchesRule(hostname, rule));
+  if (accessMode === "blockAllExceptAllowed") {
+    return !isAllowed;
+  }
+  if (isAllowed) {
     return false;
   }
-  return blockedHosts.some(rule => {
-    const normalizedRule = normalizeHostRule(rule);
-    if (!normalizedRule) return false;
-    return hostname === normalizedRule || hostname.endsWith(`.${normalizedRule}`);
-  });
+  return blockedHosts.some(rule => hostMatchesRule(hostname, rule));
+}
+
+function hostMatchesRule(hostname, rule) {
+  const normalizedRule = normalizeHostRule(rule);
+  return Boolean(normalizedRule && (hostname === normalizedRule || hostname.endsWith(`.${normalizedRule}`)));
 }
 
 function normalizeHostRule(rule) {

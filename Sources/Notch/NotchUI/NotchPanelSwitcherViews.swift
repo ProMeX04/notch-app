@@ -18,15 +18,6 @@ struct PanelSwitcher: View {
                 )
             }
         }
-        .padding(3)
-        .background(
-            Capsule()
-                .fill(Color.white.opacity(0.045))
-        )
-        .overlay {
-            Capsule()
-                .stroke(Color.white.opacity(0.06), lineWidth: 1)
-        }
     }
 
     private func switcherIcon(for panel: NotchPanel) -> String {
@@ -61,11 +52,8 @@ struct PanelSwitcher: View {
             Image(systemName: icon)
                 .font(.system(size: 11, weight: .semibold))
                 .frame(width: StandardButtonMetrics.height, height: StandardButtonMetrics.height)
-                .background(
-                    Capsule()
-                        .fill(presentationModel.selectedPanel == panel ? Color.white.opacity(0.12) : Color.white.opacity(0.001))
-                )
-                .contentShape(Capsule())
+                .foregroundStyle(presentationModel.selectedPanel == panel ? .white.opacity(0.96) : .white.opacity(0.58))
+                .contentShape(Rectangle())
                 .overlay(alignment: .topTrailing) {
                     if let badge = badge(for: panel) {
                         PanelActivityBadge(
@@ -217,25 +205,13 @@ struct HeaderUtilitySwitcher: View {
             .buttonStyle(.plain)
             .help(Localization.get("Settings", lang: "English"))
         }
-        .padding(3)
-        .background(
-            Capsule()
-                .fill(Color.white.opacity(0.045))
-        )
-        .overlay {
-            Capsule()
-                .stroke(Color.white.opacity(0.06), lineWidth: 1)
-        }
     }
 
     private func utilityIcon(_ systemName: String, isSelected: Bool) -> some View {
         Image(systemName: systemName)
             .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(isSelected ? .white.opacity(0.96) : .white.opacity(0.58))
             .frame(width: StandardButtonMetrics.height, height: StandardButtonMetrics.height)
-            .background(
-                Capsule()
-                    .fill(isSelected ? Color.white.opacity(0.12) : Color.white.opacity(0.001))
-            )
-            .contentShape(Capsule())
+            .contentShape(Rectangle())
     }
 }

@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 import Foundation
+import NotchGeminiLiveCore
 import NotchGeminiSkillStorage
 import NotchTooling
 

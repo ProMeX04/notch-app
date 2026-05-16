@@ -1,56 +1,84 @@
 import Combine
 import Foundation
+import NotchGeminiLiveCore
 
 @MainActor
 final class ExecApprovalCoordinator: ObservableObject {
     @Published private(set) var pending: [ExecApprovalRequest] = []
 
-    nonisolated private let store: GeminiLiveExecApprovalStore
+    private let state: ExecApprovalState
 
     var onApprove: (@MainActor (_ toolCallID: String) -> Void)?
     var onDeny: (@MainActor (_ toolCallID: String) -> Void)?
 
     init(store: GeminiLiveExecApprovalStore) {
-        self.store = store
+        self.state = ExecApprovalState(
+            actions: ExecApprovalActions(
+                isApproved: { command, workingDirectory in
+                    store.isApproved(command: command, workingDirectory: workingDirectory)
+                },
+                approveExact: { command, workingDirectory in
+                    store.approveExact(command: command, workingDirectory: workingDirectory)
+                },
+                approveFamily: { command, workingDirectory in
+                    store.approveFamily(command: command, workingDirectory: workingDirectory)
+                }
+            )
+        )
+    }
+
+    init(state: ExecApprovalState) {
+        self.state = state
     }
 
     func enqueue(_ request: ExecApprovalRequest) {
-        guard !pending.contains(where: { $0.toolCallID == request.toolCallID }) else { return }
-        pending.append(request)
+        state.enqueue(request)
+        pending = state.pending
     }
 
     func clearAll() {
-        pending.removeAll()
+        state.clearAll()
+        pending = state.pending
     }
 
     func approveCurrentOnce() {
-        guard let request = pending.first else { return }
-        pending.removeAll { $0.toolCallID == request.toolCallID }
-        onApprove?(request.toolCallID)
+        guard let toolCallID = state.approveCurrentOnce() else { return }
+        pending = state.pending
+        onApprove?(toolCallID)
     }
 
     func approveCurrentAlwaysExact() {
-        guard let request = pending.first else { return }
-        store.approveExact(command: request.command, workingDirectory: request.workingDirectory)
-        pending.removeAll { $0.toolCallID == request.toolCallID }
-        onApprove?(request.toolCallID)
+        guard let toolCallID = state.approveCurrentAlwaysExact() else { return }
+        pending = state.pending
+        onApprove?(toolCallID)
     }
 
     func approveCurrentAlwaysFamily() {
-        guard let request = pending.first else { return }
-        store.approveFamily(command: request.command, workingDirectory: request.workingDirectory)
-        pending.removeAll { $0.toolCallID == request.toolCallID }
-        onApprove?(request.toolCallID)
+        guard let toolCallID = state.approveCurrentAlwaysFamily() else { return }
+        pending = state.pending
+        onApprove?(toolCallID)
     }
 
     func denyCurrent() {
-        guard let request = pending.first else { return }
-        pending.removeAll { $0.toolCallID == request.toolCallID }
-        onDeny?(request.toolCallID)
+        guard let toolCallID = state.denyCurrent() else { return }
+        pending = state.pending
+        onDeny?(toolCallID)
     }
 
     nonisolated func shouldAutoApprove(command: String, workingDirectory: String?) -> Bool {
-        store.isApproved(command: command, workingDirectory: workingDirectory)
+        state.shouldAutoApprove(command: command, workingDirectory: workingDirectory)
+    }
+}
+
+extension ExecApprovalCoordinator {
+    func allApprovedEntries() -> [GeminiLiveExecApprovalStore.ApprovedEntry] {
+        let store = GeminiLiveExecApprovalStore()
+        return store.allApprovedEntries()
+    }
+
+    func removeApprovedEntry(key: String) {
+        let store = GeminiLiveExecApprovalStore()
+        store.removeApproval(key: key)
     }
 }
 

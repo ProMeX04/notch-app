@@ -3,6 +3,7 @@ import AppKit
 import Combine
 import Foundation
 import NotchChatHistoryCore
+import NotchGeminiLiveCore
 @preconcurrency import ScreenCaptureKit
 import Security
 import SwiftUI
@@ -79,14 +80,20 @@ final class GeminiLiveViewModel: ObservableObject {
             persistSettings()
         }
     }
-    @Published var selectedModel: GeminiLiveModel = .flashLivePreview {
+    @Published var selectedModelID: String = GeminiLiveModel.defaultModelID {
         didSet {
+            let normalizedID = GeminiLiveModel.normalizedModelID(selectedModelID)
             if let idx = systemPromptPresets.firstIndex(where: { $0.id == selectedSystemPromptID }) {
-                systemPromptPresets[idx].model = selectedModel.rawValue
+                systemPromptPresets[idx].model = normalizedID
             }
             persistSettings()
         }
     }
+    @Published var availableLiveModels: [GeminiLiveModel] = [] {
+        didSet { persistSettings() }
+    }
+    @Published var isRefreshingLiveModels = false
+    @Published var lastLiveModelRefreshMessage: String?
     @Published var enabledTools: Set<GeminiTool> = [] {
         didSet {
             if let idx = systemPromptPresets.firstIndex(where: { $0.id == selectedSystemPromptID }) {
@@ -166,6 +173,16 @@ final class GeminiLiveViewModel: ObservableObject {
     var skillsRepository: GeminiSkillsRepository { toolingController.skillsRepository }
     var userStore: UserStore { toolingController.userStore }
     var memoryStore: MemoryStore { toolingController.memoryStore }
+    var selectedModel: GeminiLiveModel {
+        get {
+            let normalizedID = GeminiLiveModel.normalizedModelID(selectedModelID)
+            return availableLiveModels.first { $0.apiName == normalizedID }
+                ?? GeminiLiveModel(id: normalizedID)
+        }
+        set {
+            selectedModelID = GeminiLiveModel.normalizedModelID(newValue.apiName)
+        }
+    }
 
     init(dependencies: GeminiLiveViewModelDependencies) {
         self.entitlementStore = dependencies.entitlementStore
@@ -190,6 +207,7 @@ final class GeminiLiveViewModel: ObservableObject {
             selectedConnectionMethod = savedSettings.connectionMethod
             systemPromptPresets = savedSettings.systemPromptPresets
             selectedSystemPromptID = savedSettings.selectedSystemPromptID
+            availableLiveModels = savedSettings.availableLiveModels
         }
 
         userProfileContent = dependencies.toolingController.userStore.readUserProfile()
@@ -553,6 +571,10 @@ final class GeminiLiveViewModel: ObservableObject {
         Task { [weak self] in
             await self?.refreshBackendSubscriptionStatus()
         }
+
+        Task { [weak self] in
+            await self?.refreshLiveModelsOnLaunchIfPossible()
+        }
     }
 
     private func recomputeProEntitlement() {
@@ -610,7 +632,8 @@ final class GeminiLiveViewModel: ObservableObject {
                 outputVolume: outputVolume,
                 connectionMethod: selectedConnectionMethod,
                 systemPromptPresets: systemPromptPresets,
-                selectedSystemPromptID: selectedSystemPromptID
+                selectedSystemPromptID: selectedSystemPromptID,
+                availableLiveModels: availableLiveModels
             )
         )
     }

@@ -203,7 +203,7 @@ private struct GeminiTalkDisconnectedHomeView: View {
     }
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             if gemini.hasSavedAPIKey {
                 switch setupViewMode {
                 case .home:
@@ -223,144 +223,21 @@ private struct GeminiTalkDisconnectedHomeView: View {
                     .multilineTextAlignment(.center)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 
     private var setupHomeContent: some View {
-        HStack(alignment: .center, spacing: 32) { 
-            HStack(alignment: .center, spacing: 32) { // Increased spacing to avoid wave overlap
-                Button {
-                    setupViewMode = .agentSelection
-                } label: {
-                    GeminiAgentHomeAvatarFigure(
-                        statusColor: statusColor,
-                        avatarSymbolName: selectedAgentAvatarSymbolName,
-                        avatarImageURL: selectedAgentAvatarImageURL
-                    )
-                }
-                .buttonStyle(.plain)
-
-                VStack(alignment: .leading, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 4) {
-                            Text(formattedAgentDisplayName(gemini.selectedSystemPromptPreset.title))
-                                .font(.system(size: 14, weight: .bold, design: .rounded))
-                                .foregroundStyle(.white.opacity(0.95))
-                                .lineLimit(1)
-                            Image(systemName: "checkmark.seal.fill")
-                                .font(.system(size: 12))
-                                .foregroundStyle(themeAccent)
-                        }
-
-                        HStack(spacing: 4) {
-                            Text(Localization.get("Online", lang: appLanguage))
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.5))
-                            Circle()
-                                .fill(themeAccent)
-                                .frame(width: 5, height: 5)
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        GeminiAgentStatusDualPill(
-                            voice: gemini.selectedVoice.rawValue,
-                            thinking: gemini.thinkingLevel.rawValue,
-                            tint: themeAccent,
-                            lang: appLanguage
-                        )
-                        
-                        GeminiDualPill(
-                            leftIcon: "wrench.fill",
-                            leftTitle: "\(gemini.enabledTools.count) \(Localization.get("Công cụ", lang: appLanguage))",
-                            leftSubtitle: Localization.get("Được sử dụng", lang: appLanguage),
-                            rightIcon: "sparkles",
-                            rightTitle: "\(gemini.enabledSkillIDs.count) \(Localization.get("Kỹ năng", lang: appLanguage))",
-                            rightSubtitle: Localization.get("Sẵn sàng hỗ trợ", lang: appLanguage),
-                            tint: themeAccent
-                        )
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(.leading, 12) // Move right away from edge
-
-            Button {
-                gemini.toggleConnection()
-            } label: {
-                VStack(spacing: 6) {
-                    ZStack {
-                        Circle()
-                            .fill(
-                                gemini.lifecycleState.isBusy ?
-                                Color.red.opacity(0.15) :
-                                themeAccent.opacity(0.15)
-                            )
-                            .frame(width: 44, height: 44)
-                        
-                        Image(systemName: gemini.lifecycleState.isBusy ? "stop.fill" : "play.fill")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(gemini.lifecycleState.isBusy ? .red : themeAccent)
-                            .shadow(color: (gemini.lifecycleState.isBusy ? Color.red : themeAccent).opacity(0.5), radius: 8)
-                    }
-                    
-                    VStack(spacing: 1) {
-                        Text(gemini.lifecycleState.isBusy
-                            ? Localization.get("Dừng", lang: appLanguage)
-                            : Localization.get("Kết nối", lang: appLanguage))
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.95))
-                        
-                        Text(gemini.lifecycleState.isBusy
-                            ? Localization.get("Kết thúc", lang: appLanguage)
-                            : Localization.get("Bắt đầu", lang: appLanguage))
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.5))
-                    }
-                }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 10)
-                .background {
-                    ZStack {
-                        // Glass background
-                        RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .fill(.white.opacity(0.03))
-                        
-                        // Subtle gradient overlay
-                        RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        .white.opacity(0.05),
-                                        .clear
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                    }
-                }
-                .overlay {
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .stroke(
-                            LinearGradient(
-                                colors: [
-                                    .white.opacity(0.15),
-                                    .white.opacity(0.05)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1
-                        )
-                }
-                .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
-            }
-            .buttonStyle(GrowingButtonStyle())
-            .disabled(!gemini.canStartConnection && !gemini.lifecycleState.isBusy)
-            .frame(width: 86)
-            .padding(.trailing, 12) // Move left away from edge
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        GeminiTalkDraftHomeView(
+            gemini: gemini,
+            appLanguage: appLanguage,
+            themeAccent: themeAccent,
+            statusColor: statusColor,
+            selectedAgentAvatarSymbolName: selectedAgentAvatarSymbolName,
+            selectedAgentAvatarImageURL: selectedAgentAvatarImageURL,
+            selectAgent: { setupViewMode = .agentSelection },
+            openSettingsPanel: openSettingsPanel
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 
 

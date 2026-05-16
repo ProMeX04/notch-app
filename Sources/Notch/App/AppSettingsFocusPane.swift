@@ -135,6 +135,14 @@ struct AppFocusSettingsPane: View {
                             title: Localization.get("Enable Notifications", lang: appLanguage),
                             isOn: $pomodoro.notificationsEnabled,
                             tint: tint,
+                            showDivider: true
+                        )
+
+                        automationToggle(
+                            icon: "timer",
+                            title: Localization.get("Show Focus Timer in Menu Bar", lang: appLanguage),
+                            isOn: $pomodoro.showMenuBarClockDuringFocus,
+                            tint: tint,
                             showDivider: false
                         )
                     }
@@ -144,6 +152,8 @@ struct AppFocusSettingsPane: View {
                     title: Localization.get("Websites", lang: appLanguage)
                 ) {
                     VStack(alignment: .leading, spacing: 0) {
+                        WebsiteAccessModeRow(store: websiteBlocklistStore, tint: tint)
+
                         AppSettingsRow(showDivider: true) {
                             VStack(alignment: .leading, spacing: 10) {
                                 Button {
@@ -293,6 +303,55 @@ struct AppFocusSettingsPane: View {
             Toggle("", isOn: isOn)
                 .toggleStyle(NotchSwitchStyle(tint: tint))
                 .labelsHidden()
+        }
+    }
+}
+
+private struct WebsiteAccessModeRow: View {
+    @ObservedObject var store: FocusWebsiteBlocklistStore
+    let tint: Color
+    @AppStorage("app_language") private var appLanguage: String = "English"
+
+    var body: some View {
+        AppSettingsRow(showDivider: true) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    Image(systemName: "network.badge.shield.half.filled")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(tint.opacity(0.9))
+                        .frame(width: 28, height: 28)
+                        .background(tint.opacity(0.1).cornerRadius(8))
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Localization.get("Website Access Mode", lang: appLanguage))
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.9))
+
+                        Text(Localization.get(modeDescription, lang: appLanguage))
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.45))
+                    }
+
+                    Spacer()
+                }
+
+                NotchSegmentedPicker(
+                    options: FocusWebsiteAccessMode.allCases,
+                    selection: $store.accessMode,
+                    titleMapper: { Localization.get($0.displayName, lang: appLanguage) },
+                    tint: tint
+                )
+                .frame(maxWidth: 360)
+            }
+        }
+    }
+
+    private var modeDescription: String {
+        switch store.accessMode {
+        case .allowAllExceptBlocked:
+            return "All websites work except domains in Blocked Websites."
+        case .blockAllExceptAllowed:
+            return "Only domains in Allowed Websites work during focus."
         }
     }
 }

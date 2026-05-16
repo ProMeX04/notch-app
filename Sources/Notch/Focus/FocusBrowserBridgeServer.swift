@@ -13,6 +13,7 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
         var remainingSeconds = 0
         var blockedHosts: [String] = []
         var allowedHosts: [String] = []
+        var accessMode = FocusWebsiteAccessMode.allowAllExceptBlocked.rawValue
         var autoOpenUrls: [String] = []
 
         var focusActive: Bool {
@@ -133,6 +134,7 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
         snapshot.remainingSeconds = pomodoroViewModel.remainingSeconds
         snapshot.blockedHosts = blocklistStore.blockedHosts
         snapshot.allowedHosts = blocklistStore.allowedHosts
+        snapshot.accessMode = blocklistStore.accessMode.rawValue
         snapshot.autoOpenUrls = blocklistStore.autoOpenUrls
 
         encoder.outputFormatting = [.sortedKeys]
@@ -170,6 +172,16 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
                 guard let self else { return }
                 self.stateQueue.async {
                     self.snapshot.allowedHosts = allowedHosts
+                    self.broadcastFocusState(snapshot: self.snapshot)
+                }
+            }
+            .store(in: &cancellables)
+
+        blocklistStore.$accessMode
+            .sink { [weak self] accessMode in
+                guard let self else { return }
+                self.stateQueue.async {
+                    self.snapshot.accessMode = accessMode.rawValue
                     self.broadcastFocusState(snapshot: self.snapshot)
                 }
             }
@@ -374,6 +386,7 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
             "remainingSeconds": isAllowed ? snapshot.remainingSeconds : 0,
             "blockedHosts": isAllowed ? snapshot.blockedHosts : [] as [String],
             "allowedHosts": isAllowed ? snapshot.allowedHosts : [] as [String],
+            "accessMode": isAllowed ? snapshot.accessMode : FocusWebsiteAccessMode.allowAllExceptBlocked.rawValue,
             "autoOpenUrls": isAllowed ? snapshot.autoOpenUrls : [] as [String],
         ]
 

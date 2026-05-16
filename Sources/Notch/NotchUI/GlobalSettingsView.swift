@@ -200,17 +200,22 @@ struct GlobalSettingsView: View {
 
                         settingsGroupedDivider()
 
-                        Toggle(isOn: Binding(
-                            get: { presentationModel.hideInFullscreen },
-                            set: { presentationModel.setHideInFullscreen($0) }
-                        )) {
-                            Text(Localization.get("Hide in Fullscreen", lang: appLanguage))
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(Localization.get("Invisible", lang: appLanguage))
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundStyle(.white.opacity(0.9))
                                 .frame(maxWidth: .infinity, alignment: .leading)
+
+                            NotchSegmentedPicker(
+                                options: NotchInvisibilityMode.allCases,
+                                selection: Binding(
+                                    get: { presentationModel.selectedInvisibilityMode },
+                                    set: { presentationModel.setInvisibilityMode($0) }
+                                ),
+                                titleMapper: { Localization.get($0.displayNameKey, lang: appLanguage) },
+                                tint: tint
+                            )
                         }
-                        .toggleStyle(NotchSwitchStyle(tint: tint))
-                        .frame(maxWidth: .infinity, alignment: .leading)
 
                         settingsGroupedDivider()
 

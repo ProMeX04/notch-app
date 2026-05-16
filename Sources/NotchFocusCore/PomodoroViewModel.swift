@@ -77,6 +77,7 @@ package final class PomodoroViewModel: ObservableObject {
     @Published package var autoStartBreaks: Bool { didSet { persistSettings() } }
     @Published package var autoStartPomodoros: Bool { didSet { persistSettings() } }
     @Published package var notificationsEnabled: Bool { didSet { persistSettings() } }
+    @Published package var showMenuBarClockDuringFocus: Bool { didSet { persistSettings() } }
     @Published package var tasks: [FocusTask] = [] { didSet { persistTasks() } }
     @Published package var selectedTaskId: UUID? = nil { didSet { persistTasks() } }
     
@@ -162,6 +163,11 @@ package final class PomodoroViewModel: ObservableObject {
             self.notificationsEnabled = userDefaults.bool(forKey: Self.notificationsEnabledKey)
         } else {
             self.notificationsEnabled = true // Default to true if not set
+        }
+        if userDefaults.object(forKey: Self.showMenuBarClockDuringFocusKey) != nil {
+            self.showMenuBarClockDuringFocus = userDefaults.bool(forKey: Self.showMenuBarClockDuringFocusKey)
+        } else {
+            self.showMenuBarClockDuringFocus = true
         }
         self.focusDurationOverrideSeconds = focusDurationOverrideSeconds
         self.breakDurationOverrideSeconds = breakDurationOverrideSeconds
@@ -289,7 +295,6 @@ package final class PomodoroViewModel: ObservableObject {
             pause()
         } else {
             start()
-            soundPlayer.playNotification()
         }
     }
 
@@ -675,6 +680,7 @@ package final class PomodoroViewModel: ObservableObject {
         userDefaults.set(autoStartBreaks, forKey: Self.autoStartBreaksKey)
         userDefaults.set(autoStartPomodoros, forKey: Self.autoStartPomodorosKey)
         userDefaults.set(notificationsEnabled, forKey: Self.notificationsEnabledKey)
+        userDefaults.set(showMenuBarClockDuringFocus, forKey: Self.showMenuBarClockDuringFocusKey)
         persistOptionalInt(focusDurationOverrideSeconds, forKey: Self.focusDurationOverrideSecondsKey)
         persistOptionalInt(breakDurationOverrideSeconds, forKey: Self.breakDurationOverrideSecondsKey)
         persistOptionalInt(longBreakDurationOverrideSeconds, forKey: Self.longBreakDurationOverrideSecondsKey)
@@ -911,6 +917,7 @@ package final class PomodoroViewModel: ObservableObject {
     private static let autoStartBreaksKey = "NotchPomodoroAutoStartBreaks"
     private static let autoStartPomodorosKey = "NotchPomodoroAutoStartPomodoros"
     private static let notificationsEnabledKey = "NotchPomodoroNotificationsEnabled"
+    private static let showMenuBarClockDuringFocusKey = "NotchPomodoroShowMenuBarClockDuringFocus"
     private static let focusDurationOverrideSecondsKey = "NotchPomodoroFocusDurationOverrideSeconds"
     private static let breakDurationOverrideSecondsKey = "NotchPomodoroBreakDurationOverrideSeconds"
     private static let longBreakDurationOverrideSecondsKey = "NotchPomodoroLongBreakDurationOverrideSeconds"

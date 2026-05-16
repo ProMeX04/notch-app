@@ -1,6 +1,22 @@
 import Combine
 import Foundation
 
+enum FocusWebsiteAccessMode: String, CaseIterable, Identifiable {
+    case allowAllExceptBlocked
+    case blockAllExceptAllowed
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .allowAllExceptBlocked:
+            return "Use all except blocked"
+        case .blockAllExceptAllowed:
+            return "Only use allowed"
+        }
+    }
+}
+
 final class FocusWebsiteBlocklistStore: ObservableObject {
     static let bridgePort: UInt16 = 44991
     static let bridgeBaseURL = "http://127.0.0.1:\(bridgePort)"
@@ -11,6 +27,11 @@ final class FocusWebsiteBlocklistStore: ObservableObject {
     @Published private(set) var allowedHosts: [String]
     @Published private(set) var autoOpenUrlsText: String
     @Published private(set) var autoOpenUrls: [String]
+    @Published var accessMode: FocusWebsiteAccessMode {
+        didSet {
+            defaults.set(accessMode.rawValue, forKey: Self.accessModeDefaultsKey)
+        }
+    }
 
     private let defaults: UserDefaults
 
@@ -30,6 +51,9 @@ final class FocusWebsiteBlocklistStore: ObservableObject {
         let storedAutoOpen = defaults.stringArray(forKey: Self.autoOpenUrlsDefaultsKey) ?? []
         self.autoOpenUrls = storedAutoOpen
         self.autoOpenUrlsText = storedAutoOpen.joined(separator: "\n")
+
+        let storedAccessMode = defaults.string(forKey: Self.accessModeDefaultsKey)
+        self.accessMode = FocusWebsiteAccessMode(rawValue: storedAccessMode ?? "") ?? .allowAllExceptBlocked
 
         if normalizedHosts != storedHosts {
             persist(hosts: normalizedHosts, key: Self.blockedHostsDefaultsKey)
@@ -164,4 +188,5 @@ final class FocusWebsiteBlocklistStore: ObservableObject {
     private static let blockedHostsDefaultsKey = "NotchFocusBlockedHosts"
     private static let allowedHostsDefaultsKey = "NotchFocusAllowedHosts"
     private static let autoOpenUrlsDefaultsKey = "NotchFocusAutoOpenUrls"
+    private static let accessModeDefaultsKey = "NotchFocusWebsiteAccessMode"
 }

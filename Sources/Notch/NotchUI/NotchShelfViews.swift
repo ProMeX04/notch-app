@@ -101,8 +101,8 @@ struct ShelfPanelView: View {
 
 struct ShelfBrowserView: NSViewRepresentable {
     static let itemsPerRow: CGFloat = 5
-    static let itemSpacing: CGFloat = 10
-    static let sectionInsets = NSEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
+    static let itemSpacing: CGFloat = 4
+    static let sectionInsets = NSEdgeInsets(top: 6, left: 6, bottom: 6, right: 6)
 
     @ObservedObject var shelf: NotchShelfViewModel
     @ObservedObject var presentationModel: NotchPresentationModel
@@ -714,8 +714,8 @@ final class ShelfCollectionView: NSCollectionView {
 
 private final class ShelfCollectionItem: NSCollectionViewItem {
     static let identifier = NSUserInterfaceItemIdentifier("ShelfCollectionItem")
-    static let preferredSize = NSSize(width: 108, height: 104)
-    private static let previewSize = CGSize(width: 58, height: 58)
+    static let preferredSize = NSSize(width: 72, height: 82)
+    private static let previewSize = CGSize(width: 42, height: 42)
 
     private var thumbnailTask: Task<Void, Never>?
     private var currentItemID: UUID?
@@ -790,8 +790,6 @@ private final class ShelfCollectionItemView: NSView {
     let previewImageView = NSImageView()
     let titleField = NSTextField(labelWithString: "")
 
-    private let backgroundView = NSView()
-
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         setup()
@@ -817,29 +815,24 @@ private final class ShelfCollectionItemView: NSView {
     }
 
     func applySelection(_ selected: Bool) {
-        backgroundView.layer?.backgroundColor = selected
-            ? NSColor.systemBlue.withAlphaComponent(0.16).cgColor
-            : NSColor.white.withAlphaComponent(0.035).cgColor
-        backgroundView.layer?.borderColor = selected
-            ? NSColor.systemBlue.withAlphaComponent(0.72).cgColor
-            : NSColor.white.withAlphaComponent(0.06).cgColor
-        backgroundView.layer?.borderWidth = selected ? 1.5 : 1
+        previewImageView.alphaValue = selected ? 1 : 0.92
+        titleField.textColor = selected ? .white : .white.withAlphaComponent(0.86)
+        layer?.shadowOpacity = selected ? 0.22 : 0.1
+        layer?.shadowRadius = selected ? 10 : 4
     }
 
     private func setup() {
         wantsLayer = true
-
-        backgroundView.wantsLayer = true
-        backgroundView.layer?.cornerRadius = 12
-        backgroundView.layer?.masksToBounds = true
-        addSubview(backgroundView)
+        layer?.masksToBounds = false
+        layer?.shadowColor = NSColor.white.withAlphaComponent(0.28).cgColor
+        layer?.shadowOffset = NSSize(width: 0, height: -3)
 
         previewImageView.imageScaling = .scaleProportionallyUpOrDown
         previewImageView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(previewImageView)
 
-        titleField.font = .systemFont(ofSize: 12, weight: .medium)
-        titleField.textColor = .white.withAlphaComponent(0.92)
+        titleField.font = .systemFont(ofSize: 9, weight: .semibold)
+        titleField.textColor = .white.withAlphaComponent(0.86)
         titleField.alignment = .center
         titleField.maximumNumberOfLines = 2
         titleField.lineBreakMode = .byTruncatingMiddle
@@ -847,22 +840,16 @@ private final class ShelfCollectionItemView: NSView {
         titleField.translatesAutoresizingMaskIntoConstraints = false
         addSubview(titleField)
 
-        backgroundView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            backgroundView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            backgroundView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            backgroundView.topAnchor.constraint(equalTo: topAnchor),
-            backgroundView.bottomAnchor.constraint(equalTo: bottomAnchor),
-
-            previewImageView.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            previewImageView.topAnchor.constraint(equalTo: topAnchor, constant: 6),
             previewImageView.centerXAnchor.constraint(equalTo: centerXAnchor),
-            previewImageView.widthAnchor.constraint(equalToConstant: 58),
-            previewImageView.heightAnchor.constraint(equalToConstant: 58),
+            previewImageView.widthAnchor.constraint(equalToConstant: 42),
+            previewImageView.heightAnchor.constraint(equalToConstant: 42),
 
-            titleField.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            titleField.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
-            titleField.topAnchor.constraint(equalTo: previewImageView.bottomAnchor, constant: 8),
-            titleField.heightAnchor.constraint(equalToConstant: 30),
+            titleField.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
+            titleField.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
+            titleField.topAnchor.constraint(equalTo: previewImageView.bottomAnchor, constant: 6),
+            titleField.heightAnchor.constraint(equalToConstant: 28),
         ])
 
         applySelection(false)

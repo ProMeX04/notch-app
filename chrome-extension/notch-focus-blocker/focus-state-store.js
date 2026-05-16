@@ -28,6 +28,7 @@ let focusState = {
   remainingSeconds: 0,
   blockedHosts: [],
   allowedHosts: [],
+  accessMode: "allowAllExceptBlocked",
   autoOpenUrls: [],
   updatedAt: null,
   checkedAt: null,
@@ -88,6 +89,7 @@ export function applyFocusStatePush(payload) {
     remainingSeconds: payload.remainingSeconds || 0,
     blockedHosts: Array.isArray(payload.blockedHosts) ? payload.blockedHosts : [],
     allowedHosts: Array.isArray(payload.allowedHosts) ? payload.allowedHosts : [],
+    accessMode: normalizeAccessMode(payload.accessMode),
     autoOpenUrls: Array.isArray(payload.autoOpenUrls) ? payload.autoOpenUrls : [],
     updatedAt: payload.updatedAt || null,
     checkedAt: new Date().toISOString(),
@@ -135,6 +137,10 @@ export async function persistState() {
  * Normalize a raw bridge URL string.  Accepts http/https/ws/wss and bare
  * hostnames; always returns a valid ws:// or wss:// URL ending in /v1/ws.
  */
+function normalizeAccessMode(value) {
+  return value === "blockAllExceptAllowed" ? "blockAllExceptAllowed" : "allowAllExceptBlocked";
+}
+
 export function sanitizeBridgeUrl(value) {
   if (typeof value !== "string" || !value.trim()) {
     return DEFAULT_BRIDGE_URL;

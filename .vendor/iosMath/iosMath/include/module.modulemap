@@ -1,0 +1,6 @@
+// Explicit module map for iosMath SPM target.
+// The umbrella header provides all public imports with correct relative paths.
+module iosMath {
+    umbrella header "iosMath.h"
+    export *
+}

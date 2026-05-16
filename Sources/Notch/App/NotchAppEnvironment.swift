@@ -13,7 +13,7 @@ final class NotchAppEnvironment {
     let shelfViewModel: NotchShelfViewModel
     let shortcutStore: ShortcutStore
     let presentationModel: NotchPresentationModel
-    let notchController: NotchWindowController
+    let notchController: NotchWindowManager
     let featureCoordinator: NotchFeatureCoordinator
     let focusBrowserBridgeServer: FocusBrowserBridgeServer
     let appSettingsController: AppSettingsControlling
@@ -33,7 +33,7 @@ final class NotchAppEnvironment {
         shortcutStore = ShortcutStore()
         presentationModel = NotchPresentationModel()
 
-        notchController = NotchWindowController(
+        notchController = NotchWindowManager(
             playbackViewModel: playbackViewModel,
             pomodoroViewModel: pomodoroViewModel,
             focusWebsiteBlocklistStore: focusWebsiteBlocklistStore,

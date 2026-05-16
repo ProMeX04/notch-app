@@ -24,6 +24,7 @@ struct MediaNotchView: View {
     @ObservedObject var learningStats: LearningStatsStore
     @ObservedObject var presentationModel: NotchPresentationModel
     @ObservedObject var entitlementStore: NotchEntitlementStore
+    let screenID: NotchScreenID
 
     @Namespace private var albumArtNamespace
     @StateObject private var talkHeaderAccessoryController = NotchHeaderAccessoryController()
@@ -45,7 +46,8 @@ struct MediaNotchView: View {
         shortcutStore: ShortcutStore,
         learningStats: LearningStatsStore,
         presentationModel: NotchPresentationModel,
-        entitlementStore: NotchEntitlementStore
+        entitlementStore: NotchEntitlementStore,
+        screenID: NotchScreenID
     ) {
         self.playback = playback
         self.pomodoro = pomodoro
@@ -56,6 +58,7 @@ struct MediaNotchView: View {
         self.learningStats = learningStats
         self.presentationModel = presentationModel
         self.entitlementStore = entitlementStore
+        self.screenID = screenID
         _shortcutsViewModel = StateObject(wrappedValue: NotchShortcutViewModel(store: shortcutStore))
     }
     @State private var didAutoRevealForShelfDrop = false
@@ -71,17 +74,25 @@ struct MediaNotchView: View {
 
     private var notchAnimation: Animation? {
         if isDragRevealing { return nil }
-        return presentationModel.isExpanded
+        return isExpanded
             ? .spring(response: 0.42, dampingFraction: 0.8, blendDuration: 0)
             : .spring(response: 0.45, dampingFraction: 1.0, blendDuration: 0)
     }
 
+    private var isExpanded: Bool {
+        presentationModel.isExpanded(on: screenID)
+    }
+
+    private var closedNotchSize: CGSize {
+        presentationModel.closedNotchSize(for: screenID)
+    }
+
     private var topCornerRadius: CGFloat {
-        presentationModel.isExpanded ? NotchMetrics.openCornerRadius.top : NotchMetrics.closedCornerRadius.top
+        isExpanded ? NotchMetrics.openCornerRadius.top : NotchMetrics.closedCornerRadius.top
     }
 
     private var bottomCornerRadius: CGFloat {
-        presentationModel.isExpanded ? NotchMetrics.openCornerRadius.bottom : NotchMetrics.closedCornerRadius.bottom
+        isExpanded ? NotchMetrics.openCornerRadius.bottom : NotchMetrics.closedCornerRadius.bottom
     }
 
     private var compactActivity: CompactActivity {
@@ -108,29 +119,29 @@ struct MediaNotchView: View {
     }
 
     private var currentBodyWidth: CGFloat {
-        if presentationModel.isExpanded {
+        if isExpanded {
             return NotchMetrics.openSize(for: presentationModel.selectedPanel).width
         }
 
-        let baseWidth = presentationModel.closedNotchSize.width
+        let baseWidth = closedNotchSize.width
 
         guard compactActivity != .idle else {
             return (baseWidth - 20) + (NotchMetrics.closedCornerRadius.bottom * 2)
         }
 
-        let sideInset = max(0, presentationModel.closedNotchSize.height - 12)
+        let sideInset = max(0, closedNotchSize.height - 12)
         let compactContentWidth = baseWidth + (sideInset * 2) - NotchMetrics.closedCornerRadius.top
         return compactContentWidth + (NotchMetrics.closedCornerRadius.bottom * 2)
     }
 
     private var currentBodyHeight: CGFloat {
-        presentationModel.isExpanded
+        isExpanded
             ? NotchMetrics.openHeight(for: presentationModel.selectedPanel)
-            : presentationModel.closedNotchSize.height
+            : closedNotchSize.height
     }
 
     private var expandedHeaderHeight: CGFloat {
-        max(22, presentationModel.closedNotchSize.height - 6)
+        max(22, closedNotchSize.height - 6)
     }
 
     /// Tighter bottom inset for Talk so the live control bar sits nearer the notch bottom.
@@ -144,12 +155,16 @@ struct MediaNotchView: View {
         presentationModel.selectedPanel != .focus && presentationModel.selectedPanel != .media
     }
 
+    private var isClosedNotchInvisible: Bool {
+        !isExpanded && presentationModel.invisibleClosedNotch
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
             VStack(spacing: 0) {
                 mainLayout
 
-                if !presentationModel.isExpanded && presentationModel.closedNotchSize.height == 0 {
+                if !isExpanded && closedNotchSize.height == 0 {
                     Rectangle()
                         .fill(Color.black.opacity(0.01))
                         .frame(width: currentBodyWidth, height: 10)
@@ -176,10 +191,10 @@ struct MediaNotchView: View {
             guard wasTargeted != isTargeted else { return }
 
             if isTargeted {
-                didAutoRevealForShelfDrop = !presentationModel.isExpanded
+                didAutoRevealForShelfDrop = !isExpanded
                 didCommitShelfDrop = false
                 let alreadyOnShelf = presentationModel.selectedPanel == .shelf
-                    && presentationModel.isExpanded
+                    && isExpanded
                 if !alreadyOnShelf {
                     snapToShelf()
                 }
@@ -220,7 +235,7 @@ struct MediaNotchView: View {
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) {
-            presentationModel.selectPanel(.shelf, reveal: true)
+            presentationModel.selectPanel(.shelf, on: screenID, reveal: true)
         }
         // Restore the spring on the next runloop tick so subsequent
         // click-driven panel/expand changes still feel lively.
@@ -231,7 +246,7 @@ struct MediaNotchView: View {
 
     private func handleShelfDrop(_ providers: [NSItemProvider]) -> Bool {
         let alreadyOnShelf = presentationModel.selectedPanel == .shelf
-            && presentationModel.isExpanded
+            && isExpanded
         if !alreadyOnShelf {
             snapToShelf()
         }
@@ -245,30 +260,30 @@ struct MediaNotchView: View {
         if compactActivity == .media {
             CompactLiveActivityView(
                 playback: playback,
-                closedNotchWidth: presentationModel.closedNotchSize.width,
-                closedNotchHeight: presentationModel.closedNotchSize.height,
+                closedNotchWidth: closedNotchSize.width,
+                closedNotchHeight: closedNotchSize.height,
                 albumArtNamespace: albumArtNamespace
             )
         } else if compactActivity == .talk {
             CompactTalkView(
                 gemini: gemini,
-                closedNotchWidth: presentationModel.closedNotchSize.width,
-                closedNotchHeight: presentationModel.closedNotchSize.height
+                closedNotchWidth: closedNotchSize.width,
+                closedNotchHeight: closedNotchSize.height
             )
         } else {
             IdleClosedNotchView(
-                closedNotchWidth: presentationModel.closedNotchSize.width,
-                closedNotchHeight: presentationModel.closedNotchSize.height
+                closedNotchWidth: closedNotchSize.width,
+                closedNotchHeight: closedNotchSize.height
             )
         }
     }
 
     @ViewBuilder
     private var topSectionContent: some View {
-        if presentationModel.isExpanded {
+        if isExpanded {
             NotchHeaderView(
-                closedNotchWidth: presentationModel.closedNotchSize.width,
-                closedNotchHeight: presentationModel.closedNotchSize.height,
+                closedNotchWidth: closedNotchSize.width,
+                closedNotchHeight: closedNotchSize.height,
                 presentationModel: presentationModel,
                 accessoryController: talkHeaderAccessoryController,
                 entitlementStore: entitlementStore,
@@ -276,6 +291,13 @@ struct MediaNotchView: View {
                 gemini: gemini
             )
             .frame(height: expandedHeaderHeight)
+        } else if isClosedNotchInvisible {
+            Rectangle()
+                .fill(Color.black.opacity(0.01))
+                .frame(
+                    width: closedNotchSize.width,
+                    height: closedNotchSize.height
+                )
         } else {
             closedNotchContent
         }
@@ -283,7 +305,7 @@ struct MediaNotchView: View {
 
     @ViewBuilder
     private var expandedPanelContent: some View {
-        if presentationModel.isExpanded {
+        if isExpanded {
             ExpandedNotchContent(
                 playback: playback,
                 pomodoro: pomodoro,
@@ -309,29 +331,14 @@ struct MediaNotchView: View {
             topSectionContent
             expandedPanelContent
         }
-        .padding(.horizontal, presentationModel.isExpanded ? 0 : NotchMetrics.closedCornerRadius.bottom)
+        .padding(.horizontal, isExpanded ? 0 : NotchMetrics.closedCornerRadius.bottom)
         .frame(
             width: currentBodyWidth,
             height: currentBodyHeight,
             alignment: .top
         )
         .background {
-            ZStack {
-                Color.black
-                // Ambient album art blur — chỉ hiện ở music panel khi có bài phát
-                if presentationModel.isExpanded
-                    && presentationModel.selectedPanel == .media
-                    && playback.isPlaying
-                    && playback.albumArt != nil,
-                    let albumArt = playback.albumArt {
-                    Image(nsImage: albumArt)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .scaleEffect(1.8)
-                        .blur(radius: 35, opaque: true)
-                        .opacity(0.25)
-                }
-            }
+            Color.black.opacity(isClosedNotchInvisible ? 0.01 : 1)
         }
         .clipShape(
             NotchShape(
@@ -342,7 +349,7 @@ struct MediaNotchView: View {
         .overlay(alignment: .top) {
             Rectangle()
                 .fill(.black)
-                .opacity(showsDarkInnerNotch ? 1 : 0)
+                .opacity(showsDarkInnerNotch && !isClosedNotchInvisible ? 1 : 0)
                 .frame(height: 1)
                 .padding(.horizontal, topCornerRadius)
                 .animation(.easeInOut(duration: 0.18), value: showsDarkInnerNotch)
@@ -352,32 +359,32 @@ struct MediaNotchView: View {
                 topCornerRadius: topCornerRadius,
                 bottomCornerRadius: bottomCornerRadius
             )
-            .stroke(Color.white.opacity(presentationModel.isExpanded ? 0.07 : 0.05), lineWidth: 1)
+            .stroke(Color.white.opacity(isClosedNotchInvisible ? 0 : (isExpanded ? 0.07 : 0.05)), lineWidth: 1)
         }
         .shadow(
-            color: (presentationModel.isExpanded || isHovering) ? .black.opacity(0.7) : .clear,
+            color: (isExpanded || (isHovering && !isClosedNotchInvisible)) ? .black.opacity(0.7) : .clear,
             radius: 6
         )
-        .frame(height: presentationModel.isExpanded ? NotchMetrics.openHeight(for: presentationModel.selectedPanel) : nil)
+        .frame(height: isExpanded ? NotchMetrics.openHeight(for: presentationModel.selectedPanel) : nil)
         .contentShape(Rectangle())
         .onHover { hovering in
             isHovering = hovering
-            presentationModel.setHovering(hovering)
+            presentationModel.setHovering(hovering, on: screenID)
         }
         .onTapGesture {
-            if !presentationModel.isExpanded {
+            if !isExpanded {
                 switch compactActivity {
                 case .media:
-                    presentationModel.selectPanel(.media)
+                    presentationModel.selectPanel(.media, on: screenID)
                 case .talk:
-                    presentationModel.selectPanel(.talk)
+                    presentationModel.selectPanel(.talk, on: screenID)
                 case .idle:
                     break
                 }
-                presentationModel.reveal()
+                presentationModel.reveal(on: screenID)
             }
         }
-        .animation(notchAnimation, value: presentationModel.isExpanded)
+        .animation(notchAnimation, value: isExpanded)
         .animation(isDragRevealing ? nil : .smooth, value: compactActivity.rawValue)
         .animation(isDragRevealing ? nil : .smooth, value: presentationModel.selectedPanel.rawValue)
         .onChange(of: presentationModel.selectedPanel) { _, selectedPanel in

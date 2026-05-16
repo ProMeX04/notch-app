@@ -23,8 +23,6 @@ enum NotchCommandRouter {
                 try handlePanel(action: action, queryItems: queryItems, handler: handler, entitlementStore: entitlementStore)
             case "visibility":
                 try handleVisibility(action: action, handler: handler)
-            case "pin":
-                try handlePin(action: action, handler: handler)
             case "talk":
                 try handleTalk(action: action, handler: handler, entitlementStore: entitlementStore)
             case "screen":
@@ -72,19 +70,6 @@ enum NotchCommandRouter {
             handler.toggleVisibility()
         default:
             throw NotchCommandError.invalidAction("visibility", action)
-        }
-    }
-
-    private static func handlePin(action: String, handler: NotchCommandHandling) throws {
-        switch action {
-        case "on", "true", "pin":
-            handler.setPinned(true)
-        case "off", "false", "unpin":
-            handler.setPinned(false)
-        case "toggle":
-            handler.togglePinned()
-        default:
-            throw NotchCommandError.invalidAction("pin", action)
         }
     }
 

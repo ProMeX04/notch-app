@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SwiftUI
 
@@ -78,6 +79,45 @@ enum NotchAccentColorOption: String, CaseIterable, Identifiable {
     }
 }
 
+struct NotchScreenID: Hashable, Equatable, Identifiable {
+    let rawValue: String
+
+    var id: String { rawValue }
+
+    init(screen: NSScreen) {
+        if let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
+            rawValue = "display-\(displayID.uint32Value)"
+        } else {
+            let frame = screen.frame
+            rawValue = "frame-\(Int(frame.origin.x))-\(Int(frame.origin.y))-\(Int(frame.width))-\(Int(frame.height))"
+        }
+    }
+}
+
+enum NotchScreenDisplayMode: String, CaseIterable, Identifiable {
+    static let storageKey = "dev.notch.screen-display-mode"
+
+    case oneScreen
+    case allScreens
+
+    static let defaultOption: Self = .oneScreen
+
+    var id: String { rawValue }
+
+    var displayNameKey: String {
+        switch self {
+        case .oneScreen:
+            return "One Screen"
+        case .allScreens:
+            return "All Screens"
+        }
+    }
+
+    static func resolve(rawValue: String) -> Self {
+        Self(rawValue: rawValue) ?? defaultOption
+    }
+}
+
 enum NotchPanel: String {
     case media
     case focus
@@ -96,16 +136,20 @@ final class NotchPresentationModel: ObservableObject {
     private static let hoverOpenDelayKey = "dev.notch.hover-open-delay-ms"
     private static let autoCollapseDelayKey = "dev.notch.auto-collapse-delay-ms"
     private static let hideInFullscreenKey = "dev.notch.hide-in-fullscreen"
+    private static let invisibleClosedNotchKey = "dev.notch.invisible-closed-notch"
 
     @Published private(set) var isExpanded = false
-    @Published var isPinnedOpen = false
+    @Published private(set) var activeScreenID: NotchScreenID?
+    @Published private var closedNotchSizeByScreenID: [NotchScreenID: CGSize] = [:]
     @Published var closedNotchSize: CGSize = CGSize(width: 184, height: 32)
     @Published var selectedPanel: NotchPanel = .media
     @Published var isFocusOverlayPresented = false
     @Published private(set) var hoverOpenDelayMilliseconds: Double
     @Published private(set) var autoCollapseDelayMilliseconds: Double
     @Published private(set) var accentColorID: String
+    @Published private(set) var screenDisplayModeID: String
     @Published private(set) var hideInFullscreen: Bool
+    @Published private(set) var invisibleClosedNotch: Bool
 
     private var collapseTask: Task<Void, Never>?
     private var hoverOpenTask: Task<Void, Never>?
@@ -131,7 +175,12 @@ final class NotchPresentationModel: ObservableObject {
             rawValue: defaults.string(forKey: NotchAccentColorOption.storageKey) ?? ""
         ).rawValue
 
+        screenDisplayModeID = NotchScreenDisplayMode.resolve(
+            rawValue: defaults.string(forKey: NotchScreenDisplayMode.storageKey) ?? ""
+        ).rawValue
+
         hideInFullscreen = defaults.bool(forKey: Self.hideInFullscreenKey)
+        invisibleClosedNotch = defaults.bool(forKey: Self.invisibleClosedNotchKey)
     }
 
     var hoverOpenDelaySeconds: Double {
@@ -150,7 +199,34 @@ final class NotchPresentationModel: ObservableObject {
         selectedAccentColorOption.color
     }
 
-    func setHovering(_ hovering: Bool) {
+    var selectedScreenDisplayMode: NotchScreenDisplayMode {
+        NotchScreenDisplayMode.resolve(rawValue: screenDisplayModeID)
+    }
+
+    func isExpanded(on screenID: NotchScreenID) -> Bool {
+        isExpanded && activeScreenID == screenID
+    }
+
+    func closedNotchSize(for screenID: NotchScreenID) -> CGSize {
+        closedNotchSizeByScreenID[screenID] ?? closedNotchSize
+    }
+
+    func setClosedNotchSize(_ size: CGSize, for screenID: NotchScreenID) {
+        closedNotchSizeByScreenID[screenID] = size
+        if activeScreenID == nil || activeScreenID == screenID {
+            closedNotchSize = size
+        }
+    }
+
+    func removeScreenState(for screenID: NotchScreenID) {
+        closedNotchSizeByScreenID.removeValue(forKey: screenID)
+        if activeScreenID == screenID {
+            activeScreenID = nil
+            isExpanded = false
+        }
+    }
+
+    func setHovering(_ hovering: Bool, on screenID: NotchScreenID? = nil) {
         isHovering = hovering
 
         if hovering {
@@ -158,7 +234,7 @@ final class NotchPresentationModel: ObservableObject {
             hoverOpenTask = Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(hoverDelayDurationMilliseconds))
                 guard !Task.isCancelled else { return }
-                self.reveal()
+                self.reveal(on: screenID)
             }
             return
         }
@@ -184,24 +260,41 @@ final class NotchPresentationModel: ObservableObject {
         UserDefaults.standard.set(option.rawValue, forKey: NotchAccentColorOption.storageKey)
     }
 
+    func setScreenDisplayMode(_ option: NotchScreenDisplayMode) {
+        screenDisplayModeID = option.rawValue
+        UserDefaults.standard.set(option.rawValue, forKey: NotchScreenDisplayMode.storageKey)
+    }
+
     func setHideInFullscreen(_ hide: Bool) {
         hideInFullscreen = hide
         UserDefaults.standard.set(hide, forKey: Self.hideInFullscreenKey)
     }
 
-    func reveal() {
+    func setInvisibleClosedNotch(_ invisible: Bool) {
+        invisibleClosedNotch = invisible
+        UserDefaults.standard.set(invisible, forKey: Self.invisibleClosedNotchKey)
+    }
+
+    func reveal(on screenID: NotchScreenID? = nil) {
         hoverOpenTask?.cancel()
         collapseTask?.cancel()
+        if let screenID {
+            activeScreenID = screenID
+            closedNotchSize = closedNotchSize(for: screenID)
+        }
         isExpanded = true
     }
 
-    func selectPanel(_ panel: NotchPanel, reveal: Bool = false) {
+    func selectPanel(_ panel: NotchPanel, on screenID: NotchScreenID? = nil, reveal: Bool = false) {
         selectedPanel = panel
         if panel != .focus {
             isFocusOverlayPresented = false
         }
         if reveal {
-            self.reveal()
+            self.reveal(on: screenID)
+        } else if let screenID {
+            activeScreenID = screenID
+            closedNotchSize = closedNotchSize(for: screenID)
         }
     }
 
@@ -244,20 +337,11 @@ final class NotchPresentationModel: ObservableObject {
         scheduleCollapse(after: .milliseconds(120))
     }
 
-    func togglePinned() {
-        isPinnedOpen.toggle()
-        if isPinnedOpen {
-            reveal()
-        } else {
-            scheduleCollapse(after: .milliseconds(100))
-        }
-    }
-
     private var hoverDelayDurationMilliseconds: Int {
         Int(hoverOpenDelayMilliseconds.rounded())
     }
 
     private var canAutoCollapse: Bool {
-        !isPinnedOpen && autoCollapseSuppressionReasons.isEmpty
+        autoCollapseSuppressionReasons.isEmpty
     }
 }

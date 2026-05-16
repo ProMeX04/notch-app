@@ -22,9 +22,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         keyEquivalent: ""
     )
 
-    private lazy var pinItem = NSMenuItem(
-        title: "Pin Open",
-        action: #selector(togglePinned),
+    private lazy var invisibleClosedNotchItem = NSMenuItem(
+        title: "Invisible Notch",
+        action: #selector(toggleInvisibleClosedNotch),
+        keyEquivalent: ""
+    )
+
+    private lazy var screenDisplayModeItem = NSMenuItem(
+        title: "Show on All Screens",
+        action: #selector(toggleScreenDisplayMode),
         keyEquivalent: ""
     )
 
@@ -76,6 +82,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         keyEquivalent: ""
     )
 
+    private lazy var repositionItem = NSMenuItem(
+        title: "Reposition",
+        action: #selector(repositionNotch),
+        keyEquivalent: ""
+    )
+
     private lazy var resetPomodoroItem = NSMenuItem(
         title: "Reset Focus Timer",
         action: #selector(resetPomodoro),
@@ -101,7 +113,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.delegate = self
 
         visibilityItem.target = self
-        pinItem.target = self
+        invisibleClosedNotchItem.target = self
+        screenDisplayModeItem.target = self
         mediaItem.target = self
         pomodoroItem.target = self
         talkItem.target = self
@@ -110,6 +123,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         togglePomodoroItem.target = self
         toggleTalkItem.target = self
         manageServiceKeysItem.target = self
+        repositionItem.target = self
         resetPomodoroItem.target = self
         launchAtLoginItem.target = self
 
@@ -122,20 +136,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         menu.items = [
             visibilityItem,
-            pinItem,
-            .separator(),
-            mediaItem,
-            shelfItem,
-            agentResultsItem,
-            .separator(),
-            talkItem,
-            toggleTalkItem,
+            invisibleClosedNotchItem,
+            screenDisplayModeItem,
+            repositionItem,
             manageServiceKeysItem,
-            .separator(),
-            pomodoroItem,
-            togglePomodoroItem,
-            resetPomodoroItem,
-            .separator(),
             launchAtLoginItem,
             .separator(),
             quitItem,
@@ -145,10 +149,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusItem.isVisible = true
 
         let pomo = featureCoordinator.pomodoroViewModel
-        Publishers.CombineLatest3(
+        Publishers.CombineLatest4(
             pomo.$isRunning,
             pomo.$hasActiveSession,
-            pomo.$selectedTaskId
+            pomo.$selectedTaskId,
+            pomo.$showMenuBarClockDuringFocus
         )
         .receive(on: DispatchQueue.main)
         .sink { [weak self] _ in
@@ -162,7 +167,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         launchAtLoginController.refreshStatus()
         visibilityItem.title = featureCoordinator.isVisible ? "Hide Notch" : "Show Notch"
-        pinItem.state = featureCoordinator.presentationModel.isPinnedOpen ? .on : .off
+        invisibleClosedNotchItem.state = featureCoordinator.presentationModel.invisibleClosedNotch ? .on : .off
+        screenDisplayModeItem.title = featureCoordinator.presentationModel.selectedScreenDisplayMode == .allScreens ? "Show on One Screen" : "Show on All Screens"
         mediaItem.state = featureCoordinator.presentationModel.selectedPanel == .media ? .on : .off
         pomodoroItem.state = featureCoordinator.presentationModel.selectedPanel == .focus ? .on : .off
         talkItem.state = featureCoordinator.presentationModel.selectedPanel == .talk ? .on : .off
@@ -196,8 +202,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     @objc
-    private func togglePinned() {
-        featureCoordinator.togglePinned()
+    private func toggleInvisibleClosedNotch() {
+        let presentationModel = featureCoordinator.presentationModel
+        presentationModel.setInvisibleClosedNotch(!presentationModel.invisibleClosedNotch)
+    }
+
+    @objc
+    private func toggleScreenDisplayMode() {
+        let presentationModel = featureCoordinator.presentationModel
+        let nextMode: NotchScreenDisplayMode = presentationModel.selectedScreenDisplayMode == .allScreens ? .oneScreen : .allScreens
+        presentationModel.setScreenDisplayMode(nextMode)
     }
 
     @objc
@@ -238,6 +252,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc
     private func showManageKeys() {
         featureCoordinator.openAppSettings()
+    }
+
+    @objc
+    private func repositionNotch() {
+        featureCoordinator.repositionNotch()
     }
 
     @objc
@@ -455,7 +474,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func updatePomodoroStatusItem() {
         let pomodoro = featureCoordinator.pomodoroViewModel
 
-        if pomodoro.hasActiveSession {
+        let shouldShowPomodoroStatusItem = pomodoro.showMenuBarClockDuringFocus && pomodoro.hasActiveSession
+
+        if shouldShowPomodoroStatusItem {
             if pomodoroStatusItem == nil {
                 let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
                 if let button = item.button {

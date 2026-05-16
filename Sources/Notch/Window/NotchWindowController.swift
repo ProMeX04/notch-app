@@ -18,10 +18,9 @@ final class NotchWindowController {
 
     private let hostingView: NotchHostingView<MediaNotchView>
     private let window: NotchFloatingPanel
+    private(set) var screen: NSScreen
+    let screenID: NotchScreenID
     private var cancellables = Set<AnyCancellable>()
-    private let transcriptOverlay = TranscriptOverlayWindowController()
-    private let liveChatInputPanel = GeminiLiveChatInputWindowController()
-    private let geminiExecApprovalPanel = GeminiExecApprovalPanelController()
 
     private(set) var isVisible = true
     /// Emits whenever `show()`, `hide()`, or equivalent changes visibility (including initial transitions).
@@ -36,7 +35,8 @@ final class NotchWindowController {
         shortcutStore: ShortcutStore,
         learningStatsStore: LearningStatsStore,
         presentationModel: NotchPresentationModel,
-        entitlementStore: NotchEntitlementStore
+        entitlementStore: NotchEntitlementStore,
+        screen: NSScreen
     ) {
         self.playbackViewModel = playbackViewModel
         self.pomodoroViewModel = pomodoroViewModel
@@ -47,9 +47,11 @@ final class NotchWindowController {
         self.learningStatsStore = learningStatsStore
         self.presentationModel = presentationModel
         self.entitlementStore = entitlementStore
+        self.screen = screen
+        self.screenID = NotchScreenID(screen: screen)
 
-        let initialScreen = NotchMetrics.preferredScreen()
-        presentationModel.closedNotchSize = NotchMetrics.baseClosedSize(for: initialScreen)
+        let initialScreen = screen
+        presentationModel.setClosedNotchSize(NotchMetrics.baseClosedSize(for: initialScreen), for: screenID)
         let initialFrame = NotchMetrics.windowFrame(on: initialScreen, selectedPanel: presentationModel.selectedPanel)
         let styleMask: NSWindow.StyleMask = [.borderless, .nonactivatingPanel, .utilityWindow, .hudWindow]
         let window = NotchFloatingPanel(
@@ -70,7 +72,8 @@ final class NotchWindowController {
                 shortcutStore: shortcutStore,
                 learningStats: learningStatsStore,
                 presentationModel: presentationModel,
-                entitlementStore: entitlementStore
+                entitlementStore: entitlementStore,
+                screenID: screenID
             )
         )
 
@@ -95,20 +98,13 @@ final class NotchWindowController {
             }
             .store(in: &cancellables)
 
-        Publishers.CombineLatest(presentationModel.$selectedPanel, presentationModel.$isExpanded)
-            .removeDuplicates(by: { lhs, rhs in lhs.0 == rhs.0 && lhs.1 == rhs.1 })
+        Publishers.CombineLatest3(presentationModel.$selectedPanel, presentationModel.$isExpanded, presentationModel.$activeScreenID)
+            .removeDuplicates(by: { lhs, rhs in lhs.0 == rhs.0 && lhs.1 == rhs.1 && lhs.2 == rhs.2 })
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _, _ in
+            .sink { [weak self] _ in
                 self?.updateWindowFrame(animated: true)
             }
             .store(in: &cancellables)
-
-        transcriptOverlay.setPreferredScreen(initialScreen)
-        transcriptOverlay.observe(gemini: geminiLiveViewModel)
-        liveChatInputPanel.setPreferredScreen(initialScreen)
-        liveChatInputPanel.observe(gemini: geminiLiveViewModel)
-        geminiExecApprovalPanel.setPreferredScreen(initialScreen)
-        geminiExecApprovalPanel.observe(gemini: geminiLiveViewModel)
     }
 
     func show() {
@@ -130,42 +126,33 @@ final class NotchWindowController {
 
     func showPanel(_ panel: NotchPanel) {
         show()
-        presentationModel.selectPanel(panel, reveal: true)
+        presentationModel.selectPanel(panel, on: screenID, reveal: true)
     }
 
-    func togglePinned() {
-        presentationModel.togglePinned()
-    }
-
-    func setPinned(_ pinned: Bool) {
-        guard presentationModel.isPinnedOpen != pinned else { return }
-        presentationModel.togglePinned()
+    func retarget(to screen: NSScreen) {
+        self.screen = screen
+        updateWindowFrame(animated: false)
     }
 
     func reposition() {
         updateWindowFrame(animated: false)
     }
 
-    func presentExecApproval() {
-        geminiExecApprovalPanel.present(gemini: geminiLiveViewModel)
-    }
-
-    func shutdown() {
+    func shutdown(shutdownSharedModels: Bool = true) {
         hide()
-        transcriptOverlay.stopObserving()
-        liveChatInputPanel.stopObserving()
-        geminiExecApprovalPanel.stopObserving()
-        shelfViewModel.shutdown()
-        playbackViewModel.shutdown()
-        pomodoroViewModel.shutdown()
-        geminiLiveViewModel.shutdown()
+        if shutdownSharedModels {
+            shelfViewModel.shutdown()
+            playbackViewModel.shutdown()
+            pomodoroViewModel.shutdown()
+            geminiLiveViewModel.shutdown()
+        }
         cancellables.removeAll()
     }
 
 
     func updateWindowFrame(animated: Bool) {
-        let currentScreen = window.screen ?? NotchMetrics.preferredScreen()
-        presentationModel.closedNotchSize = NotchMetrics.baseClosedSize(for: currentScreen)
+        let currentScreen = screen
+        presentationModel.setClosedNotchSize(NotchMetrics.baseClosedSize(for: currentScreen), for: screenID)
         let frame = NotchMetrics.windowFrame(on: currentScreen, selectedPanel: presentationModel.selectedPanel)
 
         // Skip the AppKit setFrame animation when nothing actually changes.
@@ -182,9 +169,6 @@ final class NotchWindowController {
         if hostingView.frame.size != newSize {
             hostingView.frame = CGRect(origin: .zero, size: newSize)
         }
-        transcriptOverlay.setPreferredScreen(currentScreen)
-        liveChatInputPanel.setPreferredScreen(currentScreen)
-
         if isVisible {
             window.orderFrontRegardless()
         }

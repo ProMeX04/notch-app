@@ -8,8 +8,7 @@ protocol NotchCommandHandling: AnyObject {
     func show()
     func hide()
     func toggleVisibility()
-    func togglePinned()
-    func setPinned(_ pinned: Bool)
+    func repositionNotch()
     func showFocusPanel()
     func showTalkPanel()
     func showShelfPanel()
@@ -54,11 +53,11 @@ final class NotchFeatureCoordinator: NotchCommandHandling {
     let geminiLiveViewModel: GeminiLiveViewModel
     let presentationModel: NotchPresentationModel
 
-    private let windowController: NotchWindowController
+    private let windowController: NotchWindowManager
     private let appSettingsController: AppSettingsControlling
 
     init(
-        windowController: NotchWindowController,
+        windowController: NotchWindowManager,
         playbackViewModel: MediaProbeViewModel,
         pomodoroViewModel: PomodoroViewModel,
         geminiLiveViewModel: GeminiLiveViewModel,
@@ -108,13 +107,8 @@ final class NotchFeatureCoordinator: NotchCommandHandling {
         windowController.toggleVisibility()
     }
 
-    func togglePinned() {
-        presentationModel.togglePinned()
-    }
-
-    func setPinned(_ pinned: Bool) {
-        guard presentationModel.isPinnedOpen != pinned else { return }
-        presentationModel.togglePinned()
+    func repositionNotch() {
+        windowController.reposition()
     }
 
     func showFocusPanel() {

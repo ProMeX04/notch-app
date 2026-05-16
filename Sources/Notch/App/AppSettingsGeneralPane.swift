@@ -40,6 +40,31 @@ struct AppGeneralSettingsPane: View {
                     }
                 }
 
+                AppSettingsRow(showDivider: true) {
+                    Image(systemName: "display.2")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(tint.opacity(0.9))
+                        .frame(width: 28, height: 28)
+                        .background(tint.opacity(0.1).cornerRadius(8))
+
+                    Text(Localization.get("Screen Display", lang: appLanguage))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.9))
+
+                    Spacer()
+
+                    NotchSegmentedPicker(
+                        options: NotchScreenDisplayMode.allCases,
+                        selection: Binding(
+                            get: { presentationModel.selectedScreenDisplayMode },
+                            set: { presentationModel.setScreenDisplayMode($0) }
+                        ),
+                        titleMapper: { Localization.get($0.displayNameKey, lang: appLanguage) },
+                        tint: tint
+                    )
+                    .frame(width: 220)
+                }
+
                 AppSettingsRow(showDivider: false) {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack(spacing: 12) {
@@ -118,6 +143,17 @@ struct AppGeneralSettingsPane: View {
                         .tint(tint)
                     }
                 }
+
+                settingToggle(
+                    icon: "eye.slash.fill",
+                    title: Localization.get("Invisible Notch", lang: appLanguage),
+                    isOn: Binding(
+                        get: { presentationModel.invisibleClosedNotch },
+                        set: { presentationModel.setInvisibleClosedNotch($0) }
+                    ),
+                    tint: tint,
+                    showDivider: true
+                )
 
                 settingToggle(
                     icon: "rectangle.inset.filled",

@@ -84,10 +84,10 @@ private struct NativeMarkdownBlockView: View {
     var body: some View {
         switch block.kind {
         case let .paragraph(inlines):
-            NativeMarkdownInlineView(inlines: inlines, style: style)
+            NativeMarkdownInlineView(inlines: inlines, style: style, maxWidth: concreteMaxWidth)
                 .frame(maxWidth: maxWidth, alignment: isUser ? .trailing : .leading)
         case let .heading(level, inlines):
-            NativeMarkdownInlineView(inlines: inlines, style: headingStyle(level: level))
+            NativeMarkdownInlineView(inlines: inlines, style: headingStyle(level: level), maxWidth: concreteMaxWidth)
                 .frame(maxWidth: maxWidth, alignment: isUser ? .trailing : .leading)
         case let .blockquote(blocks):
             HStack(alignment: .top, spacing: 9) {
@@ -132,6 +132,13 @@ private struct NativeMarkdownBlockView: View {
     private var maxWidth: CGFloat? {
         switch widthMode {
         case .fillParent: .infinity
+        case let .hugContent(maxWidth): maxWidth
+        }
+    }
+
+    private var concreteMaxWidth: CGFloat {
+        switch widthMode {
+        case .fillParent: 520
         case let .hugContent(maxWidth): maxWidth
         }
     }
@@ -195,12 +202,13 @@ private struct NativeMarkdownListRow: View {
 private struct NativeMarkdownInlineView: View {
     let inlines: [NativeMarkdownInline]
     let style: NativeMarkdownStyle
+    var maxWidth: CGFloat = 520
 
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         if containsMath(inlines) {
-            NativeMarkdownInlineTextView(inlines: inlines, style: style)
+            NativeMarkdownInlineTextView(inlines: inlines, style: style, maxWidth: maxWidth)
                 .lineSpacing(2)
                 .textSelection(.enabled)
         } else {
@@ -398,7 +406,7 @@ private struct NativeMarkdownTableView: View {
     private func tableRow(_ cells: [[NativeMarkdownInline]], isHeader: Bool, rowIndex: Int) -> some View {
         HStack(spacing: 0) {
             ForEach(Array(normalized(cells).enumerated()), id: \.offset) { _, cell in
-                NativeMarkdownInlineView(inlines: cell, style: isHeader ? headerStyle : style)
+                NativeMarkdownInlineView(inlines: cell, style: isHeader ? headerStyle : style, maxWidth: 220)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 8)
                     .padding(.vertical, isHeader ? 6 : 5)

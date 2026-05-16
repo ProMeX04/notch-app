@@ -21,7 +21,7 @@ struct NativeMarkdownInlineTextView: NSViewRepresentable {
         textView.drawsBackground = false
         textView.textContainerInset = .zero
         textView.textContainer?.lineFragmentPadding = 0
-        textView.textContainer?.widthTracksTextView = false
+        textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.containerSize = NSSize(
             width: context.coordinator.maxWidth,
             height: .greatestFiniteMagnitude
@@ -36,6 +36,7 @@ struct NativeMarkdownInlineTextView: NSViewRepresentable {
         scrollView.drawsBackground = false
         scrollView.borderType = .noBorder
 
+        textView.frame.size.width = context.coordinator.maxWidth
         let attrString = context.coordinator.buildAttributedString(inlines)
         textView.textStorage?.setAttributedString(attrString)
         scrollView.invalidateIntrinsicContentSize()
@@ -47,6 +48,7 @@ struct NativeMarkdownInlineTextView: NSViewRepresentable {
         guard let textView = scrollView.documentView as? NonEditableTextView else { return }
         context.coordinator.colorScheme = colorScheme
         context.coordinator.maxWidth = maxWidth
+        textView.frame.size.width = maxWidth
         textView.textContainer?.containerSize = NSSize(width: maxWidth, height: .greatestFiniteMagnitude)
 
         let attrString = context.coordinator.buildAttributedString(inlines)

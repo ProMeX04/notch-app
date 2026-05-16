@@ -45,53 +45,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         keyEquivalent: ""
     )
 
-    private lazy var mediaItem = NSMenuItem(
-        title: "Open Media",
-        action: #selector(showMediaPanel),
-        keyEquivalent: ""
-    )
-
-    private lazy var pomodoroItem = NSMenuItem(
-        title: "Open Focus",
-        action: #selector(showPomodoroPanel),
-        keyEquivalent: ""
-    )
-
-    private lazy var talkItem = NSMenuItem(
-        title: "Open Talk",
-        action: #selector(showTalkPanel),
-        keyEquivalent: ""
-    )
-
-    private lazy var shelfItem = NSMenuItem(
-        title: "Open Shelf",
-        action: #selector(showShelfPanel),
-        keyEquivalent: ""
-    )
-
-    private lazy var agentResultsItem = NSMenuItem(
-        title: "Show Agent Results",
-        action: #selector(showAgentResultsPanel),
-        keyEquivalent: ""
-    )
-
-    private lazy var togglePomodoroItem = NSMenuItem(
-        title: "Start Focus Timer",
-        action: #selector(togglePomodoro),
-        keyEquivalent: ""
-    )
-
-    private lazy var toggleTalkItem = NSMenuItem(
-        title: "Connect Gemini Live",
-        action: #selector(toggleTalk),
-        keyEquivalent: ""
-    )
-
     private lazy var manageServiceKeysItem = NSMenuItem(
         title: "Settings…",
         action: #selector(showManageKeys),
         keyEquivalent: ""
     )
+
 
     private lazy var repositionItem = NSMenuItem(
         title: "Reposition",
@@ -99,16 +58,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         keyEquivalent: ""
     )
 
-    private lazy var resetPomodoroItem = NSMenuItem(
-        title: "Reset Focus Timer",
-        action: #selector(resetPomodoro),
-        keyEquivalent: ""
-    )
-
     private lazy var launchAtLoginItem = NSMenuItem(
         title: "Launch At Login",
         action: #selector(toggleLaunchAtLogin),
         keyEquivalent: ""
+    )
+
+    private lazy var quitItem = NSMenuItem(
+        title: "Quit",
+        action: #selector(quitApp),
+        keyEquivalent: "q"
     )
 
     init(featureCoordinator: NotchFeatureCoordinator) {
@@ -125,23 +84,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         visibilityItem.target = self
         screenDisplayModeItem.target = self
-        mediaItem.target = self
-        pomodoroItem.target = self
-        talkItem.target = self
-        shelfItem.target = self
-        agentResultsItem.target = self
-        togglePomodoroItem.target = self
-        toggleTalkItem.target = self
         manageServiceKeysItem.target = self
         repositionItem.target = self
-        resetPomodoroItem.target = self
         launchAtLoginItem.target = self
 
-        let quitItem = NSMenuItem(
-            title: "Quit",
-            action: #selector(quitApp),
-            keyEquivalent: "q"
-        )
         quitItem.target = self
 
         menu.items = [
@@ -149,6 +95,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             invisibleNotchMenuItem,
             screenDisplayModeItem,
             repositionItem,
+            .separator(),
             manageServiceKeysItem,
             launchAtLoginItem,
             .separator(),
@@ -176,34 +123,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         launchAtLoginController.refreshStatus()
-        visibilityItem.title = featureCoordinator.isVisible ? "Hide Notch" : "Show Notch"
+        visibilityItem.title = menuTitle(for: featureCoordinator.isVisible ? .hideNotch : .showNotch)
+        invisibleNotchMenuItem.title = menuTitle(for: .invisible)
         refreshInvisibilityMenuState()
-        screenDisplayModeItem.title = featureCoordinator.presentationModel.selectedScreenDisplayMode == .allScreens ? "Show on One Screen" : "Show on All Screens"
-        mediaItem.state = featureCoordinator.presentationModel.selectedPanel == .media ? .on : .off
-        pomodoroItem.state = featureCoordinator.presentationModel.selectedPanel == .focus ? .on : .off
-        talkItem.state = featureCoordinator.presentationModel.selectedPanel == .talk ? .on : .off
-        shelfItem.state = featureCoordinator.presentationModel.selectedPanel == .shelf ? .on : .off
-        agentResultsItem.state = AgentResultsWindowController.shared.isVisible ? .on : .off
+        screenDisplayModeItem.title = menuTitle(for: featureCoordinator.presentationModel.selectedScreenDisplayMode == .allScreens ? .showOnOneScreen : .showOnAllScreens)
+        repositionItem.title = menuTitle(for: .reposition)
+        manageServiceKeysItem.title = menuTitle(for: .settings)
+        launchAtLoginItem.title = menuTitle(for: .launchAtLogin)
         launchAtLoginItem.state = launchAtLoginController.isEnabled ? .on : .off
-
-        if featureCoordinator.geminiLiveViewModel.canDisconnectSession {
-            toggleTalkItem.title = "Disconnect Gemini Live"
-        } else {
-            toggleTalkItem.title = "Connect Gemini Live"
-        }
-        toggleTalkItem.isEnabled = true
-
-        if featureCoordinator.pomodoroViewModel.isRunning {
-            togglePomodoroItem.title = "Pause Pomodoro"
-        } else if featureCoordinator.pomodoroViewModel.hasActiveSession {
-            togglePomodoroItem.title = "Resume Pomodoro"
-        } else {
-            togglePomodoroItem.title = "Start Pomodoro"
-        }
-        togglePomodoroItem.isEnabled = true
-
-        resetPomodoroItem.title = "Reset Pomodoro"
-        resetPomodoroItem.isEnabled = featureCoordinator.pomodoroViewModel.hasActiveSession
+        quitItem.title = menuTitle(for: .quit)
     }
 
     @objc
@@ -227,53 +155,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     @objc
-    private func showMediaPanel() {
-        featureCoordinator.showPanel(.media)
-    }
-
-    @objc
-    private func showPomodoroPanel() {
-        featureCoordinator.showFocusPanel()
-    }
-
-    @objc
-    private func showTalkPanel() {
-        featureCoordinator.showTalkPanel()
-    }
-
-    @objc
-    private func showShelfPanel() {
-        featureCoordinator.showShelfPanel()
-    }
-
-    @objc
-    private func showAgentResultsPanel() {
-        AgentResultsWindowController.shared.show()
-    }
-
-    @objc
-    private func togglePomodoro() {
-        featureCoordinator.togglePomodoro()
-    }
-
-    @objc
-    private func toggleTalk() {
-        featureCoordinator.toggleGeminiLive()
-    }
-
-    @objc
     private func showManageKeys() {
         featureCoordinator.openAppSettings()
     }
 
+
     @objc
     private func repositionNotch() {
         featureCoordinator.repositionNotch()
-    }
-
-    @objc
-    private func resetPomodoro() {
-        featureCoordinator.resetPomodoro()
     }
 
     @objc
@@ -293,6 +182,41 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func quitApp() {
         NSApp.terminate(nil)
     }
+
+    // MARK: - Localization
+
+    private enum MenuItemKey: String {
+        case hideNotch = "Hide Notch"
+        case showNotch = "Show Notch"
+        case showOnOneScreen = "Show on One Screen"
+        case showOnAllScreens = "Show on All Screens"
+        case invisible = "Invisible"
+        case reposition = "Reposition"
+        case settings = "Settings…"
+        case launchAtLogin = "Launch at Login"
+        case quit = "Quit"
+    }
+
+    private var appLanguage: String {
+        UserDefaults.standard.string(forKey: "app_language") ?? "English"
+    }
+
+    private func menuTitle(for key: MenuItemKey) -> String {
+        Localization.get(key.rawValue, lang: appLanguage)
+    }
+
+    private func modeMenuTitle(for mode: NotchInvisibilityMode) -> String {
+        switch mode {
+        case .off:
+            return Localization.get("Off", lang: appLanguage)
+        case .fullscreenOnly:
+            return Localization.get("Fullscreen", lang: appLanguage)
+        case .always:
+            return Localization.get("Invisible Always", lang: appLanguage)
+        }
+    }
+
+    // MARK: - Timer Image Generation
 
     private func generateTimerImage(symbolName: String, text: String, color: NSColor) -> NSImage {
         let font = NSFont.monospacedDigitSystemFont(ofSize: 14.5, weight: .bold)
@@ -487,17 +411,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         invisibleNotchMenuItem.submenu?.items.forEach { item in
             guard let rawValue = item.representedObject as? String else { return }
             item.state = rawValue == featureCoordinator.presentationModel.invisibilityModeID ? .on : .off
-        }
-    }
-
-    private func modeMenuTitle(for mode: NotchInvisibilityMode) -> String {
-        switch mode {
-        case .off:
-            return "Off"
-        case .fullscreenOnly:
-            return "Fullscreen Only"
-        case .always:
-            return "Always"
         }
     }
 

@@ -35,19 +35,26 @@ private struct TranscriptOverlayView: View {
     private var bubbleFillColor: Color { isLightChrome ? .white.opacity(0.82) : .black.opacity(0.22) }
     private var bubbleStrokeColor: Color { isLightChrome ? .black.opacity(0.14) : .white.opacity(0.12) }
     private var closeIconColor: Color { isLightChrome ? .black.opacity(0.68) : .white.opacity(0.72) }
+    private var maxBubbleHeight: CGFloat {
+        min(360, (NSScreen.main?.visibleFrame.height ?? 900) * 0.42)
+    }
 
     var body: some View {
         VStack(alignment: .center, spacing: 10) {
             if (model.isVisible && !model.modelText.isEmpty) || model.isModelSpeaking {
-                HStack(alignment: .bottom, spacing: 8) {
-                    if !model.modelText.isEmpty {
-                        NotchMarkdownView(text: model.modelText, isUser: false, widthMode: .hugContent(maxWidth: 480))
-                            .textSelection(.enabled)
+                ScrollView(.vertical) {
+                    HStack(alignment: .bottom, spacing: 8) {
+                        if !model.modelText.isEmpty {
+                            NotchMarkdownView(text: model.modelText, isUser: false, widthMode: .hugContent(maxWidth: 480))
+                                .textSelection(.enabled)
+                        }
+                        if model.isModelSpeaking {
+                            CaptionTypingDots()
+                        }
                     }
-                    if model.isModelSpeaking {
-                        CaptionTypingDots()
-                    }
+                    .frame(maxWidth: .infinity)
                 }
+                .frame(maxHeight: maxBubbleHeight)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
                 .background {

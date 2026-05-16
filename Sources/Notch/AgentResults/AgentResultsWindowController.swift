@@ -75,7 +75,8 @@ final class AgentResultsWindowController: AgentResultsWindowControlling {
     }
 
     func hide() {
-        window?.orderOut(nil)
+        window?.close()
+        window = nil
     }
 
     func toggle() {

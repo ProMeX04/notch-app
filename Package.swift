@@ -5,7 +5,7 @@ import PackageDescription
 let package = Package(
     name: "Notch",
     platforms: [
-        .macOS(.v14),
+        .macOS(.v15),
     ],
     products: [
         .library(
@@ -75,6 +75,9 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/livekit/webrtc-xcframework.git", exact: "144.7559.02"),
+        .package(url: "https://github.com/apple/swift-markdown.git", from: "0.5.0"),
+        .package(url: "https://github.com/raspu/Highlightr.git", from: "2.2.1"),
+        .package(path: ".vendor/iosMath"),
     ],
     targets: [
         .target(
@@ -115,6 +118,9 @@ let package = Package(
                 "NotchChatHistoryCore",
                 "NotchScreenShareCore",
                 .product(name: "LiveKitWebRTC", package: "webrtc-xcframework"),
+                .product(name: "Markdown", package: "swift-markdown"),
+                .product(name: "Highlightr", package: "Highlightr"),
+                .product(name: "iosMath", package: "iosMath"),
             ],
             resources: [
                 .copy("Resources/mediaremote-adapter.pl"),
@@ -124,6 +130,7 @@ let package = Package(
                 .copy("Resources/MenuBar"),
                 .copy("Resources/Animations"),
                 .copy("Resources/Shared"),
+                .copy("Resources/WebMarkdown"),
             ]
         ),
         .executableTarget(

@@ -103,6 +103,7 @@ private struct AgentResultsOverlayActions: View {
                 }
             }
             IconActionButton(systemName: "xmark", help: "Close results") {
+                AgentResultStore.shared.clear()
                 AgentResultsWindowController.shared.hide()
             }
         }
@@ -467,77 +468,27 @@ private struct AgentResultInteractiveContent: View {
 
 // MARK: - Body subviews
 
-/// Native `AttributedString` markdown — lighter than MarkdownUI for Agent Results list scrolling.
+/// Native Swift markdown renderer with Highlightr syntax highlighting and iosMath LaTeX support.
 private struct AgentResultsMarkdownText: View {
     let markdown: String
     var fontSize: CGFloat = 14
     var codeFontSize: CGFloat = 12
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
-        Text(Self.buildAttributed(markdown: markdown, fontSize: fontSize, codeFontSize: codeFontSize))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .textSelection(.enabled)
-    }
-
-    private static func buildAttributed(
-        markdown: String,
-        fontSize: CGFloat,
-        codeFontSize: CGFloat
-    ) -> AttributedString {
-        var options = AttributedString.MarkdownParsingOptions()
-        options.interpretedSyntax = .full
-        options.failurePolicy = .returnPartiallyParsedIfPossible
-
-        guard var base = try? AttributedString(markdown: markdown, options: options) else {
-            var plain = AttributedString(markdown)
-            var fallback = AttributeContainer()
-            fallback.font = .system(size: fontSize)
-            plain.mergeAttributes(fallback, mergePolicy: .keepNew)
-            return plain
-        }
-
-        let runsSnapshot = Array(base.runs)
-        for run in runsSnapshot {
-            var attrs = AttributeContainer()
-            let inlineCode = run.inlinePresentationIntent?.contains(.code) == true
-            let blockCode = codeBlockDepth(run.presentationIntent) != nil
-            if blockCode || inlineCode {
-                attrs.font = .system(size: codeFontSize, design: .monospaced)
-            } else if let level = headerLevel(run.presentationIntent) {
-                let scale: CGFloat =
-                    switch level {
-                    case 1: 1.28
-                    case 2: 1.18
-                    default: 1.1
-                    }
-                attrs.font = .system(size: fontSize * scale, weight: .semibold)
-            } else {
-                attrs.font = .system(size: fontSize)
-            }
-            base[run.range].mergeAttributes(attrs, mergePolicy: .keepNew)
-        }
-
-        return base
-    }
-
-    private static func headerLevel(_ intent: PresentationIntent?) -> Int? {
-        guard let intent else { return nil }
-        for component in intent.components {
-            if case .header(let level) = component.kind {
-                return level
-            }
-        }
-        return nil
-    }
-
-    private static func codeBlockDepth(_ intent: PresentationIntent?) -> Int? {
-        guard let intent else { return nil }
-        for component in intent.components {
-            if case .codeBlock = component.kind {
-                return 1
-            }
-        }
-        return nil
+        NativeMarkdownRenderer(
+            text: markdown,
+            isUser: false,
+            widthMode: .fillParent,
+            style: .agentResults(
+                colorScheme: colorScheme,
+                fontSize: fontSize,
+                codeFontSize: codeFontSize
+            )
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .textSelection(.enabled)
     }
 }
 

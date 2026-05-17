@@ -60,13 +60,14 @@ final class NotchAppEnvironment {
             entitlementStore: entitlementStore
         )
 
-        GeminiLiveFeatureBridge(
+        let geminiLiveFeatureBridge = GeminiLiveFeatureBridge(
             geminiLiveViewModel: geminiLiveViewModel,
             featureCoordinator: featureCoordinator,
             entitlementStore: entitlementStore,
             playbackViewModel: playbackViewModel,
             pomodoroViewModel: pomodoroViewModel,
             focusBrowserBridgeServer: focusBrowserBridgeServer
-        ).install()
+        )
+        geminiLiveFeatureBridge.install()
     }
 }

@@ -36,6 +36,7 @@ struct MediaNotchView: View {
     // visible source of drag-and-drop "khựng".
     @StateObject private var shelfBrowserHost = ShelfBrowserHost()
     @State private var isHovering = false
+    @State private var isShelfDropTargeted = false
 
     init(
         playback: MediaProbeViewModel,
@@ -189,11 +190,12 @@ struct MediaNotchView: View {
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
-                .onDrop(of: shelfDropTypes, isTargeted: $shelf.isDropTargeted) { providers in
+                .onDrop(of: shelfDropTypes, isTargeted: $isShelfDropTargeted) { providers in
                     handleShelfDrop(providers)
                 }
         }
-        .onChange(of: shelf.isDropTargeted) { wasTargeted, isTargeted in
+        .onChange(of: isShelfDropTargeted) { wasTargeted, isTargeted in
+            shelf.isDropTargeted = isTargeted
             // Ignore spurious re-emits with the same value (SwiftUI may
             // republish during drag re-entry mid-animation).
             guard wasTargeted != isTargeted else { return }

@@ -13,8 +13,8 @@ struct NativeMarkdownInlineTextView: NSViewRepresentable {
         Coordinator(style: style, colorScheme: colorScheme, maxWidth: maxWidth)
     }
 
-    func makeNSView(context: Context) -> IntrinsicTextScrollView {
-        let textView = NonEditableTextView()
+    func makeNSView(context: Context) -> IntrinsicTextView {
+        let textView = IntrinsicTextView()
         textView.isEditable = false
         textView.isSelectable = true
         textView.isRichText = true
@@ -29,23 +29,15 @@ struct NativeMarkdownInlineTextView: NSViewRepresentable {
         textView.delegate = context.coordinator
         context.coordinator.textView = textView
 
-        let scrollView = IntrinsicTextScrollView()
-        scrollView.documentView = textView
-        scrollView.hasVerticalScroller = false
-        scrollView.hasHorizontalScroller = false
-        scrollView.drawsBackground = false
-        scrollView.borderType = .noBorder
-
         textView.frame.size.width = context.coordinator.maxWidth
         let attrString = context.coordinator.buildAttributedString(inlines)
         textView.textStorage?.setAttributedString(attrString)
-        scrollView.invalidateIntrinsicContentSize()
+        textView.invalidateIntrinsicContentSize()
 
-        return scrollView
+        return textView
     }
 
-    func updateNSView(_ scrollView: IntrinsicTextScrollView, context: Context) {
-        guard let textView = scrollView.documentView as? NonEditableTextView else { return }
+    func updateNSView(_ textView: IntrinsicTextView, context: Context) {
         context.coordinator.colorScheme = colorScheme
         context.coordinator.maxWidth = maxWidth
         textView.frame.size.width = maxWidth
@@ -54,7 +46,7 @@ struct NativeMarkdownInlineTextView: NSViewRepresentable {
         let attrString = context.coordinator.buildAttributedString(inlines)
         textView.textStorage?.setAttributedString(attrString)
         textView.layoutManager?.ensureLayout(for: textView.textContainer!)
-        scrollView.invalidateIntrinsicContentSize()
+        textView.invalidateIntrinsicContentSize()
     }
 
     @MainActor
@@ -188,20 +180,16 @@ struct NativeMarkdownInlineTextView: NSViewRepresentable {
     }
 }
 
-final class IntrinsicTextScrollView: NSScrollView {
+final class IntrinsicTextView: NSTextView {
     override var intrinsicContentSize: NSSize {
-        guard let textView = documentView as? NSTextView,
-              let textContainer = textView.textContainer,
-              let layoutManager = textView.layoutManager else {
+        guard let textContainer, let layoutManager else {
             return NSSize(width: NSView.noIntrinsicMetric, height: 20)
         }
         layoutManager.ensureLayout(for: textContainer)
         let used = layoutManager.usedRect(for: textContainer)
         return NSSize(width: NSView.noIntrinsicMetric, height: max(ceil(used.height), 20))
     }
-}
 
-final class NonEditableTextView: NSTextView {
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if event.modifierFlags.contains(.command) {
             if event.charactersIgnoringModifiers == "c" || event.charactersIgnoringModifiers == "a" {

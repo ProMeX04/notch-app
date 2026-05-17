@@ -99,6 +99,30 @@ struct AppGeneralSettingsPane: View {
                 AppSettingsRow(showDivider: true) {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
+                            Text(Localization.get("Closed Notch Height", lang: appLanguage))
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.9))
+                            Spacer()
+                            Text(String(format: "%.0fpt", presentationModel.closedNotchHeight))
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .foregroundStyle(tint)
+                        }
+
+                        Slider(
+                            value: Binding(
+                                get: { presentationModel.closedNotchHeight },
+                                set: { presentationModel.setClosedNotchHeight($0) }
+                            ),
+                            in: 1...32,
+                            step: 1
+                        )
+                        .tint(tint)
+                    }
+                }
+
+                AppSettingsRow(showDivider: true) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
                             Text(Localization.get("Hover Open Delay", lang: appLanguage))
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundStyle(.white.opacity(0.9))
@@ -113,7 +137,7 @@ struct AppGeneralSettingsPane: View {
                                 get: { presentationModel.hoverOpenDelaySeconds },
                                 set: { presentationModel.setHoverOpenDelay(seconds: $0) }
                             ),
-                            in: 0.05...1.0,
+                            in: 0.05...5.0,
                             step: 0.05
                         )
                         .tint(tint)

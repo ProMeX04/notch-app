@@ -52,7 +52,13 @@ final class NotchWindowController {
         self.screenID = NotchScreenID(screen: screen)
 
         let initialScreen = screen
-        presentationModel.setClosedNotchSize(NotchMetrics.baseClosedSize(for: initialScreen), for: screenID)
+        presentationModel.setClosedNotchSize(
+            NotchMetrics.baseClosedSize(
+                for: initialScreen,
+                closedHeight: CGFloat(presentationModel.closedNotchHeight)
+            ),
+            for: screenID
+        )
         let initialFrame = NotchMetrics.windowFrame(on: initialScreen, selectedPanel: presentationModel.selectedPanel)
         let styleMask: NSWindow.StyleMask = [.borderless, .nonactivatingPanel, .utilityWindow, .hudWindow]
         let window = NotchFloatingPanel(
@@ -94,8 +100,15 @@ final class NotchWindowController {
             }
             .store(in: &cancellables)
 
-        Publishers.CombineLatest3(presentationModel.$selectedPanel, presentationModel.$isExpanded, presentationModel.$activeScreenID)
-            .removeDuplicates(by: { lhs, rhs in lhs.0 == rhs.0 && lhs.1 == rhs.1 && lhs.2 == rhs.2 })
+        Publishers.CombineLatest4(
+            presentationModel.$selectedPanel,
+            presentationModel.$isExpanded,
+            presentationModel.$activeScreenID,
+            presentationModel.$closedNotchHeight
+        )
+            .removeDuplicates(by: { lhs, rhs in
+                lhs.0 == rhs.0 && lhs.1 == rhs.1 && lhs.2 == rhs.2 && lhs.3 == rhs.3
+            })
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.updateWindowFrame(animated: true)
@@ -207,7 +220,13 @@ final class NotchWindowController {
 
     func updateWindowFrame(animated: Bool) {
         let currentScreen = screen
-        presentationModel.setClosedNotchSize(NotchMetrics.baseClosedSize(for: currentScreen), for: screenID)
+        presentationModel.setClosedNotchSize(
+            NotchMetrics.baseClosedSize(
+                for: currentScreen,
+                closedHeight: CGFloat(presentationModel.closedNotchHeight)
+            ),
+            for: screenID
+        )
         let frame = NotchMetrics.windowFrame(on: currentScreen, selectedPanel: presentationModel.selectedPanel)
 
         // Skip the AppKit setFrame animation when nothing actually changes.

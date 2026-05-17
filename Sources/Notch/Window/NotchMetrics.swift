@@ -21,9 +21,15 @@ enum NotchMetrics {
         return CGSize(width: openSize.width, height: openSize.height + shadowPadding)
     }
 
-    static func baseClosedSize(for screen: NSScreen?) -> CGSize {
+    static func baseClosedSize(
+        for screen: NSScreen?,
+        closedHeight: CGFloat = 30
+    ) -> CGSize {
         guard let screen else {
-            return CGSize(width: 184, height: 32)
+            return CGSize(
+                width: 184,
+                height: closedHeight
+            )
         }
 
         var notchHeight = max(30, screen.safeAreaInsets.top)
@@ -38,7 +44,10 @@ enum NotchMetrics {
             notchHeight = max(30, screen.frame.maxY - screen.visibleFrame.maxY)
         }
 
-        return CGSize(width: notchWidth, height: notchHeight)
+        return CGSize(
+            width: notchWidth,
+            height: min(notchHeight, closedHeight)
+        )
     }
 
     static func closedSize(for screen: NSScreen?, showingLiveActivity: Bool) -> CGSize {

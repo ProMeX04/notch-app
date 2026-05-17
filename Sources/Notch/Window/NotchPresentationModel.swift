@@ -162,6 +162,7 @@ enum NotchAutoCollapseSuppressionReason: Hashable {
 final class NotchPresentationModel: ObservableObject {
     private static let hoverOpenDelayKey = "dev.notch.hover-open-delay-ms"
     private static let autoCollapseDelayKey = "dev.notch.auto-collapse-delay-ms"
+    private static let closedNotchHeightKey = "dev.notch.closed-height-pt"
     private static let hideInFullscreenKey = "dev.notch.hide-in-fullscreen"
     private static let invisibleClosedNotchKey = "dev.notch.invisible-closed-notch"
 
@@ -174,6 +175,7 @@ final class NotchPresentationModel: ObservableObject {
     @Published var isFocusOverlayPresented = false
     @Published private(set) var hoverOpenDelayMilliseconds: Double
     @Published private(set) var autoCollapseDelayMilliseconds: Double
+    @Published private(set) var closedNotchHeight: Double
     @Published private(set) var accentColorID: String
     @Published private(set) var screenDisplayModeID: String
     @Published private(set) var invisibilityModeID: String
@@ -196,6 +198,14 @@ final class NotchPresentationModel: ObservableObject {
             autoCollapseDelayMilliseconds = collapseStored
         } else {
             autoCollapseDelayMilliseconds = 900
+        }
+
+        let closedHeightStored = defaults.double(forKey: Self.closedNotchHeightKey)
+        if closedHeightStored > 0 {
+            closedNotchHeight = Self.clampedClosedNotchHeight(closedHeightStored)
+        } else {
+            let legacyMode = defaults.string(forKey: "dev.notch.closed-height-mode") ?? ""
+            closedNotchHeight = (legacyMode == "minimal" || legacyMode == "small") ? 6 : 30
         }
 
         accentColorID = NotchAccentColorOption.resolve(
@@ -303,7 +313,7 @@ final class NotchPresentationModel: ObservableObject {
     }
 
     func setHoverOpenDelay(seconds: Double) {
-        let milliseconds = min(max(seconds * 1000, 0), 2000)
+        let milliseconds = min(max(seconds * 1000, 0), 5000)
         hoverOpenDelayMilliseconds = milliseconds
         UserDefaults.standard.set(milliseconds, forKey: Self.hoverOpenDelayKey)
     }
@@ -312,6 +322,12 @@ final class NotchPresentationModel: ObservableObject {
         let milliseconds = min(max(seconds * 1000, 0), 5000)
         autoCollapseDelayMilliseconds = milliseconds
         UserDefaults.standard.set(milliseconds, forKey: Self.autoCollapseDelayKey)
+    }
+
+    func setClosedNotchHeight(_ height: Double) {
+        let clampedHeight = Self.clampedClosedNotchHeight(height)
+        closedNotchHeight = clampedHeight
+        UserDefaults.standard.set(clampedHeight, forKey: Self.closedNotchHeightKey)
     }
 
     func setAccentColor(_ option: NotchAccentColorOption) {
@@ -329,6 +345,10 @@ final class NotchPresentationModel: ObservableObject {
         UserDefaults.standard.set(option.rawValue, forKey: NotchInvisibilityMode.storageKey)
         UserDefaults.standard.set(option == .fullscreenOnly, forKey: Self.hideInFullscreenKey)
         UserDefaults.standard.set(option == .always, forKey: Self.invisibleClosedNotchKey)
+    }
+
+    private static func clampedClosedNotchHeight(_ height: Double) -> Double {
+        min(max(height, 1), 32)
     }
 
     func reveal(on screenID: NotchScreenID? = nil) {

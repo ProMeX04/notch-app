@@ -192,8 +192,32 @@ struct GlobalSettingsView: View {
                                     get: { presentationModel.hoverOpenDelaySeconds },
                                     set: { presentationModel.setHoverOpenDelay(seconds: $0) }
                                 ),
-                                in: 0.05...1.0,
+                                in: 0.05...5.0,
                                 step: 0.05
+                            )
+                            .tint(tint)
+                        }
+
+                        settingsGroupedDivider()
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Text(Localization.get("Closed Notch Height", lang: appLanguage))
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.9))
+                                Spacer()
+                                Text(closedNotchHeightLabel)
+                                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                                    .foregroundStyle(tint)
+                            }
+
+                            Slider(
+                                value: Binding(
+                                    get: { presentationModel.closedNotchHeight },
+                                    set: { presentationModel.setClosedNotchHeight($0) }
+                                ),
+                                in: 1...32,
+                                step: 1
                             )
                             .tint(tint)
                         }
@@ -266,6 +290,10 @@ struct GlobalSettingsView: View {
 
     private var hoverDelayLabel: String {
         String(format: "%.2fs", presentationModel.hoverOpenDelaySeconds)
+    }
+
+    private var closedNotchHeightLabel: String {
+        String(format: "%.0fpt", presentationModel.closedNotchHeight)
     }
 
     private func refreshLaunchAtLoginState() {

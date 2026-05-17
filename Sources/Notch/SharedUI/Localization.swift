@@ -429,6 +429,7 @@ struct Localization {
         "Accent": ["English": "Accent", "Tiếng Việt": "Màu nhấn"],
         "Display": ["English": "Display", "Tiếng Việt": "Hiển thị"],
         "Interaction": ["English": "Interaction", "Tiếng Việt": "Tương tác"],
+        "Closed Notch Height": ["English": "Closed Notch Height", "Tiếng Việt": "Chiều cao notch đóng"],
         "System": ["English": "System", "Tiếng Việt": "Hệ thống"],
         "Auto-Collapse Delay": ["English": "Auto-Collapse Delay", "Tiếng Việt": "Độ trễ tự đóng"],
         "Connection": ["English": "Connection", "Tiếng Việt": "Kết nối"],

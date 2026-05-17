@@ -89,11 +89,13 @@ struct MediaNotchView: View {
     }
 
     private var topCornerRadius: CGFloat {
-        isExpanded ? NotchMetrics.openCornerRadius.top : NotchMetrics.closedCornerRadius.top
+        if isExpanded { return NotchMetrics.openCornerRadius.top }
+        return min(NotchMetrics.closedCornerRadius.top, closedNotchSize.height / 2)
     }
 
     private var bottomCornerRadius: CGFloat {
-        isExpanded ? NotchMetrics.openCornerRadius.bottom : NotchMetrics.closedCornerRadius.bottom
+        if isExpanded { return NotchMetrics.openCornerRadius.bottom }
+        return min(NotchMetrics.closedCornerRadius.bottom, closedNotchSize.height / 2)
     }
 
     private var compactActivity: CompactActivity {
@@ -127,12 +129,12 @@ struct MediaNotchView: View {
         let baseWidth = closedNotchSize.width
 
         guard compactActivity != .idle else {
-            return (baseWidth - 20) + (NotchMetrics.closedCornerRadius.bottom * 2)
+            return (baseWidth - 20) + (bottomCornerRadius * 2)
         }
 
         let sideInset = max(0, closedNotchSize.height - 12)
-        let compactContentWidth = baseWidth + (sideInset * 2) - NotchMetrics.closedCornerRadius.top
-        return compactContentWidth + (NotchMetrics.closedCornerRadius.bottom * 2)
+        let compactContentWidth = baseWidth + (sideInset * 2) - topCornerRadius
+        return compactContentWidth + (bottomCornerRadius * 2)
     }
 
     private var currentBodyHeight: CGFloat {
@@ -341,7 +343,7 @@ struct MediaNotchView: View {
             topSectionContent
             expandedPanelContent
         }
-        .padding(.horizontal, isExpanded ? 0 : NotchMetrics.closedCornerRadius.bottom)
+        .padding(.horizontal, isExpanded ? 0 : bottomCornerRadius)
         .frame(
             width: currentBodyWidth,
             height: currentBodyHeight,

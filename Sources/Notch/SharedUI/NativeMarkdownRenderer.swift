@@ -289,17 +289,20 @@ private struct NativeMarkdownCodeBlockView: View {
     let colorScheme: ColorScheme
 
     var body: some View {
-        Text(NativeMarkdownCodeHighlighter.highlight(code: code, language: language, fontSize: style.codeFontSize, textColor: style.codeTextColor, colorScheme: colorScheme))
-            .lineSpacing(2)
-            .textSelection(.enabled)
-            .padding(10)
-            .frame(maxWidth: maxWidth, alignment: .leading)
-            .background(style.codeFillColor)
-            .cornerRadius(8)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(style.codeStrokeColor, lineWidth: 0.5)
-            )
+        ScrollView(.horizontal) {
+            Text(NativeMarkdownCodeHighlighter.highlight(code: code, language: language, fontSize: style.codeFontSize, textColor: style.codeTextColor, colorScheme: colorScheme))
+                .lineSpacing(2)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: true, vertical: true)
+                .padding(10)
+        }
+        .frame(maxWidth: maxWidth, alignment: .leading)
+        .background(style.codeFillColor)
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(style.codeStrokeColor, lineWidth: 0.5)
+        )
     }
 
     private var maxWidth: CGFloat? {

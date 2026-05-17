@@ -52,6 +52,7 @@ final class GeminiLiveViewModel: ObservableObject {
     @Published var memoryContent: String = ""
 
     @Published private(set) var isScreenSharingEnabled = false
+    @Published private(set) var isCameraSharingEnabled = false
     @Published var isModelSpeaking = false
     @Published var isModelThinking = false
     @Published var isMicrophoneLive = false
@@ -162,6 +163,7 @@ final class GeminiLiveViewModel: ObservableObject {
     var execApprovals: ExecApprovalCoordinator { toolingController.execApprovals }
 
     var screenShare: ScreenShareCoordinator { sessionController.screenShare }
+    var cameraShare: CameraShareCoordinator { sessionController.cameraShare }
     var backend: BackendAccountCoordinator { accountController.backend }
     var session: GeminiLiveSession { sessionController.session }
     var keyStore: GeminiLiveAPIKeyStore { settingsController.keyStore }
@@ -302,7 +304,7 @@ final class GeminiLiveViewModel: ObservableObject {
         screenShare.$isActive.assign(to: &$isScreenSharingEnabled)
         screenShare.$mode.assign(to: &$screenShareMode)
         screenShare.onFrameCaptured = { [weak self] data in
-            self?.session.sendScreenFrame(data)
+            self?.session.sendVisualFrame(data)
         }
         screenShare.onStatusChange = { [weak self] message in
             guard let self, let message else { return }
@@ -312,6 +314,20 @@ final class GeminiLiveViewModel: ObservableObject {
             self?.lastErrorMessage = message
         }
         screenShare.connectionStateProvider = { [weak self] in
+            self?.effectiveConnectionState ?? .disconnected
+        }
+        cameraShare.$isActive.assign(to: &$isCameraSharingEnabled)
+        cameraShare.onFrameCaptured = { [weak self] data in
+            self?.session.sendVisualFrame(data)
+        }
+        cameraShare.onStatusChange = { [weak self] message in
+            guard let self, let message else { return }
+            self.statusText = message
+        }
+        cameraShare.onErrorMessageChange = { [weak self] message in
+            self?.lastErrorMessage = message
+        }
+        cameraShare.connectionStateProvider = { [weak self] in
             self?.effectiveConnectionState ?? .disconnected
         }
 
@@ -604,7 +620,7 @@ final class GeminiLiveViewModel: ObservableObject {
         execApprovals.clearAll()
         subscriptions.removeAll()
         backend.shutdown()
-        screenShare.stop()
+        stopVisualSharing()
     }
 
     func reloadKeyDrafts() {

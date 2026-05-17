@@ -37,59 +37,62 @@ private struct GeminiTalkConnectedView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 6) {
-                    if !gemini.userTranscript.isEmpty {
-                        Text(gemini.userTranscript)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.65))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                    }
-
-                    Group {
-                        if gemini.modelTranscript.isEmpty {
-                            Text(Localization.get(gemini.connectedPlaceholderText, lang: appLanguage))
-                                .foregroundStyle(.white.opacity(0.42))
-                        } else {
-                            ProgressiveRevealText(text: gemini.modelTranscript, animateOnAppear: false)
-                                .foregroundStyle(.white.opacity(0.92))
+            VStack(alignment: .leading, spacing: 8) {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        if !gemini.userTranscript.isEmpty {
+                            Text(gemini.userTranscript)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.65))
                                 .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
                         }
+
+                        Group {
+                            if gemini.modelTranscript.isEmpty {
+                                Text(Localization.get(gemini.connectedPlaceholderText, lang: appLanguage))
+                                    .foregroundStyle(.white.opacity(0.42))
+                            } else {
+                                ProgressiveRevealText(text: gemini.modelTranscript, animateOnAppear: false)
+                                    .foregroundStyle(.white.opacity(0.92))
+                                    .textSelection(.enabled)
+                            }
+                        }
+                        .font(.system(size: 13, weight: .medium))
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .font(.system(size: 13, weight: .medium))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+                if gemini.isAutoReconnecting {
+                    HStack(spacing: 5) {
+                        ProgressView()
+                            .scaleEffect(0.6)
+                            .frame(width: 14, height: 14)
+                        Text(gemini.statusText)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Color(nsColor: .systemYellow).ensureMinimumBrightness(factor: 0.72))
+                    }
+                }
+
+                if let toolAction = gemini.lastToolAction {
+                    HStack(spacing: 7) {
+                        Image(systemName: toolAction.icon)
+                            .font(.system(size: 11, weight: .semibold))
+                        Text(toolAction.label)
+                            .font(.system(size: 11, weight: .semibold))
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(.white.opacity(0.7))
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
-            if gemini.isAutoReconnecting {
-                HStack(spacing: 5) {
-                    ProgressView()
-                        .scaleEffect(0.6)
-                        .frame(width: 14, height: 14)
-                    Text(gemini.statusText)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color(nsColor: .systemYellow).ensureMinimumBrightness(factor: 0.72))
-                }
-            }
-
-            if let toolAction = gemini.lastToolAction {
-                HStack(spacing: 7) {
-                    Image(systemName: toolAction.icon)
-                        .font(.system(size: 11, weight: .semibold))
-                    Text(toolAction.label)
-                        .font(.system(size: 11, weight: .semibold))
-                        .lineLimit(1)
-                }
-                .foregroundStyle(.white.opacity(0.7))
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .center, spacing: 6) {
                     GeminiInputModeMenu(gemini: gemini, presentationModel: presentationModel)
-                    GeminiScreenShareMenu(gemini: gemini, presentationModel: presentationModel)
+                    GeminiVisualShareMenu(gemini: gemini, presentationModel: presentationModel)
                     GeminiTranscriptModeToggle(gemini: gemini, presentationModel: presentationModel)
                     GeminiControlToggle(
                         icon: gemini.showLiveChatInput ? "keyboard.fill" : "keyboard",

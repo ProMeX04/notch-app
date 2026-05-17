@@ -49,7 +49,8 @@ enum NativeMathImageRenderer {
         label.needsLayout = true
         label.layoutSubtreeIfNeeded()
         let size = label.intrinsicContentSize
-        let finalSize = CGSize(width: max(24, size.width), height: max(fontSize * 1.4, size.height))
+        let finalWidth = mode == .inline ? max(1, size.width) : max(24, size.width)
+        let finalSize = CGSize(width: finalWidth, height: max(fontSize * 1.4, size.height))
         label.frame = NSRect(origin: .zero, size: finalSize)
 
         let pdfData = label.dataWithPDF(inside: label.bounds)

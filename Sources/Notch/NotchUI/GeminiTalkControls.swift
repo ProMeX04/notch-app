@@ -237,41 +237,45 @@ struct GeminiInputModeMenu: View {
         .buttonStyle(.plain)
     }
 }
-struct GeminiScreenShareMenu: View {
+struct GeminiVisualShareMenu: View {
     @ObservedObject var gemini: GeminiLiveViewModel
     @ObservedObject var presentationModel: NotchPresentationModel
     @State private var isPickerOpen = false
     @AppStorage("app_language") private var appLanguage: String = "English"
 
-    private var isActive: Bool { gemini.isScreenSharingEnabled }
+    private var isActive: Bool { gemini.isVisualSharingEnabled }
 
     var body: some View {
         Button {
             isPickerOpen.toggle()
         } label: {
-            GeminiControlPill(icon: gemini.screenSharingIcon, label: gemini.screenSharingLabel, isActive: isActive)
+            GeminiControlPill(icon: gemini.visualSharingIcon, label: Localization.get(gemini.visualSharingLabel, lang: appLanguage), isActive: isActive)
         }
         .buttonStyle(.plain)
         .fixedSize(horizontal: true, vertical: false)
         .popover(isPresented: $isPickerOpen, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 0) {
-                screenShareRow(Localization.get("Share Full Screen", lang: appLanguage)) {
+                visualShareRow(Localization.get("Share Full Screen", lang: appLanguage)) {
                     gemini.startFullScreenSharing()
                     isPickerOpen = false
                 }
-                screenShareRow(Localization.get("Share Selected Region", lang: appLanguage)) {
+                visualShareRow(Localization.get("Share Selected Region", lang: appLanguage)) {
                     gemini.startRegionScreenSharing()
                     isPickerOpen = false
                 }
-                screenShareRow(Localization.get("Share App Window", lang: appLanguage)) {
+                visualShareRow(Localization.get("Share App Window", lang: appLanguage)) {
                     gemini.startWindowSharing()
                     isPickerOpen = false
                 }
-                if gemini.isScreenSharingEnabled {
+                visualShareRow(Localization.get("Share Camera", lang: appLanguage)) {
+                    gemini.startCameraSharing()
+                    isPickerOpen = false
+                }
+                if gemini.isVisualSharingEnabled {
                     Divider()
                         .padding(.vertical, 4)
-                    screenShareRow(Localization.get("Stop Sharing", lang: appLanguage), foreground: Color(nsColor: .systemRed)) {
-                        gemini.stopScreenSharing()
+                    visualShareRow(Localization.get("Stop Sharing", lang: appLanguage), foreground: Color(nsColor: .systemRed)) {
+                        gemini.stopVisualSharing()
                         isPickerOpen = false
                     }
                 }
@@ -285,7 +289,7 @@ struct GeminiScreenShareMenu: View {
         }
     }
 
-    private func screenShareRow(_ title: String, foreground: Color = .primary, action: @escaping () -> Void) -> some View {
+    private func visualShareRow(_ title: String, foreground: Color = .primary, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 13))

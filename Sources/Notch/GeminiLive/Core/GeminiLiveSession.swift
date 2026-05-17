@@ -115,7 +115,7 @@ final class GeminiLiveSession: @unchecked Sendable {
     /// Check if the browser extension is currently connected and polling.
     var onBrowserBridgeIsConnected: (@Sendable () -> Bool)?
 
-    func sendScreenFrame(_ data: Data) {
+    func sendVisualFrame(_ data: Data) {
         sendJSONObject([
             "realtimeInput": [
                 "video": [
@@ -124,6 +124,10 @@ final class GeminiLiveSession: @unchecked Sendable {
                 ],
             ],
         ])
+    }
+
+    func sendScreenFrame(_ data: Data) {
+        sendVisualFrame(data)
     }
 
     /// Sends typed user text during a live session.

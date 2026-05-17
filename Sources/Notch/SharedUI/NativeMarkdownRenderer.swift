@@ -261,7 +261,7 @@ private struct NativeMarkdownInlineView: View {
             case let .link(children, _):
                 append(children, to: &result, traits: traits)
             case let .math(formula):
-                var fragment = AttributedString(" \(formula) ")
+                var fragment = AttributedString(formula)
                 fragment.font = .system(size: style.proseFontSize, design: .serif)
                 fragment.foregroundColor = style.mathTextColor
                 result += fragment

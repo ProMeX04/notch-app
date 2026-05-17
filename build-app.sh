@@ -49,6 +49,6 @@ if [[ -f "$ROOT_DIR/AppIcon.icns" ]]; then
     cp "$ROOT_DIR/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
 fi
 
-codesign --force --deep --sign - "$APP_DIR" >/dev/null
+codesign --force --deep --sign - --entitlements "$ROOT_DIR/Notch.entitlements" "$APP_DIR" >/dev/null
 
 echo "Built app bundle at: $APP_DIR"

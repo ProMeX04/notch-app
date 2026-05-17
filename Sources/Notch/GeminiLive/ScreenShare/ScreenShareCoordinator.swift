@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import CoreMedia
 import Foundation
 import NotchScreenShareCore
 @preconcurrency import ScreenCaptureKit
@@ -8,6 +9,23 @@ enum ScreenShareMode {
     case fullScreen
     case selectedRegion
     case appWindow
+}
+
+private enum ScreenShareStreamError: LocalizedError {
+    case invalidContentRect
+    case missingContentFilter
+    case missingDisplay
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidContentRect:
+            return "The selected screen area cannot be shared."
+        case .missingContentFilter:
+            return "No app or window was selected to share."
+        case .missingDisplay:
+            return "The selected display is no longer available."
+        }
+    }
 }
 
 @MainActor
@@ -21,8 +39,13 @@ final class ScreenShareCoordinator: ObservableObject {
     private let regionSelectionController = ScreenRegionSelectionController()
     private let windowSelectionController = WindowShareSelectionController()
     private let highlightController = ScreenShareHighlightController()
-    private var captureTask: Task<Void, Never>?
+    private let streamQueue = DispatchQueue(label: "dev.notch.gemini.screen-share")
+    private var stream: SCStream?
+    private var streamOutput: ScreenShareStreamOutput?
+    private var streamDelegate: ScreenShareStreamDelegate?
+    private var streamStartTask: Task<Void, Never>?
     private var contentFilter: SCContentFilter?
+    private let sendFrameInterval: TimeInterval = 1.5
 
     var onFrameCaptured: (@MainActor (Data) -> Void)?
     var onStatusChange: (@MainActor (String?) -> Void)?
@@ -125,9 +148,19 @@ final class ScreenShareCoordinator: ObservableObject {
     }
 
     func pauseCapture() {
-        captureTask?.cancel()
-        captureTask = nil
+        streamStartTask?.cancel()
+        streamStartTask = nil
+        let activeStream = stream
+        stream = nil
+        streamOutput = nil
+        streamDelegate = nil
         isActive = false
+
+        if let activeStream {
+            Task.detached(priority: .userInitiated) {
+                try? await activeStream.stopCapture()
+            }
+        }
     }
 
     func resumeCapture() {
@@ -165,19 +198,34 @@ final class ScreenShareCoordinator: ObservableObject {
         setStatusMessage(statusMessage)
         updateHighlight()
 
-        captureTask = Task { @MainActor [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1.5))
-                guard !Task.isCancelled else { break }
-                guard let self else { break }
+        let mode = mode
+        let region = selectedRegion
+        let selectedFilter = contentFilter
+        streamStartTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let streamComponents = try await self.makeStreamComponents(mode: mode, region: region, contentFilter: selectedFilter)
+                guard !Task.isCancelled, self.isActive else { return }
 
-                guard let jpeg = await self.captureAndEncodeScreen(
-                    region: self.selectedRegion,
-                    contentFilter: self.contentFilter
-                ) else { continue }
-
+                let output = ScreenShareStreamOutput(sendFrameInterval: self.sendFrameInterval) { [weak self] data in
+                    guard let self, self.isActive else { return }
+                    self.onFrameCaptured?(data)
+                }
+                try streamComponents.stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: self.streamQueue)
+                self.stream = streamComponents.stream
+                self.streamOutput = output
+                self.streamDelegate = streamComponents.delegate
+                try await streamComponents.stream.startCapture()
+            } catch {
+                guard !Task.isCancelled else { return }
+                NotchLog.gemini.debug("Screen stream failed: \(error.localizedDescription, privacy: .public)")
+                self.stream = nil
+                self.streamOutput = nil
+                self.streamDelegate = nil
+                self.isActive = false
                 self.updateHighlight()
-                self.onFrameCaptured?(jpeg)
+                self.onErrorMessageChange?("Unable to start screen sharing: \(error.localizedDescription)")
+                self.setStatusMessage("Unable to start screen sharing.")
             }
         }
     }
@@ -214,86 +262,131 @@ final class ScreenShareCoordinator: ObservableObject {
         }
     }
 
-    private func captureAndEncodeScreen(region: CGRect?, contentFilter: SCContentFilter?) async -> Data? {
-        if #available(macOS 14.0, *), let contentFilter {
-            return await captureAndEncodeSharedContent(contentFilter)
-        }
-
-        return await captureAndEncodeDisplayRegion(region)
+    private struct ScreenShareStreamComponents {
+        let stream: SCStream
+        let delegate: ScreenShareStreamDelegate
     }
 
-    private func captureAndEncodeDisplayRegion(_ region: CGRect?) async -> Data? {
-        let requestedRect = (region ?? NSScreen.main.map { screen in
-            CGRect(
-                x: screen.frame.origin.x,
-                y: screen.frame.origin.y,
-                width: screen.frame.width,
-                height: screen.frame.height
+    private func makeStreamComponents(mode: ScreenShareMode, region: CGRect?, contentFilter: SCContentFilter?) async throws -> ScreenShareStreamComponents {
+        switch mode {
+        case .fullScreen, .selectedRegion:
+            return try await makeDisplayStreamComponents(region: region)
+        case .appWindow:
+            guard let contentFilter else { throw ScreenShareStreamError.missingContentFilter }
+            return makeSharedContentStreamComponents(contentFilter)
+        }
+    }
+
+    private func makeDisplayStreamComponents(region: CGRect?) async throws -> ScreenShareStreamComponents {
+        let shareableContent = try await SCShareableContent.current
+        let displayDescriptors = shareableContent.displays.map {
+            ScreenShareDisplayDescriptor(
+                id: $0.displayID,
+                frame: Self.screenFrame(for: $0.displayID) ?? $0.frame,
+                pixelWidth: $0.width,
+                pixelHeight: $0.height
             )
-        } ?? CGRect(x: 0, y: 0, width: 1, height: 1)).standardized
-        guard requestedRect.width > 0, requestedRect.height > 0 else { return nil }
+        }
+        let requestedRect = (region ?? preferredFullScreenDisplay(from: displayDescriptors)?.frame ?? CGRect(x: 0, y: 0, width: 1, height: 1)).standardized
+        guard requestedRect.width > 0, requestedRect.height > 0 else { throw ScreenShareStreamError.invalidContentRect }
 
-        do {
-            let shareableContent = try await SCShareableContent.current
-            let displayDescriptors = shareableContent.displays.map {
-                ScreenShareDisplayDescriptor(
-                    id: $0.displayID,
-                    frame: $0.frame,
-                    pixelWidth: $0.width,
-                    pixelHeight: $0.height
-                )
-            }
-            guard let capturePlan = ScreenShareCaptureGeometry.resolveCapturePlan(
-                requestedRect: requestedRect,
-                displays: displayDescriptors
-            ) else { return nil }
-            guard let display = shareableContent.displays.first(where: { $0.displayID == capturePlan.displayID }) else { return nil }
+        guard let capturePlan = ScreenShareCaptureGeometry.resolveCapturePlan(
+            requestedRect: requestedRect,
+            displays: displayDescriptors
+        ) else { throw ScreenShareStreamError.invalidContentRect }
+        guard let display = shareableContent.displays.first(where: { $0.displayID == capturePlan.displayID }) else { throw ScreenShareStreamError.missingDisplay }
 
-            let streamConfiguration = SCStreamConfiguration()
-            streamConfiguration.sourceRect = capturePlan.sourceRect
-            streamConfiguration.width = capturePlan.outputWidth
-            streamConfiguration.height = capturePlan.outputHeight
-            streamConfiguration.showsCursor = false
+        let configuration = SCStreamConfiguration()
+        configuration.sourceRect = capturePlan.sourceRect
+        configuration.width = capturePlan.outputWidth
+        configuration.height = capturePlan.outputHeight
+        configureStream(configuration)
 
-            let contentFilter = SCContentFilter(display: display, excludingWindows: [])
-            let image = await withCheckedContinuation { (continuation: CheckedContinuation<CGImage?, Never>) in
-                SCScreenshotManager.captureImage(contentFilter: contentFilter, configuration: streamConfiguration) { image, error in
-                    guard error == nil else {
-                        continuation.resume(returning: nil)
-                        return
-                    }
-                    continuation.resume(returning: image)
-                }
-            }
+        let filter = SCContentFilter(display: display, excludingWindows: [])
+        return makeStreamComponents(filter: filter, configuration: configuration)
+    }
 
-            guard let image else { return nil }
-            return await Task.detached(priority: .userInitiated) {
-                Self.encodeJPEG(from: image)
-            }.value
-        } catch {
-            NotchLog.gemini.debug("Screen capture failed: \(error.localizedDescription, privacy: .public)")
-            return nil
+    private func makeSharedContentStreamComponents(_ contentFilter: SCContentFilter) -> ScreenShareStreamComponents {
+        let contentInfo = SCShareableContent.info(for: contentFilter)
+        let contentRect = contentInfo.contentRect.standardized
+        let pixelScale = CGFloat(max(contentInfo.pointPixelScale, 1))
+
+        let configuration = SCStreamConfiguration()
+        configuration.width = max(Int((contentRect.width * pixelScale).rounded(.up)), 1)
+        configuration.height = max(Int((contentRect.height * pixelScale).rounded(.up)), 1)
+        configureStream(configuration)
+
+        return makeStreamComponents(filter: contentFilter, configuration: configuration)
+    }
+
+    private func makeStreamComponents(filter: SCContentFilter, configuration: SCStreamConfiguration) -> ScreenShareStreamComponents {
+        let delegate = ScreenShareStreamDelegate { [weak self] error in
+            self?.handleStreamStopped(error: error)
+        }
+        return ScreenShareStreamComponents(stream: SCStream(filter: filter, configuration: configuration, delegate: delegate), delegate: delegate)
+    }
+
+    private func configureStream(_ configuration: SCStreamConfiguration) {
+        configuration.showsCursor = false
+        configuration.minimumFrameInterval = CMTime(seconds: sendFrameInterval, preferredTimescale: 600)
+    }
+
+    private func handleStreamStopped(error: Error) {
+        guard isActive else { return }
+        stream = nil
+        streamOutput = nil
+        streamDelegate = nil
+        isActive = false
+        updateHighlight()
+
+        if isConnectedOrConnecting {
+            setStatusMessage("Screen sharing stopped.")
+        }
+        if (error as NSError).code != NSUserCancelledError {
+            NotchLog.gemini.debug("Screen stream stopped: \(error.localizedDescription, privacy: .public)")
         }
     }
 
-    private nonisolated static let jpegContext = CIContext(options: [.useSoftwareRenderer: false])
+    private nonisolated static func screenFrame(for displayID: CGDirectDisplayID) -> CGRect? {
+        NSScreen.screens.first { screen in
+            screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID == displayID
+        }?.frame
+    }
 
-    private nonisolated static func encodeJPEG(from fullImage: CGImage) -> Data? {
-        let maxWidth: CGFloat = 1280
+    private func preferredFullScreenDisplay(from displays: [ScreenShareDisplayDescriptor]) -> ScreenShareDisplayDescriptor? {
+        displays.first { $0.frame.origin.equalTo(.zero) }
+        ?? displays.max { lhs, rhs in
+            lhs.frame.width * lhs.frame.height < rhs.frame.width * rhs.frame.height
+        }
+    }
+
+    fileprivate nonisolated static let jpegContext = CIContext(options: [.useSoftwareRenderer: false])
+
+    fileprivate nonisolated static func encodeJPEG(from pixelBuffer: CVPixelBuffer, maxWidth: CGFloat = 1280, quality: CGFloat = 0.6) -> Data? {
+        let originalWidth = CGFloat(CVPixelBufferGetWidth(pixelBuffer))
+        let scale = min(1.0, maxWidth / originalWidth)
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer).transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        return encodeJPEG(from: ciImage, quality: quality)
+    }
+
+    fileprivate nonisolated static func encodeJPEG(from fullImage: CGImage, maxWidth: CGFloat = 1280, quality: CGFloat = 0.6) -> Data? {
         let originalWidth = CGFloat(fullImage.width)
         let scale = min(1.0, maxWidth / originalWidth)
-
         let ciImage = CIImage(cgImage: fullImage).transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        return encodeJPEG(from: ciImage, quality: quality)
+    }
+
+    private nonisolated static func encodeJPEG(from ciImage: CIImage, quality: CGFloat) -> Data? {
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         return jpegContext.jpegRepresentation(
             of: ciImage,
             colorSpace: colorSpace,
-            options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.6]
+            options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: quality]
         )
     }
 
     @available(macOS 14.0, *)
-    private func captureAndEncodeSharedContent(_ contentFilter: SCContentFilter) async -> Data? {
+    private func captureAndEncodeSharedContent(_ contentFilter: SCContentFilter, maxWidth: CGFloat = 1280, quality: CGFloat = 0.6) async -> Data? {
         let contentInfo = SCShareableContent.info(for: contentFilter)
         let contentRect = contentInfo.contentRect.standardized
         guard contentRect.width > 0, contentRect.height > 0 else { return nil }
@@ -345,5 +438,51 @@ final class ScreenShareCoordinator: ObservableObject {
                 return "Sharing selected content."
             }
         }
+    }
+}
+
+private final class ScreenShareStreamDelegate: NSObject, SCStreamDelegate {
+    private let onStop: @MainActor (Error) -> Void
+
+    init(onStop: @escaping @MainActor (Error) -> Void) {
+        self.onStop = onStop
+    }
+
+    nonisolated func stream(_ stream: SCStream, didStopWithError error: Error) {
+        Task { @MainActor [onStop] in
+            onStop(error)
+        }
+    }
+}
+
+private final class ScreenShareStreamOutput: NSObject, SCStreamOutput {
+    private let sendFrameInterval: TimeInterval
+    private let onFrameCaptured: @MainActor (Data) -> Void
+    private var nextFrameSendTime: TimeInterval = 0
+
+    init(sendFrameInterval: TimeInterval, onFrameCaptured: @escaping @MainActor (Data) -> Void) {
+        self.sendFrameInterval = sendFrameInterval
+        self.onFrameCaptured = onFrameCaptured
+    }
+
+    nonisolated func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
+        guard type == .screen,
+              sampleBuffer.isValid,
+              let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer)
+        else { return }
+
+        let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer).seconds
+        guard shouldEncodeFrame(at: timestamp) else { return }
+
+        guard let jpeg = ScreenShareCoordinator.encodeJPEG(from: pixelBuffer, maxWidth: 640, quality: 0.5) else { return }
+        Task { @MainActor [onFrameCaptured] in
+            onFrameCaptured(jpeg)
+        }
+    }
+
+    private func shouldEncodeFrame(at timestamp: TimeInterval) -> Bool {
+        guard timestamp >= nextFrameSendTime else { return false }
+        nextFrameSendTime = timestamp + sendFrameInterval
+        return true
     }
 }

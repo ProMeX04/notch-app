@@ -4,19 +4,32 @@ import NotchChatHistoryCore
 
 extension GeminiLiveViewModel {
     func startFullScreenSharing() {
+        cameraShare.stop()
         screenShare.startFullScreen()
     }
 
     func startRegionScreenSharing() {
+        cameraShare.stop()
         screenShare.startRegion()
     }
 
     func startWindowSharing() {
+        cameraShare.stop()
         screenShare.startWindow()
     }
 
-    func stopScreenSharing() {
+    func startCameraSharing() {
         screenShare.stop()
+        cameraShare.start()
+    }
+
+    func stopVisualSharing() {
+        screenShare.stop()
+        cameraShare.stop()
+    }
+
+    func stopScreenSharing() {
+        stopVisualSharing()
     }
 
     func toggleMicrophone() {

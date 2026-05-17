@@ -199,7 +199,7 @@ extension GeminiLiveViewModel {
     func disconnect() {
         lastDisconnectWasUserInitiated = true
         cancelReconnect()
-        screenShare.stop()
+        stopVisualSharing()
         execApprovals.clearAll()
         toastClearTask = nil
         lastToolAction = nil

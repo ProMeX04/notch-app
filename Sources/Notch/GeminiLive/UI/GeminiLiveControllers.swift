@@ -38,6 +38,7 @@ final class GeminiLiveAccountController {
 final class GeminiLiveSessionController {
     let session: GeminiLiveSession
     let screenShare = ScreenShareCoordinator()
+    let cameraShare = CameraShareCoordinator()
 
     init(session: GeminiLiveSession) {
         self.session = session

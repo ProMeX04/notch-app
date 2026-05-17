@@ -83,9 +83,25 @@ extension GeminiLiveViewModel {
         effectiveConnectionState.accentColor
     }
 
-    var screenSharingLabel: String { isWindowScreenSharing ? "App" : isRegionScreenSharing ? "Region" : "Screen" }
+    var isVisualSharingEnabled: Bool { isScreenSharingEnabled || isCameraSharingEnabled }
 
-    var screenSharingIcon: String { isWindowScreenSharing ? "macwindow" : isRegionScreenSharing ? "crop" : (isScreenSharingEnabled ? "eye.fill" : "eye") }
+    var visualSharingLabel: String {
+        if isCameraSharingEnabled { return "Camera" }
+        if isWindowScreenSharing { return "App" }
+        if isRegionScreenSharing { return "Region" }
+        return "Screen"
+    }
+
+    var visualSharingIcon: String {
+        if isCameraSharingEnabled { return "video.fill" }
+        if isWindowScreenSharing { return "macwindow" }
+        if isRegionScreenSharing { return "crop" }
+        return isVisualSharingEnabled ? "eye.fill" : "eye"
+    }
+
+    var screenSharingLabel: String { visualSharingLabel }
+
+    var screenSharingIcon: String { visualSharingIcon }
 
     var isRegionScreenSharing: Bool { isScreenSharingEnabled && screenShareMode == .selectedRegion }
 

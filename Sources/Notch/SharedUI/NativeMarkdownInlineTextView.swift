@@ -155,7 +155,7 @@ struct NativeMarkdownInlineTextView: NSViewRepresentable {
                 textColor: NSColor(style.mathTextColor),
                 mode: .inline
             ) else {
-                result.append(NSAttributedString(string: " \(formula) ", attributes: [
+                result.append(NSAttributedString(string: formula, attributes: [
                     .font: NSFont.systemFont(ofSize: style.proseFontSize, weight: .regular),
                     .foregroundColor: NSColor(style.mathTextColor)
                 ]))
@@ -169,7 +169,7 @@ struct NativeMarkdownInlineTextView: NSViewRepresentable {
             let imageHeight = image.size.height
             attachment.bounds = CGRect(
                 x: 0,
-                y: (lineHeight - imageHeight) / 2 - style.proseFontSize * 0.1,
+                y: (lineHeight - imageHeight) / 2 - style.proseFontSize * 0.22,
                 width: image.size.width,
                 height: imageHeight
             )

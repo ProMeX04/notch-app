@@ -41,6 +41,8 @@
 	<string>Notch controls playback in supported music apps.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Notch reads your calendar so Gemini can answer questions about your schedule.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Notch uses the camera so Gemini Live can see your camera feed.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>

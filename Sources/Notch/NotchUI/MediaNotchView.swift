@@ -37,6 +37,7 @@ struct MediaNotchView: View {
     @StateObject private var shelfBrowserHost = ShelfBrowserHost()
     @State private var isHovering = false
     @State private var isShelfDropTargeted = false
+    private let minimumClosedVisualHeight: CGFloat = 20
 
     init(
         playback: MediaProbeViewModel,
@@ -99,9 +100,14 @@ struct MediaNotchView: View {
     }
 
     private var compactActivity: CompactActivity {
-        compactActivityCandidates
+        guard shouldRenderClosedContent else { return .idle }
+        return compactActivityCandidates
             .max(by: { $0.priority < $1.priority })?
             .activity ?? .idle
+    }
+
+    private var shouldRenderClosedContent: Bool {
+        isExpanded || closedNotchSize.height >= minimumClosedVisualHeight
     }
 
     private var compactActivityCandidates: [CompactActivityCandidate] {
@@ -127,20 +133,27 @@ struct MediaNotchView: View {
         }
 
         let baseWidth = closedNotchSize.width
+        let widthBottomRadius = NotchMetrics.closedCornerRadius.bottom
 
         guard compactActivity != .idle else {
-            return (baseWidth - 20) + (bottomCornerRadius * 2)
+            return (baseWidth - 20) + (widthBottomRadius * 2)
         }
 
-        let sideInset = max(0, closedNotchSize.height - 12)
-        let compactContentWidth = baseWidth + (sideInset * 2) - topCornerRadius
-        return compactContentWidth + (bottomCornerRadius * 2)
+        let standardClosedHeight: CGFloat = 30
+        let sideInset = max(0, standardClosedHeight - 12)
+        let compactContentWidth = baseWidth + (sideInset * 2) - NotchMetrics.closedCornerRadius.top
+        return compactContentWidth + (widthBottomRadius * 2)
     }
 
     private var currentBodyHeight: CGFloat {
         isExpanded
             ? NotchMetrics.openHeight(for: presentationModel.selectedPanel)
             : closedNotchSize.height
+    }
+
+    private var currentContentWidth: CGFloat {
+        if isExpanded { return currentBodyWidth }
+        return max(0, currentBodyWidth - (bottomCornerRadius * 2))
     }
 
     private var expandedHeaderHeight: CGFloat {
@@ -269,18 +282,27 @@ struct MediaNotchView: View {
 
     @ViewBuilder
     private var closedNotchContent: some View {
-        if compactActivity == .media {
+        if !shouldRenderClosedContent {
+            Rectangle()
+                .fill(Color.black.opacity(0.01))
+                .frame(
+                    width: closedNotchSize.width,
+                    height: closedNotchSize.height
+                )
+        } else if compactActivity == .media {
             CompactLiveActivityView(
                 playback: playback,
                 closedNotchWidth: closedNotchSize.width,
                 closedNotchHeight: closedNotchSize.height,
+                contentWidth: currentContentWidth,
                 albumArtNamespace: albumArtNamespace
             )
         } else if compactActivity == .talk {
             CompactTalkView(
                 gemini: gemini,
                 closedNotchWidth: closedNotchSize.width,
-                closedNotchHeight: closedNotchSize.height
+                closedNotchHeight: closedNotchSize.height,
+                contentWidth: currentContentWidth
             )
         } else {
             IdleClosedNotchView(

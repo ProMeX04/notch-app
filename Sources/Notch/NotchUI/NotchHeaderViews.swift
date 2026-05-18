@@ -27,13 +27,27 @@ struct NotchHeaderAction: Identifiable {
 struct CompactSpectrumView: View {
     let accentColor: Color
     let isPlaying: Bool
+    var visualSize: CGFloat = 18
+
+    private var spectrumWidth: CGFloat {
+        max(16, visualSize * 0.6)
+    }
+
+    private var spectrumHeight: CGFloat {
+        max(12, visualSize * 0.62)
+    }
+
+    private var spectrumScale: CGFloat {
+        max(1, spectrumHeight / 14)
+    }
 
     var body: some View {
         Rectangle()
             .fill(accentColor.gradient)
             .mask {
                 AudioSpectrumView(isPlaying: isPlaying)
-                    .frame(width: 16, height: 12)
+                    .scaleEffect(spectrumScale)
+                    .frame(width: spectrumWidth, height: spectrumHeight)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

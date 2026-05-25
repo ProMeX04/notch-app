@@ -929,6 +929,7 @@ public final class NotchShelfViewModel: ObservableObject {
                     self.releaseUploadReservations(reservedIDs)
                     self.driveUploadMessage = nil
                     if !(error is CancellationError) {
+                        self.handleGoogleDriveConnectionLossIfNeeded(error)
                         self.driveUploadError = error.localizedDescription
                     }
                     if uploadedCount > 0 {
@@ -1017,6 +1018,7 @@ public final class NotchShelfViewModel: ObservableObject {
                     self.itemsInProgress.remove(item.id)
                     self.updateDriveActivityState()
                     self.driveUploadMessage = nil
+                    self.handleGoogleDriveConnectionLossIfNeeded(error)
 
                     if let driveError = error as? GoogleDriveError, case .fileNotFound = driveError {
                         if let index = self.items.firstIndex(where: { $0.id == item.id }) {
@@ -1088,6 +1090,7 @@ public final class NotchShelfViewModel: ObservableObject {
                     self.itemsInProgress.remove(item.id)
                     self.updateDriveActivityState()
                     self.driveUploadMessage = nil
+                    self.handleGoogleDriveConnectionLossIfNeeded(error)
 
                     if let driveError = error as? GoogleDriveError, case .fileNotFound = driveError {
                         if let index = self.items.firstIndex(where: { $0.id == item.id }) {
@@ -1112,6 +1115,15 @@ public final class NotchShelfViewModel: ObservableObject {
         isUploadingToDrive = isCompletingDriveHandoff
             || !uploadingItemIDs.isEmpty
             || !itemsInProgress.isEmpty
+    }
+
+    private func handleGoogleDriveConnectionLossIfNeeded(_ error: Error) {
+        guard let driveError = error as? GoogleDriveError,
+              case .notConnected = driveError else {
+            return
+        }
+        NotchGoogleDriveService.shared.clearCredentials()
+        isGoogleDriveConnected = false
     }
 
     private func releaseUploadReservations(_ itemIDs: Set<UUID>) {

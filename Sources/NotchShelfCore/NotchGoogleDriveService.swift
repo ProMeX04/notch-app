@@ -44,7 +44,9 @@ public enum GoogleDriveError: LocalizedError {
 }
 
 private struct KeychainHelper {
-    static let service = "dev.notch.gdrive"
+    static var service: String {
+        ProcessInfo.processInfo.environment["NOTCH_GDRIVE_KEYCHAIN_SERVICE"] ?? "dev.notch.gdrive"
+    }
 
     static func save(key: String, value: String) -> Bool {
         let attributes: [String: Any] = [
@@ -141,7 +143,13 @@ public final class NotchGoogleDriveService: Sendable {
     public init() {}
 
     public var isConnected: Bool {
-        accessToken != nil
+        guard accessToken != nil else {
+            return false
+        }
+        if let expiry = expiresAtDate, expiry > Date().addingTimeInterval(60) {
+            return true
+        }
+        return refreshToken != nil
     }
 
     public var accessToken: String? {
@@ -249,6 +257,7 @@ public final class NotchGoogleDriveService: Sendable {
 
     public func ensureValidAccessToken(portalBaseURL: URL) async throws -> String {
         guard let token = accessToken else {
+            clearCredentials()
             throw GoogleDriveError.notConnected
         }
 
@@ -257,6 +266,7 @@ public final class NotchGoogleDriveService: Sendable {
         }
 
         guard let refresh = refreshToken else {
+            clearCredentials()
             throw GoogleDriveError.notConnected
         }
 
@@ -270,6 +280,11 @@ public final class NotchGoogleDriveService: Sendable {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.data(for: request)
+        if let httpResponse = response as? HTTPURLResponse,
+           httpResponse.statusCode == 400 || httpResponse.statusCode == 401 {
+            clearCredentials()
+            throw GoogleDriveError.notConnected
+        }
         guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
             let errorMsg = Self.errorMessage(from: data) ?? "HTTP \( (response as? HTTPURLResponse)?.statusCode ?? 0)"
             throw GoogleDriveError.refreshFailed(errorMsg)
@@ -320,6 +335,14 @@ public final class NotchGoogleDriveService: Sendable {
         return dict["error"] as? String
     }
 
+    private func rejectInvalidAuthorization(_ response: HTTPURLResponse) throws {
+        guard response.statusCode == 401 else {
+            return
+        }
+        clearCredentials()
+        throw GoogleDriveError.notConnected
+    }
+
     private func getOrCreateFolderId(accessToken: String) async throws -> String {
         if let existing = self.folderId {
             return existing
@@ -335,7 +358,11 @@ public final class NotchGoogleDriveService: Sendable {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw GoogleDriveError.folderCheckFailed
+        }
+        try rejectInvalidAuthorization(httpResponse)
+        guard (200...299).contains(httpResponse.statusCode) else {
             throw GoogleDriveError.folderCheckFailed
         }
 
@@ -367,7 +394,11 @@ public final class NotchGoogleDriveService: Sendable {
         createRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (createData, createResponse) = try await URLSession.shared.data(for: createRequest)
-        guard let httpCreateResponse = createResponse as? HTTPURLResponse, (200...299).contains(httpCreateResponse.statusCode) else {
+        guard let httpCreateResponse = createResponse as? HTTPURLResponse else {
+            throw GoogleDriveError.folderCreationFailed
+        }
+        try rejectInvalidAuthorization(httpCreateResponse)
+        guard (200...299).contains(httpCreateResponse.statusCode) else {
             throw GoogleDriveError.folderCreationFailed
         }
 
@@ -445,7 +476,11 @@ public final class NotchGoogleDriveService: Sendable {
 
         let progressDelegate = onProgress.map { UploadProgressDelegate(onProgress: $0) }
         let (uploadData, uploadResponse) = try await URLSession.shared.data(for: request, delegate: progressDelegate)
-        guard let httpUploadResponse = uploadResponse as? HTTPURLResponse, (200...299).contains(httpUploadResponse.statusCode) else {
+        guard let httpUploadResponse = uploadResponse as? HTTPURLResponse else {
+            throw GoogleDriveError.uploadFailed
+        }
+        try rejectInvalidAuthorization(httpUploadResponse)
+        guard (200...299).contains(httpUploadResponse.statusCode) else {
             if let errorMsg = String(data: uploadData, encoding: .utf8) {
                 print("Google Drive upload error response: \(errorMsg)")
             }
@@ -507,6 +542,7 @@ public final class NotchGoogleDriveService: Sendable {
         guard let httpResponse = uploadResponse as? HTTPURLResponse else {
             throw GoogleDriveError.uploadFailed
         }
+        try rejectInvalidAuthorization(httpResponse)
 
         if httpResponse.statusCode == 404 {
             throw GoogleDriveError.fileNotFound
@@ -540,6 +576,7 @@ public final class NotchGoogleDriveService: Sendable {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw GoogleDriveError.makePublicFailed
         }
+        try rejectInvalidAuthorization(httpResponse)
 
         if httpResponse.statusCode == 404 {
             throw GoogleDriveError.fileNotFound
@@ -564,6 +601,7 @@ public final class NotchGoogleDriveService: Sendable {
         guard let httpResponse = response as? HTTPURLResponse else {
             return false
         }
+        try rejectInvalidAuthorization(httpResponse)
 
         return httpResponse.statusCode == 200
     }
@@ -579,6 +617,7 @@ public final class NotchGoogleDriveService: Sendable {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw GoogleDriveError.makePrivateFailed
         }
+        try rejectInvalidAuthorization(httpResponse)
 
         if httpResponse.statusCode == 404 {
             let exists = try await fileExists(fileId: fileId, portalBaseURL: portalBaseURL)

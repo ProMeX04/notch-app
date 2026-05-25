@@ -1,5 +1,11 @@
 import Foundation
 
+setenv(
+    "NOTCH_GDRIVE_KEYCHAIN_SERVICE",
+    "dev.notch.gdrive.tests.\(ProcessInfo.processInfo.processIdentifier)",
+    1
+)
+
 struct TestCase {
     let name: String
     let run: () async throws -> Void
@@ -69,6 +75,8 @@ func buildTestCases() -> [TestCase] {
                  run: NotchShelfViewModelTests.toggleSelection_addsAndRemoves),
         TestCase(name: "viewmodel/gdrive_initialState",
                  run: NotchShelfViewModelTests.gdrive_initialState),
+        TestCase(name: "viewmodel/gdrive_expiredCredentialWithoutRefreshStartsDisconnected",
+                 run: NotchShelfViewModelTests.gdrive_expiredCredentialWithoutRefreshStartsDisconnected),
         TestCase(name: "viewmodel/gdrive_callbackError",
                  run: NotchShelfViewModelTests.gdrive_callbackError),
         TestCase(name: "viewmodel/gdrive_rawTokenCallbackIsRejected",
@@ -91,6 +99,8 @@ func buildTestCases() -> [TestCase] {
                  run: NotchShelfViewModelTests.gdrive_cachedDriveStatesUpdates),
         TestCase(name: "viewmodel/gdrive_rejectsOversizeUploadBeforeNetwork",
                  run: NotchShelfViewModelTests.gdrive_rejectsOversizeUploadBeforeNetwork),
+        TestCase(name: "viewmodel/gdrive_shareWithExpiredCredentialAllowsRelink",
+                 run: NotchShelfViewModelTests.gdrive_shareWithExpiredCredentialAllowsRelink),
     ]
 }
 

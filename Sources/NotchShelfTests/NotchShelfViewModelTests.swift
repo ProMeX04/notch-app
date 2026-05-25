@@ -276,6 +276,23 @@ enum NotchShelfViewModelTests {
         try expect(vm.driveUploadError == nil)
     }
 
+    static func gdrive_expiredCredentialWithoutRefreshStartsDisconnected() throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+        let service = NotchGoogleDriveService.shared
+        service.clearCredentials()
+        defer { service.clearCredentials() }
+
+        try expect(service.storeCredentials(
+            accessToken: "expired_access",
+            refreshToken: nil,
+            expiresAtDate: Date().addingTimeInterval(-60)
+        ))
+
+        let vm = makeViewModel(dir: dir)
+        try expect(!vm.isGoogleDriveConnected)
+    }
+
     static func gdrive_callbackError() throws {
         let dir = try makeTempDirectory(label: "ShelfVM")
         defer { cleanupDirectory(dir) }
@@ -534,5 +551,34 @@ enum NotchShelfViewModelTests {
 
         try expectEqual(vm.driveUploadError, "Kích thước file vượt quá giới hạn 100MB.")
         try expect(vm.uploadingItemIDs.isEmpty)
+    }
+
+    static func gdrive_shareWithExpiredCredentialAllowsRelink() async throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+        let service = NotchGoogleDriveService.shared
+        service.clearCredentials()
+        defer { service.clearCredentials() }
+
+        try expect(service.storeCredentials(
+            accessToken: "initially_valid_access",
+            refreshToken: nil,
+            expiresAtDate: Date().addingTimeInterval(3600)
+        ))
+
+        let vm = makeViewModel(dir: dir)
+        try expect(vm.isGoogleDriveConnected)
+        vm.portalBaseURLProvider = { URL(string: "http://127.0.0.1:1")! }
+        vm.merge([NotchShelfItem(kind: .text("shared"), driveFileID: "drive_123")])
+
+        service.expiresAtDate = Date().addingTimeInterval(-60)
+        vm.shareItemPublicly(vm.items[0])
+        for _ in 0..<20 where vm.driveUploadError == nil {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        try expect(!vm.isGoogleDriveConnected)
+        try expectEqual(vm.driveUploadError, "Chưa kết nối Google Drive.")
+        try expectEqual(service.accessToken, nil)
     }
 }

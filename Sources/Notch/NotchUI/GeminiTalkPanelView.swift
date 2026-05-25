@@ -38,14 +38,17 @@ private struct GeminiTalkConnectedView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading, spacing: 8) {
-                ScrollView(.vertical, showsIndicators: false) {
+                ScrollView(.vertical, showsIndicators: true) {
                     VStack(alignment: .leading, spacing: 6) {
                         if !gemini.userTranscript.isEmpty {
-                            Text(gemini.userTranscript)
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.65))
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .trailing)
+                            HStack(spacing: 0) {
+                                Spacer(minLength: 48)
+                                Text(gemini.userTranscript)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.65))
+                                    .textSelection(.enabled)
+                                    .multilineTextAlignment(.trailing)
+                            }
                         }
 
                         Group {
@@ -89,17 +92,11 @@ private struct GeminiTalkConnectedView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView(.horizontal, showsIndicators: true) {
                 HStack(alignment: .center, spacing: 6) {
                     GeminiInputModeMenu(gemini: gemini, presentationModel: presentationModel)
                     GeminiVisualShareMenu(gemini: gemini, presentationModel: presentationModel)
-                    GeminiTranscriptModeToggle(gemini: gemini, presentationModel: presentationModel)
-                    GeminiControlToggle(
-                        icon: gemini.showLiveChatInput ? "keyboard.fill" : "keyboard",
-                        label: Localization.get("Type", lang: appLanguage),
-                        isActive: gemini.showLiveChatInput,
-                        action: { gemini.showLiveChatInput.toggle() }
-                    )
+                    GeminiSuggestionMenu(gemini: gemini, presentationModel: presentationModel)
                     GeminiOutputVolumeControl(
                         value: Binding(
                             get: { gemini.outputVolume },

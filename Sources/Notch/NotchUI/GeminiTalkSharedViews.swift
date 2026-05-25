@@ -125,7 +125,7 @@ struct GeminiTranscriptCard: View {
                     .lineLimit(showsFullText ? nil : 3)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                ScrollView(.vertical, showsIndicators: false) {
+                ScrollView(.vertical, showsIndicators: true) {
                     Group {
                         if revealsProgressively {
                             ProgressiveRevealText(text: text, animateOnAppear: false)

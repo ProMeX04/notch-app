@@ -35,6 +35,9 @@ final class GeminiLiveViewModel: ObservableObject {
     }
     @Published var userTranscript = ""
     @Published var modelTranscript = ""
+    @Published var liveChatMessages: [LiveChatMessage] = []
+    var currentTurnAudioData = Data()
+    var currentUserTurnAudioData = Data()
     @Published var apiKeyText: String
     @Published var backendURLText: String
     @Published var backendClientTokenText: String
@@ -123,6 +126,12 @@ final class GeminiLiveViewModel: ObservableObject {
     @Published var showLiveChatInput: Bool = true {
         didSet { persistSettings() }
     }
+    @Published var liveChatInputDisplayMode: GeminiLiveChatInputDisplayMode = .autoCollapse {
+        didSet {
+            showLiveChatInput = liveChatInputDisplayMode != .hidden
+            persistSettings()
+        }
+    }
     @Published var systemPromptPresets: [GeminiSystemPromptPreset] = GeminiSystemPromptPreset.defaultPresets
     @Published var selectedSystemPromptID = GeminiSystemPromptPreset.defaultPreset.id
     @Published var installedSkills: [InstalledSkill] = []
@@ -143,6 +152,7 @@ final class GeminiLiveViewModel: ObservableObject {
     private var subscriptions = Set<AnyCancellable>()
     var lastDisconnectWasUserInitiated = false
     var pendingTurnSeparator = false
+    var suppressModelTranscriptUntilTurnComplete = false
     let entitlementStore: NotchEntitlementStore
     let settingsController: GeminiLiveSettingsController
     let accountController: GeminiLiveAccountController
@@ -204,7 +214,8 @@ final class GeminiLiveViewModel: ObservableObject {
             inputMode = savedSettings.inputMode
             showTranscriptOverlay = savedSettings.showTranscriptOverlay
             transcriptOverlayAutoHide = savedSettings.transcriptOverlayAutoHide
-            showLiveChatInput = savedSettings.showLiveChatInput
+            liveChatInputDisplayMode = savedSettings.liveChatInputDisplayMode
+            showLiveChatInput = savedSettings.liveChatInputDisplayMode != .hidden && savedSettings.showLiveChatInput
             outputVolume = min(max(savedSettings.outputVolume, 0), 1)
             selectedConnectionMethod = savedSettings.connectionMethod
             systemPromptPresets = savedSettings.systemPromptPresets
@@ -405,6 +416,7 @@ final class GeminiLiveViewModel: ObservableObject {
                 self?.isModelThinking = isThinking
                 if isThinking {
                     // User finished talking; commit their voice transcript before model output.
+                    self?.commitUserVoiceTurnIfPending()
                     TranscriptSessionLogger.shared.flushUserIfPending()
                 }
             }
@@ -413,6 +425,7 @@ final class GeminiLiveViewModel: ObservableObject {
         session.onModelTranscript = { [weak self] text in
             DispatchQueue.main.async {
                 guard let self else { return }
+                guard !self.suppressModelTranscriptUntilTurnComplete else { return }
                 self.isModelThinking = false
                 self.isModelSpeaking = true
                 let isNewTurn = self.modelTranscript.isEmpty || self.pendingTurnSeparator
@@ -435,11 +448,25 @@ final class GeminiLiveViewModel: ObservableObject {
             }
         }
 
+        session.onModelAudioChunk = { [weak self] chunk in
+            DispatchQueue.main.async {
+                self?.ingestModelAudioChunk(chunk)
+            }
+        }
+
+        session.onUserAudioChunk = { [weak self] chunk in
+            DispatchQueue.main.async {
+                self?.currentUserTurnAudioData.append(chunk)
+            }
+        }
+
         session.onTurnComplete = { [weak self] in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isModelThinking = false
                 self.isModelSpeaking = false
+                self.suppressModelTranscriptUntilTurnComplete = false
+                self.commitModelTurnIfPending()
                 if !self.modelTranscript.isEmpty {
                     self.pendingTurnSeparator = true
                 }
@@ -516,6 +543,15 @@ final class GeminiLiveViewModel: ObservableObject {
                     showsInOverlay: toast.showsInOverlay,
                     autoClearAfter: nil
                 )
+                if let lastIndex = self.liveChatMessages.indices.last,
+                   self.liveChatMessages[lastIndex].toolName == name {
+                    self.liveChatMessages[lastIndex].toolAction = toast
+                    self.liveChatMessages[lastIndex].toolActionCount += 1
+                } else {
+                    self.liveChatMessages.append(
+                        LiveChatMessage(id: UUID(), isUser: false, text: "", toolAction: toast, toolName: name)
+                    )
+                }
             }
         }
 
@@ -523,19 +559,38 @@ final class GeminiLiveViewModel: ObservableObject {
             let resultSuccess = result["success"] as? Bool
             let resultError = result["error"] as? String
             let resultMessage = result["message"] as? String
+            let batchUUID: UUID? = {
+                if let idStr = result["batchId"] as? String {
+                    return UUID(uuidString: idStr)
+                }
+                return nil
+            }()
+            let toast = self?.completedToolAction(
+                for: name,
+                args: args,
+                result: result,
+                success: resultSuccess == true,
+                error: resultError,
+                message: resultMessage
+            )
             DispatchQueue.main.async {
                 guard let self else { return }
-                if let toast = self.completedToolAction(
-                    for: name,
-                    success: resultSuccess == true,
-                    error: resultError,
-                    message: resultMessage
-                ) {
+                if let toast {
                     self.postToolAction(
                         label: toast.label,
                         icon: toast.icon,
                         showsInOverlay: toast.showsInOverlay
                     )
+                    if let lastToolIndex = self.liveChatMessages.lastIndex(where: { $0.toolName == name }) {
+                        self.liveChatMessages[lastToolIndex].toolAction = toast
+                        if let batchUUID {
+                            self.liveChatMessages[lastToolIndex].agentResultBatchID = batchUUID
+                        }
+                    } else {
+                        var msg = LiveChatMessage(id: UUID(), isUser: false, text: "", toolAction: toast, toolName: name)
+                        msg.agentResultBatchID = batchUUID
+                        self.liveChatMessages.append(msg)
+                    }
                 } else {
                     self.toastClearTask?.cancel()
                     self.toastClearTask = nil
@@ -552,18 +607,18 @@ final class GeminiLiveViewModel: ObservableObject {
             Publishers.CombineLatest3($userTranscript, $modelTranscript, $isModelSpeaking),
             Publishers.CombineLatest(
                 $lastToolAction,
-                Publishers.CombineLatest3($showTranscriptOverlay, $connectionState, $reconnectState)
+                Publishers.CombineLatest4($showTranscriptOverlay, $showLiveChatInput, $connectionState, $reconnectState)
             )
         )
         .map { transcripts, rest in
             let toolAction = rest.0
-            let (subsOn, state, reconnectState) = rest.1
+            let (subsOn, showLiveChatInput, state, reconnectState) = rest.1
             return TranscriptOverlayInput(
                 userText: transcripts.0,
                 modelText: transcripts.1,
                 isModelSpeaking: transcripts.2,
-                toolAction: toolAction.flatMap { $0.showsInOverlay ? $0 : nil },
-                subsEnabled: subsOn,
+                toolAction: showLiveChatInput ? nil : toolAction.flatMap { $0.showsInOverlay ? $0 : nil },
+                subsEnabled: subsOn && !showLiveChatInput,
                 isConnected: state == .connected || state == .connecting || reconnectState.preservesLiveSessionUI
             )
         }
@@ -645,6 +700,7 @@ final class GeminiLiveViewModel: ObservableObject {
                 showTranscriptOverlay: showTranscriptOverlay,
                 transcriptOverlayAutoHide: transcriptOverlayAutoHide,
                 showLiveChatInput: showLiveChatInput,
+                liveChatInputDisplayMode: liveChatInputDisplayMode,
                 outputVolume: outputVolume,
                 connectionMethod: selectedConnectionMethod,
                 systemPromptPresets: systemPromptPresets,
@@ -668,6 +724,64 @@ final class GeminiLiveViewModel: ObservableObject {
             completion(false)
         @unknown default:
             completion(false)
+        }
+    }
+
+    func ingestModelAudioChunk(_ chunk: Data) {
+        guard !chunk.isEmpty else { return }
+
+        if modelTranscript.isEmpty,
+           let lastIndex = liveChatMessages.indices.last,
+           !liveChatMessages[lastIndex].isUser {
+            var merged = liveChatMessages[lastIndex].audioData ?? Data()
+            merged.append(chunk)
+            liveChatMessages[lastIndex].audioData = merged
+            liveChatMessages[lastIndex].audioSampleRate = 24_000
+        } else {
+            currentTurnAudioData.append(chunk)
+        }
+    }
+
+    func commitUserVoiceTurnIfPending() {
+        let trimmed = userTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            let msg = LiveChatMessage(
+                id: UUID(),
+                isUser: true,
+                text: trimmed
+            )
+            if liveChatMessages.last?.text != trimmed || liveChatMessages.last?.isUser != true {
+                liveChatMessages.append(msg)
+            }
+            userTranscript = ""
+            currentUserTurnAudioData = Data()
+        }
+    }
+
+    func commitModelTurnIfPending() {
+        let trimmed = modelTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            let hasAudio = !currentTurnAudioData.isEmpty
+            let capturedAudio = currentTurnAudioData
+            let msg = LiveChatMessage(
+                id: UUID(),
+                isUser: false,
+                text: trimmed,
+                audioData: hasAudio ? capturedAudio : nil,
+                audioSampleRate: 24000
+            )
+            if let lastIndex = liveChatMessages.indices.last,
+               liveChatMessages[lastIndex].text == trimmed,
+               liveChatMessages[lastIndex].isUser == false {
+                if hasAudio {
+                    liveChatMessages[lastIndex].audioData = capturedAudio
+                    liveChatMessages[lastIndex].audioSampleRate = 24000
+                }
+            } else {
+                liveChatMessages.append(msg)
+            }
+            modelTranscript = ""
+            currentTurnAudioData = Data()
         }
     }
 }

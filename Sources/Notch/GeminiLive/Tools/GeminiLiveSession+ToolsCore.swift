@@ -75,7 +75,7 @@ extension GeminiLiveSession {
 
         // ── Normal shell execution ──────────────────────────────────────
         GeminiLiveStoragePaths.prepare(fileManager: .default)
-        let timeout = min(max(timeoutSeconds ?? 15, 1), 600)
+        let timeout = min(max(timeoutSeconds ?? 900, 1), 900)
         let cwd = GeminiLiveStoragePaths.resolvedExecWorkingDirectory(from: workingDirectory)
         if let cwd {
             var isDirectory: ObjCBool = false

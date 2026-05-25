@@ -74,80 +74,138 @@ struct GeminiControlToggle: View {
         .buttonStyle(.plain)
     }
 }
-struct GeminiTranscriptModeToggle: View {
+struct GeminiSuggestionMenu: View {
     @ObservedObject var gemini: GeminiLiveViewModel
     @ObservedObject var presentationModel: NotchPresentationModel
     @State private var isPickerOpen = false
     @AppStorage("app_language") private var appLanguage: String = "English"
+    @AppStorage(NotchAccentColorOption.storageKey) private var accentColorID: String = NotchAccentColorOption.defaultOption.rawValue
 
     private var mode: GeminiLiveViewModel.TranscriptOverlayMode {
         gemini.transcriptOverlayMode
     }
 
-    private var icon: String {
-        "captions.bubble"
+    private var isActive: Bool {
+        gemini.showLiveChatInput || mode != .hidden
     }
 
     private var label: String {
+        if gemini.liveChatInputDisplayMode != .hidden && mode != .hidden {
+            return Localization.get("Suggest", lang: appLanguage)
+        }
+        if gemini.liveChatInputDisplayMode != .hidden {
+            switch gemini.liveChatInputDisplayMode {
+            case .autoCollapse:
+                return Localization.get("Auto Type", lang: appLanguage)
+            case .alwaysVisible:
+                return Localization.get("Type", lang: appLanguage)
+            case .hidden:
+                return Localization.get("Suggest", lang: appLanguage)
+            }
+        }
         switch mode {
         case .autoHide:
             return Localization.get("Auto Hide", lang: appLanguage)
         case .pinned:
             return Localization.get("Pin", lang: appLanguage)
         case .hidden:
-            return Localization.get("Off", lang: appLanguage)
+            return Localization.get("Suggest", lang: appLanguage)
         }
-    }
-
-    private var isActive: Bool {
-        mode != .hidden
     }
 
     var body: some View {
         Button {
             isPickerOpen.toggle()
         } label: {
-            GeminiControlPill(icon: icon, label: label, isActive: isActive)
+            GeminiControlPill(icon: "sparkles", label: label, isActive: isActive)
         }
         .buttonStyle(.plain)
         .fixedSize(horizontal: true, vertical: false)
         .popover(isPresented: $isPickerOpen, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 0) {
-                transcriptRow(Localization.get("Auto Hide", lang: appLanguage)) {
+                suggestionToggleRow(
+                    title: Localization.get("Auto Collapse Type", lang: appLanguage),
+                    icon: gemini.liveChatInputDisplayMode == .autoCollapse ? "checkmark.circle.fill" : "circle",
+                    isActive: gemini.liveChatInputDisplayMode == .autoCollapse
+                ) {
+                    gemini.liveChatInputDisplayMode = .autoCollapse
+                }
+                suggestionToggleRow(
+                    title: Localization.get("Always Show Type", lang: appLanguage),
+                    icon: gemini.liveChatInputDisplayMode == .alwaysVisible ? "checkmark.circle.fill" : "circle",
+                    isActive: gemini.liveChatInputDisplayMode == .alwaysVisible
+                ) {
+                    gemini.liveChatInputDisplayMode = .alwaysVisible
+                }
+                suggestionToggleRow(
+                    title: Localization.get("Hide Type", lang: appLanguage),
+                    icon: gemini.liveChatInputDisplayMode == .hidden ? "checkmark.circle.fill" : "circle",
+                    isActive: gemini.liveChatInputDisplayMode == .hidden,
+                    foreground: Color(nsColor: .systemRed)
+                ) {
+                    gemini.liveChatInputDisplayMode = .hidden
+                }
+                Divider()
+                    .padding(.vertical, 4)
+                suggestionToggleRow(
+                    title: Localization.get("Auto Hide Captions", lang: appLanguage),
+                    icon: mode == .autoHide ? "checkmark.circle.fill" : "circle",
+                    isActive: mode == .autoHide
+                ) {
                     gemini.showTranscriptOverlay = true
                     gemini.transcriptOverlayAutoHide = true
                     isPickerOpen = false
                 }
-                transcriptRow(Localization.get("Pin", lang: appLanguage)) {
+                suggestionToggleRow(
+                    title: Localization.get("Pin Captions", lang: appLanguage),
+                    icon: mode == .pinned ? "checkmark.circle.fill" : "circle",
+                    isActive: mode == .pinned
+                ) {
                     gemini.showTranscriptOverlay = true
                     gemini.transcriptOverlayAutoHide = false
                     isPickerOpen = false
                 }
-                Divider()
-                    .padding(.vertical, 4)
-                transcriptRow(Localization.get("Off", lang: appLanguage), foreground: Color(nsColor: .systemRed)) {
+                suggestionToggleRow(
+                    title: Localization.get("Hide Captions", lang: appLanguage),
+                    icon: mode == .hidden ? "checkmark.circle.fill" : "circle",
+                    isActive: mode == .hidden,
+                    foreground: Color(nsColor: .systemRed)
+                ) {
                     gemini.setTranscriptOverlayEnabled(false)
                     isPickerOpen = false
                 }
             }
             .padding(.horizontal, 4)
             .padding(.vertical, 6)
-            .frame(minWidth: 180)
+            .frame(minWidth: 210)
         }
         .onChange(of: isPickerOpen) { _, isOpen in
             presentationModel.setAutoCollapseSuppressed(isOpen, reason: .talkPopover)
         }
     }
 
-    private func transcriptRow(_ title: String, foreground: Color = .primary, action: @escaping () -> Void) -> some View {
+    private func suggestionToggleRow(
+        title: String,
+        icon: String,
+        isActive: Bool,
+        foreground: Color = .primary,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
-            Text(title)
-                .font(.system(size: 13))
-                .foregroundStyle(foreground)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .contentShape(Rectangle())
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(isActive ? themedNotchAccentColor(from: accentColorID) : .secondary)
+                    .frame(width: 16)
+                Text(title)
+                    .font(.system(size: 13))
+                    .foregroundStyle(foreground)
+                Spacer(minLength: 12)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

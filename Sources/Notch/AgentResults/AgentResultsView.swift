@@ -324,7 +324,7 @@ private enum AgentResultChromeMetrics {
     static let chromeCapsulePaddingV: CGFloat = 6
 }
 
-private struct AgentResultInteractiveContent: View {
+struct AgentResultInteractiveContent: View {
     let item: AgentResultItem
     @ObservedObject var store: AgentResultStore
     /// When true and the file is an image, top corners stay square so media meets the panel edge.
@@ -469,7 +469,7 @@ private struct AgentResultInteractiveContent: View {
 // MARK: - Body subviews
 
 /// Native Swift markdown renderer with Highlightr syntax highlighting and iosMath LaTeX support.
-private struct AgentResultsMarkdownText: View {
+struct AgentResultsMarkdownText: View {
     let markdown: String
     var fontSize: CGFloat = 14
     var codeFontSize: CGFloat = 12
@@ -492,7 +492,7 @@ private struct AgentResultsMarkdownText: View {
     }
 }
 
-private struct LinkBody: View {
+struct LinkBody: View {
     let url: URL
     let title: String?
     @State private var isHovering = false
@@ -571,7 +571,7 @@ private struct LinkBody: View {
     }
 }
 
-private struct FileBody: View {
+struct FileBody: View {
     let url: URL
     var maxImageHeight: CGFloat = 260
     var compact: Bool = false

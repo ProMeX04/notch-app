@@ -68,7 +68,7 @@ struct NativeMarkdownRenderer: View {
     private var maxWidth: CGFloat? {
         switch widthMode {
         case .fillParent: .infinity
-        case let .hugContent(maxWidth): maxWidth
+        case .hugContent: nil
         }
     }
 }
@@ -132,7 +132,7 @@ private struct NativeMarkdownBlockView: View {
     private var maxWidth: CGFloat? {
         switch widthMode {
         case .fillParent: .infinity
-        case let .hugContent(maxWidth): maxWidth
+        case .hugContent: nil
         }
     }
 
@@ -308,7 +308,7 @@ private struct NativeMarkdownCodeBlockView: View {
     private var maxWidth: CGFloat? {
         switch widthMode {
         case .fillParent: .infinity
-        case let .hugContent(maxWidth): maxWidth
+        case .hugContent: nil
         }
     }
 }
@@ -376,7 +376,7 @@ private struct NativeMarkdownMathBlockView: View {
     private var maxWidth: CGFloat? {
         switch widthMode {
         case .fillParent: .infinity
-        case let .hugContent(maxWidth): maxWidth
+        case .hugContent: nil
         }
     }
 }
@@ -457,7 +457,7 @@ private struct NativeMarkdownTableView: View {
     private var maxWidth: CGFloat? {
         switch widthMode {
         case .fillParent: .infinity
-        case let .hugContent(maxWidth): maxWidth
+        case .hugContent: nil
         }
     }
 }

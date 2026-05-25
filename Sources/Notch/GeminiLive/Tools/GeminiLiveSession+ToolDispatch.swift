@@ -36,8 +36,6 @@ extension GeminiLiveSession {
             handleMemoryCall(id: id, call: call)
         case GeminiLiveToolName.appleMail:
             handleAppleMailCall(id: id, call: call)
-        case GeminiLiveToolName.showResult:
-            handleShowResultCall(id: id, call: call)
         case GeminiLiveToolName.skillWriter:
             handleSkillWriterCall(id: id, call: call)
         default:
@@ -55,7 +53,7 @@ extension GeminiLiveSession {
         let workingDirectory = args["workingDirectory"] as? String
         let timeoutSeconds = (args["timeoutSeconds"] as? NSNumber)?.doubleValue
             ?? (args["timeoutSeconds"] as? Double)
-        let resolvedTimeout = min(max(timeoutSeconds ?? 15, 1), 600)
+        let resolvedTimeout = min(max(timeoutSeconds ?? 900, 1), 900)
         let trimmedCommand = command.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedWorkingDirectory = GeminiLiveStoragePaths
             .resolvedExecWorkingDirectory(from: workingDirectory)?
@@ -329,7 +327,8 @@ extension GeminiLiveSession {
             guard let self else { return }
             self.notifyFunctionStarted(name: name, args: sendableArgs.args)
             Task {
-                let result: [String: Any]
+                var result: [String: Any]
+                var clipboardResultItems: [AgentResultItem] = []
                 switch action {
                 case "read":
                     let pasteboard = NSPasteboard.general
@@ -343,7 +342,20 @@ extension GeminiLiveSession {
                     let pasteboard = NSPasteboard.general
                     pasteboard.clearContents()
                     pasteboard.setString(textToCopy, forType: .string)
-                    result = ["success": true, "message": "Copied text to clipboard."]
+
+                    let batchId = UUID()
+                    clipboardResultItems = [AgentResultItem(
+                        batchId: batchId,
+                        title: "Copied text",
+                        kind: .text(textToCopy),
+                        isTemporaryAsset: false
+                    )]
+                    result = [
+                        "success": true,
+                        "message": "Copied text to clipboard.",
+                        "batchId": batchId.uuidString,
+                        "count": clipboardResultItems.count
+                    ]
                 case "copy-file":
                     guard !paths.isEmpty else {
                         result = ["success": false, "error": "Missing 'paths' for 'copy-file' action."]
@@ -370,7 +382,21 @@ extension GeminiLiveSession {
                         let pasteboard = NSPasteboard.general
                         pasteboard.clearContents()
                         if pasteboard.writeObjects(fileURLs) {
-                            result = ["success": true, "message": "Copied \(fileURLs.count) file references to clipboard."]
+                            let batchId = UUID()
+                            clipboardResultItems = fileURLs.map { nsURL in
+                                AgentResultItem(
+                                    batchId: batchId,
+                                    title: nil,
+                                    kind: .file(nsURL as URL),
+                                    isTemporaryAsset: false
+                                )
+                            }
+                            result = [
+                                "success": true,
+                                "message": "Copied \(fileURLs.count) file references to clipboard.",
+                                "batchId": batchId.uuidString,
+                                "count": clipboardResultItems.count
+                            ]
                         } else {
                             result = ["success": false, "error": "Failed to write file references to clipboard."]
                         }
@@ -378,7 +404,13 @@ extension GeminiLiveSession {
                 default:
                     result = ["success": false, "error": "Unknown clipboard action '\(action)'."]
                 }
-                
+
+                if !clipboardResultItems.isEmpty {
+                    await MainActor.run {
+                        AgentResultStore.shared.appendBatch(clipboardResultItems)
+                    }
+                }
+
                 self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
                 self.sendFunctionResponse(id: id, name: name, result: result)
             }

@@ -47,6 +47,13 @@ struct Bookmark: Sendable, Equatable, Codable {
     }
 
     init(url: URL) throws {
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessing {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
         let resourceValues = try? url.resourceValues(forKeys: [.isDirectoryKey])
         let isDirectory = resourceValues?.isDirectory == true
 
@@ -185,29 +192,63 @@ final class NotchShelfPersistenceService {
     private func restoreItem(from record: PersistedShelfItem) -> NotchShelfItem? {
         switch record.kind {
         case let .text(string):
-            return NotchShelfItem(id: record.id, kind: .text(string))
+            return NotchShelfItem(
+                id: record.id,
+                kind: .text(string),
+                driveFileID: record.driveFileID,
+                driveIsPublic: record.driveIsPublic ?? false,
+                driveUploadedAt: record.driveUploadedAt
+            )
         case let .link(url):
-            return NotchShelfItem(id: record.id, kind: .link(url))
+            return NotchShelfItem(
+                id: record.id,
+                kind: .link(url),
+                driveFileID: record.driveFileID,
+                driveIsPublic: record.driveIsPublic ?? false,
+                driveUploadedAt: record.driveUploadedAt
+            )
         case let .file(bookmarkData, isTemporary):
             let bookmark = Bookmark(data: bookmarkData)
             let resolved = bookmark.resolve()
 
-            guard let url = resolved.url,
-                  fileManager.fileExists(atPath: url.path) else {
+            let finalURL: URL?
+            let finalBookmarkData: Data
+
+            if let resolvedURL = resolved.url {
+                finalURL = resolvedURL.standardizedFileURL
+                finalBookmarkData = resolved.refreshedData ?? bookmarkData
+            } else if let path = record.fallbackPath {
+                finalURL = URL(fileURLWithPath: path).standardizedFileURL
+                finalBookmarkData = bookmarkData
+            } else {
+                finalURL = nil
+                finalBookmarkData = bookmarkData
+            }
+
+            guard let url = finalURL else {
                 return nil
             }
 
-            return NotchShelfItem(
-                id: record.id,
-                kind: .file(
-                    .init(
-                        url: url.standardizedFileURL,
-                        fileIdentity: notchShelfFileIdentity(for: url),
-                        bookmarkData: resolved.refreshedData ?? bookmarkData,
-                        isTemporary: isTemporary
-                    )
+            let fileExists = fileManager.fileExists(atPath: url.path)
+
+            if fileExists || record.driveFileID != nil {
+                return NotchShelfItem(
+                    id: record.id,
+                    kind: .file(
+                        .init(
+                            url: url,
+                            fileIdentity: notchShelfFileIdentity(for: url),
+                            bookmarkData: finalBookmarkData,
+                            isTemporary: isTemporary
+                        )
+                    ),
+                    driveFileID: record.driveFileID,
+                    driveIsPublic: record.driveIsPublic ?? false,
+                    driveUploadedAt: record.driveUploadedAt
                 )
-            )
+            } else {
+                return nil
+            }
         }
     }
 }
@@ -269,20 +310,30 @@ private struct PersistedShelfItem: Codable {
 
     let id: UUID
     let kind: Kind
+    let driveFileID: String?
+    let driveIsPublic: Bool?
+    let driveUploadedAt: Date?
+    let fallbackPath: String?
 
     init(_ item: NotchShelfItem) {
         self.id = item.id
+        self.driveFileID = item.driveFileID
+        self.driveIsPublic = item.driveIsPublic
+        self.driveUploadedAt = item.driveUploadedAt
 
         switch item.kind {
         case let .text(string):
             self.kind = .text(string)
+            self.fallbackPath = nil
         case let .link(url):
             self.kind = .link(url)
+            self.fallbackPath = nil
         case let .file(reference):
             self.kind = .file(
                 bookmarkData: reference.bookmarkData,
                 isTemporary: reference.isTemporary
             )
+            self.fallbackPath = reference.url.path
         }
     }
 }

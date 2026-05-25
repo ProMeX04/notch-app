@@ -49,6 +49,30 @@ enum NotchWebPortal {
         pathURL(apiBaseURL: apiBaseURL, processInfo: processInfo, path: "pro")
     }
 
+    static func googleDriveAuthURL(
+        apiBaseURL: URL? = nil,
+        state: String? = nil,
+        codeChallenge: String? = nil,
+        processInfo: ProcessInfo = .processInfo
+    ) -> URL {
+        let baseURL = pathURL(apiBaseURL: apiBaseURL, processInfo: processInfo, path: "api/auth/google-drive")
+        guard let state, !state.isEmpty else {
+            return baseURL
+        }
+
+        var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
+        var queryItems = [URLQueryItem(name: "state", value: state)]
+        if let codeChallenge, !codeChallenge.isEmpty {
+            queryItems.append(URLQueryItem(name: "code_challenge", value: codeChallenge))
+        }
+        components?.queryItems = queryItems
+        return components?.url ?? baseURL
+    }
+
+    static func googleDriveRefreshURL(apiBaseURL: URL? = nil, processInfo: ProcessInfo = .processInfo) -> URL {
+        pathURL(apiBaseURL: apiBaseURL, processInfo: processInfo, path: "api/auth/google-drive/refresh")
+    }
+
     static func oauthAuthorizeURL(
         clientID: String,
         redirectURI: String,
@@ -62,7 +86,7 @@ enum NotchWebPortal {
             url: pathURL(apiBaseURL: apiBaseURL, processInfo: processInfo, path: "oauth/authorize"),
             resolvingAgainstBaseURL: false
         )
-        
+
         var queryItems = [
             URLQueryItem(name: "client_id", value: clientID),
             URLQueryItem(name: "redirect_uri", value: redirectURI),
@@ -71,14 +95,14 @@ enum NotchWebPortal {
             URLQueryItem(name: "code_challenge_method", value: "S256"),
             URLQueryItem(name: "state", value: state),
         ]
-        
+
         if let identityProvider {
             // Common parameter names for forcing a specific IdP (Keycloak, Auth0, Supabase, etc.)
             queryItems.append(URLQueryItem(name: "provider", value: identityProvider))
             queryItems.append(URLQueryItem(name: "kc_idp_hint", value: identityProvider))
             queryItems.append(URLQueryItem(name: "connection", value: identityProvider))
         }
-        
+
         components?.queryItems = queryItems
         return components?.url ?? pathURL(apiBaseURL: apiBaseURL, processInfo: processInfo, path: "oauth/authorize")
     }

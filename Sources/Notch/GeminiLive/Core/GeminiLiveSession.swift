@@ -83,6 +83,8 @@ final class GeminiLiveSession: @unchecked Sendable {
     var onUserTranscript: (@Sendable (String) -> Void)?
     var onModelTranscript: (@Sendable (String) -> Void)?
     var onTurnComplete: (@Sendable () -> Void)?
+    var onModelAudioChunk: (@Sendable (Data) -> Void)?
+    var onUserAudioChunk: (@Sendable (Data) -> Void)?
     var onModelThinkingStateChange: (@Sendable (Bool) -> Void)?
     var onMicrophoneInputLevel: (@Sendable (Double) -> Void)?
     var onMicrophoneCaptureStateChange: (@Sendable (Bool) -> Void)?
@@ -1006,17 +1008,7 @@ final class GeminiLiveSession: @unchecked Sendable {
                 onModelTranscript?(text)
             }
 
-            if let turnComplete = serverContent["turnComplete"] as? Bool, turnComplete {
-                onModelThinkingStateChange?(false)
-                onTurnComplete?()
-            }
-
-            if let generationComplete = serverContent["generationComplete"] as? Bool, generationComplete {
-                // Docs: signals the model finished generating its response.
-                // Audio playback may still be in progress at this point.
-                onModelThinkingStateChange?(false)
-            }
-
+            // Process model audio before turnComplete so replay buffers are full when the turn commits.
             if
                 let modelTurn = serverContent["modelTurn"] as? [String: Any],
                 let parts = modelTurn["parts"] as? [[String: Any]]
@@ -1032,7 +1024,19 @@ final class GeminiLiveSession: @unchecked Sendable {
                     }
 
                     enqueueOutputAudio(decodedAudio)
+                    onModelAudioChunk?(decodedAudio)
                 }
+            }
+
+            if let generationComplete = serverContent["generationComplete"] as? Bool, generationComplete {
+                // Docs: signals the model finished generating its response.
+                // Audio playback may still be in progress at this point.
+                onModelThinkingStateChange?(false)
+            }
+
+            if let turnComplete = serverContent["turnComplete"] as? Bool, turnComplete {
+                onModelThinkingStateChange?(false)
+                onTurnComplete?()
             }
         } // autoreleasepool
     }

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 @testable import NotchShelfCore
 
@@ -260,5 +261,278 @@ enum NotchShelfViewModelTests {
 
         vm.toggleSelection(a)
         try expect(vm.selectedItemIDs.isEmpty)
+    }
+
+    // MARK: - Google Drive Integration Tests
+
+    static func gdrive_initialState() throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+        let vm = makeViewModel(dir: dir)
+
+        vm.disconnectGoogleDrive()
+        try expect(!vm.isGoogleDriveConnected)
+        try expect(vm.driveUploadMessage == nil)
+        try expect(vm.driveUploadError == nil)
+    }
+
+    static func gdrive_callbackError() throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+        let vm = makeViewModel(dir: dir)
+        vm.disconnectGoogleDrive()
+
+        vm.connectGoogleDrive()
+        let state = try expectUnwrapped(vm.pendingGoogleDriveAuthState)
+
+        vm.handleGoogleDriveCallback(accessToken: nil, refreshToken: nil, expiresIn: nil, error: "Access Denied", state: state)
+        try expect(!vm.isGoogleDriveConnected)
+        try expectEqual(vm.driveUploadError, "Kết nối thất bại: Access Denied")
+        try expectEqual(vm.pendingGoogleDriveAuthState, nil)
+    }
+
+    static func gdrive_rawTokenCallbackIsRejected() throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+        let vm = makeViewModel(dir: dir)
+        vm.disconnectGoogleDrive()
+
+        vm.connectGoogleDrive()
+        let state = try expectUnwrapped(vm.pendingGoogleDriveAuthState)
+
+        vm.handleGoogleDriveCallback(accessToken: "mock_access", refreshToken: "mock_refresh", expiresIn: "3600", error: nil, state: state)
+        try expect(!vm.isGoogleDriveConnected)
+        try expect(vm.driveUploadError?.contains("handoff an toàn") == true)
+        try expectEqual(vm.pendingGoogleDriveAuthState, nil)
+
+        vm.disconnectGoogleDrive()
+        try expect(!vm.isGoogleDriveConnected)
+        try expect(vm.driveUploadMessage == nil)
+        try expect(vm.driveUploadError == nil)
+    }
+
+    static func gdrive_connectGeneratesAuthState() throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+        let vm = makeViewModel(dir: dir)
+        vm.disconnectGoogleDrive()
+
+        var requestedState: String?
+        var requestedChallenge: String?
+        vm.onConnectGoogleDriveRequested = { state, codeChallenge in
+            requestedState = state
+            requestedChallenge = codeChallenge
+        }
+
+        vm.connectGoogleDrive()
+        let state = try expectUnwrapped(requestedState)
+        try expect(!state.isEmpty)
+        try expectEqual(requestedChallenge?.count, 43)
+        try expectEqual(vm.pendingGoogleDriveAuthState, state)
+    }
+
+    static func gdrive_callbackWithoutMatchingStateIsRejected() throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+        let vm = makeViewModel(dir: dir)
+        defer { vm.disconnectGoogleDrive() }
+        vm.disconnectGoogleDrive()
+
+        vm.handleGoogleDriveCallback(accessToken: "attacker_access", refreshToken: "attacker_refresh", expiresIn: "3600", error: nil, state: nil)
+        try expect(!vm.isGoogleDriveConnected)
+        try expectEqual(NotchGoogleDriveService.shared.accessToken, nil)
+        try expect(vm.driveUploadError?.contains("Phiên xác thực") == true)
+
+        vm.connectGoogleDrive()
+        let state = try expectUnwrapped(vm.pendingGoogleDriveAuthState)
+        vm.handleGoogleDriveCallback(accessToken: "attacker_access", refreshToken: "attacker_refresh", expiresIn: "3600", error: nil, state: "wrong-\(state)")
+        try expect(!vm.isGoogleDriveConnected)
+        try expectEqual(NotchGoogleDriveService.shared.accessToken, nil)
+        try expectEqual(vm.pendingGoogleDriveAuthState, state)
+
+        vm.handleGoogleDriveCallback(accessToken: "mock_access", refreshToken: "mock_refresh", expiresIn: "3600", error: nil, state: state)
+        try expect(!vm.isGoogleDriveConnected)
+        try expectEqual(NotchGoogleDriveService.shared.accessToken, nil)
+        try expect(vm.driveUploadError?.contains("handoff an toàn") == true)
+    }
+
+    // MARK: - Google Drive Redesign Tests
+
+    static func gdrive_driveStateCalculation() throws {
+        // Test text item (immutable, so cannot be modified or orphaned)
+        let textItem = NotchShelfItem(kind: .text("test"), driveFileID: nil)
+        try expectEqual(textItem.driveState, .local)
+
+        let textSynced = NotchShelfItem(kind: .text("test"), driveFileID: "123", driveIsPublic: false)
+        try expectEqual(textSynced.driveState, .synced)
+
+        let textSyncedPublic = NotchShelfItem(kind: .text("test"), driveFileID: "123", driveIsPublic: true)
+        try expectEqual(textSyncedPublic.driveState, .syncedPublic)
+    }
+
+    static func gdrive_copyDriveLink() throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+        let vm = makeViewModel(dir: dir)
+        let item = NotchShelfItem(kind: .text("test"), driveFileID: "123", driveIsPublic: false)
+        vm.merge([item])
+
+        vm.copyDriveLink(vm.items[0])
+
+        try expectEqual(vm.driveUploadMessage, "Đã sao chép liên kết Google Drive!")
+
+        // Check pasteboard contents
+        let pb = NSPasteboard.general
+        let pbString = pb.string(forType: .string)
+        try expectEqual(pbString, "https://drive.google.com/file/d/123/view?usp=drivesdk")
+    }
+
+    static func gdrive_autoUploadSetting() throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+
+        // Disable auto-upload
+        UserDefaults.standard.set(false, forKey: "notchShelfGoogleDriveAutoUploadEnabled")
+        let vm = makeViewModel(dir: dir)
+
+        let a = NotchShelfItem(kind: .text("a"))
+        vm.merge([a])
+        // Since auto-upload is disabled, it remains local and no upload is triggered
+        try expectEqual(vm.items[0].driveState, .local)
+    }
+
+    static func gdrive_fileStateCalculations() throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+
+        let fileURL = dir.appendingPathComponent("state_test.txt")
+        try "hello".write(to: fileURL, atomically: true, encoding: .utf8)
+        let bookmark = try Bookmark(url: fileURL)
+        let ref = NotchShelfItem.FileReference(
+            url: fileURL,
+            fileIdentity: notchShelfFileIdentity(for: fileURL),
+            bookmarkData: bookmark.data,
+            isTemporary: false
+        )
+
+        // 1. Local
+        let itemLocal = NotchShelfItem(kind: .file(ref), driveFileID: nil)
+        try expectEqual(itemLocal.driveState, .local)
+        try expect(itemLocal.isDriveUploadEligible)
+
+        // 2. Synced
+        let itemSynced = NotchShelfItem(kind: .file(ref), driveFileID: "id123", driveIsPublic: false, driveUploadedAt: Date().addingTimeInterval(60))
+        try expectEqual(itemSynced.driveState, .synced)
+        try expect(!itemSynced.isDriveUploadEligible)
+
+        // 3. Synced Public
+        let itemPublic = NotchShelfItem(kind: .file(ref), driveFileID: "id123", driveIsPublic: true, driveUploadedAt: Date().addingTimeInterval(60))
+        try expectEqual(itemPublic.driveState, .syncedPublic)
+        try expect(!itemPublic.isDriveUploadEligible)
+
+        // 4. Modified (upload time is in the past)
+        let itemModified = NotchShelfItem(kind: .file(ref), driveFileID: "id123", driveIsPublic: false, driveUploadedAt: Date().addingTimeInterval(-60))
+        try expectEqual(itemModified.driveState, .modified)
+        try expect(itemModified.isDriveUploadEligible)
+
+        // 5. Orphaned (file is missing)
+        try FileManager.default.removeItem(at: fileURL)
+        let itemOrphaned = NotchShelfItem(kind: .file(ref), driveFileID: "id123", driveIsPublic: false, driveUploadedAt: Date())
+        try expectEqual(itemOrphaned.driveState, .orphaned)
+        try expect(!itemOrphaned.isDriveUploadEligible)
+    }
+
+    static func persistence_preservesOrphanedDriveFileAfterRestart() throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+
+        // Create a temp file
+        let fileURL = dir.appendingPathComponent("orphaned_test.txt")
+        try "hello world".write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let persistence = NotchShelfPersistenceService(fileURL: dir.appendingPathComponent("items.json"))
+        let bookmark = try Bookmark(url: fileURL)
+        let ref = NotchShelfItem.FileReference(
+            url: fileURL,
+            fileIdentity: notchShelfFileIdentity(for: fileURL),
+            bookmarkData: bookmark.data,
+            isTemporary: false
+        )
+        let item = NotchShelfItem(
+            kind: .file(ref),
+            driveFileID: "drive_123",
+            driveIsPublic: false,
+            driveUploadedAt: Date()
+        )
+
+        // Save it
+        persistence.save([item])
+
+        // Delete the local file to make it orphaned
+        try FileManager.default.removeItem(at: fileURL)
+
+        // Reload from persistence
+        let reloadedItems = persistence.load()
+
+        // Verify it was preserved as orphaned instead of being pruned!
+        try expectEqual(reloadedItems.count, 1)
+        try expectEqual(reloadedItems[0].driveState, .orphaned)
+        try expectEqual(reloadedItems[0].driveFileID, "drive_123")
+    }
+
+    static func gdrive_cachedDriveStatesUpdates() async throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+
+        let fileURL = dir.appendingPathComponent("cache_test.txt")
+        try "hello".write(to: fileURL, atomically: true, encoding: .utf8)
+        let bookmark = try Bookmark(url: fileURL)
+        let ref = NotchShelfItem.FileReference(
+            url: fileURL,
+            fileIdentity: notchShelfFileIdentity(for: fileURL),
+            bookmarkData: bookmark.data,
+            isTemporary: false
+        )
+
+        let item = NotchShelfItem(kind: .file(ref), driveFileID: "drive_123", driveIsPublic: false, driveUploadedAt: Date().addingTimeInterval(60))
+        let vm = makeViewModel(dir: dir)
+        vm.merge([item])
+
+        // The background verification task updates cachedDriveStates asynchronously.
+        // We sleep a bit to let the background Task finish.
+        try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+
+        let state = vm.cachedDriveStates[vm.items[0].id]
+        try expectEqual(state, .synced)
+    }
+
+    static func gdrive_rejectsOversizeUploadBeforeNetwork() async throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+
+        let fileURL = dir.appendingPathComponent("oversize.bin")
+        try Data().write(to: fileURL)
+        let handle = try FileHandle(forWritingTo: fileURL)
+        try handle.truncate(atOffset: UInt64(NotchGoogleDriveService.maximumUploadByteCount + 1))
+        try handle.close()
+
+        let bookmark = try Bookmark(url: fileURL)
+        let reference = NotchShelfItem.FileReference(
+            url: fileURL,
+            fileIdentity: notchShelfFileIdentity(for: fileURL),
+            bookmarkData: bookmark.data,
+            isTemporary: false
+        )
+        let vm = makeViewModel(dir: dir)
+        vm.portalBaseURLProvider = { URL(string: "http://127.0.0.1:1")! }
+        vm.merge([NotchShelfItem(kind: .file(reference))])
+
+        vm.uploadItemsToDrive(vm.items)
+        for _ in 0..<20 where vm.driveUploadError == nil {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        try expectEqual(vm.driveUploadError, "Kích thước file vượt quá giới hạn 100MB.")
+        try expect(vm.uploadingItemIDs.isEmpty)
     }
 }

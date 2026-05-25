@@ -249,6 +249,8 @@ extension GeminiLiveSession {
         guard !pcmData.isEmpty else { return }
         audioChunkCount += 1
 
+        onUserAudioChunk?(pcmData)
+
         sendJSONObject([
             "realtimeInput": [
                 "audio": [

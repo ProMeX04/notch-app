@@ -227,6 +227,25 @@ struct PendingSkillWriterCall: @unchecked Sendable {
     let existingSkillID: String?
 }
 
+struct LiveChatMessage: Identifiable, Equatable {
+    let id: UUID
+    let isUser: Bool
+    var text: String
+    var audioData: Data?
+    var audioSampleRate: Int = 24000
+    var toolAction: ToolActionToast? = nil
+    var toolName: String? = nil
+    var toolActionCount: Int = 1
+    var agentResultBatchID: UUID? = nil
+
+    var isToolAction: Bool { toolAction != nil }
+
+    var hasReplayableAudio: Bool {
+        guard let audioData else { return false }
+        return !audioData.isEmpty
+    }
+}
+
 /// Single snapshot of everything the transcript overlay needs.
 /// Derived inside GeminiLiveViewModel so the controller subscribes to one publisher.
 struct TranscriptOverlayInput: Equatable {
@@ -263,7 +282,6 @@ enum GeminiTool: String, CaseIterable, Identifiable {
     case memory = "memory"
     case exec = "exec"
     case appleMail = "appleMail"
-    case showResult = "showResult"
     case skillWriter = "skillWriter"
 
     var id: String { rawValue }
@@ -280,7 +298,6 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         .localFileSearch,
         .memory,
         .appleMail,
-        .showResult,
     ]
 
     static let coreToolSet: Set<GeminiTool> = Set(coreCases)
@@ -295,7 +312,6 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         .pomodoro,
         .browserControl,
         .memory,
-        .showResult,
     ]
 
     /// Tools excluded from the default set for safety.
@@ -316,7 +332,6 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         case .memory: return "Memory"
         case .exec: return "Exec"
         case .appleMail: return "Mail"
-        case .showResult: return "Show Result"
         case .skillWriter: return "Skill Writer"
         }
     }
@@ -335,7 +350,6 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         case .memory: return "brain"
         case .exec: return "terminal"
         case .appleMail: return "envelope"
-        case .showResult: return "tray.full"
         case .skillWriter: return "wand.and.rays.inverse"
         }
     }

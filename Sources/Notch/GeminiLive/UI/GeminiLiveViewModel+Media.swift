@@ -137,9 +137,19 @@ extension GeminiLiveViewModel {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
         guard canSendLiveInput else { return false }
+
+        let hadPendingModelTurn = !modelTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        commitModelTurnIfPending()
+        commitUserVoiceTurnIfPending()
+        suppressModelTranscriptUntilTurnComplete = hadPendingModelTurn
+
         session.sendClientTextTurn(trimmed)
         userTurnSequence += 1
-        userTranscript = trimmed
+
+        let msg = LiveChatMessage(id: UUID(), isUser: true, text: trimmed)
+        liveChatMessages.append(msg)
+
+        userTranscript = ""
         isModelThinking = true
         TranscriptSessionLogger.shared.recordUserText(trimmed)
         GeminiLiveChatHistoryStore.shared.save(trimmed)
@@ -149,7 +159,11 @@ extension GeminiLiveViewModel {
     func clearTranscripts() {
         userTranscript = ""
         modelTranscript = ""
+        liveChatMessages = []
+        currentTurnAudioData = Data()
+        currentUserTurnAudioData = Data()
         pendingTurnSeparator = false
+        suppressModelTranscriptUntilTurnComplete = false
         isModelThinking = false
         isModelSpeaking = false
         lastErrorMessage = nil

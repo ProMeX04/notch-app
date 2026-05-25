@@ -17,9 +17,7 @@ final class NotchWindowManager {
 
     private var controllers: [NotchScreenID: NotchWindowController] = [:]
     private var cancellables = Set<AnyCancellable>()
-    private let transcriptOverlay = TranscriptOverlayWindowController()
     private let liveChatInputPanel = GeminiLiveChatInputWindowController()
-    private let geminiExecApprovalPanel = GeminiExecApprovalPanelController()
 
     private(set) var isVisible = true
     let visibilityDidChange = PassthroughSubject<Bool, Never>()
@@ -47,9 +45,7 @@ final class NotchWindowManager {
 
         syncControllers(repositionSingleToCursor: true)
         observeSharedState()
-        transcriptOverlay.observe(gemini: geminiLiveViewModel)
         liveChatInputPanel.observe(gemini: geminiLiveViewModel)
-        geminiExecApprovalPanel.observe(gemini: geminiLiveViewModel)
         updateOverlayScreen()
     }
 
@@ -87,15 +83,12 @@ final class NotchWindowManager {
     }
 
     func presentExecApproval() {
-        updateOverlayScreen()
-        geminiExecApprovalPanel.present(gemini: geminiLiveViewModel)
+        liveChatInputPanel.showIfNeeded()
     }
 
     func shutdown() {
         hide()
-        transcriptOverlay.stopObserving()
         liveChatInputPanel.stopObserving()
-        geminiExecApprovalPanel.stopObserving()
         controllers.values.forEach { $0.shutdown(shutdownSharedModels: false) }
         controllers.removeAll()
         shelfViewModel.shutdown()
@@ -207,8 +200,6 @@ final class NotchWindowManager {
 
     private func updateOverlayScreen() {
         let screen = activeController()?.screen ?? preferredController()?.screen ?? NotchMetrics.preferredScreen()
-        transcriptOverlay.setPreferredScreen(screen)
         liveChatInputPanel.setPreferredScreen(screen)
-        geminiExecApprovalPanel.setPreferredScreen(screen)
     }
 }

@@ -9,7 +9,7 @@ struct GeminiExecApprovalCard: View {
     let onApproveExact: () -> Void
     let onApproveFamily: () -> Void
     let onDeny: () -> Void
-    
+
     @AppStorage("app_language") private var appLanguage: String = "English"
     @Environment(\.colorScheme) private var colorScheme
 
@@ -67,7 +67,7 @@ struct GeminiExecApprovalCard: View {
                 ) {
                     onDeny()
                 }
-                
+
                 GeminiPillButton(
                     title: Localization.get("Once", lang: appLanguage),
                     tint: Color(nsColor: .systemBlue),
@@ -75,7 +75,7 @@ struct GeminiExecApprovalCard: View {
                 ) {
                     onApproveOnce()
                 }
-                
+
                 GeminiPillButton(
                     title: Localization.get("Exact", lang: appLanguage),
                     tint: Color(nsColor: .systemGreen),
@@ -83,7 +83,7 @@ struct GeminiExecApprovalCard: View {
                 ) {
                     onApproveExact()
                 }
-                
+
                 if let family = request.commandFamily {
                     GeminiPillButton(
                         title: "\(Localization.get("Always", lang: appLanguage)) \(family)",
@@ -98,4 +98,22 @@ struct GeminiExecApprovalCard: View {
         }
         .padding(.vertical, 4)
     }
+}
+
+#Preview {
+    GeminiExecApprovalCard(
+        request: ExecApprovalRequest(
+            toolCallID: "preview-exec-approval",
+            command: "swift test --filter GeminiExecApprovalTests",
+            workingDirectory: "/Users/promex04/Documents/NO/notch-app",
+            timeoutSeconds: 30
+        ),
+        queueCount: 3,
+        onApproveOnce: {},
+        onApproveExact: {},
+        onApproveFamily: {},
+        onDeny: {}
+    )
+    .padding(16)
+    .frame(width: 520)
 }

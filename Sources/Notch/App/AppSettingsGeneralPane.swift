@@ -4,6 +4,7 @@ struct AppGeneralSettingsPane: View {
     @ObservedObject var presentationModel: NotchPresentationModel
     let versionLabel: String
     @AppStorage("app_language") private var appLanguage: String = "English"
+    @AppStorage("notchShelfGoogleDriveAutoUploadEnabled") private var isGoogleDriveAutoUploadEnabled = false
     @State private var launchAtLoginEnabled = false
     @State private var launchAtLoginError: String?
     private let launchAtLoginController = LaunchAtLoginController()
@@ -192,6 +193,16 @@ struct AppGeneralSettingsPane: View {
                     )
                     .frame(width: 260)
                 }
+            }
+
+            AppSettingsCard(title: "Google Drive") {
+                settingToggle(
+                    icon: "cloud.fill",
+                    title: Localization.get("Auto-upload to Google Drive", lang: appLanguage),
+                    isOn: $isGoogleDriveAutoUploadEnabled,
+                    tint: tint,
+                    showDivider: false
+                )
             }
 
             AppSettingsCard(

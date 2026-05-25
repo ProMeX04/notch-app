@@ -13,9 +13,12 @@ enum NotchCommandRouter {
         let host = components.host?.lowercased() ?? ""
         let pathComponents = url.pathComponents.filter { $0 != "/" }.map { $0.lowercased() }
         let action = pathComponents.first ?? ""
-        let queryItems = Dictionary(
-            uniqueKeysWithValues: (components.queryItems ?? []).map { ($0.name.lowercased(), $0.value ?? "") }
-        )
+        let queryItems = (components.queryItems ?? []).reduce(into: [String: String]()) { result, item in
+            let key = item.name.lowercased()
+            if result[key] == nil {
+                result[key] = item.value ?? ""
+            }
+        }
 
         do {
             switch host {
@@ -36,6 +39,8 @@ enum NotchCommandRouter {
                 try handleMedia(action: action, queryItems: queryItems, handler: handler, entitlementStore: entitlementStore)
             case "oauth":
                 try handleOAuth(url: url, action: action, handler: handler)
+            case "gdrive":
+                try handleGDrive(url: url, action: action, handler: handler)
             case "debug":
                 try handleDebug(action: action)
             default:
@@ -192,7 +197,16 @@ enum NotchCommandRouter {
             throw NotchCommandError.invalidAction("oauth", action)
         }
     }
-    
+
+    private static func handleGDrive(url: URL, action: String, handler: NotchCommandHandling) throws {
+        switch action {
+        case "callback":
+            handler.handleGoogleDriveCallback(url)
+        default:
+            throw NotchCommandError.invalidAction("gdrive", action)
+        }
+    }
+
     private static func handleDebug(action: String) throws {
         switch action {
         case "spotlight":
@@ -201,7 +215,7 @@ enum NotchCommandRouter {
             throw NotchCommandError.invalidAction("debug", action)
         }
     }
-    
+
     private static func requiredSeconds(queryItems: [String: String]) throws -> Double {
         guard let raw = firstNonEmpty(queryItems["seconds"], queryItems["secs"], queryItems["value"]),
               let seconds = Double(raw) else {

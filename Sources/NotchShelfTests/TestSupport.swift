@@ -41,6 +41,18 @@ func expectEqual<T: Equatable>(
     }
 }
 
+func expectUnwrapped<T>(
+    _ value: @autoclosure () -> T?,
+    _ message: @autoclosure () -> String = "expected non-nil value",
+    file: StaticString = #filePath,
+    line: UInt = #line
+) throws -> T {
+    guard let unwrapped = value() else {
+        throw ShelfTestError.assertion(message(), file: file, line: line)
+    }
+    return unwrapped
+}
+
 func makeTempDirectory(label: String) throws -> URL {
     let url = FileManager.default.temporaryDirectory
         .appendingPathComponent("\(label)-\(UUID().uuidString)", isDirectory: true)

@@ -192,6 +192,12 @@ final class GeminiLiveSecretStore {
     }
 }
 
+enum GeminiLiveChatInputDisplayMode: String, Codable, Equatable {
+    case autoCollapse
+    case alwaysVisible
+    case hidden
+}
+
 struct GeminiLiveSettings {
     let isMicrophoneEnabled: Bool
     let inputMode: GeminiLiveInputMode
@@ -199,6 +205,7 @@ struct GeminiLiveSettings {
     /// When false, the notch transcript overlay stays visible after the model stops (until disconnect or subs off).
     let transcriptOverlayAutoHide: Bool
     let showLiveChatInput: Bool
+    let liveChatInputDisplayMode: GeminiLiveChatInputDisplayMode
     let outputVolume: Double
     let connectionMethod: GeminiLiveConnectionMethod
     let systemPromptPresets: [GeminiSystemPromptPreset]
@@ -232,7 +239,8 @@ final class GeminiLiveSettingsStore {
             inputMode: payload.inputMode ?? .openMic,
             showTranscriptOverlay: payload.showTranscriptOverlay,
             transcriptOverlayAutoHide: payload.transcriptOverlayAutoHide ?? true,
-            showLiveChatInput: payload.showLiveChatInput ?? true,
+            showLiveChatInput: payload.showLiveChatInput ?? (payload.liveChatInputDisplayMode != .hidden),
+            liveChatInputDisplayMode: payload.liveChatInputDisplayMode ?? ((payload.showLiveChatInput ?? true) ? .autoCollapse : .hidden),
             outputVolume: payload.outputVolume ?? 1,
             connectionMethod: payload.connectionMethod ?? .userAPIKey,
             systemPromptPresets: presets,
@@ -248,6 +256,7 @@ final class GeminiLiveSettingsStore {
             showTranscriptOverlay: settings.showTranscriptOverlay,
             transcriptOverlayAutoHide: settings.transcriptOverlayAutoHide,
             showLiveChatInput: settings.showLiveChatInput,
+            liveChatInputDisplayMode: settings.liveChatInputDisplayMode,
             outputVolume: settings.outputVolume,
             connectionMethod: settings.connectionMethod,
             systemPromptPresets: settings.systemPromptPresets,
@@ -265,6 +274,7 @@ final class GeminiLiveSettingsStore {
         let showTranscriptOverlay: Bool
         let transcriptOverlayAutoHide: Bool?
         let showLiveChatInput: Bool?
+        let liveChatInputDisplayMode: GeminiLiveChatInputDisplayMode?
         let outputVolume: Double?
         let connectionMethod: GeminiLiveConnectionMethod?
         let systemPromptPresets: [GeminiSystemPromptPreset]?
@@ -279,6 +289,7 @@ final class GeminiLiveSettingsStore {
             showTranscriptOverlay: Bool,
             transcriptOverlayAutoHide: Bool,
             showLiveChatInput: Bool,
+            liveChatInputDisplayMode: GeminiLiveChatInputDisplayMode,
             outputVolume: Double,
             connectionMethod: GeminiLiveConnectionMethod,
             systemPromptPresets: [GeminiSystemPromptPreset],
@@ -290,6 +301,7 @@ final class GeminiLiveSettingsStore {
             self.showTranscriptOverlay = showTranscriptOverlay
             self.transcriptOverlayAutoHide = transcriptOverlayAutoHide
             self.showLiveChatInput = showLiveChatInput
+            self.liveChatInputDisplayMode = liveChatInputDisplayMode
             self.outputVolume = outputVolume
             self.connectionMethod = connectionMethod
             self.systemPromptPresets = systemPromptPresets
@@ -305,6 +317,7 @@ final class GeminiLiveSettingsStore {
             try container.encode(showTranscriptOverlay, forKey: .showTranscriptOverlay)
             try container.encode(transcriptOverlayAutoHide ?? true, forKey: .transcriptOverlayAutoHide)
             try container.encode(showLiveChatInput ?? true, forKey: .showLiveChatInput)
+            try container.encodeIfPresent(liveChatInputDisplayMode, forKey: .liveChatInputDisplayMode)
             try container.encodeIfPresent(outputVolume, forKey: .outputVolume)
             try container.encodeIfPresent(connectionMethod, forKey: .connectionMethod)
             try container.encodeIfPresent(systemPromptPresets, forKey: .systemPromptPresets)
@@ -319,6 +332,7 @@ final class GeminiLiveSettingsStore {
             showTranscriptOverlay = try container.decode(Bool.self, forKey: .showTranscriptOverlay)
             transcriptOverlayAutoHide = try container.decodeIfPresent(Bool.self, forKey: .transcriptOverlayAutoHide)
             showLiveChatInput = try container.decodeIfPresent(Bool.self, forKey: .showLiveChatInput)
+            liveChatInputDisplayMode = try container.decodeIfPresent(GeminiLiveChatInputDisplayMode.self, forKey: .liveChatInputDisplayMode)
             outputVolume = try container.decodeIfPresent(Double.self, forKey: .outputVolume)
             connectionMethod = try container.decodeIfPresent(GeminiLiveConnectionMethod.self, forKey: .connectionMethod)
             systemPromptPresets = try container.decodeIfPresent([GeminiSystemPromptPreset].self, forKey: .systemPromptPresets)
@@ -333,6 +347,7 @@ final class GeminiLiveSettingsStore {
             case showTranscriptOverlay
             case transcriptOverlayAutoHide
             case showLiveChatInput
+            case liveChatInputDisplayMode
             case outputVolume
             case connectionMethod
             case systemPromptPresets

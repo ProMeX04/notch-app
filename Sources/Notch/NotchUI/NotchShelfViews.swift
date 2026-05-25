@@ -65,6 +65,20 @@ struct ShelfPanelView: View {
 
     var body: some View {
         VStack(spacing: 10) {
+            if let error = shelf.driveUploadError {
+                ShelfDriveStatusRow(
+                    icon: "exclamationmark.triangle.fill",
+                    text: error,
+                    tint: .red
+                )
+            } else if let message = shelf.driveUploadMessage {
+                ShelfDriveStatusRow(
+                    icon: shelf.isUploadingToDrive ? "arrow.triangle.2.circlepath" : "checkmark.icloud.fill",
+                    text: message,
+                    tint: shelf.isUploadingToDrive ? .blue : .green
+                )
+            }
+
             if shelf.hasItems {
                 ShelfBrowserView(
                     shelf: shelf,
@@ -96,6 +110,29 @@ struct ShelfPanelView: View {
             }
         }
         .frame(maxWidth: .infinity, minHeight: 116, alignment: .topLeading)
+    }
+}
+
+private struct ShelfDriveStatusRow: View {
+    let icon: String
+    let text: String
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(tint)
+            Text(text)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.white.opacity(0.88))
+                .lineLimit(2)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 }
 
@@ -157,11 +194,23 @@ struct ShelfBrowserView: NSViewRepresentable {
 
     @MainActor
     final class Coordinator: NSObject, NSCollectionViewDataSource, NSCollectionViewDelegateFlowLayout {
+        struct ItemState: Equatable {
+            let id: UUID
+            let displayName: String
+            let driveFileID: String?
+            let driveIsPublic: Bool
+            let driveUploadedAt: Date?
+            let driveState: NotchShelfItem.ItemDriveState
+            let isGoogleDriveConnected: Bool
+            let uploadProgress: Double?
+            let inProgress: Bool
+            let hasError: Bool
+        }
         var shelf: NotchShelfViewModel
         let presentationModel: NotchPresentationModel
         weak var collectionView: ShelfCollectionView?
         private var isSyncingSelection = false
-        private var lastSnapshot: [UUID] = []
+        private var lastSnapshot: [ItemState] = []
         private var draggedItemIDs: [UUID] = []
         private var _quickLookController: ShelfQuickLookPanelController?
         private func requireQuickLookController() -> ShelfQuickLookPanelController {
@@ -187,7 +236,22 @@ struct ShelfBrowserView: NSViewRepresentable {
         }
 
         func reloadData() {
-            let snapshot = shelf.items.map(\.id)
+            shelf.refreshDriveStates(force: false)
+            let isConnected = shelf.isGoogleDriveConnected
+            let snapshot = shelf.items.map { item in
+                ItemState(
+                    id: item.id,
+                    displayName: item.displayName,
+                    driveFileID: item.driveFileID,
+                    driveIsPublic: item.driveIsPublic,
+                    driveUploadedAt: item.driveUploadedAt,
+                    driveState: shelf.cachedDriveStates[item.id] ?? .local,
+                    isGoogleDriveConnected: isConnected,
+                    uploadProgress: shelf.uploadProgresses[item.id],
+                    inProgress: shelf.itemsInProgress.contains(item.id) || shelf.uploadingItemIDs.contains(item.id),
+                    hasError: shelf.itemErrors[item.id] != nil
+                )
+            }
             guard snapshot != lastSnapshot else { return }
 
             let oldSnapshot = lastSnapshot
@@ -202,7 +266,23 @@ struct ShelfBrowserView: NSViewRepresentable {
                 return
             }
 
-            let difference = snapshot.difference(from: oldSnapshot).inferringMoves()
+            let oldIDs = oldSnapshot.map(\.id)
+            let newIDs = snapshot.map(\.id)
+
+            if oldIDs == newIDs {
+                var reloads: [IndexPath] = []
+                for i in 0..<snapshot.count {
+                    if oldSnapshot[i] != snapshot[i] {
+                        reloads.append(IndexPath(item: i, section: 0))
+                    }
+                }
+                if !reloads.isEmpty {
+                    collectionView.reloadItems(at: Set(reloads))
+                }
+                return
+            }
+
+            let difference = newIDs.difference(from: oldIDs).inferringMoves()
 
             var deletions: Set<IndexPath> = []
             var insertions: Set<IndexPath> = []
@@ -222,6 +302,15 @@ struct ShelfBrowserView: NSViewRepresentable {
                         ))
                     } else {
                         insertions.insert(IndexPath(item: offset, section: 0))
+                    }
+                }
+            }
+
+            var reloads: Set<IndexPath> = []
+            for (newIdx, newItem) in snapshot.enumerated() {
+                if let oldIdx = oldSnapshot.firstIndex(where: { $0.id == newItem.id }) {
+                    if oldSnapshot[oldIdx] != newItem {
+                        reloads.insert(IndexPath(item: newIdx, section: 0))
                     }
                 }
             }
@@ -246,7 +335,12 @@ struct ShelfBrowserView: NSViewRepresentable {
                     for move in moves {
                         collectionView.moveItem(at: move.from, to: move.to)
                     }
-                }, completionHandler: nil)
+                }, completionHandler: { [weak self] _ in
+                    guard let self, let collectionView = self.collectionView else { return }
+                    if !reloads.isEmpty {
+                        collectionView.reloadItems(at: reloads)
+                    }
+                })
             }, completionHandler: nil)
         }
 
@@ -283,6 +377,7 @@ struct ShelfBrowserView: NSViewRepresentable {
 
             let clickedItem = shelf.items[indexPath.item]
             if !shelf.isSelected(clickedItem) {
+                collectionView.deselectAll(nil)
                 collectionView.selectItems(at: [indexPath], scrollPosition: [])
                 syncSelectionFromCollectionView()
             }
@@ -362,6 +457,116 @@ struct ShelfBrowserView: NSViewRepresentable {
                 menu.addItem(.separator())
             }
 
+            if selection.count == 1 {
+                let item = selection[0]
+                if shelf.isGoogleDriveConnected {
+                    switch shelf.cachedDriveStates[item.id] ?? .local {
+                    case .local:
+                        menu.addItem(
+                            withTitle: "Upload to Google Drive",
+                            action: #selector(uploadToGoogleDrive),
+                            keyEquivalent: ""
+                        )
+                    case .synced:
+                        menu.addItem(
+                            withTitle: "Copy Link",
+                            action: #selector(copyDriveLinkOnly),
+                            keyEquivalent: ""
+                        )
+                        menu.addItem(
+                            withTitle: "Chia sẻ công khai",
+                            action: #selector(copyPublicShareLink),
+                            keyEquivalent: ""
+                        )
+                        menu.addItem(
+                            withTitle: "Open in Google Drive",
+                            action: #selector(openInGoogleDrive),
+                            keyEquivalent: ""
+                        )
+                    case .syncedPublic:
+                        menu.addItem(
+                            withTitle: "Copy Link",
+                            action: #selector(copyDriveLinkOnly),
+                            keyEquivalent: ""
+                        )
+                        menu.addItem(
+                            withTitle: "Thu hồi chia sẻ công khai",
+                            action: #selector(copyDriveShareLink),
+                            keyEquivalent: ""
+                        )
+                        menu.addItem(
+                            withTitle: "Open in Google Drive",
+                            action: #selector(openInGoogleDrive),
+                            keyEquivalent: ""
+                        )
+                    case .modified:
+                        menu.addItem(
+                            withTitle: "Đồng bộ thay đổi lên Drive",
+                            action: #selector(uploadToGoogleDrive),
+                            keyEquivalent: ""
+                        )
+                        menu.addItem(
+                            withTitle: "Copy Link",
+                            action: #selector(copyDriveLinkOnly),
+                            keyEquivalent: ""
+                        )
+                        if item.driveIsPublic {
+                            menu.addItem(
+                                withTitle: "Thu hồi chia sẻ công khai",
+                                action: #selector(copyDriveShareLink),
+                                keyEquivalent: ""
+                            )
+                        } else {
+                            menu.addItem(
+                                withTitle: "Chia sẻ công khai",
+                                action: #selector(copyPublicShareLink),
+                                keyEquivalent: ""
+                            )
+                        }
+                        menu.addItem(
+                            withTitle: "Open in Google Drive",
+                            action: #selector(openInGoogleDrive),
+                            keyEquivalent: ""
+                        )
+                    case .orphaned:
+                        menu.addItem(
+                            withTitle: "Copy Link",
+                            action: #selector(copyDriveLinkOnly),
+                            keyEquivalent: ""
+                        )
+                        menu.addItem(
+                            withTitle: "Open in Google Drive",
+                            action: #selector(openInGoogleDrive),
+                            keyEquivalent: ""
+                        )
+                    }
+                } else {
+                    menu.addItem(
+                        withTitle: "Link Google Drive",
+                        action: #selector(linkGoogleDrive),
+                        keyEquivalent: ""
+                    )
+                }
+            } else {
+                if shelf.isGoogleDriveConnected {
+                    menu.addItem(
+                        withTitle: "Upload to Google Drive",
+                        action: #selector(uploadToGoogleDrive),
+                        keyEquivalent: ""
+                    )
+                } else {
+                    menu.addItem(
+                        withTitle: "Link Google Drive",
+                        action: #selector(linkGoogleDrive),
+                        keyEquivalent: ""
+                    )
+                }
+            }
+
+            if !menu.items.isEmpty, menu.items.last?.isSeparatorItem == false {
+                menu.addItem(.separator())
+            }
+
             menu.addItem(
                 withTitle: selection.count == 1 ? "Remove from Shelf" : "Remove Selected",
                 action: #selector(removeSelection),
@@ -419,7 +624,19 @@ struct ShelfBrowserView: NSViewRepresentable {
                 return NSCollectionViewItem()
             }
 
-            item.configure(with: shelf.items[indexPath.item])
+            let shelfItem = shelf.items[indexPath.item]
+            let driveState = shelf.cachedDriveStates[shelfItem.id] ?? .local
+            let progress = shelf.uploadProgresses[shelfItem.id]
+            let inProgress = shelf.itemsInProgress.contains(shelfItem.id) || shelf.uploadingItemIDs.contains(shelfItem.id)
+            let error = shelf.itemErrors[shelfItem.id]
+            item.configure(
+                with: shelfItem,
+                driveState: driveState,
+                isGoogleDriveConnected: shelf.isGoogleDriveConnected,
+                uploadProgress: progress,
+                inProgress: inProgress,
+                error: error
+            )
             return item
         }
 
@@ -626,6 +843,39 @@ struct ShelfBrowserView: NSViewRepresentable {
             refreshQuickLookIfNeeded()
         }
 
+        @objc private func linkGoogleDrive() {
+            shelf.connectGoogleDrive()
+        }
+
+        @objc private func copyDriveLinkOnly() {
+            guard let item = shelf.primarySelectedItem else { return }
+            shelf.copyDriveLink(item)
+        }
+
+        @objc private func copyDriveShareLink() {
+            guard let item = shelf.primarySelectedItem else { return }
+            shelf.shareItemPrivately(item)
+        }
+
+        @objc private func copyPublicShareLink() {
+            guard let item = shelf.primarySelectedItem else { return }
+            shelf.shareItemPublicly(item)
+        }
+
+        @objc private func openInGoogleDrive() {
+            guard let item = shelf.primarySelectedItem,
+                  let fileID = item.driveFileID else { return }
+            let urlString = "https://drive.google.com/file/d/\(fileID)/view?usp=drivesdk"
+            if let url = URL(string: urlString) {
+                NSWorkspace.shared.open(url)
+            }
+        }
+
+
+        @objc private func uploadToGoogleDrive() {
+            shelf.uploadSelectedItemsToDrive()
+        }
+
         private func restoreShelfFocus() {
             guard let collectionView else { return }
             NSApp.activate(ignoringOtherApps: true)
@@ -742,7 +992,14 @@ private final class ShelfCollectionItem: NSCollectionViewItem {
         shelfView.reset()
     }
 
-    func configure(with item: NotchShelfItem) {
+    func configure(
+        with item: NotchShelfItem,
+        driveState: NotchShelfItem.ItemDriveState,
+        isGoogleDriveConnected: Bool,
+        uploadProgress: Double?,
+        inProgress: Bool,
+        error: String?
+    ) {
         currentItemID = item.id
         thumbnailTask?.cancel()
         thumbnailTask = nil
@@ -750,6 +1007,59 @@ private final class ShelfCollectionItem: NSCollectionViewItem {
         shelfView.titleField.stringValue = item.displayName
         shelfView.previewImageView.image = fallbackIcon(for: item)
         shelfView.applySelection(isSelected)
+
+        shelfView.setUploadProgress(nil)
+        shelfView.setDriveBadge(symbolName: nil, tint: nil, accessibilityDescription: nil)
+        shelfView.toolTip = nil
+
+        if let progress = uploadProgress {
+            shelfView.setUploadProgress(progress)
+        } else if inProgress {
+            shelfView.setDriveBadge(
+                symbolName: "arrow.triangle.2.circlepath",
+                tint: .systemBlue,
+                accessibilityDescription: "Processing...",
+                isAnimating: true
+            )
+        } else if let errorMsg = error {
+            shelfView.setDriveBadge(
+                symbolName: "xmark.icloud.fill",
+                tint: .systemRed,
+                accessibilityDescription: errorMsg
+            )
+            shelfView.toolTip = errorMsg
+        } else {
+            if isGoogleDriveConnected {
+                switch driveState {
+                case .local:
+                    shelfView.setDriveBadge(symbolName: nil, tint: nil, accessibilityDescription: nil)
+                case .synced:
+                    shelfView.setDriveBadge(
+                        symbolName: "checkmark.icloud.fill",
+                        tint: .systemGreen,
+                        accessibilityDescription: "Synced"
+                    )
+                case .syncedPublic:
+                    shelfView.setDriveBadge(
+                        symbolName: "link.icloud.fill",
+                        tint: .systemBlue,
+                        accessibilityDescription: "Synced Public"
+                    )
+                case .modified:
+                    shelfView.setDriveBadge(
+                        symbolName: "arrow.clockwise.icloud.fill",
+                        tint: .systemOrange,
+                        accessibilityDescription: "Modified"
+                    )
+                case .orphaned:
+                    shelfView.setDriveBadge(
+                        symbolName: "exclamationmark.icloud.fill",
+                        tint: .systemYellow,
+                        accessibilityDescription: "Local file missing; Drive copy may still exist"
+                    )
+                }
+            }
+        }
 
         guard case let .file(reference) = item.kind else { return }
         let itemID = item.id
@@ -786,9 +1096,67 @@ private final class ShelfCollectionItem: NSCollectionViewItem {
     }
 }
 
+private final class CircularProgressView: NSView {
+    var progress: Double = 0.0 {
+        didSet {
+            let clamped = max(0.0, min(1.0, progress))
+            if clamped != oldValue {
+                needsDisplay = true
+            }
+        }
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        wantsLayer = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+
+        let center = NSPoint(x: bounds.midX, y: bounds.midY)
+        let radius = (min(bounds.width, bounds.height) - 3.0) / 2.0
+        guard radius > 0 else { return }
+
+        // 1. Draw subtle background circle outline
+        let bgPath = NSBezierPath()
+        bgPath.appendArc(withCenter: center, radius: radius, startAngle: 0, endAngle: 360)
+        bgPath.lineWidth = 2.0
+        NSColor.white.withAlphaComponent(0.2).setStroke()
+        bgPath.stroke()
+
+        // 2. Draw progress arc (starting from top, 90 degrees, moving clockwise)
+        if progress > 0.0 {
+            let progressPath = NSBezierPath()
+            let startAngle: CGFloat = 90.0
+            let endAngle = startAngle - CGFloat(max(0.0, min(1.0, progress)) * 360.0)
+
+            progressPath.appendArc(
+                withCenter: center,
+                radius: radius,
+                startAngle: startAngle,
+                endAngle: endAngle,
+                clockwise: true
+            )
+            progressPath.lineWidth = 2.0
+            progressPath.lineCapStyle = .round
+
+            NSColor.systemBlue.setStroke()
+            progressPath.stroke()
+        }
+    }
+}
+
 private final class ShelfCollectionItemView: NSView {
     let previewImageView = NSImageView()
     let titleField = NSTextField(labelWithString: "")
+    let cloudStatusImageView = NSImageView()
+    let circularProgressView = CircularProgressView()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -811,15 +1179,87 @@ private final class ShelfCollectionItemView: NSView {
     func reset() {
         previewImageView.image = nil
         titleField.stringValue = ""
+        cloudStatusImageView.image = nil
+        cloudStatusImageView.isHidden = true
+        circularProgressView.progress = 0.0
+        circularProgressView.isHidden = true
         applySelection(false)
     }
 
     func applySelection(_ selected: Bool) {
-        previewImageView.alphaValue = selected ? 1 : 0.92
-        titleField.textColor = selected ? .white : .white.withAlphaComponent(0.86)
-        layer?.shadowOpacity = selected ? 0.22 : 0.1
-        layer?.shadowRadius = selected ? 10 : 4
+        previewImageView.alphaValue = selected ? 1.0 : 0.75
+        titleField.textColor = selected ? .white : .white.withAlphaComponent(0.65)
+
+        if selected {
+            layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.24).cgColor
+            layer?.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.6).cgColor
+            layer?.borderWidth = 1.5
+            layer?.cornerRadius = 8
+        } else {
+            layer?.backgroundColor = NSColor.clear.cgColor
+            layer?.borderColor = NSColor.clear.cgColor
+            layer?.borderWidth = 0
+            layer?.cornerRadius = 8
+        }
+
+        layer?.shadowOpacity = selected ? 0.25 : 0.1
+        layer?.shadowRadius = selected ? 8 : 3
     }
+
+    func setDriveBadge(symbolName: String?, tint: NSColor?, accessibilityDescription: String?, isAnimating: Bool = false) {
+        guard let symbolName, let tint else {
+            cloudStatusImageView.image = nil
+            cloudStatusImageView.isHidden = true
+            cloudStatusImageView.layer?.removeAllAnimations()
+            return
+        }
+
+        let symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 11, weight: .bold)
+        let image = NSImage(
+            systemSymbolName: symbolName,
+            accessibilityDescription: accessibilityDescription
+        )?.withSymbolConfiguration(symbolConfiguration)
+        image?.isTemplate = true
+
+        cloudStatusImageView.image = image
+        cloudStatusImageView.contentTintColor = tint
+        cloudStatusImageView.isHidden = false
+        cloudStatusImageView.layer?.zPosition = 20
+
+        cloudStatusImageView.layer?.removeAllAnimations()
+        if isAnimating {
+            let rotation = CABasicAnimation(keyPath: "transform")
+            let toCenter = CATransform3DMakeTranslation(-8, -8, 0)
+            let fromCenter = CATransform3DMakeTranslation(8, 8, 0)
+            let startTransform = CATransform3DConcat(
+                CATransform3DConcat(toCenter, CATransform3DMakeRotation(0.0, 0, 0, 1)),
+                fromCenter
+            )
+            let endTransform = CATransform3DConcat(
+                CATransform3DConcat(toCenter, CATransform3DMakeRotation(-Double.pi * 2.0, 0, 0, 1)),
+                fromCenter
+            )
+            rotation.fromValue = startTransform
+            rotation.toValue = endTransform
+            rotation.duration = 1.2
+            rotation.repeatCount = .infinity
+            cloudStatusImageView.layer?.add(rotation, forKey: "rotationAnimation")
+        }
+    }
+
+    func setUploadProgress(_ progress: Double?) {
+        if let progress = progress {
+            circularProgressView.progress = progress
+            circularProgressView.isHidden = false
+            cloudStatusImageView.isHidden = true
+            circularProgressView.layer?.removeAllAnimations()
+        } else {
+            circularProgressView.isHidden = true
+            circularProgressView.layer?.removeAllAnimations()
+        }
+    }
+
+
 
     private func setup() {
         wantsLayer = true
@@ -827,9 +1267,22 @@ private final class ShelfCollectionItemView: NSView {
         layer?.shadowColor = NSColor.white.withAlphaComponent(0.28).cgColor
         layer?.shadowOffset = NSSize(width: 0, height: -3)
 
+        previewImageView.wantsLayer = true
         previewImageView.imageScaling = .scaleProportionallyUpOrDown
         previewImageView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(previewImageView)
+
+        cloudStatusImageView.wantsLayer = true
+        cloudStatusImageView.translatesAutoresizingMaskIntoConstraints = false
+        cloudStatusImageView.imageScaling = .scaleProportionallyUpOrDown
+        cloudStatusImageView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 11, weight: .bold)
+        cloudStatusImageView.isHidden = true
+        addSubview(cloudStatusImageView)
+
+        circularProgressView.wantsLayer = true
+        circularProgressView.translatesAutoresizingMaskIntoConstraints = false
+        circularProgressView.isHidden = true
+        addSubview(circularProgressView)
 
         titleField.font = .systemFont(ofSize: 9, weight: .semibold)
         titleField.textColor = .white.withAlphaComponent(0.86)
@@ -845,6 +1298,16 @@ private final class ShelfCollectionItemView: NSView {
             previewImageView.centerXAnchor.constraint(equalTo: centerXAnchor),
             previewImageView.widthAnchor.constraint(equalToConstant: 42),
             previewImageView.heightAnchor.constraint(equalToConstant: 42),
+
+            cloudStatusImageView.topAnchor.constraint(equalTo: previewImageView.topAnchor, constant: -4),
+            cloudStatusImageView.trailingAnchor.constraint(equalTo: previewImageView.trailingAnchor, constant: 4),
+            cloudStatusImageView.widthAnchor.constraint(equalToConstant: 16),
+            cloudStatusImageView.heightAnchor.constraint(equalToConstant: 16),
+
+            circularProgressView.topAnchor.constraint(equalTo: previewImageView.topAnchor, constant: -4),
+            circularProgressView.trailingAnchor.constraint(equalTo: previewImageView.trailingAnchor, constant: 4),
+            circularProgressView.widthAnchor.constraint(equalToConstant: 16),
+            circularProgressView.heightAnchor.constraint(equalToConstant: 16),
 
             titleField.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
             titleField.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),

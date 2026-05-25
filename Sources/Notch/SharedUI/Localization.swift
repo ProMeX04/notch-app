@@ -108,6 +108,14 @@ struct Localization {
         "Subs Auto": ["English": "Subs Auto", "Tiếng Việt": "Phụ đề Tự ẩn"],
         "Subs Pin": ["English": "Subs Pin", "Tiếng Việt": "Phụ đề Ghim"],
         "Type": ["English": "Type", "Tiếng Việt": "Nhập"],
+        "Suggest": ["English": "Suggest", "Tiếng Việt": "Gợi ý"],
+        "Auto Type": ["English": "Auto Type", "Tiếng Việt": "Nhập tự ẩn"],
+        "Auto Collapse Type": ["English": "Auto Collapse Type", "Tiếng Việt": "Nhập tự thu nhỏ"],
+        "Always Show Type": ["English": "Always Show Type", "Tiếng Việt": "Luôn hiện ô nhập"],
+        "Hide Type": ["English": "Hide Type", "Tiếng Việt": "Ẩn ô nhập"],
+        "Auto Hide Captions": ["English": "Auto Hide Captions", "Tiếng Việt": "Phụ đề tự ẩn"],
+        "Pin Captions": ["English": "Pin Captions", "Tiếng Việt": "Ghim phụ đề"],
+        "Hide Captions": ["English": "Hide Captions", "Tiếng Việt": "Ẩn phụ đề"],
         "Hide": ["English": "Hide", "Tiếng Việt": "Ẩn"],
         "Pin": ["English": "Pin", "Tiếng Việt": "Ghim"],
         "Context": ["English": "Context", "Tiếng Việt": "Ngữ cảnh"],
@@ -438,6 +446,7 @@ struct Localization {
         "Connection": ["English": "Connection", "Tiếng Việt": "Kết nối"],
         "Saving...": ["English": "Saving...", "Tiếng Việt": "Đang lưu..."],
         "Model": ["English": "Model", "Tiếng Việt": "Mô hình"],
+        "Auto-upload to Google Drive": ["English": "Auto-upload to Google Drive", "Tiếng Việt": "Tự động tải lên Google Drive"],
         "Untitled": ["English": "Untitled", "Tiếng Việt": "Chưa đặt tên"],
     ]
 

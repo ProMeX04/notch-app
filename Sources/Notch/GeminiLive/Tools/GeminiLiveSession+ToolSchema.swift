@@ -21,7 +21,7 @@ extension GeminiLiveSession {
                         ],
                         "timeoutSeconds": [
                             "type": "NUMBER",
-                            "description": "Optional timeout in seconds. Use 1-30. Defaults to 15."
+                            "description": "Optional timeout in seconds. Use 1-900. Defaults to 900 (15 minutes)."
                         ]
                     ],
                     "required": ["command"]
@@ -425,41 +425,6 @@ extension GeminiLiveSession {
                     ],
                     "required": ["action", "name", "description", "instructions"],
                 ] as [String: Any],
-            ])
-        }
-        if enabledTools.contains(.showResult) {
-            decls.append([
-                "name": GeminiLiveToolName.showResult,
-                "description": """
-                Show one or more user-visible results (text summaries, clickable links, or local file attachments) in the Notch Results panel so the user can review, save, or act on them. Use after substantive work products: summaries, extracted data, diagrams described as exports, downloads, paths the user asked to open, etc. Each item has a kind: 'text' (plain Markdown or plain body), 'link' (https URL), or 'file' (absolute path readable on disk). Omit this tool only when no tangible output is meant for the tray.
-                """,
-                "parameters": [
-                    "type": "OBJECT",
-                    "properties": [
-                        "items": [
-                            "type": "ARRAY",
-                            "items": [
-                                "type": "OBJECT",
-                                "properties": [
-                                    "kind": [
-                                        "type": "STRING",
-                                        "description": "One of: 'text', 'link', 'file'.",
-                                    ],
-                                    "title": [
-                                        "type": "STRING",
-                                        "description": "Optional short headline for this item.",
-                                    ],
-                                    "content": [
-                                        "type": "STRING",
-                                        "description": "For 'text': body copy. For 'link': absolute http(s) URL. For 'file': absolute POSIX path (~ allowed).",
-                                    ],
-                                ]
-                            ],
-                            "description": "Non-empty ordered list of result payloads to append as one tray batch.",
-                        ]
-                    ],
-                    "required": ["items"],
-                ] as [String: Any]
             ])
         }
         return decls

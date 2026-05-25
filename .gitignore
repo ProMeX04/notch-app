@@ -9,3 +9,5 @@ AppIcon.iconset/
 .superpowers/
 .worktrees/
 .vercel
+xcuserdata/
+*.xcuserstate

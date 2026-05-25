@@ -179,5 +179,6 @@ let package = Package(
             dependencies: ["NotchGeminiLiveCore"],
             path: "Tests/NotchGeminiLiveTests"
         ),
-    ]
+    ],
+    swiftLanguageVersions: [.version("6")]
 )

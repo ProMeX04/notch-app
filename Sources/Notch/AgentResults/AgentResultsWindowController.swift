@@ -52,6 +52,13 @@ final class AgentResultsWindowController: AgentResultsWindowControlling {
                     return
                 }
                 self.lastObservedBatchCount = newCount
+
+                // If the latest batch is from Gemini Live, we let the chat panel handle the inline display,
+                // and suppress the standalone floating window from opening or flashing.
+                if let latestBatch = self.store.groupedBatches.first, latestBatch.source == .geminiLive {
+                    return
+                }
+
                 self.pendingContentFit = true
                 self.show()
                 self.flashOnNewBatch()

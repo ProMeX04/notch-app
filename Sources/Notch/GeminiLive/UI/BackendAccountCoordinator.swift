@@ -252,7 +252,11 @@ final class BackendAccountCoordinator: ObservableObject {
                 return
             }
 
-            let queryItems = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+            let queryItems = (components.queryItems ?? []).reduce(into: [String: String]()) { result, item in
+                if result[item.name] == nil {
+                    result[item.name] = item.value ?? ""
+                }
+            }
 
             if let error = queryItems["error"]?.trimmingCharacters(in: .whitespacesAndNewlines), !error.isEmpty {
                 cancelPendingOAuthLogin()

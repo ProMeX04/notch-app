@@ -30,6 +30,28 @@ final class NotchAppEnvironment {
         pomodoroViewModel = PomodoroViewModel(learningStatsStore: learningStatsStore)
         focusWebsiteBlocklistStore = FocusWebsiteBlocklistStore()
         shelfViewModel = NotchShelfViewModel()
+
+        let geminiLive = geminiLiveViewModel
+        let getPortalURL: () -> URL = { [weak geminiLive] in
+            if let custom = UserDefaults.standard.string(forKey: "notch_portal_url"),
+               let url = URL(string: custom) {
+                return url
+            }
+            return geminiLive?.configuredBackendConfiguration?.baseURL ?? URL(string: GeminiLiveHostedBackend.defaultURL)!
+        }
+
+        shelfViewModel.portalBaseURLProvider = getPortalURL
+
+        shelfViewModel.onConnectGoogleDriveRequested = { state, codeChallenge in
+            let portalBaseURL = getPortalURL()
+            let authURL = NotchWebPortal.googleDriveAuthURL(
+                apiBaseURL: portalBaseURL,
+                state: state,
+                codeChallenge: codeChallenge
+            )
+            NotchWebPortal.openInBrowser(authURL)
+        }
+
         shortcutStore = ShortcutStore()
         presentationModel = NotchPresentationModel()
 
@@ -50,6 +72,7 @@ final class NotchAppEnvironment {
             playbackViewModel: playbackViewModel,
             pomodoroViewModel: pomodoroViewModel,
             geminiLiveViewModel: geminiLiveViewModel,
+            shelfViewModel: shelfViewModel,
             presentationModel: presentationModel,
             appSettingsController: appSettingsController
         )

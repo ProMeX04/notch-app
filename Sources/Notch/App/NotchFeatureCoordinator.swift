@@ -1,5 +1,6 @@
 import AppKit
 import NotchFocusCore
+import NotchShelfCore
 import SwiftUI
 
 @MainActor
@@ -44,6 +45,7 @@ protocol NotchCommandHandling: AnyObject {
     func openCurrentMediaApp()
     func openAppSettings()
     func handleOAuthCallback(_ url: URL)
+    func handleGoogleDriveCallback(_ url: URL)
 }
 
 @MainActor
@@ -51,6 +53,7 @@ final class NotchFeatureCoordinator: NotchCommandHandling {
     let playbackViewModel: MediaProbeViewModel
     let pomodoroViewModel: PomodoroViewModel
     let geminiLiveViewModel: GeminiLiveViewModel
+    let shelfViewModel: NotchShelfViewModel
     let presentationModel: NotchPresentationModel
 
     private let windowController: NotchWindowManager
@@ -61,6 +64,7 @@ final class NotchFeatureCoordinator: NotchCommandHandling {
         playbackViewModel: MediaProbeViewModel,
         pomodoroViewModel: PomodoroViewModel,
         geminiLiveViewModel: GeminiLiveViewModel,
+        shelfViewModel: NotchShelfViewModel,
         presentationModel: NotchPresentationModel,
         appSettingsController: AppSettingsControlling = AppSettingsController.shared
     ) {
@@ -68,6 +72,7 @@ final class NotchFeatureCoordinator: NotchCommandHandling {
         self.playbackViewModel = playbackViewModel
         self.pomodoroViewModel = pomodoroViewModel
         self.geminiLiveViewModel = geminiLiveViewModel
+        self.shelfViewModel = shelfViewModel
         self.presentationModel = presentationModel
         self.appSettingsController = appSettingsController
     }
@@ -284,6 +289,25 @@ final class NotchFeatureCoordinator: NotchCommandHandling {
 
     func handleOAuthCallback(_ url: URL) {
         geminiLiveViewModel.handleBackendOAuthCallback(url)
+    }
+
+    func handleGoogleDriveCallback(_ url: URL) {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
+        let queryItems = (components.queryItems ?? []).reduce(into: [String: String]()) { result, item in
+            let key = item.name.lowercased()
+            if result[key] == nil, let value = item.value {
+                result[key] = value
+            }
+        }
+
+        shelfViewModel.handleGoogleDriveCallback(
+            accessToken: queryItems["access_token"],
+            refreshToken: queryItems["refresh_token"],
+            expiresIn: queryItems["expires_in"],
+            error: queryItems["error"],
+            state: queryItems["state"],
+            handoffToken: queryItems["handoff_token"]
+        )
     }
 
     private func performPomodoroAction(action: FocusCommandAction) throws {

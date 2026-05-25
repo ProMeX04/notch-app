@@ -10,20 +10,20 @@ datasource db {
 }
 
 model User {
-  id           String           @id @default(cuid())
-  name         String?
-  email        String?          @unique
-  password     String?
-  isAdmin      Boolean          @default(false)
-  isPro        Boolean          @default(false)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  sessions     AuthSession[]
-  bridgeTokens AuthBridgeToken[]
-  appBridgeTokens AuthAppBridgeToken[]
+  id                      String                   @id @default(cuid())
+  name                    String?
+  email                   String?                  @unique
+  password                String?
+  isAdmin                 Boolean                  @default(false)
+  isPro                   Boolean                  @default(false)
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  sessions                AuthSession[]
+  bridgeTokens            AuthBridgeToken[]
+  appBridgeTokens         AuthAppBridgeToken[]
   oauthAuthorizationCodes OAuthAuthorizationCode[]
-  payments     PaymentTransaction[]
-  events       AppEvent[]
+  payments                PaymentTransaction[]
+  events                  AppEvent[]
 }
 
 model FeatureConfig {
@@ -64,30 +64,30 @@ model AuthSession {
 }
 
 model AuthBridgeToken {
-  id         String   @id @default(cuid())
-  tokenHash  String   @unique
+  id         String    @id @default(cuid())
+  tokenHash  String    @unique
   expiresAt  DateTime
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
   consumedAt DateTime?
   userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
 }
 
 model AuthAppBridgeToken {
-  id         String   @id @default(cuid())
-  tokenHash  String   @unique
-  deviceId   String?
-  deviceName String?
-  platform   String?
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
+  id          String    @id @default(cuid())
+  tokenHash   String    @unique
+  deviceId    String?
+  deviceName  String?
+  platform    String?
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
   completedAt DateTime?
-  consumedAt DateTime?
-  userId     String?
-  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  consumedAt  DateTime?
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([expiresAt])
@@ -95,42 +95,57 @@ model AuthAppBridgeToken {
 }
 
 model OAuthAuthorizationCode {
-  id                  String   @id @default(cuid())
-  codeHash            String   @unique
+  id                  String    @id @default(cuid())
+  codeHash            String    @unique
   clientId            String
   redirectUri         String
   codeChallenge       String
   codeChallengeMethod String
   expiresAt           DateTime
-  createdAt           DateTime @default(now())
+  createdAt           DateTime  @default(now())
   consumedAt          DateTime?
   userId              String
-  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
   @@index([clientId, redirectUri])
 }
 
+model GoogleDriveAuthHandoff {
+  id            String    @id
+  tokenHash     String    @unique
+  codeChallenge String
+  accessToken   String
+  refreshToken  String?
+  expiresIn     Int?
+  expiresAt     DateTime
+  createdAt     DateTime  @default(now())
+  consumedAt    DateTime?
+
+  @@index([expiresAt])
+  @@index([consumedAt])
+}
+
 model PaymentTransaction {
-  id             String   @id @default(cuid())
-  provider       String
-  status         String
-  amount         Int
-  currency       String
-  orderId        String   @unique
-  requestId      String   @unique
-  providerRef    String?
-  payUrl         String?
-  orderInfo      String
-  rawResponse    Json?
+  id              String    @id @default(cuid())
+  provider        String
+  status          String
+  amount          Int
+  currency        String
+  orderId         String    @unique
+  requestId       String    @unique
+  providerRef     String?
+  payUrl          String?
+  orderInfo       String
+  rawResponse     Json?
   rawNotification Json?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  paidAt         DateTime?
-  guestEmail     String?
-  userId         String?
-  user           User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  paidAt          DateTime?
+  guestEmail      String?
+  userId          String?
+  user            User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([guestEmail])
   @@index([userId])

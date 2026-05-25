@@ -1,4 +1,4 @@
-import { GoogleGenAI, Modality } from '@google/genai'
+import { GoogleGenAI, MediaResolution, Modality, type LiveConnectConfig } from '@google/genai'
 import { NextResponse } from 'next/server'
 
 import { logAppEvent } from '@/lib/event-logger'
@@ -9,6 +9,7 @@ type SessionTokenRequest = {
   system_instruction?: string | null
   voice_name?: string | null
   thinking_budget?: number | null
+  media_resolution?: string | null
   response_modalities?: string[] | null
 }
 
@@ -29,6 +30,19 @@ function normalizeModality(raw: string): Modality | null {
       return Modality.TEXT
     case 'IMAGE':
       return Modality.IMAGE
+    default:
+      return null
+  }
+}
+
+function normalizeMediaResolution(raw: string): MediaResolution | null {
+  switch (raw.trim().toUpperCase()) {
+    case 'MEDIA_RESOLUTION_LOW':
+      return MediaResolution.MEDIA_RESOLUTION_LOW
+    case 'MEDIA_RESOLUTION_MEDIUM':
+      return MediaResolution.MEDIA_RESOLUTION_MEDIUM
+    case 'MEDIA_RESOLUTION_HIGH':
+      return MediaResolution.MEDIA_RESOLUTION_HIGH
     default:
       return null
   }
@@ -114,8 +128,10 @@ export async function POST(req: Request) {
       typeof body.thinking_budget === 'number' && Number.isFinite(body.thinking_budget)
         ? Math.max(0, Math.trunc(body.thinking_budget))
         : null
+    const mediaResolution =
+      typeof body.media_resolution === 'string' ? normalizeMediaResolution(body.media_resolution) : null
 
-    const liveConfig: Record<string, unknown> = {
+    const liveConfig: LiveConnectConfig = {
       responseModalities,
       sessionResumption: {},
     }
@@ -137,9 +153,11 @@ export async function POST(req: Request) {
     }
 
     if (thinkingBudget !== null && thinkingBudget > 0) {
-      liveConfig.generationConfig = {
-        thinkingConfig: { thinkingBudget },
-      }
+      liveConfig.thinkingConfig = { thinkingBudget }
+    }
+
+    if (mediaResolution !== null) {
+      liveConfig.mediaResolution = mediaResolution
     }
 
     await logAppEvent({
@@ -155,6 +173,7 @@ export async function POST(req: Request) {
         modalityCount: responseModalities.length,
         hasVoice: Boolean(trimmedVoiceName),
         hasThinkingBudget: thinkingBudget !== null && thinkingBudget > 0,
+        mediaResolution,
         requirement,
       },
     })

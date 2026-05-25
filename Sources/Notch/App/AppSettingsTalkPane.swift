@@ -499,6 +499,16 @@ struct AppTalkSettingsPane: View {
                             }
                         }
                     }
+
+                    agentModelVoiceThinkingRow(icon: "rectangle.compress.vertical", titleKey: "Media Resolution") {
+                        fixedWidthAgentMenu(title: Localization.get(gemini.mediaResolution.rawValue, lang: appLanguage)) {
+                            ForEach(GeminiMediaResolution.allCases, id: \.self) { resolution in
+                                Button(Localization.get(resolution.rawValue, lang: appLanguage)) {
+                                    gemini.mediaResolution = resolution
+                                }
+                            }
+                        }
+                    }
                 }
 
                 Divider().overlay(Color.white.opacity(0.07))

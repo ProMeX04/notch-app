@@ -61,6 +61,7 @@ extension GeminiLiveViewModel {
             voice: GeminiVoice.kore.rawValue,
             model: GeminiLiveModel.defaultModelID,
             thinkingLevel: GeminiThinkingLevel.off.rawValue,
+            mediaResolution: GeminiMediaResolution.low.rawValue,
             lastUsedAt: Date()
         )
         systemPromptPresets.append(preset)
@@ -138,6 +139,7 @@ extension GeminiLiveViewModel {
                 voice: GeminiVoice.kore.rawValue,
                 model: GeminiLiveModel.defaultModelID,
                 thinkingLevel: GeminiThinkingLevel.off.rawValue,
+                mediaResolution: GeminiMediaResolution.low.rawValue,
                 lastUsedAt: Date()
             )
             systemPromptPresets.append(preset)
@@ -194,6 +196,7 @@ extension GeminiLiveViewModel {
         let active = selectedSystemPromptPreset
         thinkingLevel = active.thinkingEnum
         selectedVoice = active.voiceEnum
+        mediaResolution = active.mediaResolutionEnum
         selectedModelID = active.modelAPIName
         enabledTools = active.toolSet
         enabledSkillIDs = Set(active.enabledSkillIDs)

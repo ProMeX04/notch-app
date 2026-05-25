@@ -459,6 +459,7 @@ private final class ScreenShareStreamOutput: NSObject, SCStreamOutput {
     private let sendFrameInterval: TimeInterval
     private let onFrameCaptured: @MainActor (Data) -> Void
     private var nextFrameSendTime: TimeInterval = 0
+    private var frameChangeFilter = ScreenShareFrameChangeFilter()
 
     init(sendFrameInterval: TimeInterval, onFrameCaptured: @escaping @MainActor (Data) -> Void) {
         self.sendFrameInterval = sendFrameInterval
@@ -474,7 +475,9 @@ private final class ScreenShareStreamOutput: NSObject, SCStreamOutput {
         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer).seconds
         guard shouldEncodeFrame(at: timestamp) else { return }
 
-        guard let jpeg = ScreenShareCoordinator.encodeJPEG(from: pixelBuffer, maxWidth: 640, quality: 0.5) else { return }
+        guard let jpeg = ScreenShareCoordinator.encodeJPEG(from: pixelBuffer, maxWidth: 640, quality: 0.5),
+              frameChangeFilter.shouldSend(jpeg)
+        else { return }
         Task { @MainActor [onFrameCaptured] in
             onFrameCaptured(jpeg)
         }

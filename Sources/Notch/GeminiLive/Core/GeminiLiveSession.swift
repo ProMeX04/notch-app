@@ -89,6 +89,7 @@ final class GeminiLiveSession: @unchecked Sendable {
     var onMicrophoneInputLevel: (@Sendable (Double) -> Void)?
     var onMicrophoneCaptureStateChange: (@Sendable (Bool) -> Void)?
     var onReconnectStateChange: (@Sendable (GeminiLiveReconnectState) -> Void)?
+    var onFreshCredentialSessionRefreshRequested: (@Sendable () -> Void)?
     var onUsageMetadata: (@Sendable (GeminiLiveUsageMetadata) -> Void)?
     var onFunctionStarted: (@Sendable (_ name: String, _ args: [String: Any]) -> Void)?
     var onFunctionExecuted: (@Sendable (_ name: String, _ args: [String: Any], _ result: [String: Any]) -> Void)?
@@ -195,6 +196,7 @@ final class GeminiLiveSession: @unchecked Sendable {
     var hasCompletedSetup = false
     var setupCompleteTime: Date?
     var isResumingConnection = false
+    var isWaitingForFreshCredentialSessionRefresh = false
     var currentConfiguration: LiveSessionConfiguration?
     var latestSessionHandle: String?
     var latestSessionHandleIsResumable = false
@@ -234,6 +236,7 @@ final class GeminiLiveSession: @unchecked Sendable {
         microphonePrewarmingEnabled: Bool = false,
         thinkingBudget: Int,
         voiceName: String = "Kore",
+        mediaResolution: GeminiMediaResolution = .low,
         enabledTools: Set<GeminiTool> = GeminiTool.coreToolSet,
         skillSnapshot: SkillSessionSnapshot? = nil,
         resumeSession: Bool = false
@@ -258,6 +261,7 @@ final class GeminiLiveSession: @unchecked Sendable {
             systemPrompt: systemPrompt,
             thinkingBudget: thinkingBudget,
             voiceName: voiceName,
+            mediaResolution: mediaResolution,
             skillSnapshot: skillSnapshot
         )
         currentConfiguration = configuration
@@ -290,6 +294,7 @@ final class GeminiLiveSession: @unchecked Sendable {
             clearPendingExecApprovals()
             clearPendingSkillWrites()
             isResumingConnection = false
+            isWaitingForFreshCredentialSessionRefresh = false
             // Fire the disconnected state right away so the UI button/label
             // updates instantly even if the audio stack is still winding down.
             onStateChange?(.disconnected, "Disconnected.")
@@ -472,6 +477,7 @@ final class GeminiLiveSession: @unchecked Sendable {
 
             let task = self.urlSession.webSocketTask(with: request)
             self.socketTask = task
+            self.isWaitingForFreshCredentialSessionRefresh = false
             task.resume()
             self.scheduleSetupTimeout(for: task)
             self.receiveNextMessage()
@@ -545,6 +551,7 @@ final class GeminiLiveSession: @unchecked Sendable {
         cancelSetupTimeout()
         stopHeartbeat()
         isResumingConnection = false
+        isWaitingForFreshCredentialSessionRefresh = false
         onReconnectStateChange?(.none)
         onMicrophoneInputLevel?(0)
         onMicrophoneCaptureStateChange?(false)
@@ -569,17 +576,18 @@ final class GeminiLiveSession: @unchecked Sendable {
             return false
         }
 
-        // Hosted Gemini Live uses short-lived auth_tokens. Let the view model request
-        // a fresh token before reconnecting instead of reusing a possibly expired one.
-        if shouldDelegateReconnectToViewModel(configuration: currentConfiguration) {
-            return false
-        }
-
         if requireSafeResumptionHandle && currentResumptionHandle == nil {
             return false
         }
 
         if currentResumptionHandle == nil && !allowFreshReconnectWithoutHandle {
+            return false
+        }
+
+        // Hosted Gemini Live uses short-lived auth_tokens. A GoAway refresh can
+        // resume the session, but must let the view model obtain a new token.
+        let requiresFreshCredential = shouldDelegateReconnectToViewModel(configuration: currentConfiguration)
+        if requiresFreshCredential && (!requireSafeResumptionHandle || onFreshCredentialSessionRefreshRequested == nil) {
             return false
         }
 
@@ -600,12 +608,17 @@ final class GeminiLiveSession: @unchecked Sendable {
                 self.onStateChange?(displayState, statusText)
             }
 
-            self.startConnection(
-                using: currentConfiguration,
-                statusText: self.currentResumptionHandle != nil ? "Resuming Gemini Live..." : "Reconnecting to Gemini Live...",
-                displayState: displayState,
-                preserveAudioSession: preserveAudioSession
-            )
+            if requiresFreshCredential {
+                self.isWaitingForFreshCredentialSessionRefresh = true
+                self.onFreshCredentialSessionRefreshRequested?()
+            } else {
+                self.startConnection(
+                    using: currentConfiguration,
+                    statusText: self.currentResumptionHandle != nil ? "Resuming Gemini Live..." : "Reconnecting to Gemini Live...",
+                    displayState: displayState,
+                    preserveAudioSession: preserveAudioSession
+                )
+            }
         }
 
         pendingReconnectWorkItem = workItem
@@ -725,6 +738,11 @@ final class GeminiLiveSession: @unchecked Sendable {
     private func handleSocketTransportFailure(message: String, hadCompletedSetup: Bool) {
         let shouldPreserveAudioSession = hadCompletedSetup && captureMode == .webRTC
 
+        if isWaitingForFreshCredentialSessionRefresh {
+            tearDownConnection(preserveAudioSession: shouldPreserveAudioSession)
+            return
+        }
+
         if !hadCompletedSetup && isResumingConnection {
             clearSessionResumptionHandle()
             isResumingConnection = false
@@ -820,6 +838,7 @@ final class GeminiLiveSession: @unchecked Sendable {
         if configuration.thinkingBudget > 0 {
             generationConfig["thinkingConfig"] = ["thinkingBudget": configuration.thinkingBudget]
         }
+        generationConfig["mediaResolution"] = configuration.mediaResolution.apiName
 
         var setup: [String: Any] = [
             "model": "models/\(configuration.model)",
@@ -1051,5 +1070,6 @@ struct LiveSessionConfiguration {
     let systemPrompt: String?
     let thinkingBudget: Int
     let voiceName: String
+    let mediaResolution: GeminiMediaResolution
     let skillSnapshot: SkillSessionSnapshot?
 }

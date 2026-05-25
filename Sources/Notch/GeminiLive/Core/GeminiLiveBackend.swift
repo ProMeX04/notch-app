@@ -51,6 +51,7 @@ struct GeminiLiveSessionTokenRequest: Encodable, Sendable {
     let systemInstruction: String?
     let voiceName: String?
     let thinkingBudget: Int?
+    let mediaResolution: String?
     let responseModalities: [String]
 
     enum CodingKeys: String, CodingKey {
@@ -58,6 +59,7 @@ struct GeminiLiveSessionTokenRequest: Encodable, Sendable {
         case systemInstruction = "system_instruction"
         case voiceName = "voice_name"
         case thinkingBudget = "thinking_budget"
+        case mediaResolution = "media_resolution"
         case responseModalities = "response_modalities"
     }
 }

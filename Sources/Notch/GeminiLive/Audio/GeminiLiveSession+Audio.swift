@@ -286,6 +286,11 @@ extension GeminiLiveSession {
     }
 
     func handleFailure(message: String, preserveAudioSession: Bool = false) {
+        if isWaitingForFreshCredentialSessionRefresh {
+            tearDownConnection(preserveAudioSession: preserveAudioSession)
+            return
+        }
+
         if isResumingConnection {
             clearSessionResumptionHandle()
         }

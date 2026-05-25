@@ -143,6 +143,29 @@ func buildTestCases() -> [TestCase] {
                 try expect(plan == nil, "expected no capture plan")
             }
         ),
+        TestCase(
+            name: "screen frame filter suppresses unchanged frames",
+            run: {
+                var filter = ScreenShareFrameChangeFilter()
+                let firstFrame = Data([0x01, 0x02, 0x03])
+
+                try expect(filter.shouldSend(firstFrame), "first frame should be sent")
+                try expect(!filter.shouldSend(firstFrame), "identical frame should not be sent again")
+                try expect(filter.shouldSend(Data([0x01, 0x02, 0x04])), "changed frame should be sent")
+            }
+        ),
+        TestCase(
+            name: "screen frame filter sends current frame after reset",
+            run: {
+                var filter = ScreenShareFrameChangeFilter()
+                let frame = Data([0x10, 0x20])
+
+                try expect(filter.shouldSend(frame), "first frame should be sent")
+                try expect(!filter.shouldSend(frame), "unchanged frame should be suppressed")
+                filter.reset()
+                try expect(filter.shouldSend(frame), "frame should be sent after sharing restarts")
+            }
+        ),
     ]
 }
 

@@ -84,6 +84,14 @@ final class GeminiLiveViewModel: ObservableObject {
             persistSettings()
         }
     }
+    @Published var mediaResolution: GeminiMediaResolution = .low {
+        didSet {
+            if let idx = systemPromptPresets.firstIndex(where: { $0.id == selectedSystemPromptID }) {
+                systemPromptPresets[idx].mediaResolution = mediaResolution.rawValue
+            }
+            persistSettings()
+        }
+    }
     @Published var selectedModelID: String = GeminiLiveModel.defaultModelID {
         didSet {
             let normalizedID = GeminiLiveModel.normalizedModelID(selectedModelID)
@@ -345,6 +353,11 @@ final class GeminiLiveViewModel: ObservableObject {
         session.onReconnectStateChange = { [weak self] state in
             DispatchQueue.main.async {
                 self?.setReconnectState(state)
+            }
+        }
+        session.onFreshCredentialSessionRefreshRequested = { [weak self] in
+            DispatchQueue.main.async {
+                self?.connect(clearingTranscripts: false, preservingReconnectState: true)
             }
         }
 

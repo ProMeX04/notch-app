@@ -21,8 +21,8 @@ extension GeminiLiveViewModel {
         disconnect()
     }
 
-    func connect(clearingTranscripts: Bool = true) {
-        if reconnectState != .fullRestart {
+    func connect(clearingTranscripts: Bool = true, preservingReconnectState: Bool = false) {
+        if !preservingReconnectState && reconnectState != .fullRestart {
             setReconnectState(.none)
         }
 
@@ -63,13 +63,13 @@ extension GeminiLiveViewModel {
             TranscriptSessionLogger.shared.startSession()
         }
         lastDisconnectWasUserInitiated = false
-        setConnectionState(.connecting)
+        setConnectionState(preservingReconnectState ? .connected : .connecting)
         if !shouldPreserveMicrophoneLiveStateDuringReconnect {
             isMicrophoneLive = false
             microphoneInputLevel = 0
         }
         lastErrorMessage = nil
-        statusText = "Connecting to Gemini Live..."
+        statusText = preservingReconnectState ? "Refreshing Gemini Live session..." : "Connecting to Gemini Live..."
         logConnectAttempt(clearingTranscripts: clearingTranscripts)
 
         Task { @MainActor in
@@ -121,7 +121,8 @@ extension GeminiLiveViewModel {
                             model: preset.modelAPIName,
                             systemInstruction: systemInstruction.isEmpty ? nil : systemInstruction,
                             voiceName: preset.voiceEnum.apiName,
-                            thinkingBudget: preset.thinkingEnum.budget > 0 ? preset.thinkingEnum.budget : nil
+                            thinkingBudget: preset.thinkingEnum.budget > 0 ? preset.thinkingEnum.budget : nil,
+                            mediaResolution: preset.mediaResolutionEnum
                         )
                         connectionCredential = token.name
                         restAPIKey = nil
@@ -139,7 +140,7 @@ extension GeminiLiveViewModel {
                         self.setConnectionState(.failed)
                         self.lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                         self.statusText = "Couldn't create a Gemini Live session token."
-                        if self.reconnectState == .fullRestart {
+                        if self.reconnectState == .fullRestart || self.reconnectState == .sessionRefresh {
                             _ = self.scheduleReconnect()
                         }
                         return
@@ -169,6 +170,7 @@ extension GeminiLiveViewModel {
                 microphonePrewarmingEnabled: self.inputMode == .pushToTalk,
                 thinkingBudget: preset.thinkingEnum.budget,
                 voiceName: preset.voiceEnum.apiName,
+                mediaResolution: preset.mediaResolutionEnum,
                 enabledTools: skillSnapshot.effectiveTools,
                 skillSnapshot: skillSnapshot,
                 resumeSession: !clearingTranscripts
@@ -182,7 +184,8 @@ extension GeminiLiveViewModel {
         model: String,
         systemInstruction: String?,
         voiceName: String,
-        thinkingBudget: Int?
+        thinkingBudget: Int?,
+        mediaResolution: GeminiMediaResolution
     ) async throws -> GeminiLiveEphemeralTokenResponse {
         try await backendClient.createSessionToken(
             configuration: configuration,
@@ -191,6 +194,7 @@ extension GeminiLiveViewModel {
                 systemInstruction: systemInstruction,
                 voiceName: voiceName,
                 thinkingBudget: thinkingBudget,
+                mediaResolution: mediaResolution.apiName,
                 responseModalities: ["AUDIO"]
             )
         )

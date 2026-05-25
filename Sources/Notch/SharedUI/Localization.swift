@@ -82,6 +82,7 @@ struct Localization {
         "Delete Agent": ["English": "Delete Agent", "Tiếng Việt": "Xóa Agent"],
         "Voice": ["English": "Voice", "Tiếng Việt": "Giọng nói"],
         "Thinking": ["English": "Thinking", "Tiếng Việt": "Suy nghĩ"],
+        "Media Resolution": ["English": "Media Resolution", "Tiếng Việt": "Độ chi tiết hình ảnh"],
         "Agent": ["English": "Agent", "Tiếng Việt": "Trợ lý"],
         "Manage keys": ["English": "Manage keys", "Tiếng Việt": "Quản lý Key"],
         "Online": ["English": "Online", "Tiếng Việt": "Đang online"],

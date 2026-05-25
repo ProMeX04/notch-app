@@ -199,6 +199,23 @@ enum GeminiVoice: String, CaseIterable {
     var apiName: String { rawValue }
 }
 
+enum GeminiMediaResolution: String, CaseIterable {
+    case low = "Low"
+    case medium = "Medium"
+    case high = "High"
+
+    var apiName: String {
+        switch self {
+        case .low:
+            return "MEDIA_RESOLUTION_LOW"
+        case .medium:
+            return "MEDIA_RESOLUTION_MEDIUM"
+        case .high:
+            return "MEDIA_RESOLUTION_HIGH"
+        }
+    }
+}
+
 struct ToolActionToast: Equatable {
     let label: String
     let icon: String
@@ -386,6 +403,8 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
     var model: String
     /// GeminiThinkingLevel.rawValue for this preset.
     var thinkingLevel: String
+    /// GeminiMediaResolution.rawValue for visual input in this preset.
+    var mediaResolution: String
     /// SF Symbol used as the agent avatar in setup UI.
     var avatarSymbolName: String
     /// Relative filename of a custom avatar image stored in app state.
@@ -403,6 +422,7 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         voice: String = GeminiVoice.kore.rawValue,
         model: String = GeminiLiveModel.defaultModelID,
         thinkingLevel: String = GeminiThinkingLevel.off.rawValue,
+        mediaResolution: String = GeminiMediaResolution.low.rawValue,
         avatarSymbolName: String = GeminiSystemPromptPreset.defaultAvatarSymbolName,
         avatarImageFilename: String? = nil,
         lastUsedAt: Date? = nil
@@ -416,13 +436,14 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         self.voice = voice
         self.model = model
         self.thinkingLevel = thinkingLevel
+        self.mediaResolution = mediaResolution
         self.avatarSymbolName = avatarSymbolName
         self.avatarImageFilename = avatarImageFilename
         self.lastUsedAt = lastUsedAt
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, title, content, enabledTools, enabledSkillIDs, enabledSkillNames, voice, model, thinkingLevel, avatarSymbolName, avatarImageFilename, lastUsedAt
+        case id, title, content, enabledTools, enabledSkillIDs, enabledSkillNames, voice, model, thinkingLevel, mediaResolution, avatarSymbolName, avatarImageFilename, lastUsedAt
     }
 
     init(from decoder: Decoder) throws {
@@ -436,6 +457,7 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         voice = try c.decodeIfPresent(String.self, forKey: .voice) ?? GeminiVoice.kore.rawValue
         model = try c.decodeIfPresent(String.self, forKey: .model) ?? GeminiLiveModel.defaultModelID
         thinkingLevel = try c.decodeIfPresent(String.self, forKey: .thinkingLevel) ?? GeminiThinkingLevel.off.rawValue
+        mediaResolution = try c.decodeIfPresent(String.self, forKey: .mediaResolution) ?? GeminiMediaResolution.low.rawValue
         avatarSymbolName = try c.decodeIfPresent(String.self, forKey: .avatarSymbolName) ?? GeminiSystemPromptPreset.defaultAvatarSymbolName
         avatarImageFilename = try c.decodeIfPresent(String.self, forKey: .avatarImageFilename)
         lastUsedAt = try c.decodeIfPresent(Date.self, forKey: .lastUsedAt)
@@ -452,6 +474,7 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         try c.encode(voice, forKey: .voice)
         try c.encode(model, forKey: .model)
         try c.encode(thinkingLevel, forKey: .thinkingLevel)
+        try c.encode(mediaResolution, forKey: .mediaResolution)
         try c.encode(avatarSymbolName, forKey: .avatarSymbolName)
         try c.encodeIfPresent(avatarImageFilename, forKey: .avatarImageFilename)
         try c.encodeIfPresent(lastUsedAt, forKey: .lastUsedAt)
@@ -471,6 +494,10 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
 
     var thinkingEnum: GeminiThinkingLevel {
         GeminiThinkingLevel(rawValue: thinkingLevel) ?? .off
+    }
+
+    var mediaResolutionEnum: GeminiMediaResolution {
+        GeminiMediaResolution(rawValue: mediaResolution) ?? .low
     }
 
     var resolvedAvatarSymbolName: String {

@@ -198,8 +198,7 @@ final class GeminiLiveSession: @unchecked Sendable {
     var isResumingConnection = false
     var isWaitingForFreshCredentialSessionRefresh = false
     var currentConfiguration: LiveSessionConfiguration?
-    var latestSessionHandle: String?
-    var latestSessionHandleIsResumable = false
+    var resumptionState = GeminiLiveResumptionState()
     var pendingReconnectWorkItem: DispatchWorkItem?
     var setupTimeoutWorkItem: DispatchWorkItem?
     private var pingTimer: DispatchSourceTimer?
@@ -212,9 +211,7 @@ final class GeminiLiveSession: @unchecked Sendable {
     private var pendingSkillWritesByID: [String: PendingSkillWriterCall] = [:]
 
     var currentResumptionHandle: String? {
-        guard latestSessionHandleIsResumable else { return nil }
-        guard let latestSessionHandle, !latestSessionHandle.isEmpty else { return nil }
-        return latestSessionHandle
+        resumptionState.handle
     }
 
     deinit {
@@ -234,12 +231,12 @@ final class GeminiLiveSession: @unchecked Sendable {
         systemPrompt: String?,
         microphoneEnabled: Bool,
         microphonePrewarmingEnabled: Bool = false,
-        thinkingBudget: Int,
+        credentialExpireTime: Date? = nil,
+        thinkingConfiguration: GeminiThinkingWireConfiguration,
         voiceName: String = "Kore",
         mediaResolution: GeminiMediaResolution = .low,
         enabledTools: Set<GeminiTool> = GeminiTool.coreToolSet,
-        skillSnapshot: SkillSessionSnapshot? = nil,
-        resumeSession: Bool = false
+        skillSnapshot: SkillSessionSnapshot? = nil
     ) {
         cancelPendingReconnect()
 
@@ -248,18 +245,16 @@ final class GeminiLiveSession: @unchecked Sendable {
         self.microphonePrewarmingEnabled = microphonePrewarmingEnabled
         onUsageMetadata?(.zero)
 
-        if !resumeSession {
-            latestSessionHandle = nil
-            latestSessionHandleIsResumable = false
-        }
+        resumptionState.clear()
 
         let configuration = LiveSessionConfiguration(
             connectionCredential: connectionCredential,
             restAPIKey: restAPIKey,
             backendConfiguration: backendConfiguration,
+            credentialExpireTime: credentialExpireTime,
             model: model,
             systemPrompt: systemPrompt,
-            thinkingBudget: thinkingBudget,
+            thinkingConfiguration: thinkingConfiguration,
             voiceName: voiceName,
             mediaResolution: mediaResolution,
             skillSnapshot: skillSnapshot
@@ -269,9 +264,20 @@ final class GeminiLiveSession: @unchecked Sendable {
 
         startConnection(
             using: configuration,
-            statusText: resumeSession && currentResumptionHandle != nil ? "Resuming Gemini Live..." : "Connecting to Gemini Live...",
-            displayState: resumeSession && currentResumptionHandle != nil ? .connected : .connecting,
+            statusText: "Connecting to Gemini Live...",
+            displayState: .connecting,
             preserveAudioSession: shouldPreserveAudioSession
+        )
+    }
+
+    func resume(using configuration: LiveSessionConfiguration) {
+        cancelPendingReconnect()
+        currentConfiguration = configuration
+        startConnection(
+            using: configuration,
+            statusText: currentResumptionHandle != nil ? "Resuming Gemini Live..." : "Reconnecting to Gemini Live...",
+            displayState: currentResumptionHandle != nil ? .connected : .connecting,
+            preserveAudioSession: outputPrepared && captureMode == .webRTC
         )
     }
 
@@ -287,8 +293,7 @@ final class GeminiLiveSession: @unchecked Sendable {
 
         if userInitiated {
             currentConfiguration = nil
-            latestSessionHandle = nil
-            latestSessionHandleIsResumable = false
+            resumptionState.clear()
             reconnectAttemptCount = 0
             hasLoggedUnstableConnection = false
             clearPendingExecApprovals()
@@ -584,8 +589,8 @@ final class GeminiLiveSession: @unchecked Sendable {
             return false
         }
 
-        // Hosted Gemini Live uses short-lived auth_tokens. A GoAway refresh can
-        // resume the session, but must let the view model obtain a new token.
+        // A managed token can resume the current Live session within expireTime,
+        // even when it was issued with uses=1. Refresh it only near expiration.
         let requiresFreshCredential = shouldDelegateReconnectToViewModel(configuration: currentConfiguration)
         if requiresFreshCredential && (!requireSafeResumptionHandle || onFreshCredentialSessionRefreshRequested == nil) {
             return false
@@ -821,7 +826,7 @@ final class GeminiLiveSession: @unchecked Sendable {
     }
 
     private func shouldDelegateReconnectToViewModel(configuration: LiveSessionConfiguration) -> Bool {
-        configuration.backendConfiguration != nil && configuration.connectionCredential.hasPrefix("auth_tokens/")
+        configuration.isManagedCredential && !configuration.canResumeConnection()
     }
 
     func sendSetup(using configuration: LiveSessionConfiguration, displayState: GeminiLiveConnectionState) {
@@ -835,8 +840,13 @@ final class GeminiLiveSession: @unchecked Sendable {
                 ],
             ],
         ]
-        if configuration.thinkingBudget > 0 {
-            generationConfig["thinkingConfig"] = ["thinkingBudget": configuration.thinkingBudget]
+        switch configuration.thinkingConfiguration {
+        case let .level(level):
+            generationConfig["thinkingConfig"] = ["thinkingLevel": level]
+        case let .budget(budget):
+            generationConfig["thinkingConfig"] = ["thinkingBudget": budget]
+        case .automatic:
+            break
         }
         generationConfig["mediaResolution"] = configuration.mediaResolution.apiName
 
@@ -854,6 +864,7 @@ final class GeminiLiveSession: @unchecked Sendable {
             "generationConfig": generationConfig,
             "realtimeInputConfig": [
                 "activityHandling": "START_OF_ACTIVITY_INTERRUPTS",
+                "turnCoverage": "TURN_INCLUDES_AUDIO_ACTIVITY_AND_ALL_VIDEO",
                 "automaticActivityDetection": [
                     "startOfSpeechSensitivity": "START_SENSITIVITY_HIGH",
                     "endOfSpeechSensitivity": "END_SENSITIVITY_HIGH",
@@ -1066,10 +1077,36 @@ struct LiveSessionConfiguration {
     let connectionCredential: String
     let restAPIKey: String?
     let backendConfiguration: GeminiLiveBackendConfiguration?
+    let credentialExpireTime: Date?
     let model: String
     let systemPrompt: String?
-    let thinkingBudget: Int
+    let thinkingConfiguration: GeminiThinkingWireConfiguration
     let voiceName: String
     let mediaResolution: GeminiMediaResolution
     let skillSnapshot: SkillSessionSnapshot?
+
+    var isManagedCredential: Bool {
+        backendConfiguration != nil && connectionCredential.hasPrefix("auth_tokens/")
+    }
+
+    func canResumeConnection(now: Date = Date(), safetyMargin: TimeInterval = 15) -> Bool {
+        guard isManagedCredential else { return true }
+        guard let credentialExpireTime else { return false }
+        return credentialExpireTime.timeIntervalSince(now) > safetyMargin
+    }
+
+    func replacingCredential(with token: GeminiLiveEphemeralTokenResponse) -> LiveSessionConfiguration {
+        LiveSessionConfiguration(
+            connectionCredential: token.name,
+            restAPIKey: nil,
+            backendConfiguration: backendConfiguration,
+            credentialExpireTime: token.expireDate,
+            model: model,
+            systemPrompt: systemPrompt,
+            thinkingConfiguration: thinkingConfiguration,
+            voiceName: voiceName,
+            mediaResolution: mediaResolution,
+            skillSnapshot: skillSnapshot
+        )
+    }
 }

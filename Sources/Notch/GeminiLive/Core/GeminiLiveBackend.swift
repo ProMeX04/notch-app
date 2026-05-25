@@ -44,12 +44,22 @@ struct GeminiLiveEphemeralTokenResponse: Decodable, Sendable {
         case newSessionExpireTime = "new_session_expire_time"
         case uses
     }
+
+    var expireDate: Date? {
+        Self.parseISODate(expireTime)
+    }
+
+    private static func parseISODate(_ rawValue: String?) -> Date? {
+        guard let rawValue else { return nil }
+        return ISO8601DateFormatter().date(from: rawValue)
+    }
 }
 
 struct GeminiLiveSessionTokenRequest: Encodable, Sendable {
     let model: String
     let systemInstruction: String?
     let voiceName: String?
+    let thinkingLevel: String?
     let thinkingBudget: Int?
     let mediaResolution: String?
     let responseModalities: [String]
@@ -58,6 +68,7 @@ struct GeminiLiveSessionTokenRequest: Encodable, Sendable {
         case model
         case systemInstruction = "system_instruction"
         case voiceName = "voice_name"
+        case thinkingLevel = "thinking_level"
         case thinkingBudget = "thinking_budget"
         case mediaResolution = "media_resolution"
         case responseModalities = "response_modalities"

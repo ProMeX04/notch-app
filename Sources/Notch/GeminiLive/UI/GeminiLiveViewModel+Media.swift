@@ -5,22 +5,30 @@ import NotchChatHistoryCore
 extension GeminiLiveViewModel {
     func startFullScreenSharing() {
         cameraShare.stop()
+        screenShare.setMediaResolution(activeVisualMediaResolution)
         screenShare.startFullScreen()
     }
 
     func startRegionScreenSharing() {
         cameraShare.stop()
+        screenShare.setMediaResolution(activeVisualMediaResolution)
         screenShare.startRegion()
     }
 
     func startWindowSharing() {
         cameraShare.stop()
+        screenShare.setMediaResolution(activeVisualMediaResolution)
         screenShare.startWindow()
     }
 
     func startCameraSharing() {
         screenShare.stop()
+        cameraShare.setMediaResolution(activeVisualMediaResolution)
         cameraShare.start()
+    }
+
+    private var activeVisualMediaResolution: GeminiMediaResolution {
+        session.currentConfiguration?.mediaResolution ?? mediaResolution
     }
 
     func stopVisualSharing() {

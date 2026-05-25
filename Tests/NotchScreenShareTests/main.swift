@@ -166,6 +166,38 @@ func buildTestCases() -> [TestCase] {
                 try expect(filter.shouldSend(frame), "frame should be sent after sharing restarts")
             }
         ),
+        TestCase(
+            name: "visual profiles map media resolution by capture source",
+            run: {
+                try expectEqual(
+                    ScreenShareVisualProfile.profile(source: .camera, resolution: .low).maximumLongEdge,
+                    512,
+                    "low camera cap"
+                )
+                try expectEqual(
+                    ScreenShareVisualProfile.profile(source: .screen, resolution: .medium).maximumLongEdge,
+                    1280,
+                    "medium screen cap"
+                )
+                try expect(
+                    ScreenShareVisualProfile.profile(source: .screen, resolution: .high).maximumLongEdge == nil,
+                    "high screen sharing should retain native capture size"
+                )
+            }
+        ),
+        TestCase(
+            name: "visual profile resizes proportionally without upscaling",
+            run: {
+                let profile = ScreenShareVisualProfile(maximumLongEdge: 1280)
+                let reduced = profile.fittedPixelSize(width: 2880, height: 1800)
+                try expectEqual(reduced.width, 1280, "resized width")
+                try expectEqual(reduced.height, 800, "resized height")
+
+                let unchanged = profile.fittedPixelSize(width: 640, height: 480)
+                try expectEqual(unchanged.width, 640, "small width")
+                try expectEqual(unchanged.height, 480, "small height")
+            }
+        ),
     ]
 }
 

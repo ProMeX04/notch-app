@@ -68,7 +68,7 @@ final class GeminiLiveViewModel: ObservableObject {
     @Published var userTurnSequence = 0
 
     // Per-preset: reading reflects the active preset; writing updates that preset and persists.
-    @Published var thinkingLevel: GeminiThinkingLevel = .off {
+    @Published var thinkingLevel: GeminiThinkingLevel = .minimal {
         didSet {
             if let idx = systemPromptPresets.firstIndex(where: { $0.id == selectedSystemPromptID }) {
                 systemPromptPresets[idx].thinkingLevel = thinkingLevel.rawValue
@@ -95,6 +95,10 @@ final class GeminiLiveViewModel: ObservableObject {
     @Published var selectedModelID: String = GeminiLiveModel.defaultModelID {
         didSet {
             let normalizedID = GeminiLiveModel.normalizedModelID(selectedModelID)
+            let normalizedThinkingLevel = thinkingLevel.normalized(forModel: normalizedID)
+            if normalizedThinkingLevel != thinkingLevel {
+                thinkingLevel = normalizedThinkingLevel
+            }
             if let idx = systemPromptPresets.firstIndex(where: { $0.id == selectedSystemPromptID }) {
                 systemPromptPresets[idx].model = normalizedID
             }

@@ -1,6 +1,7 @@
 @preconcurrency import AVFoundation
 import CoreImage
 import Foundation
+import NotchScreenShareCore
 
 @MainActor
 final class CameraShareCoordinator: NSObject, ObservableObject {
@@ -12,12 +13,24 @@ final class CameraShareCoordinator: NSObject, ObservableObject {
     private var activeInput: AVCaptureDeviceInput?
     private var activeOutput: AVCaptureVideoDataOutput?
     private nonisolated(unsafe) var nextFrameSendTime: CFTimeInterval = 0
-    private nonisolated let sendFrameInterval: CFTimeInterval = 1.5
+    private nonisolated let sendFrameInterval: CFTimeInterval = 1.0
+    private nonisolated(unsafe) var maximumLongEdge: CGFloat = 512
+    private nonisolated(unsafe) var frameChangeFilter = ScreenShareFrameChangeFilter()
+    private var capturePreset: AVCaptureSession.Preset = .vga640x480
 
     var onFrameCaptured: (@MainActor (Data) -> Void)?
     var onStatusChange: (@MainActor (String?) -> Void)?
     var onErrorMessageChange: (@MainActor (String?) -> Void)?
     var connectionStateProvider: (@MainActor () -> GeminiLiveConnectionState)?
+
+    func setMediaResolution(_ resolution: GeminiMediaResolution) {
+        let profile = ScreenShareVisualProfile.profile(
+            source: .camera,
+            resolution: resolution.screenShareMediaResolution
+        )
+        maximumLongEdge = CGFloat(profile.maximumLongEdge ?? 1280)
+        capturePreset = resolution == .low ? .vga640x480 : .hd1280x720
+    }
 
     func start() {
         ensurePermission { [weak self] granted in
@@ -84,12 +97,14 @@ final class CameraShareCoordinator: NSObject, ObservableObject {
             activeInput = input
             activeOutput = output
             nextFrameSendTime = 0
+            frameChangeFilter.reset()
             setStatusMessage("Starting camera sharing...")
 
             let session = captureSession
+            let capturePreset = capturePreset
             captureQueue.async { [weak self, input, output, session] in
                 session.beginConfiguration()
-                session.sessionPreset = .medium
+                session.sessionPreset = session.canSetSessionPreset(capturePreset) ? capturePreset : .medium
 
                 for existingInput in session.inputs {
                     session.removeInput(existingInput)
@@ -171,10 +186,10 @@ final class CameraShareCoordinator: NSObject, ObservableObject {
 
     private nonisolated static let jpegContext = CIContext(options: [.useSoftwareRenderer: false])
 
-    private nonisolated static func encodeJPEG(from pixelBuffer: CVPixelBuffer) -> Data? {
-        let maxWidth: CGFloat = 1280
+    private nonisolated static func encodeJPEG(from pixelBuffer: CVPixelBuffer, maxDimension: CGFloat) -> Data? {
         let originalWidth = CGFloat(CVPixelBufferGetWidth(pixelBuffer))
-        let scale = min(1.0, maxWidth / originalWidth)
+        let originalHeight = CGFloat(CVPixelBufferGetHeight(pixelBuffer))
+        let scale = min(1.0, maxDimension / max(originalWidth, originalHeight))
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer).transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         return jpegContext.jpegRepresentation(
@@ -192,7 +207,8 @@ extension CameraShareCoordinator: AVCaptureVideoDataOutputSampleBufferDelegate {
         nextFrameSendTime = timestamp + sendFrameInterval
 
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer),
-              let jpeg = CameraShareCoordinator.encodeJPEG(from: pixelBuffer)
+              let jpeg = CameraShareCoordinator.encodeJPEG(from: pixelBuffer, maxDimension: maximumLongEdge),
+              frameChangeFilter.shouldSend(jpeg)
         else { return }
 
         Task { @MainActor [weak self] in

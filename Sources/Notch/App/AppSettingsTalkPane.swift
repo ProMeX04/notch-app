@@ -73,19 +73,21 @@ struct AppTalkSettingsPane: View {
                                     tint: tint
                                 )
                                 .frame(width: 220)
+                                .disabled(!gemini.canManageConfiguration)
                             }
 
                             if gemini.selectedConnectionMethod == .userAPIKey {
                                 VStack(alignment: .leading, spacing: 10) {
                                     SecureField("AIza...", text: $gemini.apiKeyText)
                                         .textFieldStyle(.roundedBorder)
+                                        .disabled(!gemini.canManageConfiguration)
 
                                     StandardActionButton(
                                         title: gemini.isSavingAPIKey ? Localization.get("Saving...", lang: appLanguage) : Localization.get("Save API key to local", lang: appLanguage),
                                         icon: "key.fill",
                                         tint: tint,
                                         variant: .primary,
-                                        isDisabled: gemini.isSavingAPIKey
+                                        isDisabled: gemini.isSavingAPIKey || !gemini.canManageConfiguration
                                     ) {
                                         Task { await gemini.saveAPIKey() }
                                     }
@@ -178,6 +180,7 @@ struct AppTalkSettingsPane: View {
                                             gemini.saveUserProfile(newValue)
                                         }
                                     }
+                                    .disabled(!gemini.canManageConfiguration)
                             }
                         }
                     }
@@ -214,6 +217,7 @@ struct AppTalkSettingsPane: View {
                                             gemini.saveMemory(newValue)
                                         }
                                     }
+                                    .disabled(!gemini.canManageConfiguration)
                             }
                         }
                     }
@@ -369,6 +373,7 @@ struct AppTalkSettingsPane: View {
                         .foregroundStyle(tint)
                 }
                 .buttonStyle(.plain)
+                .disabled(!gemini.canManageConfiguration)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
@@ -387,6 +392,7 @@ struct AppTalkSettingsPane: View {
                             gemini.selectSystemPrompt(id: prompt.id)
                             syncAgentDrafts()
                         }
+                        .disabled(!gemini.canManageConfiguration)
                     }
                 }
                 .padding(.horizontal, 8)
@@ -423,6 +429,7 @@ struct AppTalkSettingsPane: View {
                             .onChange(of: agentNameDraft) { _, newValue in
                                 _ = gemini.saveSystemPrompt(id: currentPromptID, title: newValue, content: agentPromptDraft)
                             }
+                            .disabled(!gemini.canManageConfiguration)
 
                         HStack(spacing: 6) {
                             StandardActionButton(
@@ -430,14 +437,15 @@ struct AppTalkSettingsPane: View {
                                 icon: "photo",
                                 tint: tint,
                                 variant: .primary,
-                                isDisabled: !gemini.canManageSkills
+                                isDisabled: !gemini.canManageConfiguration
                             ) { gemini.chooseSelectedSystemPromptAvatarImage() }
 
                             if gemini.selectedSystemPromptAvatarImageURL != nil {
                                 StandardActionButton(
                                     title: Localization.get("Clear", lang: appLanguage),
                                     icon: "xmark",
-                                    tint: tint
+                                    tint: tint,
+                                    isDisabled: !gemini.canManageConfiguration
                                 ) { gemini.clearSelectedSystemPromptAvatarImage() }
                             }
                             Spacer()
@@ -446,7 +454,7 @@ struct AppTalkSettingsPane: View {
                                 icon: "trash",
                                 tint: Color(nsColor: .systemRed).opacity(0.85),
                                 variant: .primary,
-                                isDisabled: !gemini.canDeleteSelectedSystemPrompt
+                                isDisabled: !gemini.canManageConfiguration || !gemini.canDeleteSelectedSystemPrompt
                             ) { showingDeleteAgentAlert = true }
                         }
                     }
@@ -492,7 +500,7 @@ struct AppTalkSettingsPane: View {
 
                     agentModelVoiceThinkingRow(icon: "lightbulb", titleKey: "Thinking") {
                         fixedWidthAgentMenu(title: Localization.get(gemini.thinkingLevel.rawValue, lang: appLanguage)) {
-                            ForEach(GeminiThinkingLevel.allCases, id: \.self) { level in
+                            ForEach(gemini.availableThinkingLevels, id: \.self) { level in
                                 Button(Localization.get(level.rawValue, lang: appLanguage)) {
                                     gemini.thinkingLevel = level
                                 }
@@ -542,6 +550,7 @@ struct AppTalkSettingsPane: View {
                             .onChange(of: agentPromptDraft) { _, newValue in
                                 _ = gemini.saveSystemPrompt(id: currentPromptID, title: agentNameDraft, content: newValue)
                             }
+                            .disabled(!gemini.canManageConfiguration)
                     }
                 }
 
@@ -634,6 +643,8 @@ struct AppTalkSettingsPane: View {
             )
         }
         .buttonStyle(.plain)
+        .disabled(!gemini.canManageConfiguration)
+        .opacity(gemini.canManageConfiguration ? 1 : 0.45)
     }
 }
 

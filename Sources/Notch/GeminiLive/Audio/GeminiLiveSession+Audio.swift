@@ -4,8 +4,7 @@ import os
 
 extension GeminiLiveSession {
     func clearSessionResumptionHandle() {
-        latestSessionHandle = nil
-        latestSessionHandleIsResumable = false
+        resumptionState.clear()
     }
 
     func prepareOutputIfNeeded() {
@@ -263,13 +262,7 @@ extension GeminiLiveSession {
 
     func handleSessionResumptionUpdate(_ update: [String: Any]) {
         let resumable = update["resumable"] as? Bool ?? false
-        guard resumable, let newHandle = update["newHandle"] as? String, !newHandle.isEmpty else {
-            clearSessionResumptionHandle()
-            return
-        }
-
-        latestSessionHandle = newHandle
-        latestSessionHandleIsResumable = true
+        resumptionState.acceptUpdate(resumable: resumable, newHandle: update["newHandle"] as? String)
     }
 
     func handleGoAway(_ goAway: [String: Any]) {

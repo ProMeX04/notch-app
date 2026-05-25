@@ -1,5 +1,6 @@
 import Foundation
 import NotchChatHistoryCore
+import NotchGeminiLiveCore
 
 @MainActor
 extension GeminiLiveViewModel {
@@ -73,8 +74,54 @@ extension GeminiLiveViewModel {
         logConnectAttempt(clearingTranscripts: clearingTranscripts)
 
         Task { @MainActor in
+            if !clearingTranscripts, let existingConfiguration = self.session.currentConfiguration {
+                if existingConfiguration.isManagedCredential,
+                   self.shouldRefreshManagedServerCredential(existingConfiguration) {
+                    guard let freshBackend = await self.backend.freshConfiguredBackendUserConfiguration(),
+                          let sessionBackend = existingConfiguration.backendConfiguration else {
+                        self.setConnectionState(.failed)
+                        self.lastErrorMessage = "Please sign in to your Gemini Live server account."
+                        self.statusText = self.defaultDisconnectedStatusText
+                        self.handleUnrecoverableReconnectFailureIfNeeded()
+                        return
+                    }
+
+                    let credentialBackend = GeminiLiveBackendConfiguration(
+                        baseURL: sessionBackend.baseURL,
+                        clientToken: sessionBackend.clientToken,
+                        userAccessToken: freshBackend.userAccessToken
+                    )
+                    self.statusText = "Requesting secure Gemini Live token..."
+                    do {
+                        let token = try await self.requestManagedServerSessionToken(
+                            configuration: credentialBackend,
+                            model: existingConfiguration.model,
+                            systemInstruction: existingConfiguration.systemPrompt,
+                            voiceName: existingConfiguration.voiceName,
+                            thinkingConfiguration: existingConfiguration.thinkingConfiguration,
+                            mediaResolution: existingConfiguration.mediaResolution
+                        )
+                        self.session.resume(using: existingConfiguration.replacingCredential(with: token))
+                    } catch {
+                        if self.backend.shouldClearBackendAuthSession(for: error) {
+                            self.backend.clearBackendAuthSession()
+                        }
+                        self.logGeminiFailure("session token refresh failed", error: error)
+                        self.setConnectionState(.failed)
+                        self.lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                        self.statusText = "Couldn't refresh the Gemini Live session token."
+                        _ = self.scheduleReconnect()
+                        return
+                    }
+                } else {
+                    self.session.resume(using: existingConfiguration)
+                }
+                self.syncEffectiveMicrophoneState()
+                return
+            }
+
             let skillSnapshot: SkillSessionSnapshot
-            if clearingTranscripts || self.currentSkillSnapshot == nil {
+            if self.currentSkillSnapshot == nil {
                 skillSnapshot = self.makeSkillSessionSnapshot()
                 self.currentSkillSnapshot = skillSnapshot
             } else {
@@ -90,74 +137,68 @@ extension GeminiLiveViewModel {
 
             let preset = self.selectedSystemPromptPreset
             let systemInstruction = systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
-            let existingConfiguration = !clearingTranscripts ? self.session.currentConfiguration : nil
             let connectionCredential: String
             let restAPIKey: String?
             let backendConfiguration: GeminiLiveBackendConfiguration?
+            var tokenResponse: GeminiLiveEphemeralTokenResponse?
 
-            if let existingConfiguration,
-               !self.shouldRefreshManagedServerCredential(existingConfiguration) {
-                connectionCredential = existingConfiguration.connectionCredential
-                restAPIKey = existingConfiguration.restAPIKey
-                backendConfiguration = existingConfiguration.backendConfiguration
-            } else {
-                switch self.selectedConnectionMethod {
-                case .managedServer:
-                    guard let configuredBackend = await self.backend.freshConfiguredBackendUserConfiguration() else {
-                        self.setConnectionState(.failed)
-                        self.lastErrorMessage = self.configuredBackendConfiguration == nil
-                            ? "Gemini Live server is missing."
-                            : "Please sign in to your Gemini Live server account."
-                        self.statusText = self.defaultDisconnectedStatusText
-                        self.logConnectBlocked(reason: "managed server auth missing")
-                        self.handleUnrecoverableReconnectFailureIfNeeded()
-                        return
-                    }
-
-                    self.statusText = "Requesting secure Gemini Live token..."
-                    do {
-                        let token = try await self.requestManagedServerSessionToken(
-                            configuration: configuredBackend,
-                            model: preset.modelAPIName,
-                            systemInstruction: systemInstruction.isEmpty ? nil : systemInstruction,
-                            voiceName: preset.voiceEnum.apiName,
-                            thinkingBudget: preset.thinkingEnum.budget > 0 ? preset.thinkingEnum.budget : nil,
-                            mediaResolution: preset.mediaResolutionEnum
-                        )
-                        connectionCredential = token.name
-                        restAPIKey = nil
-                        backendConfiguration = configuredBackend
-                    } catch {
-                        if self.backend.shouldClearBackendAuthSession(for: error) {
-                            self.logGeminiFailure(
-                                "session token request rejected the saved session; clearing local auth",
-                                error: error
-                            )
-                            self.backend.clearBackendAuthSession()
-                        } else {
-                            self.logGeminiFailure("session token request failed", error: error)
-                        }
-                        self.setConnectionState(.failed)
-                        self.lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-                        self.statusText = "Couldn't create a Gemini Live session token."
-                        if self.reconnectState == .fullRestart || self.reconnectState == .sessionRefresh {
-                            _ = self.scheduleReconnect()
-                        }
-                        return
-                    }
-                case .userAPIKey:
-                    guard let configuredAPIKey = self.configuredAPIKey else {
-                        self.setConnectionState(.failed)
-                        self.lastErrorMessage = "Gemini API key is missing."
-                        self.statusText = self.defaultDisconnectedStatusText
-                        self.logConnectBlocked(reason: "API key missing")
-                        self.handleUnrecoverableReconnectFailureIfNeeded()
-                        return
-                    }
-                    connectionCredential = configuredAPIKey
-                    restAPIKey = configuredAPIKey
-                    backendConfiguration = nil
+            switch self.selectedConnectionMethod {
+            case .managedServer:
+                guard let configuredBackend = await self.backend.freshConfiguredBackendUserConfiguration() else {
+                    self.setConnectionState(.failed)
+                    self.lastErrorMessage = self.configuredBackendConfiguration == nil
+                        ? "Gemini Live server is missing."
+                        : "Please sign in to your Gemini Live server account."
+                    self.statusText = self.defaultDisconnectedStatusText
+                    self.logConnectBlocked(reason: "managed server auth missing")
+                    self.handleUnrecoverableReconnectFailureIfNeeded()
+                    return
                 }
+
+                self.statusText = "Requesting secure Gemini Live token..."
+                do {
+                    let token = try await self.requestManagedServerSessionToken(
+                        configuration: configuredBackend,
+                        model: preset.modelAPIName,
+                        systemInstruction: systemInstruction.isEmpty ? nil : systemInstruction,
+                        voiceName: preset.voiceEnum.apiName,
+                        thinkingConfiguration: preset.thinkingEnum.wireConfiguration(forModel: preset.modelAPIName),
+                        mediaResolution: preset.mediaResolutionEnum
+                    )
+                    tokenResponse = token
+                    connectionCredential = token.name
+                    restAPIKey = nil
+                    backendConfiguration = configuredBackend
+                } catch {
+                    if self.backend.shouldClearBackendAuthSession(for: error) {
+                        self.logGeminiFailure(
+                            "session token request rejected the saved session; clearing local auth",
+                            error: error
+                        )
+                        self.backend.clearBackendAuthSession()
+                    } else {
+                        self.logGeminiFailure("session token request failed", error: error)
+                    }
+                    self.setConnectionState(.failed)
+                    self.lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                    self.statusText = "Couldn't create a Gemini Live session token."
+                    if self.reconnectState == .fullRestart || self.reconnectState == .sessionRefresh {
+                        _ = self.scheduleReconnect()
+                    }
+                    return
+                }
+            case .userAPIKey:
+                guard let configuredAPIKey = self.configuredAPIKey else {
+                    self.setConnectionState(.failed)
+                    self.lastErrorMessage = "Gemini API key is missing."
+                    self.statusText = self.defaultDisconnectedStatusText
+                    self.logConnectBlocked(reason: "API key missing")
+                    self.handleUnrecoverableReconnectFailureIfNeeded()
+                    return
+                }
+                connectionCredential = configuredAPIKey
+                restAPIKey = configuredAPIKey
+                backendConfiguration = nil
             }
 
             self.session.connect(
@@ -168,12 +209,12 @@ extension GeminiLiveViewModel {
                 systemPrompt: systemPrompt,
                 microphoneEnabled: self.effectiveMicrophoneEnabled && self.hasMicrophonePermission,
                 microphonePrewarmingEnabled: self.inputMode == .pushToTalk,
-                thinkingBudget: preset.thinkingEnum.budget,
+                credentialExpireTime: tokenResponse?.expireDate,
+                thinkingConfiguration: preset.thinkingEnum.wireConfiguration(forModel: preset.modelAPIName),
                 voiceName: preset.voiceEnum.apiName,
                 mediaResolution: preset.mediaResolutionEnum,
                 enabledTools: skillSnapshot.effectiveTools,
-                skillSnapshot: skillSnapshot,
-                resumeSession: !clearingTranscripts
+                skillSnapshot: skillSnapshot
             )
             self.syncEffectiveMicrophoneState()
         }
@@ -184,15 +225,29 @@ extension GeminiLiveViewModel {
         model: String,
         systemInstruction: String?,
         voiceName: String,
-        thinkingBudget: Int?,
+        thinkingConfiguration: GeminiThinkingWireConfiguration,
         mediaResolution: GeminiMediaResolution
     ) async throws -> GeminiLiveEphemeralTokenResponse {
-        try await backendClient.createSessionToken(
+        let thinkingLevel: String?
+        let thinkingBudget: Int?
+        switch thinkingConfiguration {
+        case let .level(level):
+            thinkingLevel = level
+            thinkingBudget = nil
+        case let .budget(budget):
+            thinkingLevel = nil
+            thinkingBudget = budget
+        case .automatic:
+            thinkingLevel = nil
+            thinkingBudget = nil
+        }
+        return try await backendClient.createSessionToken(
             configuration: configuration,
             requestBody: GeminiLiveSessionTokenRequest(
                 model: model,
                 systemInstruction: systemInstruction,
                 voiceName: voiceName,
+                thinkingLevel: thinkingLevel,
                 thinkingBudget: thinkingBudget,
                 mediaResolution: mediaResolution.apiName,
                 responseModalities: ["AUDIO"]
@@ -312,6 +367,7 @@ extension GeminiLiveViewModel {
     }
 
     func shouldRefreshManagedServerCredential(_ configuration: LiveSessionConfiguration) -> Bool {
-        configuration.backendConfiguration != nil && configuration.connectionCredential.hasPrefix("auth_tokens/")
+        configuration.isManagedCredential
+            && (session.currentResumptionHandle == nil || !configuration.canResumeConnection())
     }
 }

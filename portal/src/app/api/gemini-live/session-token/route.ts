@@ -1,17 +1,9 @@
-import { GoogleGenAI, MediaResolution, Modality, type LiveConnectConfig } from '@google/genai'
+import { GoogleGenAI } from '@google/genai'
 import { NextResponse } from 'next/server'
 
 import { logAppEvent } from '@/lib/event-logger'
+import { buildGeminiLiveConnectConfig, type GeminiLiveSessionTokenRequest } from '@/lib/gemini-live-token-policy'
 import { getAuthenticatedUser, getFeatureRequirement } from '@/lib/notch-auth'
-
-type SessionTokenRequest = {
-  model?: string
-  system_instruction?: string | null
-  voice_name?: string | null
-  thinking_budget?: number | null
-  media_resolution?: string | null
-  response_modalities?: string[] | null
-}
 
 function geminiClient() {
   const apiKey = process.env.GEMINI_API_KEY?.trim()
@@ -20,32 +12,6 @@ function geminiClient() {
   }
 
   return new GoogleGenAI({ apiKey })
-}
-
-function normalizeModality(raw: string): Modality | null {
-  switch (raw.trim().toUpperCase()) {
-    case 'AUDIO':
-      return Modality.AUDIO
-    case 'TEXT':
-      return Modality.TEXT
-    case 'IMAGE':
-      return Modality.IMAGE
-    default:
-      return null
-  }
-}
-
-function normalizeMediaResolution(raw: string): MediaResolution | null {
-  switch (raw.trim().toUpperCase()) {
-    case 'MEDIA_RESOLUTION_LOW':
-      return MediaResolution.MEDIA_RESOLUTION_LOW
-    case 'MEDIA_RESOLUTION_MEDIUM':
-      return MediaResolution.MEDIA_RESOLUTION_MEDIUM
-    case 'MEDIA_RESOLUTION_HIGH':
-      return MediaResolution.MEDIA_RESOLUTION_HIGH
-    default:
-      return null
-  }
 }
 
 export async function POST(req: Request) {
@@ -89,7 +55,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const body = (await req.json()) as SessionTokenRequest
+    const body = (await req.json()) as GeminiLiveSessionTokenRequest
     const now = Date.now()
     const model = typeof body.model === 'string' ? body.model.trim() : ''
     if (!model) {
@@ -106,59 +72,17 @@ export async function POST(req: Request) {
     }
     const expireTime = new Date(now + 30 * 60 * 1000).toISOString()
     const newSessionExpireTime = new Date(now + 60 * 1000).toISOString()
+    // Session resumption may reuse this token within expireTime even with one use.
     const uses = 1
 
     // Forward client-supplied session settings into the ephemeral token's
     // `liveConnectConstraints`. When constraints are set, the live WebSocket
     // runs in "constrained" mode and any matching fields the client sends in
-    // its setup message are ignored — so if we don't lock voiceName / system
-    // instruction / thinkingBudget here, the session silently falls back to
-    // defaults (previous bug: wrong voice when connecting via ephemeral token).
-    const requestedModalities = Array.isArray(body.response_modalities)
-      ? body.response_modalities
-          .map((value) => (typeof value === 'string' ? normalizeModality(value) : null))
-          .filter((value): value is Modality => value !== null)
-      : []
-    const responseModalities = requestedModalities.length > 0 ? requestedModalities : [Modality.AUDIO]
-
-    const trimmedSystemInstruction =
-      typeof body.system_instruction === 'string' ? body.system_instruction.trim() : ''
-    const trimmedVoiceName = typeof body.voice_name === 'string' ? body.voice_name.trim() : ''
-    const thinkingBudget =
-      typeof body.thinking_budget === 'number' && Number.isFinite(body.thinking_budget)
-        ? Math.max(0, Math.trunc(body.thinking_budget))
-        : null
-    const mediaResolution =
-      typeof body.media_resolution === 'string' ? normalizeMediaResolution(body.media_resolution) : null
-
-    const liveConfig: LiveConnectConfig = {
-      responseModalities,
-      sessionResumption: {},
-    }
-
-    if (trimmedVoiceName) {
-      liveConfig.speechConfig = {
-        voiceConfig: {
-          prebuiltVoiceConfig: {
-            voiceName: trimmedVoiceName,
-          },
-        },
-      }
-    }
-
-    if (trimmedSystemInstruction) {
-      liveConfig.systemInstruction = {
-        parts: [{ text: trimmedSystemInstruction }],
-      }
-    }
-
-    if (thinkingBudget !== null && thinkingBudget > 0) {
-      liveConfig.thinkingConfig = { thinkingBudget }
-    }
-
-    if (mediaResolution !== null) {
-      liveConfig.mediaResolution = mediaResolution
-    }
+    // its setup message are ignored. Embed stable session settings here, while
+    // deliberately leaving sessionResumption unlocked because its handle is
+    // only known later when the desktop reconnects.
+    const { liveConfig, responseModalities, mediaResolution, hasThinkingLevel, hasThinkingBudget } =
+      buildGeminiLiveConnectConfig(body, model)
 
     await logAppEvent({
       req,
@@ -171,8 +95,9 @@ export async function POST(req: Request) {
         model,
         responseModalities,
         modalityCount: responseModalities.length,
-        hasVoice: Boolean(trimmedVoiceName),
-        hasThinkingBudget: thinkingBudget !== null && thinkingBudget > 0,
+        hasVoice: Boolean(typeof body.voice_name === 'string' && body.voice_name.trim()),
+        hasThinkingLevel,
+        hasThinkingBudget,
         mediaResolution,
         requirement,
       },

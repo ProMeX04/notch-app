@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import NotchGeminiLiveCore
 import NotchGeminiSkillStorage
 
 extension GeminiLiveViewModel {
@@ -24,6 +25,10 @@ extension GeminiLiveViewModel {
 
     var canManageSkills: Bool {
         canManageConfiguration
+    }
+
+    var availableThinkingLevels: [GeminiThinkingLevel] {
+        GeminiThinkingLevel.availableLevels(forModel: selectedModelID)
     }
 
     var selectedSystemPromptTitle: String {
@@ -60,7 +65,7 @@ extension GeminiLiveViewModel {
             enabledTools: [],
             voice: GeminiVoice.kore.rawValue,
             model: GeminiLiveModel.defaultModelID,
-            thinkingLevel: GeminiThinkingLevel.off.rawValue,
+            thinkingLevel: GeminiThinkingLevel.minimal.rawValue,
             mediaResolution: GeminiMediaResolution.low.rawValue,
             lastUsedAt: Date()
         )
@@ -138,7 +143,7 @@ extension GeminiLiveViewModel {
                 enabledTools: [],
                 voice: GeminiVoice.kore.rawValue,
                 model: GeminiLiveModel.defaultModelID,
-                thinkingLevel: GeminiThinkingLevel.off.rawValue,
+                thinkingLevel: GeminiThinkingLevel.minimal.rawValue,
                 mediaResolution: GeminiMediaResolution.low.rawValue,
                 lastUsedAt: Date()
             )

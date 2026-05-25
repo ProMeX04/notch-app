@@ -7,6 +7,7 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
+    "test:gemini-live": "node --experimental-strip-types --test src/lib/gemini-live-token-policy.test.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

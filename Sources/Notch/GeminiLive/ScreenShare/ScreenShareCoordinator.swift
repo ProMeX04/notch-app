@@ -45,7 +45,8 @@ final class ScreenShareCoordinator: ObservableObject {
     private var streamDelegate: ScreenShareStreamDelegate?
     private var streamStartTask: Task<Void, Never>?
     private var contentFilter: SCContentFilter?
-    private let sendFrameInterval: TimeInterval = 1.5
+    private let sendFrameInterval: TimeInterval = 1.0
+    private var visualProfile = ScreenShareVisualProfile.profile(source: .screen, resolution: .low)
 
     var onFrameCaptured: (@MainActor (Data) -> Void)?
     var onStatusChange: (@MainActor (String?) -> Void)?
@@ -59,6 +60,10 @@ final class ScreenShareCoordinator: ObservableObject {
             self.selectedRegion = movedRegion
             self.highlightRect = movedRegion
         }
+    }
+
+    func setMediaResolution(_ resolution: GeminiMediaResolution) {
+        visualProfile = .profile(source: .screen, resolution: resolution.screenShareMediaResolution)
     }
 
     func startFullScreen() {
@@ -201,13 +206,22 @@ final class ScreenShareCoordinator: ObservableObject {
         let mode = mode
         let region = selectedRegion
         let selectedFilter = contentFilter
+        let visualProfile = visualProfile
         streamStartTask = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                let streamComponents = try await self.makeStreamComponents(mode: mode, region: region, contentFilter: selectedFilter)
+                let streamComponents = try await self.makeStreamComponents(
+                    mode: mode,
+                    region: region,
+                    contentFilter: selectedFilter,
+                    visualProfile: visualProfile
+                )
                 guard !Task.isCancelled, self.isActive else { return }
 
-                let output = ScreenShareStreamOutput(sendFrameInterval: self.sendFrameInterval) { [weak self] data in
+                let output = ScreenShareStreamOutput(
+                    sendFrameInterval: self.sendFrameInterval,
+                    maximumLongEdge: visualProfile.maximumLongEdge
+                ) { [weak self] data in
                     guard let self, self.isActive else { return }
                     self.onFrameCaptured?(data)
                 }
@@ -267,17 +281,25 @@ final class ScreenShareCoordinator: ObservableObject {
         let delegate: ScreenShareStreamDelegate
     }
 
-    private func makeStreamComponents(mode: ScreenShareMode, region: CGRect?, contentFilter: SCContentFilter?) async throws -> ScreenShareStreamComponents {
+    private func makeStreamComponents(
+        mode: ScreenShareMode,
+        region: CGRect?,
+        contentFilter: SCContentFilter?,
+        visualProfile: ScreenShareVisualProfile
+    ) async throws -> ScreenShareStreamComponents {
         switch mode {
         case .fullScreen, .selectedRegion:
-            return try await makeDisplayStreamComponents(region: region)
+            return try await makeDisplayStreamComponents(region: region, visualProfile: visualProfile)
         case .appWindow:
             guard let contentFilter else { throw ScreenShareStreamError.missingContentFilter }
-            return makeSharedContentStreamComponents(contentFilter)
+            return makeSharedContentStreamComponents(contentFilter, visualProfile: visualProfile)
         }
     }
 
-    private func makeDisplayStreamComponents(region: CGRect?) async throws -> ScreenShareStreamComponents {
+    private func makeDisplayStreamComponents(
+        region: CGRect?,
+        visualProfile: ScreenShareVisualProfile
+    ) async throws -> ScreenShareStreamComponents {
         let shareableContent = try await SCShareableContent.current
         let displayDescriptors = shareableContent.displays.map {
             ScreenShareDisplayDescriptor(
@@ -295,25 +317,33 @@ final class ScreenShareCoordinator: ObservableObject {
             displays: displayDescriptors
         ) else { throw ScreenShareStreamError.invalidContentRect }
         guard let display = shareableContent.displays.first(where: { $0.displayID == capturePlan.displayID }) else { throw ScreenShareStreamError.missingDisplay }
+        let outputSize = visualProfile.fittedPixelSize(width: capturePlan.outputWidth, height: capturePlan.outputHeight)
 
         let configuration = SCStreamConfiguration()
         configuration.sourceRect = capturePlan.sourceRect
-        configuration.width = capturePlan.outputWidth
-        configuration.height = capturePlan.outputHeight
+        configuration.width = outputSize.width
+        configuration.height = outputSize.height
         configureStream(configuration)
 
         let filter = SCContentFilter(display: display, excludingWindows: [])
         return makeStreamComponents(filter: filter, configuration: configuration)
     }
 
-    private func makeSharedContentStreamComponents(_ contentFilter: SCContentFilter) -> ScreenShareStreamComponents {
+    private func makeSharedContentStreamComponents(
+        _ contentFilter: SCContentFilter,
+        visualProfile: ScreenShareVisualProfile
+    ) -> ScreenShareStreamComponents {
         let contentInfo = SCShareableContent.info(for: contentFilter)
         let contentRect = contentInfo.contentRect.standardized
         let pixelScale = CGFloat(max(contentInfo.pointPixelScale, 1))
 
+        let outputSize = visualProfile.fittedPixelSize(
+            width: max(Int((contentRect.width * pixelScale).rounded(.up)), 1),
+            height: max(Int((contentRect.height * pixelScale).rounded(.up)), 1)
+        )
         let configuration = SCStreamConfiguration()
-        configuration.width = max(Int((contentRect.width * pixelScale).rounded(.up)), 1)
-        configuration.height = max(Int((contentRect.height * pixelScale).rounded(.up)), 1)
+        configuration.width = outputSize.width
+        configuration.height = outputSize.height
         configureStream(configuration)
 
         return makeStreamComponents(filter: contentFilter, configuration: configuration)
@@ -362,16 +392,18 @@ final class ScreenShareCoordinator: ObservableObject {
 
     fileprivate nonisolated static let jpegContext = CIContext(options: [.useSoftwareRenderer: false])
 
-    fileprivate nonisolated static func encodeJPEG(from pixelBuffer: CVPixelBuffer, maxWidth: CGFloat = 1280, quality: CGFloat = 0.6) -> Data? {
+    fileprivate nonisolated static func encodeJPEG(from pixelBuffer: CVPixelBuffer, maxDimension: CGFloat?, quality: CGFloat = 0.6) -> Data? {
         let originalWidth = CGFloat(CVPixelBufferGetWidth(pixelBuffer))
-        let scale = min(1.0, maxWidth / originalWidth)
+        let originalHeight = CGFloat(CVPixelBufferGetHeight(pixelBuffer))
+        let scale = maxDimension.map { min(1.0, $0 / max(originalWidth, originalHeight)) } ?? 1.0
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer).transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         return encodeJPEG(from: ciImage, quality: quality)
     }
 
-    fileprivate nonisolated static func encodeJPEG(from fullImage: CGImage, maxWidth: CGFloat = 1280, quality: CGFloat = 0.6) -> Data? {
+    fileprivate nonisolated static func encodeJPEG(from fullImage: CGImage, maxDimension: CGFloat?, quality: CGFloat = 0.6) -> Data? {
         let originalWidth = CGFloat(fullImage.width)
-        let scale = min(1.0, maxWidth / originalWidth)
+        let originalHeight = CGFloat(fullImage.height)
+        let scale = maxDimension.map { min(1.0, $0 / max(originalWidth, originalHeight)) } ?? 1.0
         let ciImage = CIImage(cgImage: fullImage).transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         return encodeJPEG(from: ciImage, quality: quality)
     }
@@ -386,7 +418,7 @@ final class ScreenShareCoordinator: ObservableObject {
     }
 
     @available(macOS 14.0, *)
-    private func captureAndEncodeSharedContent(_ contentFilter: SCContentFilter, maxWidth: CGFloat = 1280, quality: CGFloat = 0.6) async -> Data? {
+    private func captureAndEncodeSharedContent(_ contentFilter: SCContentFilter, maxDimension: CGFloat?, quality: CGFloat = 0.6) async -> Data? {
         let contentInfo = SCShareableContent.info(for: contentFilter)
         let contentRect = contentInfo.contentRect.standardized
         guard contentRect.width > 0, contentRect.height > 0 else { return nil }
@@ -409,7 +441,7 @@ final class ScreenShareCoordinator: ObservableObject {
 
         guard let image else { return nil }
         return await Task.detached(priority: .userInitiated) {
-            Self.encodeJPEG(from: image)
+            Self.encodeJPEG(from: image, maxDimension: maxDimension, quality: quality)
         }.value
     }
 
@@ -457,12 +489,18 @@ private final class ScreenShareStreamDelegate: NSObject, SCStreamDelegate {
 
 private final class ScreenShareStreamOutput: NSObject, SCStreamOutput {
     private let sendFrameInterval: TimeInterval
+    private let maximumLongEdge: CGFloat?
     private let onFrameCaptured: @MainActor (Data) -> Void
     private var nextFrameSendTime: TimeInterval = 0
     private var frameChangeFilter = ScreenShareFrameChangeFilter()
 
-    init(sendFrameInterval: TimeInterval, onFrameCaptured: @escaping @MainActor (Data) -> Void) {
+    init(
+        sendFrameInterval: TimeInterval,
+        maximumLongEdge: Int?,
+        onFrameCaptured: @escaping @MainActor (Data) -> Void
+    ) {
         self.sendFrameInterval = sendFrameInterval
+        self.maximumLongEdge = maximumLongEdge.map(CGFloat.init)
         self.onFrameCaptured = onFrameCaptured
     }
 
@@ -475,7 +513,7 @@ private final class ScreenShareStreamOutput: NSObject, SCStreamOutput {
         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer).seconds
         guard shouldEncodeFrame(at: timestamp) else { return }
 
-        guard let jpeg = ScreenShareCoordinator.encodeJPEG(from: pixelBuffer, maxWidth: 640, quality: 0.5),
+        guard let jpeg = ScreenShareCoordinator.encodeJPEG(from: pixelBuffer, maxDimension: maximumLongEdge, quality: 0.5),
               frameChangeFilter.shouldSend(jpeg)
         else { return }
         Task { @MainActor [onFrameCaptured] in
@@ -487,5 +525,18 @@ private final class ScreenShareStreamOutput: NSObject, SCStreamOutput {
         guard timestamp >= nextFrameSendTime else { return false }
         nextFrameSendTime = timestamp + sendFrameInterval
         return true
+    }
+}
+
+extension GeminiMediaResolution {
+    var screenShareMediaResolution: ScreenShareMediaResolution {
+        switch self {
+        case .low:
+            return .low
+        case .medium:
+            return .medium
+        case .high:
+            return .high
+        }
     }
 }

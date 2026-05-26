@@ -4,6 +4,7 @@ import {
   deleteGeminiLiveModelAdminConfig,
   listGeminiLiveModelAdminConfigs,
   restoreDefaultGeminiLiveModelAdminConfigs,
+  syncGeminiLiveModelsFromGoogle,
   upsertGeminiLiveModelAdminConfig,
 } from "@/lib/gemini-live-model-policy";
 import { requireAdminUser } from "@/lib/notch-auth";
@@ -28,6 +29,9 @@ export async function POST(req: Request) {
     if (data?.action === "restore_defaults") {
       return NextResponse.json(await restoreDefaultGeminiLiveModelAdminConfigs());
     }
+    if (data?.action === "sync_google") {
+      return NextResponse.json(await syncGeminiLiveModelsFromGoogle());
+    }
 
     const modelId = typeof data?.modelId === "string" ? data.modelId.trim() : "";
     if (!modelId) {
@@ -47,8 +51,9 @@ export async function POST(req: Request) {
         sortOrder,
       }),
     );
-  } catch {
-    return NextResponse.json({ error: "Failed to update Gemini Live model" }, { status: 500 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to update Gemini Live model";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 

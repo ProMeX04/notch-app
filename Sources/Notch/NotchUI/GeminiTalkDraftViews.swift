@@ -70,20 +70,13 @@ private struct GeminiTalkHubControlSurface: View {
         formattedAgentDisplayName(gemini.selectedSystemPromptPreset.title)
     }
 
-    private var modelCode: String {
-        gemini.selectedModel.apiName
-    }
-
-    private var compactModelCode: String {
-        modelCode
-            .replacingOccurrences(of: "gemini-", with: "")
-            .replacingOccurrences(of: "-native", with: "")
-            .replacingOccurrences(of: "-audio", with: "")
+    private var modelDisplayName: String {
+        gemini.selectedModel.displayName
     }
 
     private var modelThinkingLabel: String {
-        guard gemini.thinkingLevel != .off else { return compactModelCode }
-        return "\(compactModelCode)-\(gemini.thinkingLevel.rawValue.lowercased())"
+        guard gemini.thinkingLevel != .off else { return modelDisplayName }
+        return "\(modelDisplayName) - \(gemini.thinkingLevel.rawValue)"
     }
 
     var body: some View {

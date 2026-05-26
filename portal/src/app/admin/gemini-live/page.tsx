@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { Bot, Loader2, Plus, RefreshCw, Save, Sparkles, Trash2 } from "lucide-react";
+import { Bot, CloudDownload, Loader2, Plus, RefreshCw, Save, Sparkles, Trash2 } from "lucide-react";
 
 type GeminiLiveModelConfig = {
   id: string
@@ -41,6 +41,7 @@ export default function GeminiLiveModelsAdminPage() {
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const enabledCount = useMemo(() => models.filter((model) => model.isEnabled).length, [models]);
   const usesDefaults = models.some((model) => model.source === "default");
@@ -48,6 +49,7 @@ export default function GeminiLiveModelsAdminPage() {
   const fetchModels = async () => {
     setLoading(true);
     setError(null);
+    setNotice(null);
     try {
       const response = await fetch("/api/admin/gemini-live/models");
       const data = await response.json();
@@ -67,6 +69,7 @@ export default function GeminiLiveModelsAdminPage() {
   const saveModel = async (model: Pick<GeminiLiveModelConfig, "id" | "displayName" | "isEnabled" | "sortOrder">) => {
     setSavingKey(model.id);
     setError(null);
+    setNotice(null);
     try {
       const response = await fetch("/api/admin/gemini-live/models", {
         method: "POST",
@@ -110,6 +113,7 @@ export default function GeminiLiveModelsAdminPage() {
   const deleteModel = async (modelId: string) => {
     setSavingKey(modelId);
     setError(null);
+    setNotice(null);
     try {
       const response = await fetch(`/api/admin/gemini-live/models?modelId=${encodeURIComponent(modelId)}`, {
         method: "DELETE",
@@ -127,6 +131,7 @@ export default function GeminiLiveModelsAdminPage() {
   const restoreDefaults = async () => {
     setSavingKey("restore_defaults");
     setError(null);
+    setNotice(null);
     try {
       const response = await fetch("/api/admin/gemini-live/models", {
         method: "POST",
@@ -138,6 +143,27 @@ export default function GeminiLiveModelsAdminPage() {
       setModels(data);
     } catch (restoreError) {
       setError(restoreError instanceof Error ? restoreError.message : "Không khôi phục được model mặc định");
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  const syncFromGoogle = async () => {
+    setSavingKey("sync_google");
+    setError(null);
+    setNotice(null);
+    try {
+      const response = await fetch("/api/admin/gemini-live/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "sync_google" }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Không đồng bộ được model từ Google");
+      setModels(data.models);
+      setNotice(`Đã tìm thấy ${data.discoveredCount} Live models từ Google; thêm mới ${data.addedCount} model ở trạng thái tắt.`);
+    } catch (syncError) {
+      setError(syncError instanceof Error ? syncError.message : "Không đồng bộ được model từ Google");
     } finally {
       setSavingKey(null);
     }
@@ -159,6 +185,10 @@ export default function GeminiLiveModelsAdminPage() {
           <p className="mt-1 text-sm text-[#5f6368]">Quản lý model desktop app được phép dùng qua managed server.</p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+          <button onClick={syncFromGoogle} disabled={savingKey === "sync_google"} className="inline-flex items-center justify-center gap-2 rounded border border-[#1a73e8] bg-[#1a73e8] px-4 py-2 text-sm font-medium text-white hover:bg-[#1557b0] disabled:opacity-60">
+            <CloudDownload size={16} />
+            Đồng bộ từ Google
+          </button>
           <button onClick={restoreDefaults} disabled={savingKey === "restore_defaults"} className="inline-flex items-center justify-center gap-2 rounded border border-[#1a73e8] bg-[#1a73e8] px-4 py-2 text-sm font-medium text-white hover:bg-[#1557b0] disabled:opacity-60">
             <Sparkles size={16} />
             Khôi phục mặc định
@@ -171,6 +201,7 @@ export default function GeminiLiveModelsAdminPage() {
       </div>
 
       {error && <div className="rounded border border-[#fad2cf] bg-[#fce8e6] p-4 text-sm font-medium text-[#c5221f]">{error}</div>}
+      {notice && <div className="rounded border border-[#ceead6] bg-[#e6f4ea] p-4 text-sm font-medium text-[#137333]">{notice}</div>}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="rounded border border-[#dadce0] bg-white p-4 shadow-sm">

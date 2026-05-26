@@ -16,6 +16,7 @@ export type GeminiLiveModelAdminConfig = GeminiLiveModelDescriptor & {
 type GeminiLiveModelPolicyEnv = Record<string, string | undefined>
 
 const liveGenerationMethod = 'bidiGenerateContent'
+const googleModelsEndpoint = 'https://generativelanguage.googleapis.com/v1beta/models'
 
 const defaultLiveModels: GeminiLiveModelDescriptor[] = [
   buildModelDescriptor('gemini-3.1-flash-live-preview', 'Gemini 3.1 Flash Live Preview'),
@@ -171,6 +172,56 @@ export async function restoreDefaultGeminiLiveModelAdminConfigs(): Promise<Gemin
   )
 }
 
+export async function syncGeminiLiveModelsFromGoogle(
+  env: GeminiLiveModelPolicyEnv = process.env,
+): Promise<{ models: GeminiLiveModelAdminConfig[]; discoveredCount: number; addedCount: number }> {
+  const apiKey = env.GEMINI_API_KEY?.trim()
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY is not configured on the server.')
+  }
+
+  const discoveredModels = await discoverGoogleLiveModels(apiKey)
+  const prisma = await getPrisma()
+  let existingModels = await prisma.geminiLiveModelConfig.findMany()
+
+  if (existingModels.length === 0) {
+    await prisma.geminiLiveModelConfig.createMany({
+      data: listConfiguredGeminiLiveModels(env).map((model, index) => ({
+        modelId: model.id,
+        displayName: model.displayName,
+        supportedGenerationMethods: model.supportedGenerationMethods,
+        isEnabled: true,
+        sortOrder: index,
+      })),
+      skipDuplicates: true,
+    })
+    existingModels = await prisma.geminiLiveModelConfig.findMany()
+  }
+
+  const knownModelIDs = new Set(existingModels.map((model) => model.modelId))
+  const addedModels = discoveredModels.filter((model) => !knownModelIDs.has(model.id))
+  const nextSortOrder = existingModels.reduce((maximum, model) => Math.max(maximum, model.sortOrder), -1) + 1
+
+  if (addedModels.length > 0) {
+    await prisma.geminiLiveModelConfig.createMany({
+      data: addedModels.map((model, index) => ({
+        modelId: model.id,
+        displayName: model.displayName,
+        supportedGenerationMethods: model.supportedGenerationMethods,
+        isEnabled: false,
+        sortOrder: nextSortOrder + index,
+      })),
+      skipDuplicates: true,
+    })
+  }
+
+  return {
+    models: await listGeminiLiveModelAdminConfigs(),
+    discoveredCount: discoveredModels.length,
+    addedCount: addedModels.length,
+  }
+}
+
 export async function resolveAllowedGeminiLiveModel(modelID: string): Promise<GeminiLiveModelDescriptor | null> {
   const normalizedID = normalizeGeminiLiveModelID(modelID)
   return (await listAllowedGeminiLiveModels()).find((model) => model.id === normalizedID) ?? null
@@ -232,6 +283,48 @@ function titleFromModelID(id: string): string {
 function normalizedDisplayName(displayName: string, modelID: string): string {
   const trimmedDisplayName = displayName.trim()
   return trimmedDisplayName || titleFromModelID(normalizeGeminiLiveModelID(modelID))
+}
+
+async function discoverGoogleLiveModels(apiKey: string): Promise<GeminiLiveModelDescriptor[]> {
+  const models: GeminiLiveModelDescriptor[] = []
+  let pageToken: string | undefined
+
+  do {
+    const url = new URL(googleModelsEndpoint)
+    url.searchParams.set('key', apiKey)
+    url.searchParams.set('pageSize', '1000')
+    if (pageToken) {
+      url.searchParams.set('pageToken', pageToken)
+    }
+
+    const response = await fetch(url, { cache: 'no-store' })
+    const payload = await response.json() as {
+      models?: Array<{
+        name?: string
+        displayName?: string
+        supportedGenerationMethods?: string[]
+      }>
+      nextPageToken?: string
+      error?: { message?: string }
+    }
+
+    if (!response.ok) {
+      throw new Error(payload.error?.message?.trim() || `Gemini returned HTTP ${response.status} while listing models.`)
+    }
+
+    for (const model of payload.models ?? []) {
+      const modelID = typeof model.name === 'string' ? normalizeGeminiLiveModelID(model.name) : ''
+      const methods = model.supportedGenerationMethods ?? []
+      if (!modelID || !methods.some((method) => method.toLowerCase() === liveGenerationMethod.toLowerCase())) {
+        continue
+      }
+      models.push(buildModelDescriptor(modelID, model.displayName?.trim() || titleFromModelID(modelID), methods))
+    }
+
+    pageToken = payload.nextPageToken?.trim() || undefined
+  } while (pageToken)
+
+  return uniqueModels(models).sort((left, right) => left.displayName.localeCompare(right.displayName))
 }
 
 async function getPrisma() {

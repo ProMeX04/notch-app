@@ -154,7 +154,6 @@ enum NotchPanel: String {
 }
 
 enum NotchAutoCollapseSuppressionReason: Hashable {
-    case shelfQuickLook
     case talkPopover
 }
 

@@ -273,7 +273,7 @@ extension GeminiLiveViewModel {
                 selectedModel = models[0]
             }
 
-            lastLiveModelRefreshMessage = "Updated \(models.count) Gemini Live models."
+            lastLiveModelRefreshMessage = nil
             if !silent {
                 lastErrorMessage = nil
                 statusText = "Updated \(models.count) Gemini Live models."

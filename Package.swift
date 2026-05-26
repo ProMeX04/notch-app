@@ -179,6 +179,11 @@ let package = Package(
             dependencies: ["NotchGeminiLiveCore"],
             path: "Tests/NotchGeminiLiveTests"
         ),
+        .testTarget(
+            name: "NotchMediaTests",
+            dependencies: ["Notch"],
+            path: "Tests/NotchMediaTests"
+        ),
     ],
     swiftLanguageVersions: [.version("6")]
 )

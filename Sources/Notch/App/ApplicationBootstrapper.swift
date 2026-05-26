@@ -38,7 +38,8 @@ final class ApplicationBootstrapper {
             learningStats: environment.learningStatsStore,
             gemini: environment.geminiLiveViewModel,
             entitlementStore: environment.entitlementStore,
-            shortcutStore: environment.shortcutStore
+            shortcutStore: environment.shortcutStore,
+            shelf: environment.shelfViewModel
         )
 
         environment.focusBrowserBridgeServer.start()

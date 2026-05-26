@@ -33,26 +33,36 @@ public struct NotchShelfItem: Identifiable, Equatable, Sendable {
     public let driveFileID: String?
     public let driveIsPublic: Bool
     public let driveUploadedAt: Date?
+    public let addedAt: Date
 
-    public init(id: UUID = UUID(), kind: Kind, identityOverride: String? = nil, driveFileID: String? = nil, driveIsPublic: Bool = false, driveUploadedAt: Date? = nil) {
+    public init(
+        id: UUID = UUID(),
+        kind: Kind,
+        identityOverride: String? = nil,
+        driveFileID: String? = nil,
+        driveIsPublic: Bool = false,
+        driveUploadedAt: Date? = nil,
+        addedAt: Date = Date()
+    ) {
         self.id = id
         self.kind = kind
         self.identityOverride = identityOverride
         self.driveFileID = driveFileID
         self.driveIsPublic = driveIsPublic
         self.driveUploadedAt = driveUploadedAt
+        self.addedAt = addedAt
     }
 
     public func withDriveFileID(_ fileID: String?) -> NotchShelfItem {
-        NotchShelfItem(id: id, kind: kind, identityOverride: identityOverride, driveFileID: fileID, driveIsPublic: driveIsPublic, driveUploadedAt: driveUploadedAt)
+        NotchShelfItem(id: id, kind: kind, identityOverride: identityOverride, driveFileID: fileID, driveIsPublic: driveIsPublic, driveUploadedAt: driveUploadedAt, addedAt: addedAt)
     }
 
     public func withDriveIsPublic(_ isPublic: Bool) -> NotchShelfItem {
-        NotchShelfItem(id: id, kind: kind, identityOverride: identityOverride, driveFileID: driveFileID, driveIsPublic: isPublic, driveUploadedAt: driveUploadedAt)
+        NotchShelfItem(id: id, kind: kind, identityOverride: identityOverride, driveFileID: driveFileID, driveIsPublic: isPublic, driveUploadedAt: driveUploadedAt, addedAt: addedAt)
     }
 
     public func withDriveUploadedAt(_ uploadedAt: Date?) -> NotchShelfItem {
-        NotchShelfItem(id: id, kind: kind, identityOverride: identityOverride, driveFileID: driveFileID, driveIsPublic: driveIsPublic, driveUploadedAt: uploadedAt)
+        NotchShelfItem(id: id, kind: kind, identityOverride: identityOverride, driveFileID: driveFileID, driveIsPublic: driveIsPublic, driveUploadedAt: uploadedAt, addedAt: addedAt)
     }
 
     public enum ItemDriveState: String {
@@ -282,15 +292,19 @@ public final class NotchShelfViewModel: ObservableObject {
     @Published public private(set) var driveUploadError: String?
     @Published public private(set) var itemsInProgress: Set<UUID> = []
     @Published public private(set) var itemErrors: [UUID: String] = [:]
+    public let preferences: NotchShelfPreferences
     public var portalBaseURLProvider: (() -> URL)?
     public var onConnectGoogleDriveRequested: ((String, String) -> Void)?
     var pendingGoogleDriveAuthState: String?
 
     private let dropService: NotchShelfDropService
     private let persistenceService: NotchShelfPersistenceService
+    private let driveDeletingService: any NotchShelfDriveDeleting
     private var dropTask: Task<Void, Never>?
     private var persistTask: Task<Void, Never>?
     private var refreshTask: Task<Void, Never>?
+    private var retentionTask: Task<Void, Never>?
+    private var cleanupTask: Task<Void, Never>?
     private var driveOperationTasks: [UUID: Task<Void, Never>] = [:]
     private var driveHandoffTask: Task<Void, Never>?
     private var isCompletingDriveHandoff = false
@@ -303,16 +317,22 @@ public final class NotchShelfViewModel: ObservableObject {
     public convenience init() {
         self.init(
             dropService: NotchShelfDropService(),
-            persistenceService: NotchShelfPersistenceService()
+            persistenceService: NotchShelfPersistenceService(),
+            preferences: NotchShelfPreferences(),
+            driveDeletingService: NotchGoogleDriveService.shared
         )
     }
 
     init(
         dropService: NotchShelfDropService = NotchShelfDropService(),
-        persistenceService: NotchShelfPersistenceService = NotchShelfPersistenceService()
+        persistenceService: NotchShelfPersistenceService = NotchShelfPersistenceService(),
+        preferences: NotchShelfPreferences = NotchShelfPreferences(),
+        driveDeletingService: any NotchShelfDriveDeleting = NotchGoogleDriveService.shared
     ) {
         self.dropService = dropService
         self.persistenceService = persistenceService
+        self.preferences = preferences
+        self.driveDeletingService = driveDeletingService
         self.isGoogleDriveConnected = NotchGoogleDriveService.shared.isConnected
 
         switch persistenceService.loadResult() {
@@ -344,12 +364,15 @@ public final class NotchShelfViewModel: ObservableObject {
         }
         self.cachedDriveStates = initialStates
         self.refreshDriveStates(force: true)
+        applyAutomaticRetention()
     }
 
     deinit {
         dropTask?.cancel()
         persistTask?.cancel()
         refreshTask?.cancel()
+        retentionTask?.cancel()
+        cleanupTask?.cancel()
         driveHandoffTask?.cancel()
         driveOperationTasks.values.forEach { $0.cancel() }
     }
@@ -371,10 +394,6 @@ public final class NotchShelfViewModel: ObservableObject {
             guard case let .file(reference) = item.kind else { return nil }
             return reference.url
         }
-    }
-
-    public var canQuickLookSelection: Bool {
-        !previewableSelectedFileURLs.isEmpty
     }
 
     public func handleDrop(providers: [NSItemProvider]) -> Bool {
@@ -401,20 +420,14 @@ public final class NotchShelfViewModel: ObservableObject {
     }
 
     public func clear() {
-        let removedItems = items
-        guard !removedItems.isEmpty else { return }
-
-        cancelDriveOperations(for: Set(removedItems.map(\.id)))
-        items.removeAll()
-        selectedItemIDs.removeAll()
-        cleanupIfNeeded(removedItems)
-        clearThumbnailCache(for: removedItems)
-        debouncedPersist()
+        clearShelf(deleteDriveFiles: false)
     }
 
     public func shutdown() {
         dropTask?.cancel()
         persistTask?.cancel()
+        retentionTask?.cancel()
+        cleanupTask?.cancel()
         driveHandoffTask?.cancel()
         driveOperationTasks.values.forEach { $0.cancel() }
         driveOperationTasks.removeAll()
@@ -543,34 +556,232 @@ public final class NotchShelfViewModel: ObservableObject {
         debouncedPersist()
     }
 
+    public func previewRetentionPolicy(
+        _ policy: NotchShelfRetentionPolicy,
+        now: Date = Date()
+    ) -> NotchShelfCleanupPreview {
+        let candidates = cleanupCandidates(for: policy, now: now)
+        return NotchShelfCleanupPreview(
+            itemsToRemoveCount: candidates.count,
+            driveItemsToDeleteCount: candidates.filter { $0.driveFileID != nil }.count
+        )
+    }
+
+    public func applyRetentionPolicy(_ policy: NotchShelfRetentionPolicy) {
+        preferences.setRetentionPolicy(policy)
+        applyAutomaticRetention()
+    }
+
+    public func clearShelf(deleteDriveFiles: Bool) {
+        performCleanup(items, deleteDriveFiles: deleteDriveFiles)
+    }
+
+    public func clearPreviewCache() {
+        WorkspaceIconCache.shared.clearAll()
+        Task {
+            await NotchShelfThumbnailService.shared.clearAllCache()
+            await NotchShelfMetadataService.shared.clearCache()
+        }
+    }
+
+    private func applyAutomaticRetention(now: Date = Date()) {
+        let candidates = cleanupCandidates(for: preferences.retentionPolicy, now: now)
+        if !candidates.isEmpty {
+            performCleanup(
+                candidates,
+                deleteDriveFiles: preferences.deleteDriveFilesDuringAutomaticCleanup
+            )
+        }
+        scheduleRetentionEvaluation(now: now)
+    }
+
+    private func cleanupCandidates(
+        for policy: NotchShelfRetentionPolicy,
+        now: Date
+    ) -> [NotchShelfItem] {
+        let indexed = Array(items.enumerated())
+        var candidateIDs = Set<UUID>()
+
+        if let interval = policy.expirationInterval.timeInterval {
+            for (_, item) in indexed where item.addedAt.addingTimeInterval(interval) <= now {
+                candidateIDs.insert(item.id)
+            }
+        }
+
+        if let maximum = policy.maximumItemCount.value {
+            let survivors = indexed.filter { !candidateIDs.contains($0.element.id) }
+            let overflow = max(0, survivors.count - maximum)
+            if overflow > 0 {
+                let oldest = survivors.sorted { lhs, rhs in
+                    if lhs.element.addedAt != rhs.element.addedAt {
+                        return lhs.element.addedAt < rhs.element.addedAt
+                    }
+                    return lhs.offset > rhs.offset
+                }
+                for (_, item) in oldest.prefix(overflow) {
+                    candidateIDs.insert(item.id)
+                }
+            }
+        }
+
+        return items.filter {
+            candidateIDs.contains($0.id) && !itemsInProgress.contains($0.id)
+        }
+    }
+
+    private func scheduleRetentionEvaluation(now: Date = Date()) {
+        retentionTask?.cancel()
+        if !cleanupCandidates(for: preferences.retentionPolicy, now: now).isEmpty {
+            retentionTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(60))
+                guard !Task.isCancelled else { return }
+                self?.applyAutomaticRetention()
+            }
+            return
+        }
+
+        guard let interval = preferences.retentionPolicy.expirationInterval.timeInterval,
+              let nextExpiry = items
+                .filter({ !itemsInProgress.contains($0.id) })
+                .map({ $0.addedAt.addingTimeInterval(interval) })
+                .filter({ $0 > now })
+                .min() else {
+            retentionTask = nil
+            return
+        }
+
+        let delay = max(0.05, nextExpiry.timeIntervalSince(now))
+        retentionTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            self?.applyAutomaticRetention()
+        }
+    }
+
+    private func performCleanup(_ candidates: [NotchShelfItem], deleteDriveFiles: Bool) {
+        guard !candidates.isEmpty else { return }
+
+        let remoteItems = deleteDriveFiles ? candidates.filter { $0.driveFileID != nil } : []
+        let immediateItems = deleteDriveFiles ? candidates.filter { $0.driveFileID == nil } : candidates
+        removeItemsFromShelf(immediateItems)
+
+        guard !remoteItems.isEmpty else {
+            scheduleRetentionEvaluation()
+            return
+        }
+        guard let portalBaseURL = portalBaseURLProvider?() else {
+            driveUploadError = "Không thể lấy cấu hình URL hệ thống."
+            scheduleRetentionEvaluation()
+            return
+        }
+
+        let remoteIDs = Set(remoteItems.map(\.id))
+        itemsInProgress.formUnion(remoteIDs)
+        updateDriveActivityState()
+        driveUploadError = nil
+        cleanupTask = Task { [weak self] in
+            guard let self else { return }
+            var removedItems: [NotchShelfItem] = []
+            var failed: [(NotchShelfItem, Error)] = []
+
+            for item in remoteItems {
+                guard let fileID = item.driveFileID else { continue }
+                do {
+                    try Task.checkCancellation()
+                    try await self.driveDeletingService.deleteFile(fileId: fileID, portalBaseURL: portalBaseURL)
+                    removedItems.append(item)
+                } catch {
+                    if error is CancellationError { break }
+                    failed.append((item, error))
+                }
+            }
+
+            await MainActor.run {
+                self.itemsInProgress.subtract(remoteIDs)
+                self.updateDriveActivityState()
+                self.removeItemsFromShelf(removedItems)
+                if let (_, error) = failed.first {
+                    self.handleGoogleDriveConnectionLossIfNeeded(error)
+                    self.driveUploadError = error.localizedDescription
+                    for (item, failure) in failed {
+                        self.itemErrors[item.id] = failure.localizedDescription
+                    }
+                }
+                self.cleanupTask = nil
+                self.scheduleRetentionEvaluation()
+            }
+        }
+    }
+
+    private func removeItemsFromShelf(_ candidates: [NotchShelfItem]) {
+        guard !candidates.isEmpty else { return }
+        let removedIDs = Set(candidates.map(\.id))
+        cancelDriveOperations(for: removedIDs)
+        items.removeAll { removedIDs.contains($0.id) }
+        selectedItemIDs.subtract(removedIDs)
+        cleanupIfNeeded(candidates)
+        clearThumbnailCache(for: candidates)
+        for id in removedIDs {
+            itemErrors.removeValue(forKey: id)
+        }
+        debouncedPersist()
+    }
+
     func merge(_ newItems: [NotchShelfItem]) {
         let existingKeys = Set(items.map(\.identityKey))
         var seenKeys = existingKeys
-        var mergedItems: [NotchShelfItem] = []
+        var insertedItems: [NotchShelfItem] = []
+        var landingItems: [NotchShelfItem] = []
+        var movedIDs = Set<UUID>()
 
         for item in newItems {
             let key = item.identityKey
             if seenKeys.contains(key) {
+                if preferences.duplicateDropAction == .moveToTop,
+                   let existing = items.first(where: { $0.identityKey == key }),
+                   movedIDs.insert(existing.id).inserted {
+                    landingItems.append(existing)
+                }
                 cleanupIfNeeded(item)
                 continue
             }
 
-            mergedItems.append(item)
+            insertedItems.append(item)
+            landingItems.append(item)
             seenKeys.insert(key)
         }
 
-        guard !mergedItems.isEmpty else { return }
-        items.insert(contentsOf: mergedItems.reversed(), at: 0)
+        guard !landingItems.isEmpty else { return }
+        if !movedIDs.isEmpty {
+            items.removeAll { movedIDs.contains($0.id) }
+        }
+        items.insert(contentsOf: landingItems.reversed(), at: 0)
         // Bug #2: select the VISUALLY topmost new item. Because we insert
         // `mergedItems.reversed()` at index 0, the topmost item on screen is
         // `mergedItems.last`, not `mergedItems.first`.
-        if let topmostNewItem = mergedItems.last {
+        if let topmostNewItem = landingItems.last {
             selectedItemIDs = [topmostNewItem.id]
         }
         debouncedPersist()
+        applyAutomaticRetention()
 
-        if isGoogleDriveConnected && UserDefaults.standard.bool(forKey: "notchShelfGoogleDriveAutoUploadEnabled") {
-            uploadItemsToDrive(mergedItems)
+        if isGoogleDriveConnected && preferences.autoUploadEnabled {
+            uploadItemsToDrive(automaticUploadCandidates(from: insertedItems))
+        }
+    }
+
+    func automaticUploadCandidates(from insertedItems: [NotchShelfItem]) -> [NotchShelfItem] {
+        let retainedNewItems = insertedItems.filter { inserted in
+            items.contains(where: { $0.id == inserted.id })
+        }
+        switch preferences.autoUploadScope {
+        case .filesOnly:
+            return retainedNewItems.filter {
+                if case .file = $0.kind { return true }
+                return false
+            }
+        case .allItems:
+            return retainedNewItems
         }
     }
 

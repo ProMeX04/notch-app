@@ -20,10 +20,10 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
         false
     }
 
-    private let mediaRemoteSendCommand: @convention(c) (Int, AnyObject?) -> Void
-    private let mediaRemoteSetElapsedTime: @convention(c) (Double) -> Void
     private let adapterScriptURL: URL
     private let adapterFrameworkURL: URL
+    private let commandRunner: MediaRemoteCommandRunner
+    private let mediaRemoteSetElapsedTime: (@convention(c) (Double) -> Void)?
     private let timestampFormatter = ISO8601DateFormatter()
 
     private var process: Process?
@@ -42,30 +42,13 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
             return nil
         }
 
-        let mediaRemoteFrameworkURL = NSURL(fileURLWithPath: "/System/Library/PrivateFrameworks/MediaRemote.framework")
-        guard let bundle = CFBundleCreate(kCFAllocatorDefault, mediaRemoteFrameworkURL) else {
-            NotchLog.mediaRemote.error("NowPlaying disabled: MediaRemote.framework could not be loaded")
-            return nil
-        }
-        guard let sendCommandPointer = CFBundleGetFunctionPointerForName(
-            bundle,
-            "MRMediaRemoteSendCommand" as CFString
-        ) else {
-            NotchLog.mediaRemote.error("NowPlaying disabled: MRMediaRemoteSendCommand is unavailable")
-            return nil
-        }
-        guard let setElapsedTimePointer = CFBundleGetFunctionPointerForName(
-            bundle,
-            "MRMediaRemoteSetElapsedTime" as CFString
-        ) else {
-            NotchLog.mediaRemote.error("NowPlaying disabled: MRMediaRemoteSetElapsedTime is unavailable")
-            return nil
-        }
-
         self.adapterScriptURL = adapterScriptURL
         self.adapterFrameworkURL = adapterFrameworkURL
-        mediaRemoteSendCommand = unsafeBitCast(sendCommandPointer, to: (@convention(c) (Int, AnyObject?) -> Void).self)
-        mediaRemoteSetElapsedTime = unsafeBitCast(setElapsedTimePointer, to: (@convention(c) (Double) -> Void).self)
+        commandRunner = MediaRemoteCommandRunner(
+            adapterScriptURL: adapterScriptURL,
+            adapterFrameworkURL: adapterFrameworkURL
+        )
+        mediaRemoteSetElapsedTime = Self.loadMediaRemoteSetElapsedTime()
 
         terminationObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification,
@@ -120,40 +103,73 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
         self.pipeHandler = nil
     }
 
+    private var hasRunningSourceApp: Bool {
+        guard !playbackState.bundleIdentifier.isEmpty else { return false }
+        return !NSRunningApplication.runningApplications(withBundleIdentifier: playbackState.bundleIdentifier).isEmpty
+    }
+
     func play() async {
-        guard canControlPlayback else { return }
-        mediaRemoteSendCommand(0, nil)
+        guard playbackState.hasTrackMetadata || hasRunningSourceApp else {
+            NotchLog.mediaRemote.debug("Command play ignored: no metadata/running app")
+            return
+        }
+        await commandRunner.send(command: 0)
     }
 
     func pause() async {
-        guard canControlPlayback else { return }
-        mediaRemoteSendCommand(1, nil)
+        guard playbackState.hasTrackMetadata || hasRunningSourceApp else {
+            NotchLog.mediaRemote.debug("Command pause ignored: no metadata/running app")
+            return
+        }
+        await commandRunner.send(command: 1)
     }
 
     func togglePlay() async {
-        guard canControlPlayback else { return }
-        mediaRemoteSendCommand(2, nil)
+        guard playbackState.hasTrackMetadata || hasRunningSourceApp else {
+            NotchLog.mediaRemote.debug("Command togglePlay ignored: no metadata/running app")
+            return
+        }
+        await commandRunner.send(command: 2)
     }
 
     /// `kMRStop` — dừng phát; hành vi tùy app (Music/Spotify thường dừng và giữ track).
     func stop() async {
-        guard canControlPlayback else { return }
-        mediaRemoteSendCommand(3, nil)
+        guard playbackState.hasTrackMetadata || hasRunningSourceApp else {
+            NotchLog.mediaRemote.debug("Command stop ignored: no metadata/running app")
+            return
+        }
+        await commandRunner.send(command: 3)
     }
 
     func nextTrack() async {
-        guard canControlPlayback else { return }
-        mediaRemoteSendCommand(4, nil)
+        guard playbackState.hasTrackMetadata || hasRunningSourceApp else {
+            NotchLog.mediaRemote.debug("Command nextTrack ignored: no metadata/running app")
+            return
+        }
+        await commandRunner.send(command: 4)
     }
 
     func previousTrack() async {
-        guard canControlPlayback else { return }
-        mediaRemoteSendCommand(5, nil)
+        guard playbackState.hasTrackMetadata || hasRunningSourceApp else {
+            NotchLog.mediaRemote.debug("Command previousTrack ignored: no metadata/running app")
+            return
+        }
+        await commandRunner.send(command: 5)
     }
 
     func seek(to time: Double) async {
-        guard canControlPlayback else { return }
-        mediaRemoteSetElapsedTime(time)
+        guard playbackState.hasTrackMetadata || hasRunningSourceApp else {
+            NotchLog.mediaRemote.debug("Command seek ignored: no metadata/running app")
+            return
+        }
+        let clampedTime = max(0, time)
+        if let mediaRemoteSetElapsedTime {
+            NotchLog.mediaRemote.debug("Media seek started: direct position=\(clampedTime)")
+            mediaRemoteSetElapsedTime(clampedTime)
+        } else {
+            NotchLog.mediaRemote.debug("Media seek using adapter fallback: position=\(clampedTime)")
+            await commandRunner.seek(to: clampedTime)
+        }
     }
 
     func isActive() -> Bool {
@@ -173,7 +189,12 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
         let process = Process()
 
         process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
-        process.arguments = [adapterScriptURL.path, adapterFrameworkURL.path, "stream"]
+        process.arguments = [
+            adapterScriptURL.path,
+            adapterFrameworkURL.path,
+            "stream",
+            "--debounce=100",
+        ]
 
         let pipeHandler = JSONLinesPipeHandler()
         process.standardOutput = await pipeHandler.getPipe()
@@ -208,173 +229,46 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
     }
 
     private func handleAdapterUpdate(_ update: NowPlayingUpdate) async {
-        let payload = update.payload
-        let diff = update.diff ?? false
         let previousState = playbackState
-
-        var newPlaybackState = PlaybackState(bundleIdentifier: previousState.bundleIdentifier)
-
-        newPlaybackState.title = payload.title ?? (diff ? previousState.title : "Nothing Playing")
-        newPlaybackState.artist = payload.artist ?? (diff ? previousState.artist : "Notch")
-        newPlaybackState.album = payload.album ?? (diff ? previousState.album : "")
-        newPlaybackState.duration = payload.duration ?? (diff ? previousState.duration : 0)
-
-        if let elapsedTime = payload.elapsedTime {
-            newPlaybackState.currentTime = elapsedTime
-        } else if diff {
-            if payload.playing == false {
-                let timeSinceLastUpdate = Date().timeIntervalSince(previousState.lastUpdated)
-                newPlaybackState.currentTime = previousState.currentTime + (previousState.playbackRate * timeSinceLastUpdate)
-            } else {
-                newPlaybackState.currentTime = previousState.currentTime
-            }
-        } else {
-            newPlaybackState.currentTime = 0
-        }
-
-        if let artworkDataString = payload.artworkData {
-            newPlaybackState.artwork = Data(
-                base64Encoded: artworkDataString.trimmingCharacters(in: .whitespacesAndNewlines)
-            )
-        } else if diff {
-            newPlaybackState.artwork = previousState.artwork
-        }
-
-        if let dateString = payload.timestamp,
-           let date = timestampFormatter.date(from: dateString) {
-            newPlaybackState.lastUpdated = date
-        } else if diff {
-            newPlaybackState.lastUpdated = previousState.lastUpdated
-        } else {
-            newPlaybackState.lastUpdated = .now
-        }
-
-        newPlaybackState.playbackRate = payload.playbackRate ?? (diff ? previousState.playbackRate : 1.0)
-        newPlaybackState.isPlaying = payload.playing ?? (diff ? previousState.isPlaying : false)
-        newPlaybackState.bundleIdentifier =
-            payload.parentApplicationBundleIdentifier ??
-            payload.bundleIdentifier ??
-            (diff ? previousState.bundleIdentifier : "")
-        newPlaybackState.volume = payload.volume ?? (diff ? previousState.volume : 0.5)
-        newPlaybackState.prohibitsSkip = payload.prohibitsSkip ?? (diff ? previousState.prohibitsSkip : false)
-        newPlaybackState.supportsFastForward15Seconds =
-            payload.supportsFastForward15Seconds ??
-            (diff ? previousState.supportsFastForward15Seconds : nil)
-        newPlaybackState.supportsRewind15Seconds =
-            payload.supportsRewind15Seconds ??
-            (diff ? previousState.supportsRewind15Seconds : nil)
-
-        mergeTransitionalMediaState(
-            into: &newPlaybackState,
-            payload: payload,
-            diff: diff,
-            previousState: previousState
+        let newPlaybackState = NowPlayingStateReducer.reduce(
+            previousState: previousState,
+            update: update,
+            timestampFormatter: timestampFormatter
         )
 
         guard newPlaybackState != previousState else { return }
+        if newPlaybackState.isPlaying != previousState.isPlaying ||
+            newPlaybackState.hasMediaContext != previousState.hasMediaContext {
+            NotchLog.mediaRemote.debug(
+                "NowPlaying state changed: playing=\(newPlaybackState.isPlaying), mediaContext=\(newPlaybackState.hasMediaContext)"
+            )
+        }
         playbackState = newPlaybackState
-    }
-
-    private func mergeTransitionalMediaState(
-        into newPlaybackState: inout PlaybackState,
-        payload: NowPlayingPayload,
-        diff: Bool,
-        previousState: PlaybackState
-    ) {
-        guard previousState.hasMediaContext else { return }
-
-        if shouldPreservePreviousMetadata(
-            for: newPlaybackState,
-            payload: payload,
-            diff: diff,
-            previousState: previousState
-        ) {
-            newPlaybackState.title = previousState.title
-            newPlaybackState.artist = previousState.artist
-            newPlaybackState.album = previousState.album
-            newPlaybackState.duration = previousState.duration
-            newPlaybackState.bundleIdentifier = previousState.bundleIdentifier
-        }
-
-        if shouldPreservePreviousArtwork(
-            for: newPlaybackState,
-            payload: payload,
-            previousState: previousState
-        ) {
-            newPlaybackState.artwork = previousState.artwork
-        }
-    }
-
-    private func shouldPreservePreviousMetadata(
-        for newPlaybackState: PlaybackState,
-        payload: NowPlayingPayload,
-        diff: Bool,
-        previousState: PlaybackState
-    ) -> Bool {
-        guard !diff else { return false }
-        guard previousState.hasTrackMetadata else { return false }
-        guard !newPlaybackState.hasMediaContext else { return false }
-
-        return payload.title == nil &&
-            payload.artist == nil &&
-            payload.album == nil &&
-            payload.duration == nil &&
-            payload.artworkData == nil &&
-            payload.parentApplicationBundleIdentifier == nil &&
-            payload.bundleIdentifier == nil
-    }
-
-    private func shouldPreservePreviousArtwork(
-        for newPlaybackState: PlaybackState,
-        payload: NowPlayingPayload,
-        previousState: PlaybackState
-    ) -> Bool {
-        guard payload.artworkData == nil else { return false }
-        guard previousState.artwork != nil else { return false }
-        return newPlaybackState.hasMediaContext
     }
 
     private func fetchFavoriteStateIfSupported() async {}
 
     func setFavorite(_ favorite: Bool) async {}
 
-    private var canControlPlayback: Bool {
-        hasTrackMetadata || hasRunningSourceApp
+    #if DEBUG
+    func setPlaybackStateForTesting(_ state: PlaybackState) {
+        self.playbackState = state
     }
+    #endif
 
-    private var hasTrackMetadata: Bool {
-        playbackState.hasTrackMetadata
+    private static func loadMediaRemoteSetElapsedTime() -> (@convention(c) (Double) -> Void)? {
+        let frameworkURL = NSURL(fileURLWithPath: "/System/Library/PrivateFrameworks/MediaRemote.framework")
+        guard let bundle = CFBundleCreate(kCFAllocatorDefault, frameworkURL),
+              let pointer = CFBundleGetFunctionPointerForName(
+                  bundle,
+                  "MRMediaRemoteSetElapsedTime" as CFString
+              ) else {
+            NotchLog.mediaRemote.error("Direct media seek unavailable; using adapter fallback")
+            return nil
+        }
+
+        return unsafeBitCast(pointer, to: (@convention(c) (Double) -> Void).self)
     }
-
-    private var hasRunningSourceApp: Bool {
-        guard !playbackState.bundleIdentifier.isEmpty else { return false }
-        return !NSRunningApplication.runningApplications(
-            withBundleIdentifier: playbackState.bundleIdentifier
-        ).isEmpty
-    }
-}
-
-private struct NowPlayingUpdate: Codable, Sendable {
-    let payload: NowPlayingPayload
-    let diff: Bool?
-}
-
-private struct NowPlayingPayload: Codable, Sendable {
-    let title: String?
-    let artist: String?
-    let album: String?
-    let duration: Double?
-    let elapsedTime: Double?
-    let prohibitsSkip: Bool?
-    let supportsFastForward15Seconds: Bool?
-    let supportsRewind15Seconds: Bool?
-    let artworkData: String?
-    let timestamp: String?
-    let playbackRate: Double?
-    let playing: Bool?
-    let parentApplicationBundleIdentifier: String?
-    let bundleIdentifier: String?
-    let volume: Double?
 }
 
 private actor JSONLinesPipeHandler {
@@ -459,6 +353,52 @@ private actor JSONLinesPipeHandler {
             try pipe.fileHandleForWriting.close()
         } catch {
             NotchLog.mediaRemote.error("Error closing pipe handler: \(error.localizedDescription)")
+        }
+    }
+}
+
+private actor MediaRemoteCommandRunner {
+    private let adapterScriptURL: URL
+    private let adapterFrameworkURL: URL
+
+    init(adapterScriptURL: URL, adapterFrameworkURL: URL) {
+        self.adapterScriptURL = adapterScriptURL
+        self.adapterFrameworkURL = adapterFrameworkURL
+    }
+
+    func send(command: Int) {
+        run(arguments: ["send", String(command)], label: "send \(command)")
+    }
+
+    func seek(to time: Double) {
+        let microseconds = Int64((max(0, time) * 1_000_000).rounded())
+        run(arguments: ["seek", String(microseconds)], label: "seek")
+    }
+
+    private func run(arguments: [String], label: String) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
+        process.arguments = [adapterScriptURL.path, adapterFrameworkURL.path] + arguments
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+
+        NotchLog.mediaRemote.debug("Media command started: \(label, privacy: .public)")
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+
+            if process.terminationStatus == 0 && process.terminationReason == .exit {
+                NotchLog.mediaRemote.debug("Media command completed: \(label, privacy: .public)")
+            } else {
+                NotchLog.mediaRemote.error(
+                    "Media command failed: \(label, privacy: .public), status=\(process.terminationStatus)"
+                )
+            }
+        } catch {
+            NotchLog.mediaRemote.error(
+                "Media command launch failed: \(label, privacy: .public), error=\(error.localizedDescription)"
+            )
         }
     }
 }

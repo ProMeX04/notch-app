@@ -2,14 +2,50 @@ import AppKit
 import Foundation
 @testable import NotchShelfCore
 
+private actor MockDriveDeletingService: NotchShelfDriveDeleting {
+    enum Mode {
+        case succeed
+        case fail
+    }
+
+    let mode: Mode
+    private(set) var deletedIDs: [String] = []
+
+    init(mode: Mode) {
+        self.mode = mode
+    }
+
+    func deleteFile(fileId: String, portalBaseURL: URL) async throws {
+        switch mode {
+        case .succeed:
+            deletedIDs.append(fileId)
+        case .fail:
+            throw GoogleDriveError.deleteFailed
+        }
+    }
+}
+
 @MainActor
 enum NotchShelfViewModelTests {
 
     private static func makeViewModel(dir: URL) -> NotchShelfViewModel {
-        let persistence = NotchShelfPersistenceService(
-            fileURL: dir.appendingPathComponent("items.json")
+        makeViewModel(dir: dir, preferences: makePreferences())
+    }
+
+    private static func makeViewModel(
+        dir: URL,
+        preferences: NotchShelfPreferences,
+        driveDeletingService: any NotchShelfDriveDeleting = NotchGoogleDriveService.shared
+    ) -> NotchShelfViewModel {
+        NotchShelfViewModel(
+            persistenceService: NotchShelfPersistenceService(fileURL: dir.appendingPathComponent("items.json")),
+            preferences: preferences,
+            driveDeletingService: driveDeletingService
         )
-        return NotchShelfViewModel(persistenceService: persistence)
+    }
+
+    private static func makePreferences() -> NotchShelfPreferences {
+        NotchShelfPreferences(defaults: UserDefaults(suiteName: "dev.notch.shelf.vm.tests.\(UUID().uuidString)")!)
     }
 
     private static func textItem(_ value: String) -> NotchShelfItem {
@@ -110,6 +146,154 @@ enum NotchShelfViewModelTests {
             [c.id],
             "After dropping [a, b, c], the visually-topmost new item (c) should be selected"
         )
+    }
+
+    static func duplicateDrop_moveToTop() throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+        let preferences = makePreferences()
+        preferences.duplicateDropAction = .moveToTop
+        let vm = makeViewModel(dir: dir, preferences: preferences)
+        vm.merge([textItem("a"), textItem("b"), textItem("c")])
+
+        vm.merge([textItem("a")])
+
+        try expectEqual(textValues(vm.items), ["a", "c", "b"])
+        try expectEqual(vm.selectedItemIDs, Set([vm.items[0].id]))
+    }
+
+    static func automaticUploadScopeFiltersOnlyAutomaticCandidates() throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+        let preferences = makePreferences()
+        let vm = makeViewModel(dir: dir, preferences: preferences)
+        let fileURL = dir.appendingPathComponent("upload.txt")
+        try "upload".write(to: fileURL, atomically: true, encoding: .utf8)
+        let bookmark = try Bookmark(url: fileURL)
+        let file = NotchShelfItem(kind: .file(.init(
+            url: fileURL,
+            fileIdentity: notchShelfFileIdentity(for: fileURL),
+            bookmarkData: bookmark.data,
+            isTemporary: false
+        )))
+        let text = textItem("text")
+        let link = NotchShelfItem(kind: .link(URL(string: "https://example.com")!))
+        let inserted = [file, text, link]
+        vm.merge(inserted)
+
+        preferences.autoUploadScope = .filesOnly
+        try expectEqual(vm.automaticUploadCandidates(from: inserted).map(\.id), [file.id])
+
+        preferences.autoUploadScope = .allItems
+        try expectEqual(Set(vm.automaticUploadCandidates(from: inserted).map(\.id)), Set(inserted.map(\.id)))
+    }
+
+    static func retentionPreviewAndApply() throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+        let vm = makeViewModel(dir: dir, preferences: makePreferences())
+        let old = NotchShelfItem(
+            kind: .text("old"),
+            driveFileID: "drive-old",
+            addedAt: Date().addingTimeInterval(-2 * 24 * 60 * 60)
+        )
+        let recent = NotchShelfItem(kind: .text("recent"), addedAt: Date())
+        vm.merge([old, recent])
+        let policy = NotchShelfRetentionPolicy(maximumItemCount: .never, expirationInterval: .oneDay)
+
+        let preview = vm.previewRetentionPolicy(policy)
+        try expectEqual(preview.itemsToRemoveCount, 1)
+        try expectEqual(preview.driveItemsToDeleteCount, 1)
+
+        vm.applyRetentionPolicy(policy)
+        try expectEqual(textValues(vm.items), ["recent"])
+    }
+
+    static func cleanupDriveDeleteSuccess() async throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+        let drive = MockDriveDeletingService(mode: .succeed)
+        let vm = makeViewModel(dir: dir, preferences: makePreferences(), driveDeletingService: drive)
+        vm.portalBaseURLProvider = { URL(string: "https://example.com")! }
+        vm.merge([NotchShelfItem(kind: .text("remote"), driveFileID: "drive-1")])
+
+        vm.clearShelf(deleteDriveFiles: true)
+        for _ in 0..<20 where !vm.items.isEmpty {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        try expect(vm.items.isEmpty)
+        let deletedIDs = await drive.deletedIDs
+        try expectEqual(deletedIDs, ["drive-1"])
+    }
+
+    static func automaticRetentionDeletesDriveWhenEnabled() async throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+        let drive = MockDriveDeletingService(mode: .succeed)
+        let preferences = makePreferences()
+        preferences.deleteDriveFilesDuringAutomaticCleanup = true
+        let vm = makeViewModel(dir: dir, preferences: preferences, driveDeletingService: drive)
+        vm.portalBaseURLProvider = { URL(string: "https://example.com")! }
+        vm.merge([NotchShelfItem(
+            kind: .text("expired"),
+            driveFileID: "drive-expired",
+            addedAt: Date().addingTimeInterval(-2 * 24 * 60 * 60)
+        )])
+
+        vm.applyRetentionPolicy(NotchShelfRetentionPolicy(expirationInterval: .oneDay))
+        for _ in 0..<20 where !vm.items.isEmpty {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        try expect(vm.items.isEmpty)
+        let deletedIDs = await drive.deletedIDs
+        try expectEqual(deletedIDs, ["drive-expired"])
+    }
+
+    static func cleanupDriveDeleteFailure() async throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+        let drive = MockDriveDeletingService(mode: .fail)
+        let vm = makeViewModel(dir: dir, preferences: makePreferences(), driveDeletingService: drive)
+        vm.portalBaseURLProvider = { URL(string: "https://example.com")! }
+        vm.merge([NotchShelfItem(kind: .text("remote"), driveFileID: "drive-1")])
+
+        vm.clearShelf(deleteDriveFiles: true)
+        for _ in 0..<20 where vm.driveUploadError == nil {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        try expectEqual(textValues(vm.items), ["remote"])
+        try expectEqual(vm.driveUploadError, "Không thể xóa file trên Google Drive.")
+    }
+
+    static func retentionMaximumUsesStableOldestTieBreaker() throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+        let vm = makeViewModel(dir: dir, preferences: makePreferences())
+        let sharedDate = Date()
+        vm.merge((0..<26).map { NotchShelfItem(kind: .text("\($0)"), addedAt: sharedDate) })
+
+        vm.applyRetentionPolicy(NotchShelfRetentionPolicy(maximumItemCount: .twentyFive))
+
+        try expectEqual(vm.items.count, 25)
+        try expect(!textValues(vm.items).contains("0"), "The bottom item is oldest when addedAt values match")
+        try expect(textValues(vm.items).contains("25"))
+    }
+
+    static func clearShelfLocalOnlyDoesNotDeleteDriveFile() async throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+        let drive = MockDriveDeletingService(mode: .succeed)
+        let vm = makeViewModel(dir: dir, preferences: makePreferences(), driveDeletingService: drive)
+        vm.merge([NotchShelfItem(kind: .text("remote"), driveFileID: "drive-1")])
+
+        vm.clearShelf(deleteDriveFiles: false)
+
+        try expect(vm.items.isEmpty)
+        let deletedIDs = await drive.deletedIDs
+        try expect(deletedIDs.isEmpty)
     }
 
     // MARK: - remove / clear
@@ -274,6 +458,40 @@ enum NotchShelfViewModelTests {
         try expect(!vm.isGoogleDriveConnected)
         try expect(vm.driveUploadMessage == nil)
         try expect(vm.driveUploadError == nil)
+    }
+
+    static func gdrive_developmentFileStorage_roundTripsAndDeletes() throws {
+        let dir = try makeTempDirectory(label: "GDriveDevelopmentStorage")
+        defer { cleanupDirectory(dir) }
+        let credentialsURL = dir.appendingPathComponent("credentials.json")
+
+        setenv("NOTCH_DEV_GDRIVE_FILE_STORAGE", "1", 1)
+        setenv("NOTCH_GDRIVE_DEVELOPMENT_CREDENTIALS_FILE", credentialsURL.path, 1)
+        defer {
+            NotchGoogleDriveService.shared.clearCredentials()
+            setenv("NOTCH_DEV_GDRIVE_FILE_STORAGE", "0", 1)
+            unsetenv("NOTCH_GDRIVE_DEVELOPMENT_CREDENTIALS_FILE")
+        }
+
+        let service = NotchGoogleDriveService.shared
+        service.clearCredentials()
+        try expect(service.storeCredentials(
+            accessToken: "development_access",
+            refreshToken: "development_refresh",
+            expiresAtDate: Date().addingTimeInterval(3600)
+        ))
+        service.folderId = "development_folder"
+
+        try expectEqual(service.accessToken, "development_access")
+        try expectEqual(service.refreshToken, "development_refresh")
+        try expectEqual(service.folderId, "development_folder")
+        try expect(FileManager.default.fileExists(atPath: credentialsURL.path))
+
+        let attributes = try FileManager.default.attributesOfItem(atPath: credentialsURL.path)
+        try expectEqual(attributes[.posixPermissions] as? NSNumber, NSNumber(value: 0o600))
+
+        service.clearCredentials()
+        try expect(!FileManager.default.fileExists(atPath: credentialsURL.path))
     }
 
     static func gdrive_expiredCredentialWithoutRefreshStartsDisconnected() throws {
@@ -580,5 +798,52 @@ enum NotchShelfViewModelTests {
         try expect(!vm.isGoogleDriveConnected)
         try expectEqual(vm.driveUploadError, "Chưa kết nối Google Drive.")
         try expectEqual(service.accessToken, nil)
+    }
+
+    static func gdrive_defaultStorage_doesNotUsePlaintextFile() throws {
+        let dir = try makeTempDirectory(label: "GDriveDefaultStorage")
+        defer { cleanupDirectory(dir) }
+        let credentialsURL = dir.appendingPathComponent("credentials.json")
+
+        setenv("NOTCH_DEV_GDRIVE_FILE_STORAGE", "0", 1)
+        setenv("NOTCH_GDRIVE_DEVELOPMENT_CREDENTIALS_FILE", credentialsURL.path, 1)
+        defer {
+            NotchGoogleDriveService.shared.clearCredentials()
+            unsetenv("NOTCH_GDRIVE_DEVELOPMENT_CREDENTIALS_FILE")
+        }
+
+        let service = NotchGoogleDriveService.shared
+        service.clearCredentials()
+        _ = service.storeCredentials(
+            accessToken: "keychain_access",
+            refreshToken: "keychain_refresh",
+            expiresAtDate: Date().addingTimeInterval(3600)
+        )
+
+        try expect(!FileManager.default.fileExists(atPath: credentialsURL.path))
+    }
+
+    static func automaticRetentionDoesNotDeleteDriveWhenDisabled() async throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+        let drive = MockDriveDeletingService(mode: .succeed)
+        let preferences = makePreferences()
+        preferences.deleteDriveFilesDuringAutomaticCleanup = false
+        let vm = makeViewModel(dir: dir, preferences: preferences, driveDeletingService: drive)
+        vm.portalBaseURLProvider = { URL(string: "https://example.com")! }
+        vm.merge([NotchShelfItem(
+            kind: .text("expired"),
+            driveFileID: "drive-expired",
+            addedAt: Date().addingTimeInterval(-2 * 24 * 60 * 60)
+        )])
+
+        vm.applyRetentionPolicy(NotchShelfRetentionPolicy(expirationInterval: .oneDay))
+        for _ in 0..<20 where !vm.items.isEmpty {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        try expect(vm.items.isEmpty)
+        let deletedIDs = await drive.deletedIDs
+        try expect(deletedIDs.isEmpty)
     }
 }

@@ -1,5 +1,6 @@
 import AppKit
 import NotchFocusCore
+import NotchShelfCore
 import SwiftUI
 
 struct AppSettingsView: View {
@@ -10,9 +11,32 @@ struct AppSettingsView: View {
     @ObservedObject var gemini: GeminiLiveViewModel
     @ObservedObject var entitlementStore: NotchEntitlementStore
     @ObservedObject var shortcutStore: ShortcutStore
-    @ObservedObject private var settingsController = AppSettingsController.shared
+    @ObservedObject var shelf: NotchShelfViewModel
     @AppStorage("app_language") private var appLanguage: String = "English"
+    @State private var selectedTab: AppSettingsTab
     @State private var hoveredTab: AppSettingsTab?
+
+    init(
+        presentationModel: NotchPresentationModel,
+        pomodoro: PomodoroViewModel,
+        focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore,
+        learningStats: LearningStatsStore,
+        gemini: GeminiLiveViewModel,
+        entitlementStore: NotchEntitlementStore,
+        shortcutStore: ShortcutStore,
+        shelf: NotchShelfViewModel,
+        initialTab: AppSettingsTab = .general
+    ) {
+        self.presentationModel = presentationModel
+        self.pomodoro = pomodoro
+        self.focusWebsiteBlocklistStore = focusWebsiteBlocklistStore
+        self.learningStats = learningStats
+        self.gemini = gemini
+        self.entitlementStore = entitlementStore
+        self.shortcutStore = shortcutStore
+        self.shelf = shelf
+        _selectedTab = State(initialValue: initialTab)
+    }
 
     private var versionLabel: String {
         let shortVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
@@ -23,11 +47,6 @@ struct AppSettingsView: View {
         return shortVersion ?? build ?? "1.0.0"
     }
 
-    private var selectedTabTitle: String {
-        Localization.get(settingsController.selectedTab.title, lang: appLanguage)
-    }
-
-
     var body: some View {
         HStack(spacing: 0) {
             sidebar
@@ -37,7 +56,7 @@ struct AppSettingsView: View {
 
             ScrollView(.vertical, showsIndicators: true) {
                 Group {
-                    switch settingsController.selectedTab {
+                    switch selectedTab {
                     case .general:
                         AppGeneralSettingsPane(
                             presentationModel: presentationModel,
@@ -47,6 +66,11 @@ struct AppSettingsView: View {
                         AppAccountSettingsPane(
                             gemini: gemini,
                             entitlementStore: entitlementStore
+                        )
+                    case .shelf:
+                        AppShelfSettingsPane(
+                            shelf: shelf,
+                            presentationModel: presentationModel
                         )
                     case .focus:
                         AppFocusSettingsPane(
@@ -79,11 +103,11 @@ struct AppSettingsView: View {
 
             VStack(spacing: 8) {
                 ForEach(AppSettingsTab.allCases) { tab in
-                    let isSelected = settingsController.selectedTab == tab
+                    let isSelected = selectedTab == tab
                     let isHovered = hoveredTab == tab
 
                     Button {
-                        settingsController.selectedTab = tab
+                        selectedTab = tab
                     } label: {
                         HStack(spacing: 10) {
                             Image(systemName: tab.icon)

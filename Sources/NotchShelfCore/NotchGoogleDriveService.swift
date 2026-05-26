@@ -11,6 +11,7 @@ public enum GoogleDriveError: LocalizedError {
     case uploadFailed
     case makePublicFailed
     case makePrivateFailed
+    case deleteFailed
     case refreshFailed(String)
     case fileTooLarge
     case fileNotFound
@@ -33,6 +34,8 @@ public enum GoogleDriveError: LocalizedError {
             return "Không thể bật chế độ chia sẻ công khai."
         case .makePrivateFailed:
             return "Không thể tắt chế độ chia sẻ công khai."
+        case .deleteFailed:
+            return "Không thể xóa file trên Google Drive."
         case .refreshFailed(let reason):
             return "Lỗi gia hạn kết nối: \(reason)"
         case .fileTooLarge:
@@ -41,6 +44,10 @@ public enum GoogleDriveError: LocalizedError {
             return "Không tìm thấy file trên Google Drive."
         }
     }
+}
+
+public protocol NotchShelfDriveDeleting: Sendable {
+    func deleteFile(fileId: String, portalBaseURL: URL) async throws
 }
 
 private struct KeychainHelper {
@@ -106,6 +113,121 @@ private struct KeychainHelper {
     }
 }
 
+private enum GoogleDriveCredentialStorage {
+    private enum Mode {
+        case developmentFile
+        case keychain
+    }
+
+    private static var mode: Mode {
+        if let override = ProcessInfo.processInfo.environment["NOTCH_DEV_GDRIVE_FILE_STORAGE"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !override.isEmpty {
+            return override == "0" ? .keychain : .developmentFile
+        }
+
+#if DEBUG
+        return .developmentFile
+#else
+        return .keychain
+#endif
+    }
+
+    static func save(key: String, value: String) -> Bool {
+        switch mode {
+        case .developmentFile:
+            return GoogleDriveDevelopmentFileStore.save(key: key, value: value)
+        case .keychain:
+            return KeychainHelper.save(key: key, value: value)
+        }
+    }
+
+    static func read(key: String) -> String? {
+        switch mode {
+        case .developmentFile:
+            return GoogleDriveDevelopmentFileStore.read(key: key)
+        case .keychain:
+            return KeychainHelper.read(key: key)
+        }
+    }
+
+    static func delete(key: String) {
+        switch mode {
+        case .developmentFile:
+            GoogleDriveDevelopmentFileStore.delete(key: key)
+        case .keychain:
+            KeychainHelper.delete(key: key)
+        }
+    }
+}
+
+private enum GoogleDriveDevelopmentFileStore {
+    private static let lock = NSLock()
+
+    private static var fileURL: URL {
+        if let override = ProcessInfo.processInfo.environment["NOTCH_GDRIVE_DEVELOPMENT_CREDENTIALS_FILE"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !override.isEmpty {
+            return URL(fileURLWithPath: override)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".notch", isDirectory: true)
+            .appendingPathComponent("Development", isDirectory: true)
+            .appendingPathComponent("google-drive-credentials.json", isDirectory: false)
+    }
+
+    static func save(key: String, value: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+
+        var values = load()
+        values[key] = value
+        do {
+            let url = fileURL
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let data = try JSONEncoder().encode(values)
+            try data.write(to: url, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    static func read(key: String) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return load()[key]
+    }
+
+    static func delete(key: String) {
+        lock.lock()
+        defer { lock.unlock() }
+
+        var values = load()
+        values.removeValue(forKey: key)
+        let url = fileURL
+        guard !values.isEmpty else {
+            try? FileManager.default.removeItem(at: url)
+            return
+        }
+        guard let data = try? JSONEncoder().encode(values) else { return }
+        try? data.write(to: url, options: .atomic)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+
+    private static func load() -> [String: String] {
+        guard let data = try? Data(contentsOf: fileURL),
+              let values = try? JSONDecoder().decode([String: String].self, from: data) else {
+            return [:]
+        }
+        return values
+    }
+}
+
 private actor GoogleDriveNewUploadGate {
     private var isRunning = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
@@ -153,50 +275,50 @@ public final class NotchGoogleDriveService: Sendable {
     }
 
     public var accessToken: String? {
-        get { KeychainHelper.read(key: "AccessToken") }
+        get { GoogleDriveCredentialStorage.read(key: "AccessToken") }
         set {
             if let newValue {
-                _ = KeychainHelper.save(key: "AccessToken", value: newValue)
+                _ = GoogleDriveCredentialStorage.save(key: "AccessToken", value: newValue)
             } else {
-                KeychainHelper.delete(key: "AccessToken")
+                GoogleDriveCredentialStorage.delete(key: "AccessToken")
             }
         }
     }
 
     public var refreshToken: String? {
-        get { KeychainHelper.read(key: "RefreshToken") }
+        get { GoogleDriveCredentialStorage.read(key: "RefreshToken") }
         set {
             if let newValue {
-                _ = KeychainHelper.save(key: "RefreshToken", value: newValue)
+                _ = GoogleDriveCredentialStorage.save(key: "RefreshToken", value: newValue)
             } else {
-                KeychainHelper.delete(key: "RefreshToken")
+                GoogleDriveCredentialStorage.delete(key: "RefreshToken")
             }
         }
     }
 
     public var expiresAtDate: Date? {
         get {
-            guard let raw = KeychainHelper.read(key: "ExpiresAt") else { return nil }
+            guard let raw = GoogleDriveCredentialStorage.read(key: "ExpiresAt") else { return nil }
             let interval = Double(raw) ?? 0
             return Date(timeIntervalSince1970: interval)
         }
         set {
             if let newValue {
                 let raw = String(newValue.timeIntervalSince1970)
-                _ = KeychainHelper.save(key: "ExpiresAt", value: raw)
+                _ = GoogleDriveCredentialStorage.save(key: "ExpiresAt", value: raw)
             } else {
-                KeychainHelper.delete(key: "ExpiresAt")
+                GoogleDriveCredentialStorage.delete(key: "ExpiresAt")
             }
         }
     }
 
     public var folderId: String? {
-        get { KeychainHelper.read(key: "FolderId") }
+        get { GoogleDriveCredentialStorage.read(key: "FolderId") }
         set {
             if let newValue {
-                _ = KeychainHelper.save(key: "FolderId", value: newValue)
+                _ = GoogleDriveCredentialStorage.save(key: "FolderId", value: newValue)
             } else {
-                KeychainHelper.delete(key: "FolderId")
+                GoogleDriveCredentialStorage.delete(key: "FolderId")
             }
         }
     }
@@ -209,19 +331,19 @@ public final class NotchGoogleDriveService: Sendable {
     }
 
     public func storeCredentials(accessToken: String, refreshToken: String?, expiresAtDate: Date) -> Bool {
-        guard KeychainHelper.save(key: "AccessToken", value: accessToken),
-              KeychainHelper.save(key: "ExpiresAt", value: String(expiresAtDate.timeIntervalSince1970)) else {
+        guard GoogleDriveCredentialStorage.save(key: "AccessToken", value: accessToken),
+              GoogleDriveCredentialStorage.save(key: "ExpiresAt", value: String(expiresAtDate.timeIntervalSince1970)) else {
             return false
         }
 
         if let refreshToken {
-            guard KeychainHelper.save(key: "RefreshToken", value: refreshToken) else {
+            guard GoogleDriveCredentialStorage.save(key: "RefreshToken", value: refreshToken) else {
                 return false
             }
         } else {
-            KeychainHelper.delete(key: "RefreshToken")
+            GoogleDriveCredentialStorage.delete(key: "RefreshToken")
         }
-        KeychainHelper.delete(key: "FolderId")
+        GoogleDriveCredentialStorage.delete(key: "FolderId")
         return true
     }
 
@@ -590,6 +712,30 @@ public final class NotchGoogleDriveService: Sendable {
         }
     }
 
+    public func deleteFile(fileId: String, portalBaseURL: URL) async throws {
+        let token = try await ensureValidAccessToken(portalBaseURL: portalBaseURL)
+        let url = URL(string: "https://www.googleapis.com/drive/v3/files/\(fileId)")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw GoogleDriveError.deleteFailed
+        }
+        try rejectInvalidAuthorization(httpResponse)
+
+        if httpResponse.statusCode == 404 {
+            return
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            if let errorMsg = String(data: data, encoding: .utf8) {
+                print("Google Drive delete error response: \(errorMsg)")
+            }
+            throw GoogleDriveError.deleteFailed
+        }
+    }
+
     public func fileExists(fileId: String, portalBaseURL: URL) async throws -> Bool {
         let token = try await ensureValidAccessToken(portalBaseURL: portalBaseURL)
         let url = URL(string: "https://www.googleapis.com/drive/v3/files/\(fileId)?fields=id")!
@@ -637,6 +783,8 @@ public final class NotchGoogleDriveService: Sendable {
         }
     }
 }
+
+extension NotchGoogleDriveService: NotchShelfDriveDeleting {}
 
 final class UploadProgressDelegate: NSObject, URLSessionTaskDelegate, Sendable {
     private let onProgress: @Sendable (Double) -> Void

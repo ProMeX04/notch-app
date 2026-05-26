@@ -1,10 +1,12 @@
 import AppKit
 import NotchFocusCore
+import NotchShelfCore
 import SwiftUI
 
 enum AppSettingsTab: String, CaseIterable, Identifiable {
     case account
     case general
+    case shelf
     case focus
     case talk
     case shortcuts
@@ -15,6 +17,8 @@ enum AppSettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .general:
             return "General"
+        case .shelf:
+            return "Shelf"
         case .account:
             return "Account"
         case .focus:
@@ -31,6 +35,8 @@ enum AppSettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .general:
             return "gearshape"
+        case .shelf:
+            return "tray.full"
         case .account:
             return "person.crop.circle"
         case .focus:
@@ -52,7 +58,8 @@ protocol AppSettingsControlling: AnyObject {
         learningStats: LearningStatsStore,
         gemini: GeminiLiveViewModel,
         entitlementStore: NotchEntitlementStore,
-        shortcutStore: ShortcutStore
+        shortcutStore: ShortcutStore,
+        shelf: NotchShelfViewModel
     )
     func open(tab: AppSettingsTab)
 }
@@ -69,6 +76,7 @@ final class AppSettingsController: ObservableObject, AppSettingsControlling {
         let gemini: GeminiLiveViewModel
         let entitlementStore: NotchEntitlementStore
         let shortcutStore: ShortcutStore
+        let shelf: NotchShelfViewModel
     }
 
     @Published var selectedTab: AppSettingsTab = .general
@@ -83,7 +91,8 @@ final class AppSettingsController: ObservableObject, AppSettingsControlling {
         learningStats: LearningStatsStore,
         gemini: GeminiLiveViewModel,
         entitlementStore: NotchEntitlementStore,
-        shortcutStore: ShortcutStore
+        shortcutStore: ShortcutStore,
+        shelf: NotchShelfViewModel
     ) {
         dependencies = Dependencies(
             presentationModel: presentationModel,
@@ -92,7 +101,8 @@ final class AppSettingsController: ObservableObject, AppSettingsControlling {
             learningStats: learningStats,
             gemini: gemini,
             entitlementStore: entitlementStore,
-            shortcutStore: shortcutStore
+            shortcutStore: shortcutStore,
+            shelf: shelf
         )
 
         updateRootViewIfNeeded()
@@ -146,7 +156,9 @@ final class AppSettingsController: ObservableObject, AppSettingsControlling {
             learningStats: dependencies.learningStats,
             gemini: dependencies.gemini,
             entitlementStore: dependencies.entitlementStore,
-            shortcutStore: dependencies.shortcutStore
+            shortcutStore: dependencies.shortcutStore,
+            shelf: dependencies.shelf,
+            initialTab: selectedTab
         )
     }
 }

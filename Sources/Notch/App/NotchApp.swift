@@ -13,7 +13,8 @@ struct NotchApp: App {
                 learningStats: appDelegate.learningStatsStore,
                 gemini: appDelegate.geminiLiveViewModel,
                 entitlementStore: appDelegate.entitlementStore,
-                shortcutStore: appDelegate.shortcutStore
+                shortcutStore: appDelegate.shortcutStore,
+                shelf: appDelegate.shelfViewModel
             )
         }
     }

@@ -66,6 +66,43 @@ enum NotchShelfPersistenceServiceTests {
         try expectEqual(value, "second")
     }
 
+    static func saveThenLoad_preservesAddedAt() throws {
+        let dir = try makeTempDirectory(label: "ShelfPersistence")
+        defer { cleanupDirectory(dir) }
+
+        let service = NotchShelfPersistenceService(fileURL: dir.appendingPathComponent("items.json"))
+        let addedAt = Date(timeIntervalSince1970: 123_456)
+        service.save([NotchShelfItem(kind: .text("dated"), addedAt: addedAt)])
+
+        let items = service.load()
+        try expectEqual(items.count, 1)
+        try expectEqual(items[0].addedAt, addedAt)
+    }
+
+    static func legacyRecordWithoutAddedAt_loadsWithTimestamp() throws {
+        let dir = try makeTempDirectory(label: "ShelfPersistence")
+        defer { cleanupDirectory(dir) }
+
+        let url = dir.appendingPathComponent("items.json")
+        let service = NotchShelfPersistenceService(fileURL: url)
+        service.save([NotchShelfItem(kind: .text("old")), NotchShelfItem(kind: .text("older"))])
+
+        let records = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as! [[String: Any]]
+        let legacyRecords = records.map { record -> [String: Any] in
+            var copy = record
+            copy.removeValue(forKey: "addedAt")
+            return copy
+        }
+        let legacyData = try JSONSerialization.data(withJSONObject: legacyRecords)
+        try legacyData.write(to: url, options: .atomic)
+
+        let beforeLoad = Date()
+        let items = service.load()
+        try expectEqual(items.count, 2)
+        try expect(items.allSatisfy { $0.addedAt >= beforeLoad })
+        try expectEqual(items[0].addedAt, items[1].addedAt)
+    }
+
     // MARK: - Bug #9: init() overwrites corrupted file with empty array (DATA LOSS)
 
     /// When the persistence file exists but fails to decode, the view model

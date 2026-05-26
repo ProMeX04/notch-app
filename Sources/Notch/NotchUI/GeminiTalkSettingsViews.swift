@@ -265,6 +265,7 @@ struct GeminiSkillsPicker: View {
                         .foregroundStyle(themeAccent)
                 }
                 .buttonStyle(.plain)
+                .disabled(isDisabled)
             }
             .padding(.bottom, 2)
 

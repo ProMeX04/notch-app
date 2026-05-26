@@ -10,8 +10,6 @@ struct AppFocusSettingsPane: View {
     @AppStorage(NotchAccentColorOption.storageKey) private var accentColorID: String = NotchAccentColorOption.defaultOption.rawValue
     @AppStorage(SoundManager.focusTransitionSoundKey) private var focusTransitionSoundID: String = FocusTransitionSoundOption.defaultOption.rawValue
 
-    @State private var isBlockedWebsitesExpanded = false
-    @State private var isAllowedWebsitesExpanded = false
     @State private var isAutoOpenUrlsExpanded = false
 
     private var tint: Color {
@@ -156,56 +154,26 @@ struct AppFocusSettingsPane: View {
 
                         AppSettingsRow(showDivider: true) {
                             VStack(alignment: .leading, spacing: 10) {
-                                Button {
-                                    withAnimation(.snappy(duration: 0.25)) {
-                                        isBlockedWebsitesExpanded.toggle()
-                                    }
-                                } label: {
-                                    HStack {
-                                        Text(Localization.get("Blocked Websites", lang: appLanguage))
-                                            .font(.system(size: 13, weight: .semibold))
-                                            .foregroundStyle(.white.opacity(0.9))
-                                        Spacer()
-                                        Image(systemName: isBlockedWebsitesExpanded ? "chevron.down" : "chevron.right")
-                                            .font(.system(size: 12, weight: .semibold))
-                                            .foregroundStyle(.white.opacity(0.4))
-                                    }
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
+                                Text(Localization.get(
+                                    websiteBlocklistStore.accessMode == .allowAllExceptBlocked
+                                        ? "Blocked Websites"
+                                        : "Allowed Websites",
+                                    lang: appLanguage
+                                ))
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.9))
 
-                                if isBlockedWebsitesExpanded {
+                                switch websiteBlocklistStore.accessMode {
+                                case .allowAllExceptBlocked:
                                     BlockedWebsitesList(store: websiteBlocklistStore, tint: tint)
                                         .padding(.top, 4)
-                                }
-                            }
-                        }
-
-                        AppSettingsRow(showDivider: true) {
-                            VStack(alignment: .leading, spacing: 10) {
-                                Button {
-                                    withAnimation(.snappy(duration: 0.25)) {
-                                        isAllowedWebsitesExpanded.toggle()
-                                    }
-                                } label: {
-                                    HStack {
-                                        Text(Localization.get("Allowed Websites", lang: appLanguage))
-                                            .font(.system(size: 13, weight: .semibold))
-                                            .foregroundStyle(.white.opacity(0.9))
-                                        Spacer()
-                                        Image(systemName: isAllowedWebsitesExpanded ? "chevron.down" : "chevron.right")
-                                            .font(.system(size: 12, weight: .semibold))
-                                            .foregroundStyle(.white.opacity(0.4))
-                                    }
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-
-                                if isAllowedWebsitesExpanded {
+                                case .blockAllExceptAllowed:
                                     AllowedWebsitesList(store: websiteBlocklistStore, tint: tint)
                                         .padding(.top, 4)
                                 }
                             }
+                            .id(websiteBlocklistStore.accessMode)
+                            .transition(.opacity)
                         }
 
                         AppSettingsRow(showDivider: false) {
@@ -238,6 +206,7 @@ struct AppFocusSettingsPane: View {
                 }
             }
         }
+        .animation(.snappy(duration: 0.25), value: websiteBlocklistStore.accessMode)
     }
 
     private func durationControl(
@@ -431,10 +400,6 @@ private struct BlockedWebsitesList: View {
                     .padding(.vertical, 10)
             }
 
-            Text(String(format: Localization.get("%d domains synced to Chrome extension", lang: appLanguage), store.blockedHosts.count))
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.4))
-                .padding(.top, 4)
         }
     }
 
@@ -521,10 +486,6 @@ private struct AllowedWebsitesList: View {
                     .padding(.vertical, 10)
             }
 
-            Text(String(format: Localization.get("%d domains will never be blocked", lang: appLanguage), store.allowedHosts.count))
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.4))
-                .padding(.top, 4)
         }
     }
 

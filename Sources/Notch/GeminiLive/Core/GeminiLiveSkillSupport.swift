@@ -124,12 +124,12 @@ enum GeminiLiveStoragePaths {
         developmentDirectory.appendingPathComponent("gemini-live-client-token.json")
     }
 
-    static var developmentGeminiLiveAuthTokenFile: URL {
-        developmentDirectory.appendingPathComponent("gemini-live-auth-token.json")
+    static var developmentNotchAccountAccessTokenFile: URL {
+        developmentDirectory.appendingPathComponent("notch-account-access-token.json")
     }
 
-    static var developmentGeminiLiveRefreshTokenFile: URL {
-        developmentDirectory.appendingPathComponent("gemini-live-refresh-token.json")
+    static var developmentNotchAccountRefreshTokenFile: URL {
+        developmentDirectory.appendingPathComponent("notch-account-refresh-token.json")
     }
 
     static var developmentBraveSearchAPIKeyFile: URL {

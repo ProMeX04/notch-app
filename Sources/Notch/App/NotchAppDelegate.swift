@@ -1,5 +1,6 @@
 import AppKit
 import NotchFocusCore
+import NotchShelfCore
 @preconcurrency import UserNotifications
 
 @MainActor
@@ -14,6 +15,7 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
     var focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore { bootstrapper.environment.focusWebsiteBlocklistStore }
     var shortcutStore: ShortcutStore { bootstrapper.environment.shortcutStore }
     var presentationModel: NotchPresentationModel { bootstrapper.environment.presentationModel }
+    var shelfViewModel: NotchShelfViewModel { bootstrapper.environment.shelfViewModel }
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         guard singleInstanceCoordinator.shouldTerminateForExistingInstance() else { return }

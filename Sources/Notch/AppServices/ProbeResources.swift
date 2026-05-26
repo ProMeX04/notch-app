@@ -2,6 +2,12 @@ import Foundation
 
 enum ProbeResources {
     private static var resourceBundleURL: URL? {
+        if let envPath = ProcessInfo.processInfo.environment["NOTCH_RESOURCES_BUNDLE_PATH"] {
+            let candidate = URL(fileURLWithPath: envPath)
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                return candidate
+            }
+        }
         let mainBundle = Bundle.main.bundleURL
         let bundleName = "Notch_Notch.bundle"
 

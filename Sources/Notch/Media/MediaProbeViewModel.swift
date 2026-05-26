@@ -232,6 +232,12 @@ final class MediaProbeViewModel: ObservableObject {
     }
 
     private func updateAlbumArt(using state: PlaybackState) {
+        guard state.hasMediaContext else {
+            albumArt = nil
+            usingAppIconForArtwork = false
+            return
+        }
+
         if let artworkData = state.artwork, let image = NSImage(data: artworkData) {
             albumArt = image
             usingAppIconForArtwork = false
@@ -252,6 +258,8 @@ final class MediaProbeViewModel: ObservableObject {
     }
 
     private func updateAccentColor() {
+        artworkComputationToken = nil
+
         guard let image = albumArt else {
             accentColor = .white
             return
@@ -289,7 +297,7 @@ final class MediaProbeViewModel: ObservableObject {
 
     private func refreshLiveActivityVisibility() {
         let previousValue = showCompactLiveActivity
-        let shouldShowCompactLiveActivity = state.isPlaying || !isPlayerIdle
+        let shouldShowCompactLiveActivity = state.hasMediaContext && (state.isPlaying || !isPlayerIdle)
 
         if showCompactLiveActivity != shouldShowCompactLiveActivity {
             withAnimation(.smooth) {

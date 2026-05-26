@@ -184,7 +184,6 @@ struct NotchSegmentedPicker<T: Identifiable & Equatable>: View where T.ID == Str
                             if isSelected {
                                 RoundedRectangle(cornerRadius: 7, style: .continuous)
                                     .fill(tint)
-                                    .matchedGeometryEffect(id: "segment", in: animationNamespace)
                             }
                         }
                 }
@@ -199,8 +198,5 @@ struct NotchSegmentedPicker<T: Identifiable & Equatable>: View where T.ID == Str
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: selection)
     }
-    
-    @Namespace private var animationNamespace
 }
-
 

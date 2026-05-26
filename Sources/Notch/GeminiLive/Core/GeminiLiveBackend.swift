@@ -399,12 +399,12 @@ final class GeminiLiveBackendAuthStore {
         self.defaults = defaults
         accessTokenStore = GeminiLiveSecretStore(
             processInfo: processInfo,
-            developmentFileURL: GeminiLiveStoragePaths.developmentGeminiLiveAuthTokenFile,
+            developmentFileURL: GeminiLiveStoragePaths.developmentNotchAccountAccessTokenFile,
             keychainAccount: "GeminiLiveBackendAccessToken"
         )
         refreshTokenStore = GeminiLiveSecretStore(
             processInfo: processInfo,
-            developmentFileURL: GeminiLiveStoragePaths.developmentGeminiLiveRefreshTokenFile,
+            developmentFileURL: GeminiLiveStoragePaths.developmentNotchAccountRefreshTokenFile,
             keychainAccount: "GeminiLiveBackendRefreshToken"
         )
     }

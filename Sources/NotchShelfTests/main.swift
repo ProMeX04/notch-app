@@ -5,6 +5,7 @@ setenv(
     "dev.notch.gdrive.tests.\(ProcessInfo.processInfo.processIdentifier)",
     1
 )
+setenv("NOTCH_DEV_GDRIVE_FILE_STORAGE", "0", 1)
 
 struct TestCase {
     let name: String
@@ -23,6 +24,10 @@ func buildTestCases() -> [TestCase] {
                  run: NotchShelfPersistenceServiceTests.saveThenLoad_roundTripsTextAndLinkItems),
         TestCase(name: "persistence/save overwrites previous content",
                  run: NotchShelfPersistenceServiceTests.saveOverwritesPreviousContent),
+        TestCase(name: "persistence/save then load preserves added date",
+                 run: NotchShelfPersistenceServiceTests.saveThenLoad_preservesAddedAt),
+        TestCase(name: "persistence/legacy record without added date receives timestamp",
+                 run: NotchShelfPersistenceServiceTests.legacyRecordWithoutAddedAt_loadsWithTimestamp),
         TestCase(name: "persistence/Bug #9 init() does not overwrite corrupted persistence file",
                  run: NotchShelfPersistenceServiceTests.bug9_initDoesNotOverwriteCorruptedPersistenceFile),
 
@@ -39,6 +44,24 @@ func buildTestCases() -> [TestCase] {
                  run: NotchShelfViewModelTests.merge_allItemsDuplicate_doesNotMutateSelection),
         TestCase(name: "viewmodel/Bug #2 merge selects the visually topmost new item",
                  run: NotchShelfViewModelTests.bug2_mergeSelectsVisuallyTopmostNewItem),
+        TestCase(name: "preferences/defaults and persistence",
+                 run: NotchShelfPreferencesTests.defaultsAndPersistence),
+        TestCase(name: "viewmodel/duplicate drop can move existing item to top",
+                 run: NotchShelfViewModelTests.duplicateDrop_moveToTop),
+        TestCase(name: "viewmodel/auto-upload scope filters automatic candidates",
+                 run: NotchShelfViewModelTests.automaticUploadScopeFiltersOnlyAutomaticCandidates),
+        TestCase(name: "viewmodel/retention preview and apply remove expired items",
+                 run: NotchShelfViewModelTests.retentionPreviewAndApply),
+        TestCase(name: "viewmodel/retention maximum uses stable oldest tie breaker",
+                 run: NotchShelfViewModelTests.retentionMaximumUsesStableOldestTieBreaker),
+        TestCase(name: "viewmodel/cleanup delete Drive success removes synced item",
+                 run: NotchShelfViewModelTests.cleanupDriveDeleteSuccess),
+        TestCase(name: "viewmodel/automatic retention deletes Drive when enabled",
+                 run: NotchShelfViewModelTests.automaticRetentionDeletesDriveWhenEnabled),
+        TestCase(name: "viewmodel/cleanup delete Drive failure retains synced item",
+                 run: NotchShelfViewModelTests.cleanupDriveDeleteFailure),
+        TestCase(name: "viewmodel/clear local-only keeps Drive remote file",
+                 run: NotchShelfViewModelTests.clearShelfLocalOnlyDoesNotDeleteDriveFile),
         TestCase(name: "viewmodel/remove deletes item and its selection",
                  run: NotchShelfViewModelTests.remove_deletesItemAndSelection),
         TestCase(name: "viewmodel/removeSelectedItems removes all selected",
@@ -75,6 +98,8 @@ func buildTestCases() -> [TestCase] {
                  run: NotchShelfViewModelTests.toggleSelection_addsAndRemoves),
         TestCase(name: "viewmodel/gdrive_initialState",
                  run: NotchShelfViewModelTests.gdrive_initialState),
+        TestCase(name: "viewmodel/gdrive_developmentFileStorage_roundTripsAndDeletes",
+                 run: NotchShelfViewModelTests.gdrive_developmentFileStorage_roundTripsAndDeletes),
         TestCase(name: "viewmodel/gdrive_expiredCredentialWithoutRefreshStartsDisconnected",
                  run: NotchShelfViewModelTests.gdrive_expiredCredentialWithoutRefreshStartsDisconnected),
         TestCase(name: "viewmodel/gdrive_callbackError",
@@ -101,6 +126,10 @@ func buildTestCases() -> [TestCase] {
                  run: NotchShelfViewModelTests.gdrive_rejectsOversizeUploadBeforeNetwork),
         TestCase(name: "viewmodel/gdrive_shareWithExpiredCredentialAllowsRelink",
                  run: NotchShelfViewModelTests.gdrive_shareWithExpiredCredentialAllowsRelink),
+        TestCase(name: "viewmodel/gdrive_defaultStorage_doesNotUsePlaintextFile",
+                 run: NotchShelfViewModelTests.gdrive_defaultStorage_doesNotUsePlaintextFile),
+        TestCase(name: "viewmodel/automaticRetentionDoesNotDeleteDriveWhenDisabled",
+                 run: NotchShelfViewModelTests.automaticRetentionDoesNotDeleteDriveWhenDisabled),
     ]
 }
 

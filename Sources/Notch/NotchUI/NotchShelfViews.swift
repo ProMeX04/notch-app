@@ -1,8 +1,42 @@
 import AppKit
 import NotchShelfCore
-@preconcurrency import QuickLookUI
 import SwiftUI
 import UniformTypeIdentifiers
+
+private extension NotchShelfItemSize {
+    var itemsPerRow: CGFloat {
+        switch self {
+        case .small: return 6
+        case .medium: return 5
+        case .large: return 4
+        }
+    }
+
+    var previewSize: CGSize {
+        switch self {
+        case .small: return CGSize(width: 34, height: 34)
+        case .medium: return CGSize(width: 42, height: 42)
+        case .large: return CGSize(width: 54, height: 54)
+        }
+    }
+
+    var minimumCellWidth: CGFloat {
+        switch self {
+        case .small: return 58
+        case .medium: return 72
+        case .large: return 86
+        }
+    }
+
+    func cellHeight(showName: Bool) -> CGFloat {
+        guard showName else { return previewSize.height + 12 }
+        switch self {
+        case .small: return 76
+        case .medium: return 84
+        case .large: return 96
+        }
+    }
+}
 
 /// Owns the long-lived `NSScrollView`/`NSCollectionView` and their
 /// coordinator so that switching panels (or collapsing the notch) does
@@ -82,6 +116,7 @@ struct ShelfPanelView: View {
             if shelf.hasItems {
                 ShelfBrowserView(
                     shelf: shelf,
+                    preferences: shelf.preferences,
                     presentationModel: presentationModel,
                     host: host
                 )
@@ -137,11 +172,11 @@ private struct ShelfDriveStatusRow: View {
 }
 
 struct ShelfBrowserView: NSViewRepresentable {
-    static let itemsPerRow: CGFloat = 5
     static let itemSpacing: CGFloat = 4
     static let sectionInsets = NSEdgeInsets(top: 6, left: 6, bottom: 6, right: 6)
 
     @ObservedObject var shelf: NotchShelfViewModel
+    @ObservedObject var preferences: NotchShelfPreferences
     @ObservedObject var presentationModel: NotchPresentationModel
     let host: ShelfBrowserHost
 
@@ -181,6 +216,7 @@ struct ShelfBrowserView: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         context.coordinator.shelf = shelf
+        context.coordinator.updateLayout()
         context.coordinator.reloadData()
         context.coordinator.syncSelectionToCollectionView()
     }
@@ -205,6 +241,9 @@ struct ShelfBrowserView: NSViewRepresentable {
             let uploadProgress: Double?
             let inProgress: Bool
             let hasError: Bool
+            let itemSize: NotchShelfItemSize
+            let showItemNames: Bool
+            let showDriveBadges: Bool
         }
         var shelf: NotchShelfViewModel
         let presentationModel: NotchPresentationModel
@@ -212,27 +251,20 @@ struct ShelfBrowserView: NSViewRepresentable {
         private var isSyncingSelection = false
         private var lastSnapshot: [ItemState] = []
         private var draggedItemIDs: [UUID] = []
-        private var _quickLookController: ShelfQuickLookPanelController?
-        private func requireQuickLookController() -> ShelfQuickLookPanelController {
-            if let existing = _quickLookController { return existing }
-            let newController = ShelfQuickLookPanelController()
-            newController.onVisibilityChange = { [weak self] isVisible in
-                self?.presentationModel.setAutoCollapseSuppressed(
-                    isVisible,
-                    reason: .shelfQuickLook
-                )
-            }
-            newController.onClose = { [weak self] in
-                self?.restoreShelfFocus()
-            }
-            _quickLookController = newController
-            return newController
-        }
 
         init(shelf: NotchShelfViewModel, presentationModel: NotchPresentationModel) {
             self.shelf = shelf
             self.presentationModel = presentationModel
             super.init()
+        }
+
+        func updateLayout() {
+            guard let layout = collectionView?.collectionViewLayout as? NSCollectionViewFlowLayout else { return }
+            let expected = NSSize(width: 72, height: shelf.preferences.itemSize.cellHeight(showName: shelf.preferences.showItemNames))
+            if layout.itemSize.height != expected.height {
+                layout.itemSize = expected
+                layout.invalidateLayout()
+            }
         }
 
         func reloadData() {
@@ -249,7 +281,10 @@ struct ShelfBrowserView: NSViewRepresentable {
                     isGoogleDriveConnected: isConnected,
                     uploadProgress: shelf.uploadProgresses[item.id],
                     inProgress: shelf.itemsInProgress.contains(item.id) || shelf.uploadingItemIDs.contains(item.id),
-                    hasError: shelf.itemErrors[item.id] != nil
+                    hasError: shelf.itemErrors[item.id] != nil,
+                    itemSize: shelf.preferences.itemSize,
+                    showItemNames: shelf.preferences.showItemNames,
+                    showDriveBadges: shelf.preferences.showDriveBadges
                 )
             }
             guard snapshot != lastSnapshot else { return }
@@ -393,18 +428,6 @@ struct ShelfBrowserView: NSViewRepresentable {
                 case .text:
                     return false
                 }
-            }
-
-            if shelf.canQuickLookSelection {
-                menu.addItem(
-                    withTitle: selection.count == 1 ? "Quick Look" : "Quick Look Selected",
-                    action: #selector(toggleQuickLookFromMenu),
-                    keyEquivalent: ""
-                )
-            }
-
-            if !menu.items.isEmpty {
-                menu.addItem(.separator())
             }
 
             if selection.count == 1 {
@@ -577,39 +600,19 @@ struct ShelfBrowserView: NSViewRepresentable {
             return menu
         }
 
-        func handleDoubleClick(on indexPath: IndexPath?) {
-            guard let indexPath,
-                  shelf.items.indices.contains(indexPath.item) else {
-                return
+        func handleDoubleClick(on item: NotchShelfItem) {
+            guard shelf.items.contains(where: { $0.id == item.id }) else { return }
+            switch item.kind {
+            case .file, .text:
+                shelf.activate(item)
+            case let .link(url):
+                if shelf.preferences.linkDoubleClickAction == .copyURL {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(url.absoluteString, forType: .string)
+                } else {
+                    shelf.activate(item)
+                }
             }
-
-            shelf.activate(shelf.items[indexPath.item])
-        }
-
-        func toggleQuickLook() {
-            guard let previewURL = shelf.previewableSelectedFileURLs.first else { return }
-
-            let ql = requireQuickLookController()
-            if ql.isVisible {
-                ql.close()
-                return
-            }
-
-            showQuickLook(previewURL)
-        }
-
-        func showQuickLook(_ url: URL) {
-            requireQuickLookController().show(url: url)
-        }
-
-        func refreshQuickLookIfNeeded() {
-            guard let ql = _quickLookController, ql.isVisible else { return }
-            guard let previewURL = shelf.previewableSelectedFileURLs.first else {
-                ql.close(restoreFocus: false)
-                return
-            }
-
-            ql.update(url: previewURL)
         }
 
         func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int {
@@ -635,7 +638,10 @@ struct ShelfBrowserView: NSViewRepresentable {
                 isGoogleDriveConnected: shelf.isGoogleDriveConnected,
                 uploadProgress: progress,
                 inProgress: inProgress,
-                error: error
+                error: error,
+                itemSize: shelf.preferences.itemSize,
+                showItemNames: shelf.preferences.showItemNames,
+                showDriveBadges: shelf.preferences.showDriveBadges
             )
             return item
         }
@@ -651,12 +657,13 @@ struct ShelfBrowserView: NSViewRepresentable {
                     - ShelfBrowserView.sectionInsets.left
                     - ShelfBrowserView.sectionInsets.right
             )
-            let totalSpacing = ShelfBrowserView.itemSpacing * (ShelfBrowserView.itemsPerRow - 1)
-            let itemWidth = floor((contentWidth - totalSpacing) / ShelfBrowserView.itemsPerRow)
+            let itemsPerRow = shelf.preferences.itemSize.itemsPerRow
+            let totalSpacing = ShelfBrowserView.itemSpacing * (itemsPerRow - 1)
+            let itemWidth = floor((contentWidth - totalSpacing) / itemsPerRow)
 
             return NSSize(
-                width: max(72, itemWidth),
-                height: ShelfCollectionItem.preferredSize.height
+                width: max(shelf.preferences.itemSize.minimumCellWidth, itemWidth),
+                height: shelf.preferences.itemSize.cellHeight(showName: shelf.preferences.showItemNames)
             )
         }
 
@@ -805,15 +812,10 @@ struct ShelfBrowserView: NSViewRepresentable {
                 }
             )
             shelf.select(ids: ids)
-            refreshQuickLookIfNeeded()
         }
 
         @objc private func openSelection() {
             shelf.activateSelectedItems()
-        }
-
-        @objc private func toggleQuickLookFromMenu() {
-            toggleQuickLook()
         }
 
         @objc private func revealSelection() {
@@ -840,7 +842,6 @@ struct ShelfBrowserView: NSViewRepresentable {
             // `updateNSView` → diff-based reload. Skip the redundant
             // synchronous reload that used to cancel removal animations.
             shelf.removeSelectedItems()
-            refreshQuickLookIfNeeded()
         }
 
         @objc private func linkGoogleDrive() {
@@ -876,18 +877,7 @@ struct ShelfBrowserView: NSViewRepresentable {
             shelf.uploadSelectedItemsToDrive()
         }
 
-        private func restoreShelfFocus() {
-            guard let collectionView else { return }
-            NSApp.activate(ignoringOtherApps: true)
-            collectionView.window?.orderFrontRegardless()
-            collectionView.window?.makeKey()
-            collectionView.window?.makeFirstResponder(collectionView)
-        }
-
         func cleanupWhenShelfDisappears() {
-            presentationModel.setAutoCollapseSuppressed(false, reason: .shelfQuickLook)
-            _quickLookController?.close(restoreFocus: false)
-
             // Intentionally keep WorkspaceIconCache + thumbnail cache warm.
             // Flushing them every time the shelf hides used to force a full
             // QLThumbnailGenerator pass on the next reveal, which produced a
@@ -919,6 +909,16 @@ final class ShelfCollectionView: NSCollectionView {
         window?.makeFirstResponder(self)
         let point = convert(event.locationInWindow, from: nil)
         let clickedIndexPath = indexPathForItem(at: point)
+        let clickedItem = clickedIndexPath.flatMap {
+            item(at: $0) as? ShelfCollectionItem
+        }
+        let activatedShelfItem = clickedIndexPath.flatMap { indexPath -> NotchShelfItem? in
+            guard let shelf = shelfCoordinator?.shelf,
+                  shelf.items.indices.contains(indexPath.item) else {
+                return nil
+            }
+            return shelf.items[indexPath.item]
+        }
 
         if clickedIndexPath == nil,
            !event.modifierFlags.contains(.command),
@@ -928,20 +928,16 @@ final class ShelfCollectionView: NSCollectionView {
             return
         }
 
+        clickedItem?.setPressed(true)
         super.mouseDown(with: event)
+        clickedItem?.setPressed(false)
 
-        if event.clickCount == 2 {
-            shelfCoordinator?.handleDoubleClick(on: clickedIndexPath)
+        if event.clickCount == 2, let activatedShelfItem {
+            clickedItem?.playActivationPulse()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak coordinator = shelfCoordinator] in
+                coordinator?.handleDoubleClick(on: activatedShelfItem)
+            }
         }
-    }
-
-    override func keyDown(with event: NSEvent) {
-        if event.keyCode == 49 || event.keyCode == 53 {
-            shelfCoordinator?.toggleQuickLook()
-            return
-        }
-
-        super.keyDown(with: event)
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
@@ -964,10 +960,10 @@ final class ShelfCollectionView: NSCollectionView {
 
 private final class ShelfCollectionItem: NSCollectionViewItem {
     static let identifier = NSUserInterfaceItemIdentifier("ShelfCollectionItem")
-    static let preferredSize = NSSize(width: 72, height: 82)
-    private static let previewSize = CGSize(width: 42, height: 42)
+    static let preferredSize = NSSize(width: 72, height: 84)
 
     private var thumbnailTask: Task<Void, Never>?
+    private var metadataTask: Task<Void, Never>?
     private var currentItemID: UUID?
 
     private var shelfView: ShelfCollectionItemView {
@@ -988,8 +984,19 @@ private final class ShelfCollectionItem: NSCollectionViewItem {
         super.prepareForReuse()
         thumbnailTask?.cancel()
         thumbnailTask = nil
+        metadataTask?.cancel()
+        metadataTask = nil
         currentItemID = nil
+        shelfView.setPressed(false, animated: false)
         shelfView.reset()
+    }
+
+    func setPressed(_ pressed: Bool) {
+        shelfView.setPressed(pressed)
+    }
+
+    func playActivationPulse() {
+        shelfView.playActivationPulse()
     }
 
     func configure(
@@ -998,13 +1005,20 @@ private final class ShelfCollectionItem: NSCollectionViewItem {
         isGoogleDriveConnected: Bool,
         uploadProgress: Double?,
         inProgress: Bool,
-        error: String?
+        error: String?,
+        itemSize: NotchShelfItemSize,
+        showItemNames: Bool,
+        showDriveBadges: Bool
     ) {
         currentItemID = item.id
         thumbnailTask?.cancel()
         thumbnailTask = nil
+        metadataTask?.cancel()
+        metadataTask = nil
 
-        shelfView.titleField.stringValue = item.displayName
+        shelfView.configureAppearance(itemSize: itemSize, showItemName: showItemNames)
+        shelfView.setTitle(showItemNames ? item.displayName : "")
+        shelfView.infoField.stringValue = ""
         shelfView.previewImageView.image = fallbackIcon(for: item)
         shelfView.applySelection(isSelected)
 
@@ -1029,7 +1043,7 @@ private final class ShelfCollectionItem: NSCollectionViewItem {
             )
             shelfView.toolTip = errorMsg
         } else {
-            if isGoogleDriveConnected {
+            if isGoogleDriveConnected && showDriveBadges {
                 switch driveState {
                 case .local:
                     shelfView.setDriveBadge(symbolName: nil, tint: nil, accessibilityDescription: nil)
@@ -1066,7 +1080,7 @@ private final class ShelfCollectionItem: NSCollectionViewItem {
         thumbnailTask = Task { [weak self] in
             guard let thumbnail = await NotchShelfThumbnailService.shared.thumbnail(
                 for: reference.url,
-                size: Self.previewSize
+                size: itemSize.previewSize
             ) else {
                 return
             }
@@ -1074,6 +1088,16 @@ private final class ShelfCollectionItem: NSCollectionViewItem {
             await MainActor.run {
                 guard let self, self.currentItemID == itemID else { return }
                 self.shelfView.previewImageView.image = thumbnail
+            }
+        }
+
+        metadataTask = Task { [weak self] in
+            let info = await NotchShelfMetadataService.shared.metadata(for: reference.url)
+
+            await MainActor.run {
+                guard let self, self.currentItemID == itemID else { return }
+                self.shelfView.infoField.stringValue = info ?? ""
+                self.shelfView.infoField.isHidden = !showItemNames || (info?.isEmpty ?? true)
             }
         }
     }
@@ -1152,11 +1176,20 @@ private final class CircularProgressView: NSView {
     }
 }
 
-private final class ShelfCollectionItemView: NSView {
+internal final class ShelfCollectionItemView: NSView {
+    private static let finderTitleMaxCharacters = 12
+    private let iconSelectionBackground = NSView()
     let previewImageView = NSImageView()
     let titleField = NSTextField(labelWithString: "")
+    let infoField = NSTextField(labelWithString: "")
+    private let titleSelectionBackground = NSView()
     let cloudStatusImageView = NSImageView()
-    let circularProgressView = CircularProgressView()
+    private let circularProgressView = CircularProgressView()
+    private var previewWidthConstraint: NSLayoutConstraint?
+    private var previewHeightConstraint: NSLayoutConstraint?
+    private var titleWidthConstraint: NSLayoutConstraint?
+    private var fullTitle = ""
+    private var isFinderSelected = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -1176,9 +1209,25 @@ private final class ShelfCollectionItemView: NSView {
     // always initiates the drag-out gesture, like Finder.
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
+    override func layout() {
+        super.layout()
+        updateDisplayedTitle()
+    }
+
+    func configureAppearance(itemSize: NotchShelfItemSize, showItemName: Bool) {
+        previewWidthConstraint?.constant = itemSize.previewSize.width
+        previewHeightConstraint?.constant = itemSize.previewSize.height
+        titleField.isHidden = !showItemName
+        infoField.isHidden = !showItemName || infoField.stringValue.isEmpty
+        updateSelectionBackgrounds()
+    }
+
     func reset() {
+        setPressed(false, animated: false)
         previewImageView.image = nil
-        titleField.stringValue = ""
+        setTitle("")
+        infoField.stringValue = ""
+        infoField.isHidden = true
         cloudStatusImageView.image = nil
         cloudStatusImageView.isHidden = true
         circularProgressView.progress = 0.0
@@ -1186,24 +1235,58 @@ private final class ShelfCollectionItemView: NSView {
         applySelection(false)
     }
 
-    func applySelection(_ selected: Bool) {
-        previewImageView.alphaValue = selected ? 1.0 : 0.75
-        titleField.textColor = selected ? .white : .white.withAlphaComponent(0.65)
+    func setPressed(_ pressed: Bool, animated: Bool = true) {
+        guard let layer else { return }
+        let targetScale: CGFloat = pressed ? 0.96 : 1
+        let currentScale = (layer.presentation()?.value(forKeyPath: "transform.scale") as? CGFloat)
+            ?? (layer.value(forKeyPath: "transform.scale") as? CGFloat)
+            ?? 1
 
-        if selected {
-            layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.24).cgColor
-            layer?.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.6).cgColor
-            layer?.borderWidth = 1.5
-            layer?.cornerRadius = 8
-        } else {
-            layer?.backgroundColor = NSColor.clear.cgColor
-            layer?.borderColor = NSColor.clear.cgColor
-            layer?.borderWidth = 0
-            layer?.cornerRadius = 8
+        layer.setValue(targetScale, forKeyPath: "transform.scale")
+        layer.opacity = pressed ? 0.98 : 1
+
+        guard animated else {
+            layer.removeAnimation(forKey: "shelfPressedScale")
+            layer.removeAnimation(forKey: "shelfPressedOpacity")
+            return
         }
 
-        layer?.shadowOpacity = selected ? 0.25 : 0.1
-        layer?.shadowRadius = selected ? 8 : 3
+        let scaleAnimation = CASpringAnimation(keyPath: "transform.scale")
+        scaleAnimation.fromValue = currentScale
+        scaleAnimation.toValue = targetScale
+        scaleAnimation.mass = 1
+        scaleAnimation.stiffness = 320
+        scaleAnimation.damping = 26
+        scaleAnimation.initialVelocity = 0
+        scaleAnimation.duration = min(0.24, scaleAnimation.settlingDuration)
+        layer.add(scaleAnimation, forKey: "shelfPressedScale")
+
+        let opacityAnimation = CABasicAnimation(keyPath: "opacity")
+        opacityAnimation.fromValue = layer.presentation()?.opacity ?? (pressed ? 1 : 0.98)
+        opacityAnimation.toValue = pressed ? 0.98 : 1
+        opacityAnimation.duration = pressed ? 0.08 : 0.16
+        layer.add(opacityAnimation, forKey: "shelfPressedOpacity")
+    }
+
+    func playActivationPulse() {
+        setPressed(true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+            self?.setPressed(false)
+        }
+    }
+
+    func applySelection(_ selected: Bool) {
+        isFinderSelected = selected
+        previewImageView.alphaValue = selected ? 1.0 : 0.78
+        titleField.textColor = selected ? .white : .white.withAlphaComponent(0.68)
+        updateSelectionBackgrounds()
+
+        layer?.backgroundColor = NSColor.clear.cgColor
+        layer?.borderColor = NSColor.clear.cgColor
+        layer?.borderWidth = 0
+        layer?.cornerRadius = 0
+        layer?.shadowOpacity = 0
+        layer?.shadowRadius = 0
     }
 
     func setDriveBadge(symbolName: String?, tint: NSColor?, accessibilityDescription: String?, isAnimating: Bool = false) {
@@ -1259,6 +1342,11 @@ private final class ShelfCollectionItemView: NSView {
         }
     }
 
+    func setTitle(_ title: String) {
+        fullTitle = title
+        updateDisplayedTitle()
+    }
+
 
 
     private func setup() {
@@ -1266,6 +1354,13 @@ private final class ShelfCollectionItemView: NSView {
         layer?.masksToBounds = false
         layer?.shadowColor = NSColor.white.withAlphaComponent(0.28).cgColor
         layer?.shadowOffset = NSSize(width: 0, height: -3)
+
+        iconSelectionBackground.wantsLayer = true
+        iconSelectionBackground.translatesAutoresizingMaskIntoConstraints = false
+        iconSelectionBackground.layer?.cornerRadius = 7
+        iconSelectionBackground.layer?.masksToBounds = true
+        iconSelectionBackground.isHidden = true
+        addSubview(iconSelectionBackground)
 
         previewImageView.wantsLayer = true
         previewImageView.imageScaling = .scaleProportionallyUpOrDown
@@ -1284,20 +1379,53 @@ private final class ShelfCollectionItemView: NSView {
         circularProgressView.isHidden = true
         addSubview(circularProgressView)
 
+        titleSelectionBackground.wantsLayer = true
+        titleSelectionBackground.translatesAutoresizingMaskIntoConstraints = false
+        titleSelectionBackground.layer?.cornerRadius = 4
+        titleSelectionBackground.layer?.masksToBounds = true
+        titleSelectionBackground.isHidden = true
+        addSubview(titleSelectionBackground)
+
         titleField.font = .systemFont(ofSize: 9, weight: .semibold)
         titleField.textColor = .white.withAlphaComponent(0.86)
         titleField.alignment = .center
-        titleField.maximumNumberOfLines = 2
-        titleField.lineBreakMode = .byTruncatingMiddle
-        titleField.cell?.wraps = true
+        titleField.maximumNumberOfLines = 1
+        titleField.lineBreakMode = .byClipping
+        titleField.cell?.wraps = false
+        titleField.cell?.isScrollable = false
+        titleField.cell?.usesSingleLineMode = true
+        titleField.cell?.lineBreakMode = .byClipping
+        titleField.cell?.truncatesLastVisibleLine = false
         titleField.translatesAutoresizingMaskIntoConstraints = false
         addSubview(titleField)
+
+        infoField.font = .systemFont(ofSize: 8, weight: .regular)
+        infoField.textColor = NSColor(red: 0.35, green: 0.55, blue: 0.85, alpha: 1.0)
+        infoField.alignment = .center
+        infoField.maximumNumberOfLines = 1
+        infoField.lineBreakMode = .byTruncatingTail
+        infoField.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(infoField)
+
+        let previewWidthConstraint = previewImageView.widthAnchor.constraint(equalToConstant: 42)
+        let previewHeightConstraint = previewImageView.heightAnchor.constraint(equalToConstant: 42)
+        let titleWidthConstraint = titleField.widthAnchor.constraint(equalToConstant: 0)
+        let titleMaxWidthConstraint = titleField.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, constant: -4)
+        titleMaxWidthConstraint.priority = .defaultLow
+        self.previewWidthConstraint = previewWidthConstraint
+        self.previewHeightConstraint = previewHeightConstraint
+        self.titleWidthConstraint = titleWidthConstraint
 
         NSLayoutConstraint.activate([
             previewImageView.topAnchor.constraint(equalTo: topAnchor, constant: 6),
             previewImageView.centerXAnchor.constraint(equalTo: centerXAnchor),
-            previewImageView.widthAnchor.constraint(equalToConstant: 42),
-            previewImageView.heightAnchor.constraint(equalToConstant: 42),
+            previewWidthConstraint,
+            previewHeightConstraint,
+
+            iconSelectionBackground.leadingAnchor.constraint(equalTo: previewImageView.leadingAnchor, constant: -6),
+            iconSelectionBackground.trailingAnchor.constraint(equalTo: previewImageView.trailingAnchor, constant: 6),
+            iconSelectionBackground.topAnchor.constraint(equalTo: previewImageView.topAnchor, constant: -6),
+            iconSelectionBackground.bottomAnchor.constraint(equalTo: previewImageView.bottomAnchor, constant: 6),
 
             cloudStatusImageView.topAnchor.constraint(equalTo: previewImageView.topAnchor, constant: -4),
             cloudStatusImageView.trailingAnchor.constraint(equalTo: previewImageView.trailingAnchor, constant: 4),
@@ -1309,115 +1437,122 @@ private final class ShelfCollectionItemView: NSView {
             circularProgressView.widthAnchor.constraint(equalToConstant: 16),
             circularProgressView.heightAnchor.constraint(equalToConstant: 16),
 
-            titleField.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
-            titleField.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
+            titleSelectionBackground.leadingAnchor.constraint(equalTo: titleField.leadingAnchor, constant: -3),
+            titleSelectionBackground.trailingAnchor.constraint(equalTo: titleField.trailingAnchor, constant: 3),
+            titleSelectionBackground.topAnchor.constraint(equalTo: titleField.topAnchor, constant: -2),
+            titleSelectionBackground.bottomAnchor.constraint(equalTo: titleField.bottomAnchor, constant: 1),
+
+            titleField.centerXAnchor.constraint(equalTo: centerXAnchor),
+            titleMaxWidthConstraint,
+            titleWidthConstraint,
             titleField.topAnchor.constraint(equalTo: previewImageView.bottomAnchor, constant: 6),
-            titleField.heightAnchor.constraint(equalToConstant: 28),
+            titleField.heightAnchor.constraint(equalToConstant: 14),
+
+            infoField.topAnchor.constraint(equalTo: titleField.bottomAnchor, constant: 1),
+            infoField.centerXAnchor.constraint(equalTo: centerXAnchor),
+            infoField.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, constant: -4),
         ])
 
         applySelection(false)
     }
-}
 
-private final class ShelfQuickLookPanel: NSPanel {
-    var closeHandler: (() -> Void)?
+    private func updateSelectionBackgrounds() {
+        updateDisplayedTitle()
+        iconSelectionBackground.isHidden = !isFinderSelected
+        iconSelectionBackground.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.15).cgColor
+        titleSelectionBackground.isHidden = !isFinderSelected || titleField.isHidden || titleField.stringValue.isEmpty
+        titleSelectionBackground.layer?.backgroundColor = NSColor.selectedContentBackgroundColor.cgColor
+    }
 
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
-
-    override func keyDown(with event: NSEvent) {
-        if event.keyCode == 49 || event.keyCode == 53 {
-            closeHandler?()
+    private func updateDisplayedTitle() {
+        guard !titleField.isHidden, !fullTitle.isEmpty else {
+            titleField.stringValue = ""
+            titleWidthConstraint?.constant = 0
             return
         }
 
-        super.keyDown(with: event)
+        let availableWidth = max(0, bounds.width - 10)
+        guard availableWidth > 0 else {
+            titleField.stringValue = fullTitle
+            return
+        }
+
+        let font = titleField.font ?? NSFont.systemFont(ofSize: 9)
+        let displayTitle = finderStyleMiddleTruncatedTitle(fullTitle, availableWidth: availableWidth, font: font)
+        if titleField.stringValue != displayTitle {
+            titleField.stringValue = displayTitle
+        }
+
+        let measuredWidth = titleWidth(displayTitle, font: font) + 6
+        let targetWidth = min(max(12, measuredWidth), availableWidth)
+        if abs((titleWidthConstraint?.constant ?? 0) - targetWidth) > 0.5 {
+            titleWidthConstraint?.constant = targetWidth
+        }
     }
-}
 
-@MainActor
-private final class ShelfQuickLookPanelController: NSObject, NSWindowDelegate {
-    private let panel: ShelfQuickLookPanel
-    private let previewView: QLPreviewView
-    var onClose: (() -> Void)?
-    var onVisibilityChange: ((Bool) -> Void)?
-    private var shouldRestoreFocusOnClose = true
+    internal func finderStyleMiddleTruncatedTitle(
+        _ title: String,
+        availableWidth: CGFloat,
+        font: NSFont
+    ) -> String {
+        let characters = Array(title)
+        guard characters.count > Self.finderTitleMaxCharacters else {
+            return title
+        }
 
-    var isVisible: Bool {
-        panel.isVisible
-    }
+        let token = "..."
+        guard titleWidth(token, font: font) <= availableWidth else { return token }
 
-    override init() {
-        panel = ShelfQuickLookPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 820, height: 560),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
+        guard characters.count > token.count else { return title }
+
+        let maxVisibleWithoutToken = max(2, Self.finderTitleMaxCharacters - token.count)
+        var suffixCount = min(
+            preferredSuffixLength(for: title),
+            maxVisibleWithoutToken - 1,
+            characters.count - 2
         )
-        panel.isReleasedWhenClosed = false
-        panel.titleVisibility = .hidden
-        panel.titlebarAppearsTransparent = true
-        panel.center()
+        while suffixCount >= 1 {
+            var low = 1
+            var high = min(
+                maxVisibleWithoutToken - suffixCount,
+                max(1, characters.count - suffixCount - 1)
+            )
+            var best: String?
 
-        previewView = QLPreviewView(frame: panel.contentView?.bounds ?? .zero, style: .normal)
-        previewView.autoresizingMask = [.width, .height]
-        previewView.shouldCloseWithWindow = true
-        previewView.autostarts = true
+            while low <= high {
+                let prefixCount = (low + high) / 2
+                let candidate = String(characters.prefix(prefixCount))
+                    + token
+                    + String(characters.suffix(suffixCount))
 
-        super.init()
-        panel.delegate = self
+                if titleWidth(candidate, font: font) <= availableWidth {
+                    best = candidate
+                    low = prefixCount + 1
+                } else {
+                    high = prefixCount - 1
+                }
+            }
 
-        let containerView = NSView(frame: panel.contentView?.bounds ?? .zero)
-        containerView.autoresizingMask = [.width, .height]
-        containerView.addSubview(previewView)
-        panel.contentView = containerView
-
-        panel.closeHandler = { [weak self] in
-            self?.close()
+            if let best {
+                return best
+            }
+            suffixCount -= 1
         }
+
+        return token
     }
 
-    func show(url: URL) {
-        update(url: url)
-        panel.title = url.lastPathComponent
-        let wasVisible = panel.isVisible
-        shouldRestoreFocusOnClose = true
-        NSApp.activate(ignoringOtherApps: true)
-        panel.makeKeyAndOrderFront(nil)
-        if !wasVisible {
-            onVisibilityChange?(true)
-        }
+    private func preferredSuffixLength(for title: String) -> Int {
+        let filename = title as NSString
+        let pathExtension = filename.pathExtension
+        guard !pathExtension.isEmpty else { return min(4, title.count - 1) }
+
+        // Keep the extension plus at least one stem character, matching Finder's
+        // "name...x.ext" style for files.
+        return min(pathExtension.count + 2, 10, title.count - 1)
     }
 
-    func update(url: URL) {
-        let previewItem = url as NSURL
-        if (previewView.previewItem as? NSURL) != previewItem {
-            previewView.previewItem = previewItem
-        } else {
-            previewView.refreshPreviewItem()
-        }
-        panel.title = url.lastPathComponent
-    }
-
-    func close(restoreFocus: Bool = true) {
-        guard panel.isVisible else { return }
-        shouldRestoreFocusOnClose = restoreFocus
-        panel.orderOut(nil)
-        handleDidHide()
-    }
-
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        close()
-        return false
-    }
-
-    private func handleDidHide() {
-        onVisibilityChange?(false)
-
-        let shouldRestoreFocus = shouldRestoreFocusOnClose
-        shouldRestoreFocusOnClose = true
-        if shouldRestoreFocus {
-            onClose?()
-        }
+    private func titleWidth(_ title: String, font: NSFont) -> CGFloat {
+        ceil((title as NSString).size(withAttributes: [.font: font]).width)
     }
 }

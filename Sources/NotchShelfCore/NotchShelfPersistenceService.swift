@@ -169,7 +169,8 @@ final class NotchShelfPersistenceService {
             return .corrupted
         }
 
-        return .loaded(records.compactMap(restoreItem))
+        let fallbackDate = Date()
+        return .loaded(records.compactMap { restoreItem(from: $0, fallbackAddedAt: fallbackDate) })
     }
 
     func load() -> [NotchShelfItem] {
@@ -189,7 +190,8 @@ final class NotchShelfPersistenceService {
         try? data.write(to: fileURL, options: .atomic)
     }
 
-    private func restoreItem(from record: PersistedShelfItem) -> NotchShelfItem? {
+    private func restoreItem(from record: PersistedShelfItem, fallbackAddedAt: Date) -> NotchShelfItem? {
+        let addedAt = record.addedAt ?? fallbackAddedAt
         switch record.kind {
         case let .text(string):
             return NotchShelfItem(
@@ -197,7 +199,8 @@ final class NotchShelfPersistenceService {
                 kind: .text(string),
                 driveFileID: record.driveFileID,
                 driveIsPublic: record.driveIsPublic ?? false,
-                driveUploadedAt: record.driveUploadedAt
+                driveUploadedAt: record.driveUploadedAt,
+                addedAt: addedAt
             )
         case let .link(url):
             return NotchShelfItem(
@@ -205,7 +208,8 @@ final class NotchShelfPersistenceService {
                 kind: .link(url),
                 driveFileID: record.driveFileID,
                 driveIsPublic: record.driveIsPublic ?? false,
-                driveUploadedAt: record.driveUploadedAt
+                driveUploadedAt: record.driveUploadedAt,
+                addedAt: addedAt
             )
         case let .file(bookmarkData, isTemporary):
             let bookmark = Bookmark(data: bookmarkData)
@@ -244,7 +248,8 @@ final class NotchShelfPersistenceService {
                     ),
                     driveFileID: record.driveFileID,
                     driveIsPublic: record.driveIsPublic ?? false,
-                    driveUploadedAt: record.driveUploadedAt
+                    driveUploadedAt: record.driveUploadedAt,
+                    addedAt: addedAt
                 )
             } else {
                 return nil
@@ -313,6 +318,7 @@ private struct PersistedShelfItem: Codable {
     let driveFileID: String?
     let driveIsPublic: Bool?
     let driveUploadedAt: Date?
+    let addedAt: Date?
     let fallbackPath: String?
 
     init(_ item: NotchShelfItem) {
@@ -320,6 +326,7 @@ private struct PersistedShelfItem: Codable {
         self.driveFileID = item.driveFileID
         self.driveIsPublic = item.driveIsPublic
         self.driveUploadedAt = item.driveUploadedAt
+        self.addedAt = item.addedAt
 
         switch item.kind {
         case let .text(string):

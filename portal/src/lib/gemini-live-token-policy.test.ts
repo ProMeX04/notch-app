@@ -2,6 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { GoogleGenAI } from '@google/genai'
 
+import {
+  listConfiguredGeminiLiveModels,
+  resolveConfiguredGeminiLiveModel,
+} from './gemini-live-model-policy.ts'
 import { buildGeminiLiveConnectConfig } from './gemini-live-token-policy.ts'
 
 test('managed tokens leave session resumption handle unlocked', () => {
@@ -49,7 +53,7 @@ test('SDK token constraints do not generate a session resumption field mask', as
   assert.doesNotMatch(submittedBody, /sessionResumption/)
 })
 
-test('Gemini 3.1 embeds thinkingLevel and ignores legacy budget', () => {
+test('Gemini 3.1 embeds thinkingLevel and ignores thinkingBudget', () => {
   const { liveConfig, hasThinkingLevel, hasThinkingBudget } = buildGeminiLiveConnectConfig(
     { thinking_level: 'high', thinking_budget: 8192 },
     'gemini-3.1-flash-live-preview',
@@ -60,16 +64,18 @@ test('Gemini 3.1 embeds thinkingLevel and ignores legacy budget', () => {
   assert.equal(hasThinkingBudget, false)
 })
 
-test('Gemini 3.1 upgrades legacy client budgets to thinkingLevel', () => {
-  const { liveConfig } = buildGeminiLiveConnectConfig(
+test('Gemini 3.1 does not translate thinkingBudget into thinkingLevel', () => {
+  const { liveConfig, hasThinkingLevel, hasThinkingBudget } = buildGeminiLiveConnectConfig(
     { thinking_budget: 2048 },
     'gemini-3.1-flash-live-preview',
   )
 
-  assert.deepEqual(liveConfig.thinkingConfig, { thinkingLevel: 'MEDIUM' })
+  assert.equal(liveConfig.thinkingConfig, undefined)
+  assert.equal(hasThinkingLevel, false)
+  assert.equal(hasThinkingBudget, false)
 })
 
-test('Gemini 2.5 embeds a zero thinking budget for Off', () => {
+test('Gemini 2.5 embeds a zero thinking budget for Off and ignores thinkingLevel', () => {
   const { liveConfig, hasThinkingLevel, hasThinkingBudget } = buildGeminiLiveConnectConfig(
     { thinking_level: 'minimal', thinking_budget: 0 },
     'gemini-2.5-flash-native-audio-preview-12-2025',
@@ -78,4 +84,28 @@ test('Gemini 2.5 embeds a zero thinking budget for Off', () => {
   assert.deepEqual(liveConfig.thinkingConfig, { thinkingBudget: 0 })
   assert.equal(hasThinkingLevel, false)
   assert.equal(hasThinkingBudget, true)
+})
+
+test('Gemini Live model policy defaults to a server-controlled allow list', () => {
+  const models = listConfiguredGeminiLiveModels({})
+
+  assert.ok(models.some((model) => model.id === 'gemini-3.1-flash-live-preview'))
+  assert.equal(
+    resolveConfiguredGeminiLiveModel('models/gemini-3.1-flash-live-preview', {})?.id,
+    'gemini-3.1-flash-live-preview',
+  )
+  assert.equal(resolveConfiguredGeminiLiveModel('gemini-not-allowed', {}), null)
+})
+
+test('Gemini Live model policy accepts env-configured models only', () => {
+  const env = {
+    NOTCH_GEMINI_LIVE_ALLOWED_MODELS:
+      'models/gemini-custom-live|Custom Live, gemini-other-live|Other Live, gemini-custom-live|Duplicate',
+  }
+
+  const models = listConfiguredGeminiLiveModels(env)
+
+  assert.deepEqual(models.map((model) => model.id), ['gemini-custom-live', 'gemini-other-live'])
+  assert.equal(models[0].displayName, 'Custom Live')
+  assert.equal(resolveConfiguredGeminiLiveModel('gemini-3.1-flash-live-preview', env), null)
 })

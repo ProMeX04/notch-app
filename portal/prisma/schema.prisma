@@ -36,6 +36,20 @@ model FeatureConfig {
   updatedAt   DateTime @updatedAt
 }
 
+model GeminiLiveModelConfig {
+  id                         String   @id @default(cuid())
+  modelId                    String   @unique
+  displayName                String
+  supportedGenerationMethods String[] @default(["bidiGenerateContent"])
+  isEnabled                  Boolean  @default(true)
+  sortOrder                  Int      @default(0)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  @@index([isEnabled])
+  @@index([sortOrder])
+}
+
 model AuthSession {
   id              String    @id @default(cuid())
   tokenHash       String    @unique

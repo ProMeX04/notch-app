@@ -7,20 +7,37 @@ enum GeminiLiveSessionPolicyTests {
         TestCase(name: "Gemini 3 thinking sends thinkingLevel only") {
             try expectEqual(
                 GeminiThinkingLevel.high.wireConfiguration(forModel: "gemini-3.1-flash-live-preview"),
-                .level("HIGH"),
+                GeminiThinkingWireConfiguration.level("HIGH"),
                 "high level payload"
             )
             try expectEqual(
                 GeminiThinkingLevel.off.wireConfiguration(forModel: "models/gemini-3.1-flash-live-preview"),
-                .level("MINIMAL"),
-                "legacy off migration payload"
+                nil,
+                "unsupported off should not be translated"
             )
         },
         TestCase(name: "Gemini 2.5 thinking supports off automatic and budgets") {
             let model = "gemini-2.5-flash-native-audio-preview-12-2025"
-            try expectEqual(GeminiThinkingLevel.off.wireConfiguration(forModel: model), .budget(0), "off payload")
-            try expectEqual(GeminiThinkingLevel.automatic.wireConfiguration(forModel: model), .automatic, "automatic payload")
-            try expectEqual(GeminiThinkingLevel.medium.wireConfiguration(forModel: model), .budget(2048), "medium payload")
+            try expectEqual(
+                GeminiThinkingLevel.off.wireConfiguration(forModel: model),
+                GeminiThinkingWireConfiguration.budget(0),
+                "off payload"
+            )
+            try expectEqual(
+                GeminiThinkingLevel.automatic.wireConfiguration(forModel: model),
+                GeminiThinkingWireConfiguration.automatic,
+                "automatic payload"
+            )
+            try expectEqual(
+                GeminiThinkingLevel.medium.wireConfiguration(forModel: model),
+                GeminiThinkingWireConfiguration.budget(2048),
+                "medium payload"
+            )
+            try expectEqual(
+                GeminiThinkingLevel.minimal.wireConfiguration(forModel: model),
+                nil,
+                "unsupported minimal should not be translated"
+            )
         },
         TestCase(name: "Thinking choices are model aware") {
             try expectEqual(
@@ -32,6 +49,16 @@ enum GeminiLiveSessionPolicyTests {
                 GeminiThinkingLevel.availableLevels(forModel: "gemini-2.5-flash-native-audio-preview-12-2025"),
                 [.off, .automatic, .low, .medium, .high],
                 "Gemini 2.5 choices"
+            )
+            try expectEqual(
+                GeminiThinkingLevel.off.selectionOrDefault(forModel: "gemini-3.1-flash-live-preview"),
+                .minimal,
+                "Gemini 3.1 default"
+            )
+            try expectEqual(
+                GeminiThinkingLevel.minimal.selectionOrDefault(forModel: "gemini-2.5-flash-native-audio-preview-12-2025"),
+                .automatic,
+                "Gemini 2.5 default"
             )
         },
         TestCase(name: "Non-resumable updates retain last usable handle") {

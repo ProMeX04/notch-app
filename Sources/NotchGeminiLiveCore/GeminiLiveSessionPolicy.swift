@@ -15,31 +15,26 @@ public enum GeminiThinkingLevel: String, CaseIterable, Codable, Sendable {
         return [.off, .automatic, .low, .medium, .high]
     }
 
-    public func normalized(forModel modelID: String) -> GeminiThinkingLevel {
+    public static func defaultLevel(forModel modelID: String) -> GeminiThinkingLevel {
+        modelUsesThinkingLevel(modelID) ? .minimal : .automatic
+    }
+
+    public func isAvailable(forModel modelID: String) -> Bool {
+        Self.availableLevels(forModel: modelID).contains(self)
+    }
+
+    public func selectionOrDefault(forModel modelID: String) -> GeminiThinkingLevel {
+        isAvailable(forModel: modelID) ? self : Self.defaultLevel(forModel: modelID)
+    }
+
+    public func wireConfiguration(forModel modelID: String) -> GeminiThinkingWireConfiguration? {
+        guard isAvailable(forModel: modelID) else { return nil }
+
         if Self.modelUsesThinkingLevel(modelID) {
-            switch self {
-            case .off, .automatic:
-                return .minimal
-            case .minimal, .low, .medium, .high:
-                return self
-            }
+            return .level(apiLevelName)
         }
 
         switch self {
-        case .minimal:
-            return .off
-        case .off, .automatic, .low, .medium, .high:
-            return self
-        }
-    }
-
-    public func wireConfiguration(forModel modelID: String) -> GeminiThinkingWireConfiguration {
-        let normalized = normalized(forModel: modelID)
-        if Self.modelUsesThinkingLevel(modelID) {
-            return .level(normalized.apiLevelName)
-        }
-
-        switch normalized {
         case .off:
             return .budget(0)
         case .automatic:
@@ -51,7 +46,7 @@ public enum GeminiThinkingLevel: String, CaseIterable, Codable, Sendable {
         case .high:
             return .budget(8192)
         case .minimal:
-            return .budget(0)
+            return nil
         }
     }
 

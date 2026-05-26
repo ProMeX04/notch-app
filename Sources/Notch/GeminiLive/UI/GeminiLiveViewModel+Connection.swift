@@ -225,19 +225,24 @@ extension GeminiLiveViewModel {
         model: String,
         systemInstruction: String?,
         voiceName: String,
-        thinkingConfiguration: GeminiThinkingWireConfiguration,
+        thinkingConfiguration: GeminiThinkingWireConfiguration?,
         mediaResolution: GeminiMediaResolution
     ) async throws -> GeminiLiveEphemeralTokenResponse {
         let thinkingLevel: String?
         let thinkingBudget: Int?
-        switch thinkingConfiguration {
-        case let .level(level):
-            thinkingLevel = level
-            thinkingBudget = nil
-        case let .budget(budget):
-            thinkingLevel = nil
-            thinkingBudget = budget
-        case .automatic:
+        if let thinkingConfiguration {
+            switch thinkingConfiguration {
+            case let .level(level):
+                thinkingLevel = level
+                thinkingBudget = nil
+            case let .budget(budget):
+                thinkingLevel = nil
+                thinkingBudget = budget
+            case .automatic:
+                thinkingLevel = nil
+                thinkingBudget = nil
+            }
+        } else {
             thinkingLevel = nil
             thinkingBudget = nil
         }

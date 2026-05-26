@@ -2,6 +2,7 @@ import { GoogleGenAI } from '@google/genai'
 import { NextResponse } from 'next/server'
 
 import { logAppEvent } from '@/lib/event-logger'
+import { resolveAllowedGeminiLiveModel } from '@/lib/gemini-live-model-policy'
 import { buildGeminiLiveConnectConfig, type GeminiLiveSessionTokenRequest } from '@/lib/gemini-live-token-policy'
 import { getAuthenticatedUser, getFeatureRequirement } from '@/lib/notch-auth'
 
@@ -70,6 +71,20 @@ export async function POST(req: Request) {
       })
       return NextResponse.json({ detail: 'Model is required.' }, { status: 400 })
     }
+    const allowedModel = await resolveAllowedGeminiLiveModel(model)
+    if (!allowedModel) {
+      await logAppEvent({
+        req,
+        eventType: 'gemini_live.session_token_rejected',
+        outcome: 'rejected',
+        source: 'desktop',
+        actorUserId: auth.user.id,
+        statusCode: 400,
+        metadata: { reason: 'model_not_allowed' },
+      })
+      return NextResponse.json({ detail: 'Model is not allowed by this Gemini Live server.' }, { status: 400 })
+    }
+    const resolvedModelID = allowedModel.id
     const expireTime = new Date(now + 30 * 60 * 1000).toISOString()
     const newSessionExpireTime = new Date(now + 60 * 1000).toISOString()
     // Session resumption may reuse this token within expireTime even with one use.
@@ -82,7 +97,7 @@ export async function POST(req: Request) {
     // deliberately leaving sessionResumption unlocked because its handle is
     // only known later when the desktop reconnects.
     const { liveConfig, responseModalities, mediaResolution, hasThinkingLevel, hasThinkingBudget } =
-      buildGeminiLiveConnectConfig(body, model)
+      buildGeminiLiveConnectConfig(body, resolvedModelID)
 
     await logAppEvent({
       req,
@@ -92,7 +107,7 @@ export async function POST(req: Request) {
       actorUserId: auth.user.id,
       statusCode: 200,
       metadata: {
-        model,
+        model: resolvedModelID,
         responseModalities,
         modalityCount: responseModalities.length,
         hasVoice: Boolean(typeof body.voice_name === 'string' && body.voice_name.trim()),
@@ -114,7 +129,7 @@ export async function POST(req: Request) {
         // setup.tools to be ignored in constrained sessions.
         lockAdditionalFields: [],
         liveConnectConstraints: {
-          model,
+          model: resolvedModelID,
           config: liveConfig,
         },
         httpOptions: {

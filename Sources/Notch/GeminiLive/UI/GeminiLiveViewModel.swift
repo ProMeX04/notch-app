@@ -95,9 +95,9 @@ final class GeminiLiveViewModel: ObservableObject {
     @Published var selectedModelID: String = GeminiLiveModel.defaultModelID {
         didSet {
             let normalizedID = GeminiLiveModel.normalizedModelID(selectedModelID)
-            let normalizedThinkingLevel = thinkingLevel.normalized(forModel: normalizedID)
-            if normalizedThinkingLevel != thinkingLevel {
-                thinkingLevel = normalizedThinkingLevel
+            let allowedThinkingLevel = thinkingLevel.selectionOrDefault(forModel: normalizedID)
+            if allowedThinkingLevel != thinkingLevel {
+                thinkingLevel = allowedThinkingLevel
             }
             if let idx = systemPromptPresets.firstIndex(where: { $0.id == selectedSystemPromptID }) {
                 systemPromptPresets[idx].model = normalizedID

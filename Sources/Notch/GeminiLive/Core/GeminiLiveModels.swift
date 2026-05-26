@@ -115,7 +115,7 @@ enum GeminiLiveLifecycleState: Equatable {
     }
 }
 
-struct GeminiLiveModel: Identifiable, Hashable, Codable {
+struct GeminiLiveModel: Identifiable, Hashable, Codable, Sendable {
     static let defaultModelID = "gemini-3.1-flash-live-preview"
 
     let id: String
@@ -419,8 +419,8 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         self.enabledSkillNames = enabledSkillNames
         self.voice = voice
         self.model = model
-        self.thinkingLevel = (GeminiThinkingLevel(rawValue: thinkingLevel) ?? .minimal)
-            .normalized(forModel: model)
+        self.thinkingLevel = (GeminiThinkingLevel(rawValue: thinkingLevel)
+            ?? GeminiThinkingLevel.defaultLevel(forModel: model))
             .rawValue
         self.mediaResolution = mediaResolution
         self.avatarSymbolName = avatarSymbolName
@@ -443,8 +443,8 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         voice = try c.decodeIfPresent(String.self, forKey: .voice) ?? GeminiVoice.kore.rawValue
         model = try c.decodeIfPresent(String.self, forKey: .model) ?? GeminiLiveModel.defaultModelID
         let savedThinkingLevel = try c.decodeIfPresent(String.self, forKey: .thinkingLevel) ?? GeminiThinkingLevel.minimal.rawValue
-        thinkingLevel = (GeminiThinkingLevel(rawValue: savedThinkingLevel) ?? .minimal)
-            .normalized(forModel: model)
+        thinkingLevel = (GeminiThinkingLevel(rawValue: savedThinkingLevel)
+            ?? GeminiThinkingLevel.defaultLevel(forModel: model))
             .rawValue
         mediaResolution = try c.decodeIfPresent(String.self, forKey: .mediaResolution) ?? GeminiMediaResolution.low.rawValue
         avatarSymbolName = try c.decodeIfPresent(String.self, forKey: .avatarSymbolName) ?? GeminiSystemPromptPreset.defaultAvatarSymbolName
@@ -482,8 +482,8 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
     }
 
     var thinkingEnum: GeminiThinkingLevel {
-        (GeminiThinkingLevel(rawValue: thinkingLevel) ?? .minimal)
-            .normalized(forModel: modelAPIName)
+        (GeminiThinkingLevel(rawValue: thinkingLevel)
+            ?? GeminiThinkingLevel.defaultLevel(forModel: modelAPIName))
     }
 
     var mediaResolutionEnum: GeminiMediaResolution {

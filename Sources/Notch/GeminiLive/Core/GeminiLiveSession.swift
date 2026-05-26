@@ -232,7 +232,7 @@ final class GeminiLiveSession: @unchecked Sendable {
         microphoneEnabled: Bool,
         microphonePrewarmingEnabled: Bool = false,
         credentialExpireTime: Date? = nil,
-        thinkingConfiguration: GeminiThinkingWireConfiguration,
+        thinkingConfiguration: GeminiThinkingWireConfiguration?,
         voiceName: String = "Kore",
         mediaResolution: GeminiMediaResolution = .low,
         enabledTools: Set<GeminiTool> = GeminiTool.coreToolSet,
@@ -840,13 +840,15 @@ final class GeminiLiveSession: @unchecked Sendable {
                 ],
             ],
         ]
-        switch configuration.thinkingConfiguration {
-        case let .level(level):
-            generationConfig["thinkingConfig"] = ["thinkingLevel": level]
-        case let .budget(budget):
-            generationConfig["thinkingConfig"] = ["thinkingBudget": budget]
-        case .automatic:
-            break
+        if let thinkingConfiguration = configuration.thinkingConfiguration {
+            switch thinkingConfiguration {
+            case let .level(level):
+                generationConfig["thinkingConfig"] = ["thinkingLevel": level]
+            case let .budget(budget):
+                generationConfig["thinkingConfig"] = ["thinkingBudget": budget]
+            case .automatic:
+                break
+            }
         }
         generationConfig["mediaResolution"] = configuration.mediaResolution.apiName
 
@@ -1080,7 +1082,7 @@ struct LiveSessionConfiguration {
     let credentialExpireTime: Date?
     let model: String
     let systemPrompt: String?
-    let thinkingConfiguration: GeminiThinkingWireConfiguration
+    let thinkingConfiguration: GeminiThinkingWireConfiguration?
     let voiceName: String
     let mediaResolution: GeminiMediaResolution
     let skillSnapshot: SkillSessionSnapshot?

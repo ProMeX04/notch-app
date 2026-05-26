@@ -75,6 +75,10 @@ struct GeminiLiveSessionTokenRequest: Encodable, Sendable {
     }
 }
 
+struct GeminiLiveModelListResponse: Decodable, Sendable {
+    let models: [GeminiLiveModel]
+}
+
 struct GeminiLiveBackendAuthUser: Decodable, Equatable, Sendable {
     let id: String
     let email: String
@@ -582,6 +586,26 @@ final class GeminiLiveBackendClient: @unchecked Sendable {
             throw GeminiLiveBackendError.invalidTokenResponse
         }
         return token
+    }
+
+    func listLiveModels(configuration: GeminiLiveBackendConfiguration) async throws -> [GeminiLiveModel] {
+        let request = try makeRequest(
+            configuration: configuration,
+            path: "gemini-live/models",
+            method: "GET"
+        )
+
+        let (data, response) = try await urlSession.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw GeminiLiveBackendError.invalidResponse
+        }
+
+        try validateHTTPStatus(data: data, response: httpResponse)
+
+        guard let payload = try? jsonDecoder.decode(GeminiLiveModelListResponse.self, from: data) else {
+            throw GeminiLiveBackendError.invalidResponse
+        }
+        return payload.models
     }
 
     func signup(

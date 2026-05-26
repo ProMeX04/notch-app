@@ -207,21 +207,17 @@ extension GeminiLiveViewModel {
     }
 
     func refreshLiveModelsOnLaunchIfPossible() async {
-        guard configuredAPIKey != nil else { return }
+        switch selectedConnectionMethod {
+        case .userAPIKey:
+            guard configuredAPIKey != nil else { return }
+        case .managedServer:
+            guard configuredBackendConfiguration != nil, isBackendAuthenticated else { return }
+        }
         await refreshAvailableLiveModels(silent: true)
     }
 
     @discardableResult
     func refreshAvailableLiveModels(silent: Bool = false) async -> Bool {
-        guard let apiKey = configuredAPIKey else {
-            lastLiveModelRefreshMessage = "Gemini API key is missing."
-            if !silent {
-                lastErrorMessage = "Gemini API key is missing."
-                statusText = "Save your Gemini API key before updating models."
-            }
-            return false
-        }
-
         isRefreshingLiveModels = true
         if !silent {
             lastErrorMessage = nil
@@ -229,8 +225,40 @@ extension GeminiLiveViewModel {
         }
         defer { isRefreshingLiveModels = false }
 
+        let models: [GeminiLiveModel]
         do {
-            let models = try await fetchAvailableLiveModels(apiKey: apiKey)
+            switch selectedConnectionMethod {
+            case .userAPIKey:
+                guard let apiKey = configuredAPIKey else {
+                    lastLiveModelRefreshMessage = "Gemini API key is missing."
+                    if !silent {
+                        lastErrorMessage = "Gemini API key is missing."
+                        statusText = "Save your Gemini API key before updating models."
+                    }
+                    return false
+                }
+                models = try await fetchAvailableLiveModels(apiKey: apiKey)
+
+            case .managedServer:
+                guard configuredBackendConfiguration != nil else {
+                    lastLiveModelRefreshMessage = "Gemini Live server is missing."
+                    if !silent {
+                        lastErrorMessage = "Gemini Live server is missing."
+                        statusText = "Save your Gemini Live server before updating models."
+                    }
+                    return false
+                }
+                guard let backendConfiguration = await backend.freshConfiguredBackendUserConfiguration() else {
+                    lastLiveModelRefreshMessage = "Sign in to your Gemini Live server account before updating models."
+                    if !silent {
+                        lastErrorMessage = "Sign in to your Gemini Live server account before updating models."
+                        statusText = "Sign in to your Gemini Live server account."
+                    }
+                    return false
+                }
+                models = try await backendClient.listLiveModels(configuration: backendConfiguration)
+            }
+
             guard !models.isEmpty else {
                 lastLiveModelRefreshMessage = "No Gemini Live models were returned."
                 if !silent {
@@ -252,6 +280,9 @@ extension GeminiLiveViewModel {
             }
             return true
         } catch {
+            if backend.shouldClearBackendAuthSession(for: error) {
+                backend.clearBackendAuthSession()
+            }
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             lastLiveModelRefreshMessage = message
             if !silent {

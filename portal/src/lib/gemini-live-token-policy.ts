@@ -55,13 +55,6 @@ function modelUsesThinkingLevel(model: string): boolean {
   return model.replace(/^models\//, '').toLowerCase().startsWith('gemini-3')
 }
 
-function legacyBudgetToThinkingLevel(budget: number): ThinkingLevel {
-  if (budget <= 0) return ThinkingLevel.MINIMAL
-  if (budget <= 512) return ThinkingLevel.LOW
-  if (budget <= 2048) return ThinkingLevel.MEDIUM
-  return ThinkingLevel.HIGH
-}
-
 export function buildGeminiLiveConnectConfig(body: GeminiLiveSessionTokenRequest, model: string): {
   liveConfig: LiveConnectConfig
   responseModalities: Modality[]
@@ -107,10 +100,8 @@ export function buildGeminiLiveConnectConfig(body: GeminiLiveSessionTokenRequest
   let hasThinkingLevel = false
   let hasThinkingBudget = false
   if (modelUsesThinkingLevel(model)) {
-    const compatibleThinkingLevel =
-      thinkingLevel ?? (thinkingBudget !== null ? legacyBudgetToThinkingLevel(thinkingBudget) : null)
-    if (compatibleThinkingLevel !== null) {
-      liveConfig.thinkingConfig = { thinkingLevel: compatibleThinkingLevel }
+    if (thinkingLevel !== null) {
+      liveConfig.thinkingConfig = { thinkingLevel }
       hasThinkingLevel = true
     }
   } else if (thinkingBudget !== null) {

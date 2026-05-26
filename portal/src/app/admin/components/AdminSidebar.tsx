@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Bot,
   LayoutDashboard,
   Users,
   Settings,
@@ -14,6 +15,7 @@ const navItems = [
   { label: "Tổng quan", icon: LayoutDashboard, href: "/admin" },
   { label: "Người dùng", icon: Users, href: "/admin/users" },
   { label: "Quyền truy cập", icon: ShieldCheck, href: "/admin/capabilities" },
+  { label: "Gemini Live", icon: Bot, href: "/admin/gemini-live" },
   { label: "Cài đặt", icon: Settings, href: "/admin/settings" },
 ];
 

@@ -5,7 +5,7 @@ export async function GET() {
   try {
     const policy = await getRemotePermissionPolicy();
     return NextResponse.json(policy);
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: "Failed to fetch capabilities" }, { status: 500 });
   }
 }

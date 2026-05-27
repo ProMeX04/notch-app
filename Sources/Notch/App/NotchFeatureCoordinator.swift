@@ -1,6 +1,6 @@
 import AppKit
-import NotchFocusCore
-import NotchShelfCore
+import NotchFocusFeature
+import NotchShelfFeature
 import SwiftUI
 
 @MainActor
@@ -53,6 +53,7 @@ final class NotchFeatureCoordinator: NotchCommandHandling {
     let playbackViewModel: MediaProbeViewModel
     let pomodoroViewModel: PomodoroViewModel
     let geminiLiveViewModel: GeminiLiveViewModel
+    let portalAccountCoordinator: PortalAccountCoordinator
     let shelfViewModel: NotchShelfViewModel
     let presentationModel: NotchPresentationModel
 
@@ -64,6 +65,7 @@ final class NotchFeatureCoordinator: NotchCommandHandling {
         playbackViewModel: MediaProbeViewModel,
         pomodoroViewModel: PomodoroViewModel,
         geminiLiveViewModel: GeminiLiveViewModel,
+        portalAccountCoordinator: PortalAccountCoordinator,
         shelfViewModel: NotchShelfViewModel,
         presentationModel: NotchPresentationModel,
         appSettingsController: AppSettingsControlling = AppSettingsController.shared
@@ -72,6 +74,7 @@ final class NotchFeatureCoordinator: NotchCommandHandling {
         self.playbackViewModel = playbackViewModel
         self.pomodoroViewModel = pomodoroViewModel
         self.geminiLiveViewModel = geminiLiveViewModel
+        self.portalAccountCoordinator = portalAccountCoordinator
         self.shelfViewModel = shelfViewModel
         self.presentationModel = presentationModel
         self.appSettingsController = appSettingsController
@@ -288,7 +291,7 @@ final class NotchFeatureCoordinator: NotchCommandHandling {
     }
 
     func handleOAuthCallback(_ url: URL) {
-        geminiLiveViewModel.handleBackendOAuthCallback(url)
+        portalAccountCoordinator.handleOAuthCallbackURL(url)
     }
 
     func handleGoogleDriveCallback(_ url: URL) {

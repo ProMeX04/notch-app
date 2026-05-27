@@ -67,8 +67,9 @@ export default function Home() {
           <PortalLogo />
           
           <div className="nav-links" style={{ display: 'flex', gap: '32px', alignItems: 'center' }}>
-            <Link href="#tinh-nang" className="portal-text-link" style={{ fontSize: '0.95rem', fontWeight: 500, color: 'var(--muted-strong)' }}>Tính năng</Link>
-            <Link href="#pricing" className="portal-text-link" style={{ fontSize: '0.95rem', fontWeight: 500, color: 'var(--muted-strong)' }}>Bảng giá</Link>
+            <Link href="#tinh-nang" className="portal-text-link home-section-link" style={{ fontSize: '0.95rem', fontWeight: 500, color: 'var(--muted-strong)' }}>Tính năng</Link>
+            <Link href="/leaderboard" className="portal-text-link" style={{ fontSize: '0.95rem', fontWeight: 500, color: 'var(--muted-strong)' }}>Xếp hạng</Link>
+            <Link href="#pricing" className="portal-text-link home-section-link" style={{ fontSize: '0.95rem', fontWeight: 500, color: 'var(--muted-strong)' }}>Bảng giá</Link>
             <Link href={primaryHref} className="portal-button" style={{ 
               height: '40px', 
               padding: '0 20px', 
@@ -397,6 +398,24 @@ export default function Home() {
         .portal-text-link:hover {
           opacity: 1;
           color: white !important;
+        }
+        @media (max-width: 720px) {
+          .landing-nav .glass {
+            padding: 10px 12px !important;
+          }
+          .landing-nav .nav-links {
+            gap: 10px !important;
+          }
+          .landing-nav .home-section-link {
+            display: none;
+          }
+          .landing-nav .portal-text-link {
+            font-size: 0.85rem !important;
+          }
+          .landing-nav .portal-button {
+            height: 38px !important;
+            padding: 0 14px !important;
+          }
         }
       `}</style>
     </main>

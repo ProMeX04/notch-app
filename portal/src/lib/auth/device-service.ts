@@ -81,7 +81,7 @@ export function buildNormalizedDevice(args: {
   const deviceId =
     rawDeviceId ??
     args.existingDevice?.deviceId ??
-    `legacy_${hashToken(`${args.userKey}:${userAgent || 'unknown-device'}`).slice(0, 24)}`
+    `generated_${hashToken(`${args.userKey}:${userAgent || 'unknown-device'}`).slice(0, 24)}`
 
   const platform =
     normalizeText(args.input?.platform, 64) ??

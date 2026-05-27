@@ -1,4 +1,4 @@
-import NotchShelfCore
+import NotchShelfFeature
 import SwiftUI
 
 struct AppShelfSettingsPane: View {

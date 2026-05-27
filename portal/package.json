@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:gemini-live": "node --experimental-strip-types --test src/lib/gemini-live-token-policy.test.ts",
+    "test:focus": "node --experimental-strip-types --test src/lib/focus-ranking.test.ts src/lib/focus-event-policy.test.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

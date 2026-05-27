@@ -1,6 +1,6 @@
 import AppKit
 import Foundation
-import NotchFocusCore
+import NotchFocusFeature
 
 struct Localization {
     static func get(_ key: String, lang: String) -> String {
@@ -33,9 +33,14 @@ struct TestPomodoroNotificationPoster: PomodoroNotificationPosting {
 
 @MainActor
 final class TestLearningStatsRecorder: LearningStatsRecording {
-    private(set) var recordedEvents: [(seconds: Int, source: LearningActivitySource)] = []
+    private(set) var intervals: [(interval: DateInterval, source: LearningActivitySource)] = []
+    private(set) var completedSessions: [(date: Date, source: LearningActivitySource)] = []
 
-    func record(seconds: Int, source: LearningActivitySource) {
-        recordedEvents.append((seconds, source))
+    func recordFocusedInterval(_ interval: DateInterval, source: LearningActivitySource) {
+        intervals.append((interval, source))
+    }
+
+    func recordCompletedFocusSession(at date: Date, source: LearningActivitySource) {
+        completedSessions.append((date, source))
     }
 }

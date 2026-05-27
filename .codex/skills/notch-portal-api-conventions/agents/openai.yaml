@@ -1,0 +1,4 @@
+interface:
+  display_name: "Notch Portal API Conventions"
+  short_description: "Enforce Portal API boundaries and privacy"
+  default_prompt: "Use $notch-portal-api-conventions to add or review a Portal API endpoint."

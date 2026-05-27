@@ -1,5 +1,5 @@
 import Foundation
-import NotchChatHistoryCore
+import NotchChatHistoryFeature
 
 private struct TestCase {
     let name: String
@@ -53,17 +53,6 @@ private enum GeminiLiveChatHistoryStoreTests {
         try expectEqual(reloaded.history, ["open camera", "open calendar"])
     }
 
-    static func legacyStringArrayMigrationUsesStoredRecencyOrder() throws {
-        let (defaults, suiteName, defaultsKey) = makeIsolatedDefaults()
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        defaults.set(["ask recent", "ask old"], forKey: defaultsKey)
-
-        let store = GeminiLiveChatHistoryStore(userDefaults: defaults, defaultsKey: defaultsKey)
-
-        try expectEqual(store.getSuggestion(for: "ask"), "ask recent")
-        try expectEqual(store.history, ["ask recent", "ask old"])
-    }
-
     static func suggestionStillRequiresPrefixMatch() throws {
         let (defaults, suiteName, defaultsKey) = makeIsolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -100,10 +89,6 @@ private func buildTestCases() -> [TestCase] {
         TestCase(
             name: "history/recency ranking survives reload",
             run: { try GeminiLiveChatHistoryStoreTests.recencyRankingSurvivesReload() }
-        ),
-        TestCase(
-            name: "history/legacy string array migration uses stored recency order",
-            run: { try GeminiLiveChatHistoryStoreTests.legacyStringArrayMigrationUsesStoredRecencyOrder() }
         ),
         TestCase(
             name: "history/suggestion still requires prefix match",

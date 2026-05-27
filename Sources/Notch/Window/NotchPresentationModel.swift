@@ -203,8 +203,7 @@ final class NotchPresentationModel: ObservableObject {
         if closedHeightStored > 0 {
             closedNotchHeight = Self.clampedClosedNotchHeight(closedHeightStored)
         } else {
-            let legacyMode = defaults.string(forKey: "dev.notch.closed-height-mode") ?? ""
-            closedNotchHeight = (legacyMode == "minimal" || legacyMode == "small") ? 6 : 30
+            closedNotchHeight = 30
         }
 
         accentColorID = NotchAccentColorOption.resolve(

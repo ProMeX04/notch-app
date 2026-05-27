@@ -116,17 +116,17 @@ extension GeminiLiveViewModel {
                 !scheme.isEmpty,
                 normalizedURL.host != nil
             else {
-                throw GeminiLiveBackendError.invalidBaseURL
+                throw PortalAPIError.invalidBaseURL
             }
 
-            let normalizedConfiguration = GeminiLiveBackendConfiguration(
+            let normalizedConfiguration = PortalBackendConfiguration(
                 baseURL: normalizedURL.path.isEmpty ? normalizedURL.appendingPathComponent("") : normalizedURL,
                 clientToken: draftBackendClientToken,
                 userAccessToken: backend.currentAccessToken
             )
             do {
-                try await backendClient.validate(configuration: normalizedConfiguration)
-            } catch GeminiLiveBackendError.unauthorized {
+                try await backendClient.geminiLiveHealth(configuration: normalizedConfiguration)
+            } catch PortalAPIError.unauthorized {
                 guard backendConfigStore.save(
                     baseURLString: normalizedConfiguration.displayURL,
                     clientToken: normalizedConfiguration.clientToken
@@ -136,7 +136,7 @@ extension GeminiLiveViewModel {
                     return false
                 }
 
-                storedBackendConfiguration = GeminiLiveBackendConfiguration(
+                storedBackendConfiguration = PortalBackendConfiguration(
                     baseURL: normalizedConfiguration.baseURL,
                     clientToken: normalizedConfiguration.clientToken,
                     userAccessToken: nil
@@ -185,7 +185,7 @@ extension GeminiLiveViewModel {
         defer { isSavingAPIKey = false }
 
         do {
-            try await validateAPIKey(draftAPIKey)
+            try await userAPIClient.validateAPIKey(draftAPIKey)
 
             guard keyStore.save(draftAPIKey) else {
                 lastErrorMessage = keyStore.saveFailureMessage
@@ -237,7 +237,7 @@ extension GeminiLiveViewModel {
                     }
                     return false
                 }
-                models = try await fetchAvailableLiveModels(apiKey: apiKey)
+                models = try await userAPIClient.fetchAvailableLiveModels(apiKey: apiKey)
 
             case .managedServer:
                 guard configuredBackendConfiguration != nil else {
@@ -248,7 +248,7 @@ extension GeminiLiveViewModel {
                     }
                     return false
                 }
-                guard let backendConfiguration = await backend.freshConfiguredBackendUserConfiguration() else {
+                guard let backendConfiguration = await backend.freshConfiguredPortalUserConfiguration() else {
                     lastLiveModelRefreshMessage = "Sign in to your Gemini Live server account before updating models."
                     if !silent {
                         lastErrorMessage = "Sign in to your Gemini Live server account before updating models."
@@ -256,7 +256,7 @@ extension GeminiLiveViewModel {
                     }
                     return false
                 }
-                models = try await backendClient.listLiveModels(configuration: backendConfiguration)
+                models = try await backendClient.listGeminiLiveModels(configuration: backendConfiguration)
             }
 
             guard !models.isEmpty else {
@@ -323,7 +323,7 @@ extension GeminiLiveViewModel {
         return trimmedInput.isEmpty ? nil : trimmedInput
     }
 
-    var configuredBackendConfiguration: GeminiLiveBackendConfiguration? {
+    var configuredBackendConfiguration: PortalBackendConfiguration? {
         storedBackendConfiguration ?? backendConfigStore.read()
     }
 
@@ -349,8 +349,8 @@ extension GeminiLiveViewModel {
         statusText = defaultDisconnectedStatusText
     }
 
-    func ensureBackendConfigurationForAuth() async -> GeminiLiveBackendConfiguration? {
-        backendURLText = GeminiLiveHostedBackend.defaultURL
+    func ensureBackendConfigurationForAuth() async -> PortalBackendConfiguration? {
+        backendURLText = PortalHostedBackend.defaultURL
         backendClientTokenText = ""
 
         if needsBackendConfigurationSave {
@@ -359,7 +359,7 @@ extension GeminiLiveViewModel {
         }
 
         guard let configuration = configuredBackendConfiguration else { return nil }
-        return GeminiLiveBackendConfiguration(
+        return PortalBackendConfiguration(
             baseURL: configuration.baseURL,
             clientToken: configuration.clientToken,
             userAccessToken: nil
@@ -372,119 +372,4 @@ extension GeminiLiveViewModel {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    func validateAPIKey(_ apiKey: String) async throws {
-        guard var components = URLComponents(string: "https://generativelanguage.googleapis.com/v1beta/models") else {
-            throw GeminiAPIKeyValidationError.invalidRequest
-        }
-        components.queryItems = [
-            URLQueryItem(name: "key", value: apiKey),
-        ]
-
-        guard let url = components.url else {
-            throw GeminiAPIKeyValidationError.invalidRequest
-        }
-
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 15
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw GeminiAPIKeyValidationError.invalidResponse
-        }
-
-        guard (200 ... 299).contains(httpResponse.statusCode) else {
-            if let apiError = try? JSONDecoder().decode(GeminiAPIErrorEnvelope.self, from: data),
-               !apiError.error.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                throw GeminiAPIKeyValidationError.server(apiError.error.message)
-            }
-            throw GeminiAPIKeyValidationError.server("Gemini returned HTTP \(httpResponse.statusCode) while testing the API key.")
-        }
-    }
-
-    private func fetchAvailableLiveModels(apiKey: String) async throws -> [GeminiLiveModel] {
-        guard var components = URLComponents(string: "https://generativelanguage.googleapis.com/v1beta/models") else {
-            throw GeminiAPIKeyValidationError.invalidRequest
-        }
-        components.queryItems = [
-            URLQueryItem(name: "key", value: apiKey),
-            URLQueryItem(name: "pageSize", value: "1000"),
-        ]
-
-        guard let url = components.url else {
-            throw GeminiAPIKeyValidationError.invalidRequest
-        }
-
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 20
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw GeminiAPIKeyValidationError.invalidResponse
-        }
-
-        guard (200 ... 299).contains(httpResponse.statusCode) else {
-            if let apiError = try? JSONDecoder().decode(GeminiAPIErrorEnvelope.self, from: data),
-               !apiError.error.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                throw GeminiAPIKeyValidationError.server(apiError.error.message)
-            }
-            throw GeminiAPIKeyValidationError.server("Gemini returned HTTP \(httpResponse.statusCode) while updating models.")
-        }
-
-        let payload = try JSONDecoder().decode(GeminiModelListEnvelope.self, from: data)
-        return payload.models
-            .filter { model in
-                (model.supportedGenerationMethods ?? []).contains { method in
-                    method.caseInsensitiveCompare("bidiGenerateContent") == .orderedSame
-                }
-            }
-            .map { model in
-                GeminiLiveModel(
-                    id: model.name,
-                    name: model.name,
-                    displayName: model.displayName,
-                    supportedGenerationMethods: model.supportedGenerationMethods ?? []
-                )
-            }
-            .sorted { lhs, rhs in
-                if lhs.apiName.contains("latest") != rhs.apiName.contains("latest") {
-                    return lhs.apiName.contains("latest")
-                }
-                return lhs.displayName.localizedStandardCompare(rhs.displayName) == .orderedAscending
-            }
-    }
-
-    private struct GeminiAPIErrorEnvelope: Decodable {
-        struct APIError: Decodable {
-            let message: String
-        }
-
-        let error: APIError
-    }
-
-    private struct GeminiModelListEnvelope: Decodable {
-        struct Model: Decodable {
-            let name: String
-            let displayName: String?
-            let supportedGenerationMethods: [String]?
-        }
-
-        let models: [Model]
-    }
-
-    private enum GeminiAPIKeyValidationError: LocalizedError {
-        case invalidRequest
-        case invalidResponse
-        case server(String)
-
-        var errorDescription: String? {
-            switch self {
-            case .invalidRequest:
-                return "Couldn't prepare the Gemini API key test."
-            case .invalidResponse:
-                return "Gemini returned an invalid response while testing the API key."
-            case let .server(message):
-                return message
-            }
-        }
-    }
 }

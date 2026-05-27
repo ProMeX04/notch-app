@@ -3,7 +3,6 @@ import { Check, Sparkles } from 'lucide-react'
 
 import { processVNPayResult, verifyVNPayPayload } from '@/lib/vnpay'
 import prisma from '@/lib/prisma'
-import { PortalLogo } from '@/components/portal/PortalLogo'
 
 export default async function VNPayReturnPage({
   searchParams,
@@ -23,7 +22,6 @@ export default async function VNPayReturnPage({
   const success = Boolean(processed?.success)
 
   let needsSignup = false
-  let hasLinkedAccount = false
 
   if (success && orderId) {
     const transaction = await prisma.paymentTransaction.findUnique({
@@ -36,7 +34,6 @@ export default async function VNPayReturnPage({
     })
 
     if (transaction?.status === 'paid') {
-      hasLinkedAccount = Boolean(transaction.userId)
       needsSignup = !transaction.userId && Boolean(transaction.guestEmail)
     }
   }

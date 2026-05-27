@@ -48,6 +48,12 @@ func makeIsolatedUserDefaults(label: String) -> UserDefaults {
     return defaults
 }
 
+func makePomodoroStateFileURL(label: String) -> URL {
+    FileManager.default.temporaryDirectory
+        .appendingPathComponent("NotchFocusTests-\(label)-\(UUID().uuidString)", isDirectory: true)
+        .appendingPathComponent("pomodoro-state.json")
+}
+
 @MainActor
 final class TestPomodoroClock {
     var now: Date

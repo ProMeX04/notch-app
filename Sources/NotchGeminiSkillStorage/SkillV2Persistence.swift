@@ -25,7 +25,7 @@ public final class SkillV2Persistence: @unchecked Sendable {
         records = decoded.skills
     }
 
-    /// Replace working set (e.g. after migration).
+    /// Replace the working set during an explicit reset or import.
     public func replaceWorkingSet(_ newRecords: [SkillRecord]) {
         lock.lock()
         defer { lock.unlock() }

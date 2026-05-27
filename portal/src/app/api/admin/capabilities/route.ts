@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { capabilityDefaults } from "@/lib/capability-manifest";
+import { logAppEvent } from "@/lib/event-logger";
 import prisma from "@/lib/prisma";
 import { mergeDefaultFeatureConfigs, requireAdminUser } from "@/lib/notch-auth";
 
@@ -18,11 +19,25 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  let action: string | null = null;
+  let capabilityKey: string | null = null;
+
   try {
     const adminCheck = await requireAdminUser(req);
-    if (adminCheck) return adminCheck;
+    if (adminCheck) {
+      await logAppEvent({
+        req,
+        eventType: "admin.capabilities_rejected",
+        outcome: "rejected",
+        source: "web",
+        statusCode: adminCheck.status,
+        metadata: { reason: adminCheck.status === 401 ? "unauthorized" : "forbidden" },
+      });
+      return adminCheck;
+    }
 
     const data = await req.json();
+    action = typeof data?.action === "string" ? data.action : "upsert";
 
     if (data?.action === "restore_defaults") {
       const defaults = capabilityDefaults();
@@ -37,10 +52,19 @@ export async function POST(req: Request) {
           })
         ),
       ]);
+      await logAppEvent({
+        req,
+        eventType: "admin.capabilities_restore_defaults_succeeded",
+        outcome: "success",
+        source: "web",
+        statusCode: 200,
+        metadata: { defaultCount: defaults.length },
+      });
       return NextResponse.json(mergeDefaultFeatureConfigs(defaults));
     }
 
     const { key, name, description, isProOnly, isEnabled } = data;
+    capabilityKey = typeof key === "string" ? key : null;
 
     const config = await prisma.featureConfig.upsert({
       where: { key },
@@ -48,8 +72,33 @@ export async function POST(req: Request) {
       create: { key, name, description, isProOnly, isEnabled }
     });
 
+    await logAppEvent({
+      req,
+      eventType: "admin.capability_upsert_succeeded",
+      outcome: "success",
+      source: "web",
+      statusCode: 200,
+      metadata: {
+        key: config.key,
+        enabled: config.isEnabled,
+        proOnly: config.isProOnly,
+      },
+    });
+
     return NextResponse.json(config);
-  } catch {
+  } catch (error) {
+    await logAppEvent({
+      req,
+      eventType: "admin.capabilities_failed",
+      outcome: "failure",
+      source: "web",
+      statusCode: 500,
+      metadata: {
+        action,
+        key: capabilityKey,
+        errorType: error instanceof Error ? error.name : "unknown",
+      },
+    });
     return NextResponse.json({ error: "Failed to update capability" }, { status: 500 });
   }
 }

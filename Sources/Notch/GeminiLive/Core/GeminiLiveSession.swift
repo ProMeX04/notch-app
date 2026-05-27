@@ -19,6 +19,12 @@ enum GeminiLiveCaptureMode {
     case standard
 }
 
+protocol GeminiLiveWebSocketProviding: Sendable {
+    func webSocketTask(with request: URLRequest) -> URLSessionWebSocketTask
+}
+
+extension URLSession: GeminiLiveWebSocketProviding {}
+
 struct GeminiLiveUsageMetadata: Sendable {
     let promptTokenCount: Int
     let responseTokenCount: Int
@@ -70,6 +76,11 @@ struct GeminiLiveUsageMetadata: Sendable {
 }
 
 final class GeminiLiveSession: @unchecked Sendable {
+    private let webSocketProvider: any GeminiLiveWebSocketProviding
+
+    init(webSocketProvider: any GeminiLiveWebSocketProviding = URLSession(configuration: .default)) {
+        self.webSocketProvider = webSocketProvider
+    }
     static let defaultContextWindowTargetTokens = 25_000
     static let defaultContextWindowTriggerTokens = 65_000
     private static let setupCompletionTimeout: TimeInterval = 15.0
@@ -148,9 +159,6 @@ final class GeminiLiveSession: @unchecked Sendable {
         ])
     }
 
-    let urlSession = URLSession(configuration: .default)
-    /// Shared ephemeral session for Brave search and other tool HTTP.
-    let toolHTTPURLSession = URLSession(configuration: .ephemeral)
     let sendQueue = DispatchQueue(label: "dev.notch.gemini.send")
     let toolExecutionQueue = DispatchQueue(label: "dev.notch.gemini.tool-execution", qos: .userInitiated)
     let audioProcessingQueue = DispatchQueue(label: "dev.notch.gemini.capture")
@@ -226,7 +234,7 @@ final class GeminiLiveSession: @unchecked Sendable {
     func connect(
         connectionCredential: String,
         restAPIKey: String? = nil,
-        backendConfiguration: GeminiLiveBackendConfiguration? = nil,
+        backendConfiguration: PortalBackendConfiguration? = nil,
         model: String,
         systemPrompt: String?,
         microphoneEnabled: Bool,
@@ -480,7 +488,7 @@ final class GeminiLiveSession: @unchecked Sendable {
             self.tearDownConnection(preserveAudioSession: preserveAudioSession)
             self.prepareOutputIfNeeded()
 
-            let task = self.urlSession.webSocketTask(with: request)
+            let task = self.webSocketProvider.webSocketTask(with: request)
             self.socketTask = task
             self.isWaitingForFreshCredentialSessionRefresh = false
             task.resume()
@@ -1078,7 +1086,7 @@ final class GeminiLiveSession: @unchecked Sendable {
 struct LiveSessionConfiguration {
     let connectionCredential: String
     let restAPIKey: String?
-    let backendConfiguration: GeminiLiveBackendConfiguration?
+    let backendConfiguration: PortalBackendConfiguration?
     let credentialExpireTime: Date?
     let model: String
     let systemPrompt: String?

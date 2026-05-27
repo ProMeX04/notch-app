@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct AppAccountSettingsPane: View {
-    @ObservedObject var gemini: GeminiLiveViewModel
+    @ObservedObject var portalAccount: PortalAccountCoordinator
     @ObservedObject var entitlementStore: NotchEntitlementStore
     @AppStorage("app_language") private var appLanguage: String = "English"
     @AppStorage(NotchAccentColorOption.storageKey) private var accentColorID: String = NotchAccentColorOption.defaultOption.rawValue
@@ -34,50 +34,60 @@ struct AppAccountSettingsPane: View {
             ) {
                 VStack(alignment: .leading, spacing: 0) {
                     AppSettingsRow(showDivider: false) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(spacing: 8) {
-                                Text(Localization.get(gemini.backendSignedInSummary ?? "Not signed in", lang: appLanguage))
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundStyle(.white.opacity(0.95))
+                        HStack(spacing: 10) {
+                            AccountAvatarView(
+                                imageURL: portalAccount.avatarURL,
+                                isAuthenticated: portalAccount.isAuthenticated,
+                                tint: tint
+                            )
+                            .accessibilityLabel(Text(Localization.get("Account avatar", lang: appLanguage)))
+                            .help(Localization.get("Account avatar", lang: appLanguage))
 
-                                Text(entitlementStore.planBadgeTitle)
-                                    .font(.system(size: 9, weight: .black, design: .rounded))
-                                    .foregroundStyle(entitlementStore.isProUser ? .black.opacity(0.84) : .white.opacity(0.9))
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 3)
-                                    .background(
-                                        Capsule(style: .continuous)
-                                            .fill(
-                                                entitlementStore.isProUser
-                                                    ? Color(nsColor: .systemYellow)
-                                                    : Color.white.opacity(0.12)
-                                            )
-                                    )
-                                    .overlay {
-                                        if !entitlementStore.isProUser {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 8) {
+                                    Text(Localization.get(portalAccount.signedInSummary ?? "Not signed in", lang: appLanguage))
+                                        .font(.system(size: 14, weight: .bold))
+                                        .foregroundStyle(.white.opacity(0.95))
+
+                                    Text(entitlementStore.planBadgeTitle)
+                                        .font(.system(size: 9, weight: .black, design: .rounded))
+                                        .foregroundStyle(entitlementStore.isProUser ? .black.opacity(0.84) : .white.opacity(0.9))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 3)
+                                        .background(
                                             Capsule(style: .continuous)
-                                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                                                .fill(
+                                                    entitlementStore.isProUser
+                                                        ? Color(nsColor: .systemYellow)
+                                                        : Color.white.opacity(0.12)
+                                                )
+                                        )
+                                        .overlay {
+                                            if !entitlementStore.isProUser {
+                                                Capsule(style: .continuous)
+                                                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                                            }
                                         }
-                                    }
-                            }
+                                }
 
-                            Text(Localization.get(accountHelperText, lang: appLanguage))
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.52))
-                                .fixedSize(horizontal: false, vertical: true)
-
-                            if let entitlementStatusMessage {
-                                Text(Localization.get(entitlementStatusMessage, lang: appLanguage))
+                                Text(Localization.get(accountHelperText, lang: appLanguage))
                                     .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(.white.opacity(0.48))
+                                    .foregroundStyle(.white.opacity(0.52))
                                     .fixedSize(horizontal: false, vertical: true)
+
+                                if let entitlementStatusMessage {
+                                    Text(Localization.get(entitlementStatusMessage, lang: appLanguage))
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(.white.opacity(0.48))
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
                             }
                         }
 
                         Spacer(minLength: 16)
 
                         HStack(spacing: 8) {
-                            if gemini.isBackendAuthenticated {
+                            if portalAccount.isAuthenticated {
                                 if !entitlementStore.isProUser {
                                     StandardActionButton(
                                         title: Localization.get("Buy Notch Pro", lang: appLanguage),
@@ -85,12 +95,12 @@ struct AppAccountSettingsPane: View {
                                         tint: tint,
                                         variant: .primary
                                     ) {
-                                        gemini.openWebProCheckout()
+                                        portalAccount.openWebProCheckout()
                                     }
                                 }
 
                                 Button {
-                                    Task { await gemini.refreshBackendSubscriptionStatus(forceRefresh: true) }
+                                    Task { await portalAccount.refreshSubscriptionStatus(forceRefresh: true) }
                                 } label: {
                                     Image(systemName: "arrow.clockwise")
                                         .font(.system(size: 11, weight: .bold))
@@ -106,7 +116,7 @@ struct AppAccountSettingsPane: View {
                                 .help(Localization.get("Refresh Pro status", lang: appLanguage))
 
                                 Button {
-                                    Task { await gemini.logoutBackendAccount() }
+                                    Task { await portalAccount.logout() }
                                 } label: {
                                     HStack(spacing: 4) {
                                         Image(systemName: "rectangle.portrait.and.arrow.right")
@@ -130,13 +140,13 @@ struct AppAccountSettingsPane: View {
                                     tint: tint,
                                     variant: .primary
                                 ) {
-                                    gemini.openWebAccountLogin()
+                                    portalAccount.openWebAccountLogin()
                                 }
                             }
                         }
                     }
 
-                    if let error = gemini.lastErrorMessage ?? gemini.backendAuthFailureMessage, !error.isEmpty {
+                    if let error = portalAccount.lastError ?? portalAccount.authPhaseDescription, !error.isEmpty {
                         Text(Localization.get(error, lang: appLanguage))
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(Color(nsColor: .systemRed).opacity(0.9))
@@ -150,11 +160,53 @@ struct AppAccountSettingsPane: View {
     }
 
     private var accountHelperText: String {
-        if gemini.isBackendAuthenticated {
+        if portalAccount.isAuthenticated {
             return entitlementStore.isProUser
                 ? "Your account has Notch Pro access."
                 : "Upgrade to Notch Pro to unlock Talk."
         }
         return "Sign in to verify Pro access and sync your subscription."
+    }
+}
+
+private struct AccountAvatarView: View {
+    let imageURL: URL?
+    let isAuthenticated: Bool
+    let tint: Color
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(Color.white.opacity(0.08))
+
+            if isAuthenticated, let imageURL {
+                AsyncImage(url: imageURL) { phase in
+                    switch phase {
+                    case let .success(image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .empty, .failure:
+                        fallbackIcon
+                    @unknown default:
+                        fallbackIcon
+                    }
+                }
+            } else {
+                fallbackIcon
+            }
+        }
+        .frame(width: 34, height: 34)
+        .clipShape(Circle())
+        .overlay(
+            Circle()
+                .stroke(Color.white.opacity(0.14), lineWidth: 1)
+        )
+    }
+
+    private var fallbackIcon: some View {
+        Image(systemName: isAuthenticated ? "person.crop.circle.fill" : "person.crop.circle")
+            .font(.system(size: 21, weight: .semibold))
+            .foregroundStyle(isAuthenticated ? tint.opacity(0.85) : .white.opacity(0.45))
     }
 }

@@ -36,6 +36,8 @@ final class ApplicationBootstrapper {
             pomodoro: environment.pomodoroViewModel,
             focusWebsiteBlocklistStore: environment.focusWebsiteBlocklistStore,
             learningStats: environment.learningStatsStore,
+            focusCloudSync: environment.focusCloudSyncService,
+            portalAccount: environment.portalAccountCoordinator,
             gemini: environment.geminiLiveViewModel,
             entitlementStore: environment.entitlementStore,
             shortcutStore: environment.shortcutStore,
@@ -43,6 +45,7 @@ final class ApplicationBootstrapper {
         )
 
         environment.focusBrowserBridgeServer.start()
+        environment.focusCloudSyncService.start()
 
         let holdToTalkHotkeyManager = HoldToTalkHotkeyManager()
         holdToTalkHotkeyManager.onPress = { [weak featureCoordinator = environment.featureCoordinator] in
@@ -76,5 +79,6 @@ final class ApplicationBootstrapper {
         statusItemController = nil
         holdToTalkHotkeyManager = nil
         coordinator.stop()
+        environment.focusCloudSyncService.shutdown()
     }
 }

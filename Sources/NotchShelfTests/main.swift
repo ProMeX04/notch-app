@@ -26,8 +26,6 @@ func buildTestCases() -> [TestCase] {
                  run: NotchShelfPersistenceServiceTests.saveOverwritesPreviousContent),
         TestCase(name: "persistence/save then load preserves added date",
                  run: NotchShelfPersistenceServiceTests.saveThenLoad_preservesAddedAt),
-        TestCase(name: "persistence/legacy record without added date receives timestamp",
-                 run: NotchShelfPersistenceServiceTests.legacyRecordWithoutAddedAt_loadsWithTimestamp),
         TestCase(name: "persistence/Bug #9 init() does not overwrite corrupted persistence file",
                  run: NotchShelfPersistenceServiceTests.bug9_initDoesNotOverwriteCorruptedPersistenceFile),
 

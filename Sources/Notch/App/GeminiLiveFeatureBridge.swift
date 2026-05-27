@@ -1,5 +1,5 @@
 import Foundation
-import NotchFocusCore
+import NotchFocusFeature
 
 @MainActor
 struct GeminiLiveFeatureBridge {

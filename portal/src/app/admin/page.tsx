@@ -62,6 +62,8 @@ function formatDateTime(value: string | null) {
 }
 
 function humanEventName(eventType: string) {
+  if (eventType.includes("focus.sync")) return "Đồng bộ Focus";
+  if (eventType.includes("focus.leaderboard_profile")) return "Cập nhật xếp hạng Focus";
   if (eventType.includes("login")) return "Đăng nhập";
   if (eventType.includes("signup")) return "Đăng ký tài khoản";
   if (eventType.includes("logout")) return "Đăng xuất";

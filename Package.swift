@@ -13,8 +13,8 @@ let package = Package(
             targets: ["NotchTooling"]
         ),
         .library(
-            name: "NotchFocusCore",
-            targets: ["NotchFocusCore"]
+            name: "NotchFocusFeature",
+            targets: ["NotchFocusFeature"]
         ),
         .library(
             name: "NotchBridgeParserCore",
@@ -25,8 +25,8 @@ let package = Package(
             targets: ["NotchMailParserCore"]
         ),
         .library(
-            name: "NotchChatHistoryCore",
-            targets: ["NotchChatHistoryCore"]
+            name: "NotchChatHistoryFeature",
+            targets: ["NotchChatHistoryFeature"]
         ),
         .library(
             name: "NotchGeminiSkillStorage",
@@ -84,12 +84,12 @@ let package = Package(
             name: "NotchTooling"
         ),
         .target(
-            name: "NotchFocusCore"
+            name: "NotchFocusFeature"
         ),
         .target(
-            name: "NotchShelfCore",
+            name: "NotchShelfFeature",
             swiftSettings: [
-                // Allow `@testable import NotchShelfCore` from Notch and NotchShelfTests
+                // Allow `@testable import NotchShelfFeature` from Notch and NotchShelfTests
                 // in both debug and release builds.
                 .unsafeFlags(["-enable-testing"]),
             ]
@@ -111,11 +111,11 @@ let package = Package(
                 "NotchTooling",
                 "NotchGeminiSkillStorage",
                 "NotchGeminiLiveCore",
-                "NotchFocusCore",
-                "NotchShelfCore",
+                "NotchFocusFeature",
+                "NotchShelfFeature",
                 "NotchBridgeParserCore",
                 "NotchMailParserCore",
-                "NotchChatHistoryCore",
+                "NotchChatHistoryFeature",
                 "NotchScreenShareCore",
                 .product(name: "LiveKitWebRTC", package: "webrtc-xcframework"),
                 .product(name: "Markdown", package: "swift-markdown"),
@@ -135,11 +135,11 @@ let package = Package(
         ),
         .executableTarget(
             name: "NotchShelfTests",
-            dependencies: ["NotchShelfCore"]
+            dependencies: ["NotchShelfFeature"]
         ),
         .executableTarget(
             name: "NotchFocusTests",
-            dependencies: ["NotchFocusCore"],
+            dependencies: ["NotchFocusFeature"],
             path: "Tests/NotchFocusTests"
         ),
         .target(
@@ -149,7 +149,7 @@ let package = Package(
             name: "NotchMailParserCore"
         ),
         .target(
-            name: "NotchChatHistoryCore"
+            name: "NotchChatHistoryFeature"
         ),
         .target(
             name: "NotchScreenShareCore"
@@ -166,7 +166,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "NotchChatHistoryTests",
-            dependencies: ["NotchChatHistoryCore"],
+            dependencies: ["NotchChatHistoryFeature"],
             path: "Tests/NotchChatHistoryTests"
         ),
         .executableTarget(

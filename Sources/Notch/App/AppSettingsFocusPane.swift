@@ -1,11 +1,13 @@
 import Charts
-import NotchFocusCore
+import NotchFocusFeature
 import SwiftUI
 
 struct AppFocusSettingsPane: View {
     @ObservedObject var pomodoro: PomodoroViewModel
     @ObservedObject var websiteBlocklistStore: FocusWebsiteBlocklistStore
     @ObservedObject var learningStats: LearningStatsStore
+    @ObservedObject var focusCloudSync: FocusCloudSyncCoordinator
+    let isBackendAuthenticated: Bool
     @AppStorage("app_language") private var appLanguage: String = "English"
     @AppStorage(NotchAccentColorOption.storageKey) private var accentColorID: String = NotchAccentColorOption.defaultOption.rawValue
     @AppStorage(SoundManager.focusTransitionSoundKey) private var focusTransitionSoundID: String = FocusTransitionSoundOption.defaultOption.rawValue
@@ -31,6 +33,16 @@ struct AppFocusSettingsPane: View {
                     title: Localization.get("Weekly Activity", lang: appLanguage)
                 ) {
                     AppFocusStatsSettingsView(learningStats: learningStats, tint: tint)
+                }
+
+                AppSettingsCard(
+                    title: Localization.get("Cloud Ranking", lang: appLanguage)
+                ) {
+                    AppFocusCloudRankingSettingsView(
+                        focusCloudSync: focusCloudSync,
+                        isBackendAuthenticated: isBackendAuthenticated,
+                        tint: tint
+                    )
                 }
 
                 AppSettingsCard(
@@ -745,6 +757,117 @@ private struct AppFocusStatsSettingsView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 13, style: .continuous)
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        }
+    }
+}
+
+private struct AppFocusCloudRankingSettingsView: View {
+    @ObservedObject var focusCloudSync: FocusCloudSyncCoordinator
+    let isBackendAuthenticated: Bool
+    let tint: Color
+
+    @State private var draftDisplayName = ""
+    @State private var isSaving = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            AppSettingsRow(showDivider: true) {
+                HStack(spacing: 10) {
+                    Image(systemName: "trophy.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(tint.opacity(0.9))
+                        .frame(width: 28, height: 28)
+                        .background(tint.opacity(0.1).cornerRadius(8))
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Show me on leaderboard")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.9))
+                        Text(isBackendAuthenticated ? focusCloudSync.statusText : "Sign in from Account settings to sync focus ranking.")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.42))
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: Binding(
+                        get: { focusCloudSync.leaderboardOptIn },
+                        set: { enabled in
+                            Task { @MainActor in
+                                isSaving = true
+                                await focusCloudSync.updateLeaderboardProfile(
+                                    optIn: enabled,
+                                    displayName: draftDisplayName
+                                )
+                                draftDisplayName = focusCloudSync.displayName
+                                isSaving = false
+                            }
+                        }
+                    ))
+                    .toggleStyle(NotchSwitchStyle(tint: tint))
+                    .labelsHidden()
+                    .disabled(!isBackendAuthenticated || isSaving)
+                }
+            }
+
+            AppSettingsRow(showDivider: false) {
+                HStack(spacing: 10) {
+                    Image(systemName: "person.text.rectangle.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(tint.opacity(0.9))
+                        .frame(width: 28, height: 28)
+                        .background(tint.opacity(0.1).cornerRadius(8))
+
+                    TextField("Display name", text: $draftDisplayName)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .padding(.horizontal, 10)
+                        .frame(height: 32)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color.black.opacity(0.28))
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        }
+                        .disabled(!isBackendAuthenticated || isSaving)
+
+                    Button {
+                        Task { @MainActor in
+                            isSaving = true
+                            await focusCloudSync.updateLeaderboardProfile(
+                                optIn: focusCloudSync.leaderboardOptIn,
+                                displayName: draftDisplayName
+                            )
+                            draftDisplayName = focusCloudSync.displayName
+                            isSaving = false
+                        }
+                    } label: {
+                        Image(systemName: isSaving ? "clock.arrow.circlepath" : "checkmark")
+                            .font(.system(size: 12, weight: .bold))
+                            .frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(tint)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(tint.opacity(0.1))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(tint.opacity(0.22), lineWidth: 1)
+                    )
+                    .disabled(!isBackendAuthenticated || isSaving)
+                }
+            }
+        }
+        .onAppear {
+            draftDisplayName = focusCloudSync.displayName
+        }
+        .onChange(of: focusCloudSync.displayName) { _, value in
+            draftDisplayName = value
         }
     }
 }

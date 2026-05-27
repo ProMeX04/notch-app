@@ -1,6 +1,6 @@
 import AppKit
-import NotchFocusCore
-import NotchShelfCore
+import NotchFocusFeature
+import NotchShelfFeature
 import SwiftUI
 
 struct AppSettingsView: View {
@@ -8,6 +8,8 @@ struct AppSettingsView: View {
     @ObservedObject var pomodoro: PomodoroViewModel
     @ObservedObject var focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore
     @ObservedObject var learningStats: LearningStatsStore
+    @ObservedObject var focusCloudSync: FocusCloudSyncCoordinator
+    @ObservedObject var portalAccount: PortalAccountCoordinator
     @ObservedObject var gemini: GeminiLiveViewModel
     @ObservedObject var entitlementStore: NotchEntitlementStore
     @ObservedObject var shortcutStore: ShortcutStore
@@ -21,6 +23,8 @@ struct AppSettingsView: View {
         pomodoro: PomodoroViewModel,
         focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore,
         learningStats: LearningStatsStore,
+        focusCloudSync: FocusCloudSyncCoordinator,
+        portalAccount: PortalAccountCoordinator,
         gemini: GeminiLiveViewModel,
         entitlementStore: NotchEntitlementStore,
         shortcutStore: ShortcutStore,
@@ -31,6 +35,8 @@ struct AppSettingsView: View {
         self.pomodoro = pomodoro
         self.focusWebsiteBlocklistStore = focusWebsiteBlocklistStore
         self.learningStats = learningStats
+        self.focusCloudSync = focusCloudSync
+        self.portalAccount = portalAccount
         self.gemini = gemini
         self.entitlementStore = entitlementStore
         self.shortcutStore = shortcutStore
@@ -64,7 +70,7 @@ struct AppSettingsView: View {
                         )
                     case .account:
                         AppAccountSettingsPane(
-                            gemini: gemini,
+                            portalAccount: portalAccount,
                             entitlementStore: entitlementStore
                         )
                     case .shelf:
@@ -76,7 +82,9 @@ struct AppSettingsView: View {
                         AppFocusSettingsPane(
                             pomodoro: pomodoro,
                             websiteBlocklistStore: focusWebsiteBlocklistStore,
-                            learningStats: learningStats
+                            learningStats: learningStats,
+                            focusCloudSync: focusCloudSync,
+                            isBackendAuthenticated: portalAccount.isAuthenticated
                         )
                     case .talk:
                         AppTalkSettingsPane(gemini: gemini)

@@ -3,10 +3,6 @@ import Foundation
 import NotchGeminiLiveCore
 import Security
 
-enum GeminiLiveHostedBackend {
-    static let defaultURL = "https://portal-six-blue.vercel.app/api"
-}
-
 enum GeminiLiveInputMode: String, Codable, CaseIterable, Identifiable {
     case openMic
     case pushToTalk
@@ -227,13 +223,6 @@ final class GeminiLiveSettingsStore {
             return nil
         }
 
-        var presets = payload.systemPromptPresets ?? GeminiSystemPromptPreset.defaultPresets
-        if let legacySkills = payload.enabledSkillNames, !legacySkills.isEmpty,
-           presets.allSatisfy({ $0.enabledSkillNames.isEmpty }) {
-            let sorted = legacySkills.sorted()
-            presets = presets.map { var p = $0; p.enabledSkillNames = sorted; return p }
-        }
-
         return GeminiLiveSettings(
             isMicrophoneEnabled: payload.isMicrophoneEnabled,
             inputMode: payload.inputMode ?? .openMic,
@@ -243,7 +232,7 @@ final class GeminiLiveSettingsStore {
             liveChatInputDisplayMode: payload.liveChatInputDisplayMode ?? ((payload.showLiveChatInput ?? true) ? .autoCollapse : .hidden),
             outputVolume: payload.outputVolume ?? 1,
             connectionMethod: payload.connectionMethod ?? .userAPIKey,
-            systemPromptPresets: presets,
+            systemPromptPresets: payload.systemPromptPresets ?? GeminiSystemPromptPreset.defaultPresets,
             selectedSystemPromptID: payload.selectedSystemPromptID ?? GeminiSystemPromptPreset.defaultPreset.id,
             availableLiveModels: payload.availableLiveModels ?? []
         )
@@ -280,9 +269,6 @@ final class GeminiLiveSettingsStore {
         let systemPromptPresets: [GeminiSystemPromptPreset]?
         let selectedSystemPromptID: String?
         let availableLiveModels: [GeminiLiveModel]?
-        /// Legacy: skills lived at root; migrated into each preset on read. Not written on save.
-        let enabledSkillNames: [String]?
-
         init(
             isMicrophoneEnabled: Bool,
             inputMode: GeminiLiveInputMode,
@@ -307,7 +293,6 @@ final class GeminiLiveSettingsStore {
             self.systemPromptPresets = systemPromptPresets
             self.selectedSystemPromptID = selectedSystemPromptID
             self.availableLiveModels = availableLiveModels
-            self.enabledSkillNames = nil
         }
 
         func encode(to encoder: Encoder) throws {
@@ -338,7 +323,6 @@ final class GeminiLiveSettingsStore {
             systemPromptPresets = try container.decodeIfPresent([GeminiSystemPromptPreset].self, forKey: .systemPromptPresets)
             selectedSystemPromptID = try container.decodeIfPresent(String.self, forKey: .selectedSystemPromptID)
             availableLiveModels = try container.decodeIfPresent([GeminiLiveModel].self, forKey: .availableLiveModels)
-            enabledSkillNames = try container.decodeIfPresent([String].self, forKey: .enabledSkillNames)
         }
 
         enum CodingKeys: String, CodingKey {
@@ -353,7 +337,6 @@ final class GeminiLiveSettingsStore {
             case systemPromptPresets
             case selectedSystemPromptID
             case availableLiveModels
-            case enabledSkillNames
         }
     }
 }

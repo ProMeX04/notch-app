@@ -29,6 +29,25 @@ function escapeHTMLAttribute(value: string) {
     .replaceAll('>', '&gt;');
 }
 
+function normalizedGoogleAvatarURL(value: unknown) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  try {
+    const url = new URL(trimmed);
+    const hostname = url.hostname.toLowerCase();
+    const isGoogleAvatarHost = hostname === 'googleusercontent.com'
+      || hostname.endsWith('.googleusercontent.com')
+      || hostname === 'google.com'
+      || hostname.endsWith('.google.com');
+    if (url.protocol !== 'https:' || !isGoogleAvatarHost) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const code = searchParams.get('code');
@@ -314,6 +333,7 @@ export async function GET(req: Request) {
 
     const { email, name } = profileData;
     const lowerEmail = email.toLowerCase().trim();
+    const avatarUrl = normalizedGoogleAvatarURL(profileData.picture);
 
     // 3. Find or Create the User in the database
     let user = await prisma.user.findFirst({
@@ -331,8 +351,14 @@ export async function GET(req: Request) {
         data: {
           email: lowerEmail,
           name: name || null,
+          avatarUrl,
           password: null, // Google users don't have a password
         },
+      });
+    } else if (user.avatarUrl !== avatarUrl) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { avatarUrl },
       });
     }
 

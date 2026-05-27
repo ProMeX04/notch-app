@@ -1,0 +1,4 @@
+interface:
+  display_name: "Notch Swift Cloud API Conventions"
+  short_description: "Enforce Swift cloud client boundaries"
+  default_prompt: "Use $notch-swift-cloud-api-conventions to add or review Swift cloud integration."

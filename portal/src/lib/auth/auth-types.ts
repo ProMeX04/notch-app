@@ -6,8 +6,11 @@ export type SessionUser = {
   id: string
   email: string | null
   name: string | null
+  displayName: string | null
+  avatarUrl: string | null
   createdAt: Date
   isPro: boolean
+  leaderboardOptIn: boolean
 }
 
 export type AuthDeviceInput = {
@@ -47,8 +50,11 @@ export type NotchAuthPayload = {
     id: string
     email: string
     name: string | null
+    display_name: string | null
+    avatar_url: string | null
     created_at: string
     is_pro: boolean
+    leaderboard_opt_in: boolean
     permission_policy: Awaited<ReturnType<typeof import('@/lib/capabilities/policy-service').getRemotePermissionPolicy>>
   }
   session: {

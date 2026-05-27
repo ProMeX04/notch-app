@@ -1,6 +1,6 @@
 @preconcurrency import AVFoundation
 import Foundation
-import NotchChatHistoryCore
+import NotchChatHistoryFeature
 
 extension GeminiLiveViewModel {
     func startFullScreenSharing() {

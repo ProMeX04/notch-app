@@ -1,6 +1,6 @@
 import AppKit
-import NotchFocusCore
-import NotchShelfCore
+import NotchFocusFeature
+import NotchShelfFeature
 import SwiftUI
 
 enum AppSettingsTab: String, CaseIterable, Identifiable {
@@ -56,6 +56,8 @@ protocol AppSettingsControlling: AnyObject {
         pomodoro: PomodoroViewModel,
         focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore,
         learningStats: LearningStatsStore,
+        focusCloudSync: FocusCloudSyncCoordinator,
+        portalAccount: PortalAccountCoordinator,
         gemini: GeminiLiveViewModel,
         entitlementStore: NotchEntitlementStore,
         shortcutStore: ShortcutStore,
@@ -73,6 +75,8 @@ final class AppSettingsController: ObservableObject, AppSettingsControlling {
         let pomodoro: PomodoroViewModel
         let focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore
         let learningStats: LearningStatsStore
+        let focusCloudSync: FocusCloudSyncCoordinator
+        let portalAccount: PortalAccountCoordinator
         let gemini: GeminiLiveViewModel
         let entitlementStore: NotchEntitlementStore
         let shortcutStore: ShortcutStore
@@ -89,6 +93,8 @@ final class AppSettingsController: ObservableObject, AppSettingsControlling {
         pomodoro: PomodoroViewModel,
         focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore,
         learningStats: LearningStatsStore,
+        focusCloudSync: FocusCloudSyncCoordinator,
+        portalAccount: PortalAccountCoordinator,
         gemini: GeminiLiveViewModel,
         entitlementStore: NotchEntitlementStore,
         shortcutStore: ShortcutStore,
@@ -99,6 +105,8 @@ final class AppSettingsController: ObservableObject, AppSettingsControlling {
             pomodoro: pomodoro,
             focusWebsiteBlocklistStore: focusWebsiteBlocklistStore,
             learningStats: learningStats,
+            focusCloudSync: focusCloudSync,
+            portalAccount: portalAccount,
             gemini: gemini,
             entitlementStore: entitlementStore,
             shortcutStore: shortcutStore,
@@ -154,6 +162,8 @@ final class AppSettingsController: ObservableObject, AppSettingsControlling {
             pomodoro: dependencies.pomodoro,
             focusWebsiteBlocklistStore: dependencies.focusWebsiteBlocklistStore,
             learningStats: dependencies.learningStats,
+            focusCloudSync: dependencies.focusCloudSync,
+            portalAccount: dependencies.portalAccount,
             gemini: dependencies.gemini,
             entitlementStore: dependencies.entitlementStore,
             shortcutStore: dependencies.shortcutStore,

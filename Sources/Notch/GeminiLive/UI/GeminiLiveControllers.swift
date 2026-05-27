@@ -3,34 +3,24 @@ import Foundation
 @MainActor
 final class GeminiLiveSettingsController {
     let keyStore: GeminiLiveAPIKeyStore
-    let backendConfigStore: GeminiLiveBackendConfigStore
+    let backendConfigStore: PortalConfigurationStore
     let settingsStore: GeminiLiveSettingsStore
 
     init(processInfo: ProcessInfo) {
         keyStore = GeminiLiveAPIKeyStore(processInfo: processInfo)
-        backendConfigStore = GeminiLiveBackendConfigStore(processInfo: processInfo)
+        backendConfigStore = PortalConfigurationStore(processInfo: processInfo)
         settingsStore = GeminiLiveSettingsStore()
     }
 }
 
 @MainActor
 final class GeminiLiveAccountController {
-    let backendClient: GeminiLiveBackendClient
-    let backend: BackendAccountCoordinator
+    let backendClient: any GeminiLivePortalClient
+    let backend: PortalAccountCoordinator
 
-    init(
-        processInfo: ProcessInfo,
-        entitlementStore: NotchEntitlementStore
-    ) {
-        let backendConfigStore = GeminiLiveBackendConfigStore(processInfo: processInfo)
-        let backendAuthStore = GeminiLiveBackendAuthStore(processInfo: processInfo)
-        backendClient = GeminiLiveBackendClient()
-        backend = BackendAccountCoordinator(
-            client: backendClient,
-            configStore: backendConfigStore,
-            authStore: backendAuthStore,
-            entitlementStore: entitlementStore
-        )
+    init(portalAccount: PortalAccountCoordinator, backendClient: any GeminiLivePortalClient) {
+        self.backendClient = backendClient
+        backend = portalAccount
     }
 }
 

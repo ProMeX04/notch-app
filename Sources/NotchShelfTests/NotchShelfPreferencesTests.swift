@@ -1,5 +1,5 @@
 import Foundation
-@testable import NotchShelfCore
+@testable import NotchShelfFeature
 
 @MainActor
 enum NotchShelfPreferencesTests {

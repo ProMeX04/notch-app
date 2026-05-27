@@ -2,7 +2,7 @@
 import AppKit
 import Combine
 import Foundation
-import NotchChatHistoryCore
+import NotchChatHistoryFeature
 import NotchGeminiLiveCore
 @preconcurrency import ScreenCaptureKit
 import Security
@@ -123,7 +123,6 @@ final class GeminiLiveViewModel: ObservableObject {
             normalizeEnabledSkillIDs()
             if let idx = systemPromptPresets.firstIndex(where: { $0.id == selectedSystemPromptID }) {
                 systemPromptPresets[idx].enabledSkillIDs = enabledSkillIDs.sorted()
-                systemPromptPresets[idx].enabledSkillNames = []
             }
             persistSettings()
         }
@@ -174,11 +173,12 @@ final class GeminiLiveViewModel: ObservableObject {
         reconnectState.preservesLiveSessionUI && session.isLocalWebRTCMicrophoneCaptureActive
     }
     let toolingController: GeminiLiveToolingController
+    let userAPIClient: any GeminiLiveUserAPIClient
     var currentSkillSnapshot: SkillSessionSnapshot?
     var isNormalizingEnabledSkillIDs = false
 
     var storedAPIKey: String?
-    var storedBackendConfiguration: GeminiLiveBackendConfiguration?
+    var storedBackendConfiguration: PortalBackendConfiguration?
     var onOpenAppSettingsRequested: (() -> Void)?
     var onExecApprovalAttentionRequested: (() -> Void)?
     @Published private(set) var pendingExecApprovals: [ExecApprovalRequest] = []
@@ -186,11 +186,11 @@ final class GeminiLiveViewModel: ObservableObject {
 
     var screenShare: ScreenShareCoordinator { sessionController.screenShare }
     var cameraShare: CameraShareCoordinator { sessionController.cameraShare }
-    var backend: BackendAccountCoordinator { accountController.backend }
+    var backend: PortalAccountCoordinator { accountController.backend }
     var session: GeminiLiveSession { sessionController.session }
     var keyStore: GeminiLiveAPIKeyStore { settingsController.keyStore }
-    var backendConfigStore: GeminiLiveBackendConfigStore { settingsController.backendConfigStore }
-    var backendClient: GeminiLiveBackendClient { accountController.backendClient }
+    var backendConfigStore: PortalConfigurationStore { settingsController.backendConfigStore }
+    var backendClient: any GeminiLivePortalClient { accountController.backendClient }
     private var settingsStore: GeminiLiveSettingsStore { settingsController.settingsStore }
     var agentAvatarStore: GeminiAgentAvatarStore { toolingController.agentAvatarStore }
     private var skillStore: SkillStore { toolingController.skillStore }
@@ -214,8 +214,9 @@ final class GeminiLiveViewModel: ObservableObject {
         self.accountController = dependencies.accountController
         self.sessionController = dependencies.sessionController
         self.toolingController = dependencies.toolingController
+        self.userAPIClient = dependencies.userAPIClient
         apiKeyText = ""
-        backendURLText = GeminiLiveHostedBackend.defaultURL
+        backendURLText = PortalHostedBackend.defaultURL
         backendClientTokenText = ""
         backendAuthEmailText = ""
         installedSkills = (try? dependencies.toolingController.skillsRepository.listInstalledSkillsSorted()) ?? []
@@ -252,10 +253,10 @@ final class GeminiLiveViewModel: ObservableObject {
 
         if let storedBackend = dependencies.settingsController.backendConfigStore.read() {
             storedBackendConfiguration = storedBackend
-            backendURLText = GeminiLiveHostedBackend.defaultURL
+            backendURLText = PortalHostedBackend.defaultURL
             backendClientTokenText = ""
         } else {
-            backendURLText = GeminiLiveHostedBackend.defaultURL
+            backendURLText = PortalHostedBackend.defaultURL
             backendClientTokenText = ""
         }
 
@@ -266,7 +267,6 @@ final class GeminiLiveViewModel: ObservableObject {
         recomputeProEntitlement()
         syncConfiguredConnectionState(updateStatus: true)
 
-        migrateEnabledSkillsFromLegacyPresetFieldsIfNeeded()
         normalizeSystemPromptSelection()
         session.setOutputVolume(outputVolume)
         execApprovals.$pending.assign(to: &$pendingExecApprovals)
@@ -309,12 +309,6 @@ final class GeminiLiveViewModel: ObservableObject {
         }
         backend.currentDraftEmailProvider = { [weak self] in
             self?.draftBackendAuthEmail
-        }
-        backend.ensureConfigurationForAuth = { [weak self] in
-            await self?.ensureBackendConfigurationForAuth()
-        }
-        backend.currentConfigurationProvider = { [weak self] in
-            self?.configuredBackendConfiguration
         }
         backend.shouldDisconnectManagedSession = { [weak self] in
             guard let self else { return false }

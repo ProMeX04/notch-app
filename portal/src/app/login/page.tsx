@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { AlertCircle, Loader2 } from 'lucide-react'
@@ -8,7 +8,6 @@ import { AlertCircle, Loader2 } from 'lucide-react'
 import { PortalAppHandoffCard } from '@/components/portal/PortalAppHandoffCard'
 import { usePortalAuth } from '@/components/portal/PortalAuthProvider'
 import { PortalLogo } from '@/components/portal/PortalLogo'
-import { buildBrowserAuthDevicePayload, notifyPortalAuthSessionChange } from '@/lib/portal-auth-client'
 import {
   buildPortalOAuthSearch,
   completePortalOAuthAuthorization,
@@ -37,7 +36,6 @@ function LoginPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { isAuthenticated } = usePortalAuth()
-  const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hasOpenedApp, setHasOpenedApp] = useState(false)
   const [lastRedirectTo, setLastRedirectTo] = useState<string | null>(null)
@@ -52,11 +50,9 @@ function LoginPageContent() {
     launchPortalOAuthAppRedirect(redirectTo, {
       onAppSwitch: () => {
         setHasOpenedApp(true)
-        setIsLoading(false)
       },
       onFallback: () => {
         setHasOpenedApp(true)
-        setIsLoading(false)
       },
     })
   }
@@ -72,7 +68,6 @@ function LoginPageContent() {
         return
       }
 
-      setIsLoading(true)
       setError(null)
 
       try {
@@ -83,7 +78,6 @@ function LoginPageContent() {
       } catch (nextError) {
         if (!ignore) {
           setError(nextError instanceof Error ? nextError.message : 'Không thể hoàn tất đăng nhập cho Notch app.')
-          setIsLoading(false)
         }
       }
     }
@@ -129,7 +123,6 @@ function LoginPageContent() {
                   return
                 }
                 setHasOpenedApp(false)
-                setIsLoading(true)
                 handoffToApp(lastRedirectTo)
               }}
             />

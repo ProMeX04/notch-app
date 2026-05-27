@@ -1,0 +1,4 @@
+interface:
+  display_name: "Notch Verification And Release"
+  short_description: "Verify and deliver Notch changes"
+  default_prompt: "Use $notch-verification-release to verify or deliver a Notch change."

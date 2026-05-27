@@ -19,7 +19,6 @@ extension GeminiLiveViewModel {
             try skillsRepository.deleteSkill(id: skill.id)
             for i in systemPromptPresets.indices {
                 systemPromptPresets[i].enabledSkillIDs.removeAll { $0 == skill.id }
-                systemPromptPresets[i].enabledSkillNames.removeAll()
             }
             enabledSkillIDs.remove(skill.id)
             reloadInstalledSkills()
@@ -111,32 +110,6 @@ extension GeminiLiveViewModel {
     func syncEnabledSkillIDsToActivePreset() {
         guard let idx = systemPromptPresets.firstIndex(where: { $0.id == selectedSystemPromptID }) else { return }
         systemPromptPresets[idx].enabledSkillIDs = enabledSkillIDs.sorted()
-        systemPromptPresets[idx].enabledSkillNames = []
     }
 
-    func migrateEnabledSkillsFromLegacyPresetFieldsIfNeeded() {
-        guard !installedSkills.isEmpty else { return }
-        let map = Dictionary(
-            installedSkills.map {
-                ($0.metadata.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), $0.id)
-            },
-            uniquingKeysWith: { first, _ in first }
-        )
-        var changed = false
-        for index in systemPromptPresets.indices where systemPromptPresets[index].enabledSkillIDs.isEmpty
-            && !systemPromptPresets[index].enabledSkillNames.isEmpty {
-            let ids = systemPromptPresets[index].enabledSkillNames.compactMap { legacyName in
-                let key = legacyName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                return map[key]
-            }
-            if !ids.isEmpty {
-                systemPromptPresets[index].enabledSkillIDs = ids
-                systemPromptPresets[index].enabledSkillNames = []
-                changed = true
-            }
-        }
-        if changed {
-            persistSettings()
-        }
-    }
 }

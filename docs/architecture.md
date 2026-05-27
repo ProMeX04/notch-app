@@ -10,8 +10,9 @@ Notch is a SwiftPM-first macOS app. [Package.swift](../Package.swift) is the sou
 | --- | --- | --- |
 | App executable | [Sources/Notch](../Sources/Notch/) | macOS app shell, SwiftUI/AppKit integration, runtime service wiring, feature presentation, platform adapters. |
 | Tooling core | [Sources/NotchTooling](../Sources/NotchTooling/) | Reusable Gemini/tool argument normalization and response payload helpers. |
-| Focus core | [Sources/NotchFocusCore](../Sources/NotchFocusCore/) | Pomodoro and focus-domain logic that can run without the app shell. |
-| Shelf core | [Sources/NotchShelfCore](../Sources/NotchShelfCore/) | Shelf state, persistence, and item handling. |
+| Focus feature package | [Sources/NotchFocusFeature](../Sources/NotchFocusFeature/) | Pomodoro feature state, preferences, and domain events that can run without the app shell. |
+| Shelf feature package | [Sources/NotchShelfFeature](../Sources/NotchShelfFeature/) | Shelf state, feature persistence, Google Drive integration, and item handling. |
+| Chat history feature package | [Sources/NotchChatHistoryFeature](../Sources/NotchChatHistoryFeature/) | Gemini chat suggestion history and its feature persistence. |
 | Browser bridge parser core | [Sources/NotchBridgeParserCore](../Sources/NotchBridgeParserCore/) | Browser bridge protocol parsing. |
 | Mail parser core | [Sources/NotchMailParserCore](../Sources/NotchMailParserCore/) | Apple Mail body parsing independent of Gemini Live or UI concerns. |
 | Tests | [Tests](../Tests/) and executable targets under [Sources](../Sources/) | Lightweight executable regression suites and XCTest coverage. |
@@ -27,6 +28,8 @@ Code belongs in a core target when it is independent of AppKit/SwiftUI lifecycle
 - [Utilities](../Sources/Notch/Utilities/) owns generic helpers, extensions, scripting wrappers, and logging.
 - [NotchUI](../Sources/Notch/NotchUI/) owns the shared notch composition surface and cross-feature panels.
 - [Media](../Sources/Notch/Media/) owns media playback state, media controllers, visualizers, and media-specific views.
+- [Portal](../Sources/Notch/Portal/) owns shared backend configuration, device identity, authenticated account/session state, and Portal transport used by app features.
+- [Focus](../Sources/Notch/Focus/) owns focus runtime adapters plus its Portal synchronization repository/coordinator; ranking persistence does not belong in focus core.
 
 ## Startup and composition
 
@@ -39,6 +42,10 @@ Startup flows through a small set of app-layer objects:
 5. [NotchAppEnvironment.swift](../Sources/Notch/App/NotchAppEnvironment.swift) is the composition root. It constructs feature view models, controllers, and cross-feature adapters.
 
 The composition root should assemble dependencies and install integration adapters. Feature behavior should stay in feature-specific coordinators, view models, or core targets rather than accumulating inside the environment. App-specific Gemini Live integration belongs in [GeminiLiveFeatureBridge.swift](../Sources/Notch/App/GeminiLiveFeatureBridge.swift), not in the reusable session/tool files.
+
+`NotchAppEnvironment` owns one Portal account coordinator. Account settings,
+Focus cloud sync, Shelf Portal links, and managed Gemini server flows consume that
+shared context rather than maintaining feature-owned copies of login state.
 
 ## Major runtime boundaries
 
@@ -59,16 +66,21 @@ This layer is intentionally broad, but new command families should be grouped be
 
 ### Focus and browser bridge
 
-- [NotchFocusCore](../Sources/NotchFocusCore/) owns reusable Pomodoro state and behavior.
+- [NotchFocusFeature](../Sources/NotchFocusFeature/) owns reusable Pomodoro feature state and behavior.
 - [FocusBrowserBridgeServer.swift](../Sources/Notch/Focus/FocusBrowserBridgeServer.swift) adapts focus features to the browser extension bridge.
 - [PomodoroSupportAdapters.swift](../Sources/Notch/Focus/PomodoroSupportAdapters.swift) connects focus core abstractions to app services such as notifications and sounds.
+- [FocusDailyStatsRepository.swift](../Sources/Notch/Focus/FocusDailyStatsRepository.swift) owns atomic daily aggregate/outbox persistence for cloud ranking.
+- [FocusCloudSyncCoordinator.swift](../Sources/Notch/Focus/FocusCloudSyncCoordinator.swift) owns authenticated sync/profile orchestration using shared Portal account context.
 
-The browser bridge is app/runtime infrastructure, so it should stay outside the focus core.
+The browser bridge, daily repository, and cloud coordinator are app/runtime
+infrastructure, so they stay outside focus core. Focus core emits domain meaning
+such as focused intervals and completed sessions; it does not infer or persist
+ranking aggregates.
 
 ### Shelf
 
-- [NotchShelfCore](../Sources/NotchShelfCore/) owns shelf-domain state, persistence, and item behavior.
-- App code should import the core normally, not through `@testable`, so the package boundary reflects real production API needs.
+- [NotchShelfFeature](../Sources/NotchShelfFeature/) owns shelf feature state, persistence, Google Drive integration, and item behavior.
+- App code should import the feature package normally, not through `@testable`, so the package boundary reflects real production API needs.
 
 ### Media and system audio
 
@@ -84,9 +96,9 @@ Gemini Live is currently the most complex subsystem.
 
 Gemini Live files are grouped by responsibility under [Sources/Notch/GeminiLive](../Sources/Notch/GeminiLive/):
 
-- [Core](../Sources/Notch/GeminiLive/Core/) owns session lifecycle, shared models, backend/support types, skill support, logging, and canonical tool names.
+- [Core](../Sources/Notch/GeminiLive/Core/) owns Gemini session lifecycle, shared models, Gemini Portal endpoint clients, skill support, logging, and canonical tool names.
 - [Tools](../Sources/Notch/GeminiLive/Tools/) owns tool schema, function-call dispatch, response helpers, and tool implementations grouped by domain.
-- [UI](../Sources/Notch/GeminiLive/UI/) owns UI-facing state, controllers, approval UI, account coordination, hold-to-talk, and transcript overlays.
+- [UI](../Sources/Notch/GeminiLive/UI/) owns UI-facing Talk state, controllers, approval UI, hold-to-talk, and transcript overlays.
 - [Audio](../Sources/Notch/GeminiLive/Audio/) owns audio capture/playback extensions and WebRTC audio IO.
 - [Services](../Sources/Notch/GeminiLive/Services/) owns local service helpers such as Mail, Spotlight, transcript storage, and chat history.
 - [ScreenShare](../Sources/Notch/GeminiLive/ScreenShare/) owns screen/window selection and screen-share highlighting.
@@ -149,10 +161,12 @@ For UI-impacting changes, also launch the app and smoke-test the affected panels
 
 ## Architecture rules
 
-- Keep reusable business/domain logic in core targets when it does not require AppKit, SwiftUI app lifecycle, concrete permissions, or local machine services.
+- Keep reusable business/domain logic in core targets when it does not require AppKit, SwiftUI app lifecycle, concrete permissions, feature persistence, or local machine services.
 - Keep macOS adapters in [Sources/Notch](../Sources/Notch/).
 - Do not use `@testable import` from production app code.
 - Keep [NotchAppEnvironment.swift](../Sources/Notch/App/NotchAppEnvironment.swift) focused on dependency construction and adapter installation.
 - Co-locate schema, routing, and implementation for new Gemini tools when practical, or at least centralize tool names to avoid drift.
 - Prefer small typed adapters over long lists of unrelated closures when wiring cross-feature dependencies.
 - Move services out of feature folders when their ownership becomes broader than the feature that first introduced them.
+- Keep Portal account/auth ownership in `Sources/Notch/Portal`; Gemini and Focus are consumers, not authentication authorities.
+- Keep cloud sync repositories and pending state out of reusable core targets and `UserDefaults`.

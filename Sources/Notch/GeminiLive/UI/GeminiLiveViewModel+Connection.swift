@@ -1,5 +1,5 @@
 import Foundation
-import NotchChatHistoryCore
+import NotchChatHistoryFeature
 import NotchGeminiLiveCore
 
 @MainActor
@@ -77,8 +77,7 @@ extension GeminiLiveViewModel {
             if !clearingTranscripts, let existingConfiguration = self.session.currentConfiguration {
                 if existingConfiguration.isManagedCredential,
                    self.shouldRefreshManagedServerCredential(existingConfiguration) {
-                    guard let freshBackend = await self.backend.freshConfiguredBackendUserConfiguration(),
-                          let sessionBackend = existingConfiguration.backendConfiguration else {
+                    guard let freshBackend = await self.backend.freshConfiguredPortalUserConfiguration() else {
                         self.setConnectionState(.failed)
                         self.lastErrorMessage = "Please sign in to your Gemini Live server account."
                         self.statusText = self.defaultDisconnectedStatusText
@@ -86,15 +85,10 @@ extension GeminiLiveViewModel {
                         return
                     }
 
-                    let credentialBackend = GeminiLiveBackendConfiguration(
-                        baseURL: sessionBackend.baseURL,
-                        clientToken: sessionBackend.clientToken,
-                        userAccessToken: freshBackend.userAccessToken
-                    )
                     self.statusText = "Requesting secure Gemini Live token..."
                     do {
                         let token = try await self.requestManagedServerSessionToken(
-                            configuration: credentialBackend,
+                            configuration: freshBackend,
                             model: existingConfiguration.model,
                             systemInstruction: existingConfiguration.systemPrompt,
                             voiceName: existingConfiguration.voiceName,
@@ -139,12 +133,12 @@ extension GeminiLiveViewModel {
             let systemInstruction = systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
             let connectionCredential: String
             let restAPIKey: String?
-            let backendConfiguration: GeminiLiveBackendConfiguration?
+            let backendConfiguration: PortalBackendConfiguration?
             var tokenResponse: GeminiLiveEphemeralTokenResponse?
 
             switch self.selectedConnectionMethod {
             case .managedServer:
-                guard let configuredBackend = await self.backend.freshConfiguredBackendUserConfiguration() else {
+                guard let configuredBackend = await self.backend.freshConfiguredPortalUserConfiguration() else {
                     self.setConnectionState(.failed)
                     self.lastErrorMessage = self.configuredBackendConfiguration == nil
                         ? "Gemini Live server is missing."
@@ -221,7 +215,7 @@ extension GeminiLiveViewModel {
     }
 
     func requestManagedServerSessionToken(
-        configuration: GeminiLiveBackendConfiguration,
+        configuration: PortalBackendConfiguration,
         model: String,
         systemInstruction: String?,
         voiceName: String,
@@ -246,9 +240,9 @@ extension GeminiLiveViewModel {
             thinkingLevel = nil
             thinkingBudget = nil
         }
-        return try await backendClient.createSessionToken(
+        return try await backendClient.createGeminiLiveSessionToken(
             configuration: configuration,
-            requestBody: GeminiLiveSessionTokenRequest(
+            request: GeminiLiveSessionTokenRequest(
                 model: model,
                 systemInstruction: systemInstruction,
                 voiceName: voiceName,

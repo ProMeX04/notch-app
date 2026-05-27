@@ -3,7 +3,7 @@ import CommonCrypto
 import Foundation
 import Network
 import NotchBridgeParserCore
-import NotchFocusCore
+import NotchFocusFeature
 
 final class FocusBrowserBridgeServer: @unchecked Sendable {
     private struct FocusBridgeSnapshot {

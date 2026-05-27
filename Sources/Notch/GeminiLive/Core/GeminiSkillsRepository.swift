@@ -1,32 +1,23 @@
 import Foundation
 import NotchGeminiSkillStorage
 
-/// Bridges `skills-v2/skills.json` with optional one-time migration from legacy `skills/<name>/SKILL.md` folders and rendered markdown for the `read` tool.
+/// Bridges `skills-v2/skills.json` with rendered markdown for the `read` tool.
 final class GeminiSkillsRepository: @unchecked Sendable {
-    static let legacyFolderMigrationDefaultsKey = "dev.notch.skills-v2.migrated-legacy-folders.v1"
-
     private let persistence: SkillV2Persistence
-    private let legacySkillsDirectory: URL
     private let renderedSkillsRoot: URL
-    private let defaults: UserDefaults
     private let fileManager: FileManager
 
     init(
         fileManager: FileManager = .default,
         storeFileURL: URL = GeminiLiveStoragePaths.skillsV2StoreFile,
-        legacySkillsDirectory: URL = GeminiLiveStoragePaths.skillsDirectory,
-        renderedSkillsRoot: URL = GeminiLiveStoragePaths.skillsV2RenderedDirectory,
-        defaults: UserDefaults = .standard
+        renderedSkillsRoot: URL = GeminiLiveStoragePaths.skillsV2RenderedDirectory
     ) {
         GeminiLiveStoragePaths.prepare(fileManager: fileManager)
         self.fileManager = fileManager
-        self.legacySkillsDirectory = legacySkillsDirectory
         self.renderedSkillsRoot = renderedSkillsRoot
-        self.defaults = defaults
         self.persistence = SkillV2Persistence(fileURL: storeFileURL, fileManager: fileManager)
 
         bootstrapPersistenceBestEffort()
-        migrateLegacySkillFoldersIfNeeded()
         seedGettingStartedIfNeeded()
         try? persistence.saveToDisk()
         try? synchronizeRenderedSnapshots()
@@ -44,54 +35,6 @@ final class GeminiSkillsRepository: @unchecked Sendable {
             try? persistence.upsert(seed)
             try? persistence.saveToDisk()
         }
-    }
-
-    /// One-time shallow import of folders under `.notch/workspace/skills/*/SKILL.md` into JSON (ignores legacy `requiredTools` / version).
-    func migrateLegacySkillFoldersIfNeeded() {
-        guard !defaults.bool(forKey: Self.legacyFolderMigrationDefaultsKey) else { return }
-
-        guard let dirs = try? fileManager.contentsOfDirectory(
-            at: legacySkillsDirectory,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) else { return }
-
-        var working = persistence.snapshot()
-        func recordExists(caseInsensitive name: String) -> Bool {
-            working.contains {
-                !$0.isArchived &&
-                    $0.name.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(name) ==
-                    .orderedSame
-            }
-        }
-
-        for dir in dirs {
-            guard (try? dir.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { continue }
-            let markdown = dir.appendingPathComponent("SKILL.md")
-            guard let content = try? String(contentsOf: markdown, encoding: .utf8) else { continue }
-            guard let parsed = try? SkillFrontmatterParser.parse(content) else { continue }
-            let trimmedName = parsed.frontmatter.name.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmedName.isEmpty, !recordExists(caseInsensitive: trimmedName) else { continue }
-
-            let now = Date()
-            let inferredSource: SkillSource = parsed.frontmatter.category.lowercased() == "builtin" ? .builtin : .user
-            let record = SkillRecord(
-                id: UUID().uuidString,
-                name: parsed.frontmatter.name,
-                description: parsed.frontmatter.description,
-                category: parsed.frontmatter.category,
-                instructions: parsed.instructions,
-                createdAt: now,
-                updatedAt: now,
-                source: inferredSource,
-                isArchived: false
-            )
-            working.append(record)
-        }
-
-        persistence.replaceWorkingSet(working)
-        try? persistence.saveToDisk()
-        defaults.set(true, forKey: Self.legacyFolderMigrationDefaultsKey)
     }
 
     func seedGettingStartedIfNeeded() {

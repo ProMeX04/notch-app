@@ -1,5 +1,5 @@
 import Foundation
-import NotchFocusCore
+import NotchFocusFeature
 
 // MARK: - DurationParser Tests
 
@@ -94,19 +94,19 @@ enum DurationParserTests {
         try expectEqual(DurationParser.parse("1d2h"), 93600)
     }
 
-    // MARK: Colon format - legacy context
+    // MARK: Colon format - standard context
 
-    static func colonFormat_legacyMMSS() throws {
+    static func colonFormat_standardMMSS() throws {
         try expectEqual(DurationParser.parse("1:30"), 90)
         try expectEqual(DurationParser.parse("5:00"), 300)
     }
 
-    static func colonFormat_legacyHMMS() throws {
+    static func colonFormat_standardHMMS() throws {
         try expectEqual(DurationParser.parse("1:30:00"), 5400)
         try expectEqual(DurationParser.parse("2:15:30"), 8130)
     }
 
-    static func colonFormat_legacySingleDigit() throws {
+    static func colonFormat_standardSingleDigit() throws {
         try expectEqual(DurationParser.parse("1:05"), 65)
     }
 

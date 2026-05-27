@@ -1,0 +1,54 @@
+name: Engineering Governance
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  governance:
+    name: Agent governance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test script/agent-governance.test.mjs
+      - run: node script/agent-governance.mjs check
+
+  portal:
+    name: Portal verification
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://notch:notch@127.0.0.1:5432/notch?schema=public
+    defaults:
+      run:
+        working-directory: portal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: portal/package-lock.json
+      - run: npm ci
+      - run: npm run test:focus
+      - run: npm run test:gemini-live
+      - run: npm run lint
+      - run: npm run build
+
+  swift:
+    name: Swift verification
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test
+      - run: swift run NotchFocusTests
+      - run: swift run NotchBridgeParserTests
+      - run: swift run NotchMailParserTests
+      - run: swift run NotchShelfTests
+      - run: swift run NotchSkillsTests
+      - run: swift run NotchChatHistoryTests
+      - run: swift run NotchScreenShareTests
+      - run: swift run NotchGeminiLiveTests
+      - run: swift build

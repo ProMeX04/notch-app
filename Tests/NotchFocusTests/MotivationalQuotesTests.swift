@@ -1,5 +1,5 @@
 import Foundation
-import NotchFocusCore
+import NotchFocusFeature
 
 // MARK: - MotivationalQuotes Tests
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Notch Portal UI Conventions"
+  short_description: "Keep Portal experiences polished"
+  default_prompt: "Use $notch-portal-ui-conventions to implement or review a Portal UI change."

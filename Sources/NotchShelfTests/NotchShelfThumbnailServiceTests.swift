@@ -1,6 +1,6 @@
 import AppKit
 import Foundation
-@testable import NotchShelfCore
+@testable import NotchShelfFeature
 
 enum NotchShelfThumbnailServiceTests {
 

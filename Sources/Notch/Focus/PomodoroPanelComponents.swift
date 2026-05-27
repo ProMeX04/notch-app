@@ -1,5 +1,5 @@
 import SwiftUI
-import NotchFocusCore
+import NotchFocusFeature
 
 enum PomodoroPanelMetrics {
     static let horizontalPadding: CGFloat = 32

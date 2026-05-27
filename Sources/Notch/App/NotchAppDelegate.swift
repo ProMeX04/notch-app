@@ -1,6 +1,6 @@
 import AppKit
-import NotchFocusCore
-import NotchShelfCore
+import NotchFocusFeature
+import NotchShelfFeature
 @preconcurrency import UserNotifications
 
 @MainActor
@@ -9,8 +9,10 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
     private lazy var bootstrapper = ApplicationBootstrapper(singleInstanceCoordinator: singleInstanceCoordinator)
 
     var entitlementStore: NotchEntitlementStore { bootstrapper.environment.entitlementStore }
+    var portalAccountCoordinator: PortalAccountCoordinator { bootstrapper.environment.portalAccountCoordinator }
     var geminiLiveViewModel: GeminiLiveViewModel { bootstrapper.environment.geminiLiveViewModel }
     var learningStatsStore: LearningStatsStore { bootstrapper.environment.learningStatsStore }
+    var focusCloudSyncService: FocusCloudSyncCoordinator { bootstrapper.environment.focusCloudSyncService }
     var pomodoroViewModel: PomodoroViewModel { bootstrapper.environment.pomodoroViewModel }
     var focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore { bootstrapper.environment.focusWebsiteBlocklistStore }
     var shortcutStore: ShortcutStore { bootstrapper.environment.shortcutStore }

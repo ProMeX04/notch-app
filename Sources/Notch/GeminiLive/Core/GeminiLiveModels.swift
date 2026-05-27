@@ -379,8 +379,6 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
     var enabledTools: [String]
     /// Installed skill record ids (`SkillRecord.id`) enabled for this preset.
     var enabledSkillIDs: [String]
-    /// Legacy per-preset storage by display name — migrated into `enabledSkillIDs` once skills load.
-    var enabledSkillNames: [String]
     /// GeminiVoice.rawValue for this preset.
     var voice: String
     /// Gemini Live model id for this preset.
@@ -402,7 +400,6 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         content: String,
         enabledTools: [String] = [],
         enabledSkillIDs: [String] = [],
-        enabledSkillNames: [String] = [],
         voice: String = GeminiVoice.kore.rawValue,
         model: String = GeminiLiveModel.defaultModelID,
         thinkingLevel: String = GeminiThinkingLevel.minimal.rawValue,
@@ -416,7 +413,6 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         self.content = content
         self.enabledTools = enabledTools
         self.enabledSkillIDs = enabledSkillIDs
-        self.enabledSkillNames = enabledSkillNames
         self.voice = voice
         self.model = model
         self.thinkingLevel = (GeminiThinkingLevel(rawValue: thinkingLevel)
@@ -429,7 +425,7 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, title, content, enabledTools, enabledSkillIDs, enabledSkillNames, voice, model, thinkingLevel, mediaResolution, avatarSymbolName, avatarImageFilename, lastUsedAt
+        case id, title, content, enabledTools, enabledSkillIDs, voice, model, thinkingLevel, mediaResolution, avatarSymbolName, avatarImageFilename, lastUsedAt
     }
 
     init(from decoder: Decoder) throws {
@@ -439,7 +435,6 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         content = try c.decode(String.self, forKey: .content)
         enabledTools = try c.decodeIfPresent([String].self, forKey: .enabledTools) ?? []
         enabledSkillIDs = try c.decodeIfPresent([String].self, forKey: .enabledSkillIDs) ?? []
-        enabledSkillNames = try c.decodeIfPresent([String].self, forKey: .enabledSkillNames) ?? []
         voice = try c.decodeIfPresent(String.self, forKey: .voice) ?? GeminiVoice.kore.rawValue
         model = try c.decodeIfPresent(String.self, forKey: .model) ?? GeminiLiveModel.defaultModelID
         let savedThinkingLevel = try c.decodeIfPresent(String.self, forKey: .thinkingLevel) ?? GeminiThinkingLevel.minimal.rawValue
@@ -459,7 +454,6 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         try c.encode(content, forKey: .content)
         try c.encode(enabledTools, forKey: .enabledTools)
         try c.encode(enabledSkillIDs.sorted(), forKey: .enabledSkillIDs)
-        try c.encode(enabledSkillNames, forKey: .enabledSkillNames)
         try c.encode(voice, forKey: .voice)
         try c.encode(model, forKey: .model)
         try c.encode(thinkingLevel, forKey: .thinkingLevel)

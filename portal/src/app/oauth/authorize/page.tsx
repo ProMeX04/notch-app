@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { AlertCircle, Loader2 } from 'lucide-react'
 
-import { PortalAppHandoffCard } from '@/components/portal/PortalAppHandoffCard'
 import { PortalLogo } from '@/components/portal/PortalLogo'
 import { usePortalAuth } from '@/components/portal/PortalAuthProvider'
 import {

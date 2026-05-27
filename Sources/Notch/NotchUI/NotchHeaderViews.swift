@@ -1,5 +1,5 @@
 import AppKit
-import NotchFocusCore
+import NotchFocusFeature
 import SwiftUI
 
 final class NotchHeaderAccessoryController: ObservableObject {

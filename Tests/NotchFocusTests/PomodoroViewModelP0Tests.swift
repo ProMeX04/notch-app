@@ -1,18 +1,20 @@
 import AppKit
 import Foundation
-import NotchFocusCore
+import NotchFocusFeature
 
 @MainActor
 enum PomodoroViewModelTests {
     private static func makeViewModel(
         userDefaults: UserDefaults,
         clock: TestPomodoroClock,
-        workspaceNotificationCenter: NotificationCenter
+        workspaceNotificationCenter: NotificationCenter,
+        stats: TestLearningStatsRecorder = TestLearningStatsRecorder(),
+        stateRepository: PomodoroStateRepository = PomodoroStateRepository(fileURL: makePomodoroStateFileURL(label: "state"))
     ) -> PomodoroViewModel {
-        let stats = TestLearningStatsRecorder()
         let languageProvider = AppLanguageProvider(userDefaults: userDefaults)
         return PomodoroViewModel(
             userDefaults: userDefaults,
+            stateRepository: stateRepository,
             learningStatsRecorder: stats,
             appLanguageProvider: languageProvider,
             soundPlayer: TestPomodoroSoundPlayer(),
@@ -60,13 +62,15 @@ enum PomodoroViewModelTests {
         let baseTime = Date(timeIntervalSince1970: 5_000)
         let workspaceNotificationCenter = NotificationCenter()
         let userDefaults = makeIsolatedUserDefaults(label: "restore")
+        let stateRepository = PomodoroStateRepository(fileURL: makePomodoroStateFileURL(label: "restore"))
 
         do {
             let liveClock = TestPomodoroClock(now: baseTime)
             let originalVM = makeViewModel(
                 userDefaults: userDefaults,
                 clock: liveClock,
-                workspaceNotificationCenter: workspaceNotificationCenter
+                workspaceNotificationCenter: workspaceNotificationCenter,
+                stateRepository: stateRepository
             )
             originalVM.updateCurrentDurations(focusSeconds: 10, breakSeconds: 5)
             originalVM.updateLongBreakDuration(seconds: 7)
@@ -79,7 +83,8 @@ enum PomodoroViewModelTests {
         let restoredVM = makeViewModel(
             userDefaults: userDefaults,
             clock: restoredClock,
-            workspaceNotificationCenter: workspaceNotificationCenter
+            workspaceNotificationCenter: workspaceNotificationCenter,
+            stateRepository: stateRepository
         )
         defer { restoredVM.shutdown() }
 
@@ -144,6 +149,54 @@ enum PomodoroViewModelTests {
         try expectEqual(vm.completedFocusSessions, 0)
     }
 
+    static func pauseResetAndSkipFlushDurationWithoutCompletingSession() throws {
+        let clock = TestPomodoroClock(now: Date(timeIntervalSince1970: 3_600))
+        let stats = TestLearningStatsRecorder()
+        let vm = makeViewModel(
+            userDefaults: makeIsolatedUserDefaults(label: "flush-without-completion"),
+            clock: clock,
+            workspaceNotificationCenter: NotificationCenter(),
+            stats: stats
+        )
+        defer { vm.shutdown() }
+
+        vm.updateCurrentDurations(focusSeconds: 20, breakSeconds: 3)
+        vm.start()
+        clock.now = clock.now.addingTimeInterval(2)
+        vm.pause()
+        vm.start()
+        clock.now = clock.now.addingTimeInterval(2)
+        vm.skipPhase()
+        vm.reset()
+
+        try expect(!stats.intervals.isEmpty)
+        try expectEqual(stats.completedSessions.count, 0)
+    }
+
+    static func naturalFocusCompletionRecordsExactlyOneCompletedSession() async throws {
+        let clock = TestPomodoroClock(now: Date(timeIntervalSince1970: 3_700))
+        let stats = TestLearningStatsRecorder()
+        let center = NotificationCenter()
+        let vm = makeViewModel(
+            userDefaults: makeIsolatedUserDefaults(label: "natural-completion"),
+            clock: clock,
+            workspaceNotificationCenter: center,
+            stats: stats
+        )
+        defer { vm.shutdown() }
+
+        vm.updateCurrentDurations(focusSeconds: 5, breakSeconds: 3)
+        vm.start()
+        clock.now = clock.now.addingTimeInterval(6)
+        center.post(name: NSWorkspace.didWakeNotification, object: nil)
+        try await Task.sleep(for: .milliseconds(50))
+
+        try expectEqual(stats.completedSessions.count, 1)
+        center.post(name: NSWorkspace.didWakeNotification, object: nil)
+        try await Task.sleep(for: .milliseconds(50))
+        try expectEqual(stats.completedSessions.count, 1)
+    }
+
     static func cycleIndicatorsStayConsistentAcrossEdges() async throws {
         let clock = TestPomodoroClock(now: Date(timeIntervalSince1970: 4_000))
         let workspaceNotificationCenter = NotificationCenter()
@@ -197,13 +250,15 @@ enum PomodoroViewModelTests {
     static func runningRestoreKeepsActiveTimer() throws {
         let baseTime = Date(timeIntervalSince1970: 6_000)
         let userDefaults = makeIsolatedUserDefaults(label: "running-restore")
+        let stateRepository = PomodoroStateRepository(fileURL: makePomodoroStateFileURL(label: "running-restore"))
 
         do {
             let liveClock = TestPomodoroClock(now: baseTime)
             let originalVM = makeViewModel(
                 userDefaults: userDefaults,
                 clock: liveClock,
-                workspaceNotificationCenter: NotificationCenter()
+                workspaceNotificationCenter: NotificationCenter(),
+                stateRepository: stateRepository
             )
             originalVM.updateCurrentDurations(focusSeconds: 5, breakSeconds: 3)
             originalVM.start()
@@ -214,7 +269,8 @@ enum PomodoroViewModelTests {
         let restoredVM = makeViewModel(
             userDefaults: userDefaults,
             clock: restoredClock,
-            workspaceNotificationCenter: NotificationCenter()
+            workspaceNotificationCenter: NotificationCenter(),
+            stateRepository: stateRepository
         )
         defer { restoredVM.shutdown() }
 
@@ -226,13 +282,15 @@ enum PomodoroViewModelTests {
     static func pausedRestoreKeepsSessionPaused() throws {
         let baseTime = Date(timeIntervalSince1970: 7_000)
         let userDefaults = makeIsolatedUserDefaults(label: "paused-restore")
+        let stateRepository = PomodoroStateRepository(fileURL: makePomodoroStateFileURL(label: "paused-restore"))
         let liveClock = TestPomodoroClock(now: baseTime)
 
         do {
             let originalVM = makeViewModel(
                 userDefaults: userDefaults,
                 clock: liveClock,
-                workspaceNotificationCenter: NotificationCenter()
+                workspaceNotificationCenter: NotificationCenter(),
+                stateRepository: stateRepository
             )
             originalVM.updateCurrentDurations(focusSeconds: 5, breakSeconds: 3)
             originalVM.start()
@@ -245,7 +303,8 @@ enum PomodoroViewModelTests {
         let restoredVM = makeViewModel(
             userDefaults: userDefaults,
             clock: restoredClock,
-            workspaceNotificationCenter: NotificationCenter()
+            workspaceNotificationCenter: NotificationCenter(),
+            stateRepository: stateRepository
         )
         defer { restoredVM.shutdown() }
 

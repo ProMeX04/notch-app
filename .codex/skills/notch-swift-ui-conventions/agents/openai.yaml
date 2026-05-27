@@ -1,0 +1,4 @@
+interface:
+  display_name: "Notch Swift UI Conventions"
+  short_description: "Keep native app surfaces consistent"
+  default_prompt: "Use $notch-swift-ui-conventions to implement or review a Notch macOS UI change."

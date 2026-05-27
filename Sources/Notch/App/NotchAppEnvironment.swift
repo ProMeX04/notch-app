@@ -1,12 +1,15 @@
-import NotchFocusCore
-import NotchShelfCore
+import NotchFocusFeature
+import NotchShelfFeature
 import Foundation
 
 @MainActor
 final class NotchAppEnvironment {
     let entitlementStore: NotchEntitlementStore
+    let portalAccountCoordinator: PortalAccountCoordinator
     let geminiLiveViewModel: GeminiLiveViewModel
     let learningStatsStore: LearningStatsStore
+    let focusDailyStatsRepository: FocusDailyStatsRepository
+    let focusCloudSyncService: FocusCloudSyncCoordinator
     let playbackViewModel: MediaProbeViewModel
     let pomodoroViewModel: PomodoroViewModel
     let focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore
@@ -21,23 +24,43 @@ final class NotchAppEnvironment {
     init(appSettingsController: AppSettingsControlling = AppSettingsController.shared) {
         self.appSettingsController = appSettingsController
         entitlementStore = NotchEntitlementStore()
-        let geminiDependencies = GeminiLiveViewModelDependencies.live(
+        let portalAPIClient = PortalAPIClient()
+        portalAccountCoordinator = PortalAccountCoordinator(
+            client: portalAPIClient,
+            configStore: PortalConfigurationStore(processInfo: .processInfo),
+            authStore: PortalAuthStore(processInfo: .processInfo),
             entitlementStore: entitlementStore
+        )
+        let geminiDependencies = GeminiLiveViewModelDependencies.live(
+            entitlementStore: entitlementStore,
+            portalAccount: portalAccountCoordinator,
+            portalClient: portalAPIClient
         )
         geminiLiveViewModel = GeminiLiveViewModel(dependencies: geminiDependencies)
         learningStatsStore = LearningStatsStore()
+        focusDailyStatsRepository = FocusDailyStatsRepository()
+        focusCloudSyncService = FocusCloudSyncCoordinator(
+            repository: focusDailyStatsRepository,
+            portalAccount: portalAccountCoordinator,
+            portalClient: URLSessionFocusPortalClient()
+        )
         playbackViewModel = MediaProbeViewModel()
-        pomodoroViewModel = PomodoroViewModel(learningStatsStore: learningStatsStore)
+        pomodoroViewModel = PomodoroViewModel(
+            learningStatsRecorder: FocusStatsRecorder(
+                localStats: learningStatsStore,
+                dailyStats: focusDailyStatsRepository
+            )
+        )
         focusWebsiteBlocklistStore = FocusWebsiteBlocklistStore()
         shelfViewModel = NotchShelfViewModel()
 
-        let geminiLive = geminiLiveViewModel
-        let getPortalURL: () -> URL = { [weak geminiLive] in
+        let portalAccount = portalAccountCoordinator
+        let getPortalURL: () -> URL = { [weak portalAccount] in
             if let custom = UserDefaults.standard.string(forKey: "notch_portal_url"),
                let url = URL(string: custom) {
                 return url
             }
-            return geminiLive?.configuredBackendConfiguration?.baseURL ?? URL(string: GeminiLiveHostedBackend.defaultURL)!
+            return portalAccount?.portalBaseURL ?? URL(string: PortalHostedBackend.defaultURL)!
         }
 
         shelfViewModel.portalBaseURLProvider = getPortalURL
@@ -73,6 +96,7 @@ final class NotchAppEnvironment {
             playbackViewModel: playbackViewModel,
             pomodoroViewModel: pomodoroViewModel,
             geminiLiveViewModel: geminiLiveViewModel,
+            portalAccountCoordinator: portalAccountCoordinator,
             shelfViewModel: shelfViewModel,
             presentationModel: presentationModel,
             appSettingsController: appSettingsController
@@ -93,5 +117,14 @@ final class NotchAppEnvironment {
             focusBrowserBridgeServer: focusBrowserBridgeServer
         )
         geminiLiveFeatureBridge.install()
+
+        let previousAuthChanged = portalAccountCoordinator.onAuthChanged
+        portalAccountCoordinator.onAuthChanged = { [weak focusCloudSyncService] in
+            previousAuthChanged?()
+            focusCloudSyncService?.scheduleSync(delay: .zero)
+            Task { @MainActor [weak focusCloudSyncService] in
+                await focusCloudSyncService?.refreshProfile()
+            }
+        }
     }
 }

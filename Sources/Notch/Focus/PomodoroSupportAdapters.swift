@@ -1,6 +1,6 @@
 import AppKit
 import Foundation
-import NotchFocusCore
+import NotchFocusFeature
 
 @MainActor
 private struct NotchPomodoroSoundPlayer: PomodoroSoundPlaying {
@@ -34,14 +34,41 @@ private struct NotchPomodoroNotificationPoster: PomodoroNotificationPosting {
     }
 }
 
+@MainActor
+final class FocusStatsRecorder: LearningStatsRecording {
+    private let localStats: LearningStatsStore
+    private let dailyStats: FocusDailyStatsRepository
+
+    init(localStats: LearningStatsStore, dailyStats: FocusDailyStatsRepository) {
+        self.localStats = localStats
+        self.dailyStats = dailyStats
+    }
+
+    func recordFocusedInterval(_ interval: DateInterval, source: LearningActivitySource) {
+        localStats.recordFocusedInterval(interval, source: source)
+        if source == .pomodoro {
+            dailyStats.recordFocusedInterval(interval)
+        }
+    }
+
+    func recordCompletedFocusSession(at date: Date, source: LearningActivitySource) {
+        localStats.recordCompletedFocusSession(at: date, source: source)
+        if source == .pomodoro {
+            dailyStats.recordCompletedFocusSession(at: date)
+        }
+    }
+}
+
 extension PomodoroViewModel {
     convenience init(
         userDefaults: UserDefaults = .standard,
-        learningStatsStore: LearningStatsStore
+        stateRepository: PomodoroStateRepository = PomodoroStateRepository(),
+        learningStatsRecorder: LearningStatsRecording
     ) {
         self.init(
             userDefaults: userDefaults,
-            learningStatsRecorder: learningStatsStore,
+            stateRepository: stateRepository,
+            learningStatsRecorder: learningStatsRecorder,
             appLanguageProvider: AppLanguageProvider(userDefaults: userDefaults),
             soundPlayer: NotchPomodoroSoundPlayer(),
             notificationPoster: NotchPomodoroNotificationPoster(),

@@ -11,6 +11,8 @@ struct NotchApp: App {
                 pomodoro: appDelegate.pomodoroViewModel,
                 focusWebsiteBlocklistStore: appDelegate.focusWebsiteBlocklistStore,
                 learningStats: appDelegate.learningStatsStore,
+                focusCloudSync: appDelegate.focusCloudSyncService,
+                portalAccount: appDelegate.portalAccountCoordinator,
                 gemini: appDelegate.geminiLiveViewModel,
                 entitlementStore: appDelegate.entitlementStore,
                 shortcutStore: appDelegate.shortcutStore,

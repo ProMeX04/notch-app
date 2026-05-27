@@ -7,21 +7,23 @@ struct GeminiLiveViewModelDependencies {
     let accountController: GeminiLiveAccountController
     let sessionController: GeminiLiveSessionController
     let toolingController: GeminiLiveToolingController
+    let userAPIClient: any GeminiLiveUserAPIClient
 
     static func live(
         entitlementStore: NotchEntitlementStore,
+        portalAccount: PortalAccountCoordinator,
+        portalClient: any GeminiLivePortalClient,
         processInfo: ProcessInfo = .processInfo,
-        session: GeminiLiveSession = GeminiLiveSession()
+        session: GeminiLiveSession = GeminiLiveSession(),
+        userAPIClient: any GeminiLiveUserAPIClient = URLSessionGeminiLiveUserAPIClient()
     ) -> GeminiLiveViewModelDependencies {
         GeminiLiveViewModelDependencies(
             entitlementStore: entitlementStore,
             settingsController: GeminiLiveSettingsController(processInfo: processInfo),
-            accountController: GeminiLiveAccountController(
-                processInfo: processInfo,
-                entitlementStore: entitlementStore
-            ),
+            accountController: GeminiLiveAccountController(portalAccount: portalAccount, backendClient: portalClient),
             sessionController: GeminiLiveSessionController(session: session),
-            toolingController: GeminiLiveToolingController()
+            toolingController: GeminiLiveToolingController(),
+            userAPIClient: userAPIClient
         )
     }
 }

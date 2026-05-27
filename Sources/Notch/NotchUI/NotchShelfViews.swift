@@ -1,5 +1,5 @@
 import AppKit
-import NotchShelfCore
+import NotchShelfFeature
 import SwiftUI
 import UniformTypeIdentifiers
 

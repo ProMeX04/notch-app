@@ -14,7 +14,7 @@ enum NotchWebPortal {
             return url
         }
 
-        let resolvedAPI = apiBaseURL ?? URL(string: GeminiLiveHostedBackend.defaultURL)
+        let resolvedAPI = apiBaseURL ?? URL(string: PortalHostedBackend.defaultURL)
         guard let api = resolvedAPI else {
             return URL(string: "https://portal-six-blue.vercel.app")!
         }

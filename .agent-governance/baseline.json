@@ -1,0 +1,11 @@
+{
+  "mode": "zero-debt",
+  "rules": {
+    "core-infrastructure": {},
+    "core-userdefaults": {},
+    "swift-sync-userdefaults": {},
+    "focus-client-ownership": {},
+    "leaderboard-private-name": {},
+    "development-data-compatibility": {}
+  }
+}

@@ -1,5 +1,5 @@
 import Foundation
-import NotchFocusCore
+import NotchFocusFeature
 
 struct TestCase {
     let name: String
@@ -36,6 +36,14 @@ func buildTestCases() -> [TestCase] {
         TestCase(
             name: "focus/pause preserves remaining seconds without fullscreen side effects",
             run: PomodoroViewModelTests.pausePreservesRemainingSecondsWithoutFullscreenSideEffects
+        ),
+        TestCase(
+            name: "focus/pause reset and skip do not complete leaderboard sessions",
+            run: PomodoroViewModelTests.pauseResetAndSkipFlushDurationWithoutCompletingSession
+        ),
+        TestCase(
+            name: "focus/natural completion records one leaderboard session",
+            run: PomodoroViewModelTests.naturalFocusCompletionRecordsExactlyOneCompletedSession
         ),
         TestCase(
             name: "focus/cycle indicators stay consistent across edges",
@@ -80,9 +88,9 @@ func buildTestCases() -> [TestCase] {
         ("duration-parser/combined h+m", DurationParserTests.combinedUnits_hoursAndMinutes),
         ("duration-parser/combined d+h+m", DurationParserTests.combinedUnits_daysHoursMinutes),
         ("duration-parser/combined no spaces", DurationParserTests.combinedUnits_noSpaces),
-        ("duration-parser/colon legacy mm:ss", DurationParserTests.colonFormat_legacyMMSS),
-        ("duration-parser/colon legacy h:mm:ss", DurationParserTests.colonFormat_legacyHMMS),
-        ("duration-parser/colon legacy single digit", DurationParserTests.colonFormat_legacySingleDigit),
+        ("duration-parser/colon standard mm:ss", DurationParserTests.colonFormat_standardMMSS),
+        ("duration-parser/colon standard h:mm:ss", DurationParserTests.colonFormat_standardHMMS),
+        ("duration-parser/colon standard single digit", DurationParserTests.colonFormat_standardSingleDigit),
         ("duration-parser/colon minutesScale h:mm", DurationParserTests.colonFormat_minutesScaleHM),
         ("duration-parser/colon minutesScale edge cases", DurationParserTests.colonFormat_minutesScaleEdgeCases),
         ("duration-parser/colon minutesScale rejects invalid", DurationParserTests.colonFormat_minutesScaleRejectsInvalidHour),

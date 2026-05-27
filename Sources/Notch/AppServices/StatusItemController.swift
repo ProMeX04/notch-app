@@ -1,6 +1,6 @@
 import AppKit
 import Combine
-import NotchFocusCore
+import NotchFocusFeature
 
 @MainActor
 final class StatusItemController: NSObject, NSMenuDelegate {

@@ -1,5 +1,5 @@
-import NotchFocusCore
-import NotchShelfCore
+import NotchFocusFeature
+import NotchShelfFeature
 import SwiftUI
 import UniformTypeIdentifiers
 

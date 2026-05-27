@@ -12,10 +12,13 @@ datasource db {
 model User {
   id                      String                   @id @default(cuid())
   name                    String?
+  displayName             String?
+  avatarUrl               String?
   email                   String?                  @unique
   password                String?
   isAdmin                 Boolean                  @default(false)
   isPro                   Boolean                  @default(false)
+  leaderboardOptIn        Boolean                  @default(false)
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
   sessions                AuthSession[]
@@ -24,6 +27,23 @@ model User {
   oauthAuthorizationCodes OAuthAuthorizationCode[]
   payments                PaymentTransaction[]
   events                  AppEvent[]
+  focusDailyStats         FocusDailyStat[]
+}
+
+model FocusDailyStat {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date         DateTime
+  deviceId     String
+  focusSeconds Int      @default(0)
+  sessionCount Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, date, deviceId])
+  @@index([userId, date])
+  @@index([date])
 }
 
 model FeatureConfig {

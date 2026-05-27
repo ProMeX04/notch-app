@@ -1,0 +1,61 @@
+{
+  "skills": [
+    {
+      "name": "notch-portal-api-conventions",
+      "displayName": "Notch Portal API Conventions",
+      "shortDescription": "Enforce Portal API boundaries and privacy",
+      "defaultPrompt": "Use $notch-portal-api-conventions to add or review a Portal API endpoint."
+    },
+    {
+      "name": "notch-swift-cloud-api-conventions",
+      "displayName": "Notch Swift Cloud API Conventions",
+      "shortDescription": "Enforce Swift cloud client boundaries",
+      "defaultPrompt": "Use $notch-swift-cloud-api-conventions to add or review Swift cloud integration."
+    },
+    {
+      "name": "notch-swift-ui-conventions",
+      "displayName": "Notch Swift UI Conventions",
+      "shortDescription": "Keep native app surfaces consistent",
+      "defaultPrompt": "Use $notch-swift-ui-conventions to implement or review a Notch macOS UI change."
+    },
+    {
+      "name": "notch-portal-ui-conventions",
+      "displayName": "Notch Portal UI Conventions",
+      "shortDescription": "Keep Portal experiences polished",
+      "defaultPrompt": "Use $notch-portal-ui-conventions to implement or review a Portal UI change."
+    },
+    {
+      "name": "notch-verification-release",
+      "displayName": "Notch Verification And Release",
+      "shortDescription": "Verify and deliver Notch changes",
+      "defaultPrompt": "Use $notch-verification-release to verify or deliver a Notch change."
+    }
+  ],
+  "rules": {
+    "claude": [
+      "architecture.md",
+      "portal-api.md",
+      "portal-ui.md",
+      "swift-ui.md",
+      "quality-release.md"
+    ],
+    "antigravity": [
+      "foundation.md",
+      "portal-api.md",
+      "swift-cloud.md",
+      "ui-release.md"
+    ]
+  },
+  "requiredFiles": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "portal/AGENTS.md",
+    "portal/CLAUDE.md",
+    "docs/architecture.md",
+    "docs/engineering/architecture-boundaries.md",
+    "docs/engineering/api-data-privacy.md",
+    "docs/engineering/swift-ui-patterns.md",
+    "docs/engineering/portal-ui-patterns.md",
+    "docs/engineering/quality-release.md"
+  ]
+}

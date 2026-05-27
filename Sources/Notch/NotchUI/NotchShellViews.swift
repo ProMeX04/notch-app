@@ -1,6 +1,6 @@
 import AppKit
-import NotchFocusCore
-import NotchShelfCore
+import NotchFocusFeature
+import NotchShelfFeature
 import SwiftUI
 
 struct IdleClosedNotchView: View {

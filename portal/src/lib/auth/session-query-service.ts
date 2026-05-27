@@ -52,6 +52,7 @@ export async function getAuthenticatedUser(req: Request) {
 
   return {
     sessionId: session.id,
+    deviceId: session.deviceId,
     user: session.user,
   }
 }

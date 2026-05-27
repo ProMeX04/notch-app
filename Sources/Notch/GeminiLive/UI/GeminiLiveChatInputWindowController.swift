@@ -1,6 +1,6 @@
 import AppKit
 import Combine
-import NotchChatHistoryCore
+import NotchChatHistoryFeature
 import SwiftUI
 import AVFoundation
 

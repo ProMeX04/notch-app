@@ -1,7 +1,7 @@
 import AppKit
 import Combine
-import NotchFocusCore
-import NotchShelfCore
+import NotchFocusFeature
+import NotchShelfFeature
 
 @MainActor
 final class NotchWindowManager {

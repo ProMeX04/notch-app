@@ -4,15 +4,12 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
-  Check,
-  CreditCard,
   Loader2,
   LogIn,
   LogOut,
   MonitorSmartphone,
   ShieldCheck,
   Sparkles,
-  UserRound,
 } from 'lucide-react'
 
 import { PortalLogo } from '@/components/portal/PortalLogo'
@@ -38,12 +35,6 @@ type AccountDevicesResponse = {
   devices: AccountDevice[]
 }
 
-const premiumFeatures = [
-  'Dùng Gemini Live và các tính năng AI theo thời gian thực.',
-  'Mở khóa trải nghiệm Pro trên tài khoản Notch của bạn.',
-  'Quản lý thanh toán và phiên đăng nhập từ cùng một dashboard.',
-]
-
 function formatDate(value: string | null, options?: Intl.DateTimeFormatOptions) {
   if (!value) return 'Chưa có'
 
@@ -61,14 +52,13 @@ function formatDate(value: string | null, options?: Intl.DateTimeFormatOptions) 
 
 export default function ProPage() {
   const router = useRouter()
-  const { status, user, signOut, refreshAuthState } = usePortalAuth()
+  const { status, user, signOut } = usePortalAuth()
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false)
   const [deviceLimit, setDeviceLimit] = useState(0)
   const [devices, setDevices] = useState<AccountDevice[]>([])
   const [isDevicesLoading, setIsDevicesLoading] = useState(true)
   const [activeDeviceAction, setActiveDeviceAction] = useState<string | null>(null)
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
-  const [isRefreshing, setIsRefreshing] = useState(false)
 
   useEffect(() => {
     if (status !== 'authenticated') {
@@ -192,15 +182,6 @@ export default function ProPage() {
         text: error instanceof Error ? error.message : 'Không thể tạo phiên thanh toán VNPAY.',
       })
       setIsCheckoutLoading(false)
-    }
-  }
-
-  const handleRefresh = async () => {
-    setIsRefreshing(true)
-    try {
-      await refreshAuthState()
-    } finally {
-      setTimeout(() => setIsRefreshing(false), 600)
     }
   }
 

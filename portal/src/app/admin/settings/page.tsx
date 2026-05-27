@@ -41,7 +41,7 @@ const healthItems = [
 
 function TogglePreview({ enabled }: { enabled: boolean }) {
   return (
-    <div className={`relative h-5 w-9 rounded-full border ${enabled ? "border-[#1a73e8] bg-[#1a73e8]" : "border-[#dadce0] bg-[#f1f3f4]"}`}>
+    <div className={`relative h-5 w-9 rounded-full border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a73e8] focus-visible:ring-offset-2 ${enabled ? "border-[#1a73e8] bg-[#1a73e8]" : "border-[#dadce0] bg-[#f1f3f4]"}`}>
       <span className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white shadow-sm ${enabled ? "translate-x-[18px]" : "translate-x-0.5"}`} />
     </div>
   );

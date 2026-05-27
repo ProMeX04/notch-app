@@ -131,11 +131,13 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [updating, setUpdating] = useState(false);
   const [recentEventsPage, setRecentEventsPage] = useState(1);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadStats = useCallback(async () => {
     setError(null);
+    setUpdating(true);
     try {
       const response = await fetch("/api/admin/stats");
       const data = await response.json();
@@ -145,6 +147,7 @@ export default function AdminDashboard() {
       setError(loadError instanceof Error ? loadError.message : "Không tải được thống kê");
     } finally {
       setLoading(false);
+      setUpdating(false);
     }
   }, []);
 
@@ -212,6 +215,10 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-6 bg-[#f8f9fa] font-sans text-[#202124]">
+      {/* Accessibility: announce polling updates to screen readers */}
+      <span aria-live="polite" className="sr-only">
+        {updating ? "Đang cập nhật thống kê..." : stats ? "Đã cập nhật thống kê" : ""}
+      </span>
       <div className="flex items-center justify-between gap-4 border-b border-[#dadce0] pb-4">
         <div>
           <h1 className="text-2xl font-normal tracking-tight text-[#202124]">Tổng quan</h1>

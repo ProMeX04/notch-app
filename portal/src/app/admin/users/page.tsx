@@ -50,6 +50,7 @@ export default function UsersManagement() {
   const [data, setData] = useState<UsersResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [updating, setUpdating] = useState(false);
   const [query, setQuery] = useState("");
   const [plan, setPlan] = useState("all");
   const [role, setRole] = useState("all");
@@ -70,6 +71,7 @@ export default function UsersManagement() {
 
   const loadUsers = useCallback(async () => {
     setError(null);
+    setUpdating(true);
     try {
       const response = await fetch(`/api/admin/users?${params.toString()}`);
       const payload = await response.json();
@@ -79,6 +81,7 @@ export default function UsersManagement() {
       setError(loadError instanceof Error ? loadError.message : "Không tải được danh sách người dùng");
     } finally {
       setLoading(false);
+      setUpdating(false);
     }
   }, [params]);
 
@@ -131,6 +134,10 @@ export default function UsersManagement() {
 
   return (
     <div className="space-y-8">
+      {/* Accessibility: announce polling updates to screen readers */}
+      <span aria-live="polite" className="sr-only">
+        {updating ? "Đang cập nhật danh sách người dùng..." : data ? "Đã cập nhật danh sách người dùng" : ""}
+      </span>
       <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div className="min-w-0">
           <h1 className="text-3xl font-medium tracking-tight text-[#202124]">Người dùng</h1>

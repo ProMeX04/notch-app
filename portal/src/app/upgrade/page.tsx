@@ -21,7 +21,7 @@ export default function UpgradePage() {
 
       <section className="portal-auth-container" style={{ position: 'relative', zIndex: 1 }}>
         <div className="portal-auth-header-centered">
-          <div className="portal-badge-pro" style={{ marginBottom: '16px', background: 'rgba(37, 99, 235, 0.1)', color: 'var(--accent)', border: '1px solid rgba(37, 99, 235, 0.2)' }}>
+          <div className="portal-badge-pro" style={{ marginBottom: '16px', background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid rgba(56, 189, 248, 0.2)' }}>
             <Sparkles size={14} />
             Notch Pro Upgrade
           </div>

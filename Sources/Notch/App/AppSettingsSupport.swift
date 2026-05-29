@@ -9,7 +9,6 @@ enum AppSettingsTab: String, CaseIterable, Identifiable {
     case shelf
     case focus
     case talk
-    case shortcuts
 
     var id: String { rawValue }
 
@@ -25,8 +24,6 @@ enum AppSettingsTab: String, CaseIterable, Identifiable {
             return "Focus"
         case .talk:
             return "Talk"
-        case .shortcuts:
-            return "Shortcuts"
         }
     }
 
@@ -43,8 +40,6 @@ enum AppSettingsTab: String, CaseIterable, Identifiable {
             return "timer"
         case .talk:
             return "bubble.left.and.bubble.right"
-        case .shortcuts:
-            return "command"
         }
     }
 }
@@ -60,7 +55,6 @@ protocol AppSettingsControlling: AnyObject {
         portalAccount: PortalAccountCoordinator,
         gemini: GeminiLiveViewModel,
         entitlementStore: NotchEntitlementStore,
-        shortcutStore: ShortcutStore,
         shelf: NotchShelfViewModel
     )
     func open(tab: AppSettingsTab)
@@ -79,7 +73,6 @@ final class AppSettingsController: ObservableObject, AppSettingsControlling {
         let portalAccount: PortalAccountCoordinator
         let gemini: GeminiLiveViewModel
         let entitlementStore: NotchEntitlementStore
-        let shortcutStore: ShortcutStore
         let shelf: NotchShelfViewModel
     }
 
@@ -97,7 +90,6 @@ final class AppSettingsController: ObservableObject, AppSettingsControlling {
         portalAccount: PortalAccountCoordinator,
         gemini: GeminiLiveViewModel,
         entitlementStore: NotchEntitlementStore,
-        shortcutStore: ShortcutStore,
         shelf: NotchShelfViewModel
     ) {
         dependencies = Dependencies(
@@ -109,7 +101,6 @@ final class AppSettingsController: ObservableObject, AppSettingsControlling {
             portalAccount: portalAccount,
             gemini: gemini,
             entitlementStore: entitlementStore,
-            shortcutStore: shortcutStore,
             shelf: shelf
         )
 
@@ -166,7 +157,6 @@ final class AppSettingsController: ObservableObject, AppSettingsControlling {
             portalAccount: dependencies.portalAccount,
             gemini: dependencies.gemini,
             entitlementStore: dependencies.entitlementStore,
-            shortcutStore: dependencies.shortcutStore,
             shelf: dependencies.shelf,
             initialTab: selectedTab
         )

@@ -10,7 +10,6 @@ final class NotchWindowManager {
     let focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore
     let geminiLiveViewModel: GeminiLiveViewModel
     let shelfViewModel: NotchShelfViewModel
-    let shortcutStore: ShortcutStore
     let learningStatsStore: LearningStatsStore
     let presentationModel: NotchPresentationModel
     let entitlementStore: NotchEntitlementStore
@@ -28,7 +27,6 @@ final class NotchWindowManager {
         focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore,
         geminiLiveViewModel: GeminiLiveViewModel,
         shelfViewModel: NotchShelfViewModel,
-        shortcutStore: ShortcutStore,
         learningStatsStore: LearningStatsStore,
         presentationModel: NotchPresentationModel,
         entitlementStore: NotchEntitlementStore
@@ -38,7 +36,6 @@ final class NotchWindowManager {
         self.focusWebsiteBlocklistStore = focusWebsiteBlocklistStore
         self.geminiLiveViewModel = geminiLiveViewModel
         self.shelfViewModel = shelfViewModel
-        self.shortcutStore = shortcutStore
         self.learningStatsStore = learningStatsStore
         self.presentationModel = presentationModel
         self.entitlementStore = entitlementStore
@@ -114,6 +111,7 @@ final class NotchWindowManager {
                 self?.updateOverlayScreen()
             }
             .store(in: &cancellables)
+
     }
 
     private func syncControllers(
@@ -179,7 +177,6 @@ final class NotchWindowManager {
             focusWebsiteBlocklistStore: focusWebsiteBlocklistStore,
             geminiLiveViewModel: geminiLiveViewModel,
             shelfViewModel: shelfViewModel,
-            shortcutStore: shortcutStore,
             learningStatsStore: learningStatsStore,
             presentationModel: presentationModel,
             entitlementStore: entitlementStore,
@@ -202,4 +199,5 @@ final class NotchWindowManager {
         let screen = activeController()?.screen ?? preferredController()?.screen ?? NotchMetrics.preferredScreen()
         liveChatInputPanel.setPreferredScreen(screen)
     }
+
 }

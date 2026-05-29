@@ -242,8 +242,6 @@ enum NotchCommandRouter {
             return .talkConnection
         case .shelf:
             return .shelf
-        case .shortcuts:
-            return nil
         }
     }
 

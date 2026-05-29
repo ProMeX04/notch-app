@@ -24,7 +24,6 @@ struct ExpandedNotchContent: View {
     @ObservedObject var presentationModel: NotchPresentationModel
     @ObservedObject var entitlementStore: NotchEntitlementStore
     @ObservedObject var talkHeaderAccessoryController: NotchHeaderAccessoryController
-    @ObservedObject var shortcutsViewModel: NotchShortcutViewModel
     let albumArtNamespace: Namespace.ID
     let shelfBrowserHost: ShelfBrowserHost
 
@@ -46,11 +45,6 @@ struct ExpandedNotchContent: View {
                     shelf: shelf,
                     presentationModel: presentationModel,
                     host: shelfBrowserHost
-                )
-            } else if presentationModel.selectedPanel == .shortcuts {
-                ShortcutPanelView(
-                    viewModel: shortcutsViewModel,
-                    presentationModel: presentationModel
                 )
             } else {
                 HStack {

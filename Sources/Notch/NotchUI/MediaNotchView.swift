@@ -20,7 +20,6 @@ struct MediaNotchView: View {
     @ObservedObject var focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore
     @ObservedObject var gemini: GeminiLiveViewModel
     @ObservedObject var shelf: NotchShelfViewModel
-    @ObservedObject var shortcutStore: ShortcutStore
     @ObservedObject var learningStats: LearningStatsStore
     @ObservedObject var presentationModel: NotchPresentationModel
     @ObservedObject var entitlementStore: NotchEntitlementStore
@@ -28,7 +27,6 @@ struct MediaNotchView: View {
 
     @Namespace private var albumArtNamespace
     @StateObject private var talkHeaderAccessoryController = NotchHeaderAccessoryController()
-    @StateObject private var shortcutsViewModel: NotchShortcutViewModel
     // Persistent host for the shelf NSCollectionView. By owning it here
     // (rather than letting `ShelfBrowserView` recreate it on every panel
     // reveal) the underlying AppKit view stays alive across panel
@@ -45,7 +43,6 @@ struct MediaNotchView: View {
         focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore,
         gemini: GeminiLiveViewModel,
         shelf: NotchShelfViewModel,
-        shortcutStore: ShortcutStore,
         learningStats: LearningStatsStore,
         presentationModel: NotchPresentationModel,
         entitlementStore: NotchEntitlementStore,
@@ -56,12 +53,10 @@ struct MediaNotchView: View {
         self.focusWebsiteBlocklistStore = focusWebsiteBlocklistStore
         self.gemini = gemini
         self.shelf = shelf
-        self.shortcutStore = shortcutStore
         self.learningStats = learningStats
         self.presentationModel = presentationModel
         self.entitlementStore = entitlementStore
         self.screenID = screenID
-        _shortcutsViewModel = StateObject(wrappedValue: NotchShortcutViewModel(store: shortcutStore))
     }
     @State private var didAutoRevealForShelfDrop = false
     @State private var didCommitShelfDrop = false
@@ -270,6 +265,13 @@ struct MediaNotchView: View {
     }
 
     private func handleShelfDrop(_ providers: [NSItemProvider]) -> Bool {
+        // Reject drops that originated from within our own shelf to prevent
+        // duplicate reorders or glitches when dropping items back onto the notch.
+        let isInternalDrag = providers.contains { provider in
+            provider.hasItemConformingToTypeIdentifier(NotchShelfItem.internalDragIdentityTypeIdentifier)
+        }
+        guard !isInternalDrag else { return false }
+
         let alreadyOnShelf = presentationModel.selectedPanel == .shelf
             && isExpanded
         if !alreadyOnShelf {
@@ -350,7 +352,6 @@ struct MediaNotchView: View {
                 presentationModel: presentationModel,
                 entitlementStore: entitlementStore,
                 talkHeaderAccessoryController: talkHeaderAccessoryController,
-                shortcutsViewModel: shortcutsViewModel,
                 albumArtNamespace: albumArtNamespace,
                 shelfBrowserHost: shelfBrowserHost
             )

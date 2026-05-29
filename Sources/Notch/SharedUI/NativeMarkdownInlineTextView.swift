@@ -16,7 +16,7 @@ struct NativeMarkdownInlineTextView: NSViewRepresentable {
     func makeNSView(context: Context) -> IntrinsicTextView {
         let textView = IntrinsicTextView()
         textView.isEditable = false
-        textView.isSelectable = true
+        textView.isSelectable = false
         textView.isRichText = true
         textView.drawsBackground = false
         textView.textContainerInset = .zero
@@ -190,11 +190,12 @@ final class IntrinsicTextView: NSTextView {
         return NSSize(width: NSView.noIntrinsicMetric, height: max(ceil(used.height), 20))
     }
 
+    override func mouseDown(with event: NSEvent) {}
+
+    override func mouseDragged(with event: NSEvent) {}
+
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if event.modifierFlags.contains(.command) {
-            if event.charactersIgnoringModifiers == "c" || event.charactersIgnoringModifiers == "a" {
-                return super.performKeyEquivalent(with: event)
-            }
             return false
         }
         return super.performKeyEquivalent(with: event)

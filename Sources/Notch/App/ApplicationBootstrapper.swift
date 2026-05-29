@@ -40,6 +40,7 @@ final class ApplicationBootstrapper {
             portalAccount: environment.portalAccountCoordinator,
             gemini: environment.geminiLiveViewModel,
             entitlementStore: environment.entitlementStore,
+            shortcutStore: environment.shortcutStore,
             shelf: environment.shelfViewModel
         )
 

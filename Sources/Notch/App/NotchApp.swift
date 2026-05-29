@@ -15,7 +15,6 @@ struct NotchApp: App {
                 portalAccount: appDelegate.portalAccountCoordinator,
                 gemini: appDelegate.geminiLiveViewModel,
                 entitlementStore: appDelegate.entitlementStore,
-                shortcutStore: appDelegate.shortcutStore,
                 shelf: appDelegate.shelfViewModel
             )
         }

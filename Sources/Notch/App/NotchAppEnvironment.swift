@@ -14,7 +14,6 @@ final class NotchAppEnvironment {
     let pomodoroViewModel: PomodoroViewModel
     let focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore
     let shelfViewModel: NotchShelfViewModel
-    let shortcutStore: ShortcutStore
     let presentationModel: NotchPresentationModel
     let notchController: NotchWindowManager
     let featureCoordinator: NotchFeatureCoordinator
@@ -76,7 +75,6 @@ final class NotchAppEnvironment {
             NotchWebPortal.openInBrowser(authURL)
         }
 
-        shortcutStore = ShortcutStore()
         presentationModel = NotchPresentationModel()
 
         notchController = NotchWindowManager(
@@ -85,7 +83,6 @@ final class NotchAppEnvironment {
             focusWebsiteBlocklistStore: focusWebsiteBlocklistStore,
             geminiLiveViewModel: geminiLiveViewModel,
             shelfViewModel: shelfViewModel,
-            shortcutStore: shortcutStore,
             learningStatsStore: learningStatsStore,
             presentationModel: presentationModel,
             entitlementStore: entitlementStore

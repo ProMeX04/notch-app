@@ -557,12 +557,6 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
             return
         }
 
-        let hasActiveConnection = commandQueue.sync { wsConnection != nil && wsConnected }
-        guard !hasActiveConnection else {
-            sendPlainTextResponse(status: "409 Conflict", body: "Another browser bridge client is already connected.", to: connection)
-            return
-        }
-
         let key = keyLine.split(separator: ":", maxSplits: 1).dropFirst().joined().trimmingCharacters(in: .whitespacesAndNewlines)
         let accept = webSocketAcceptKey(for: key)
         let response = [
@@ -574,9 +568,9 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
             "",
         ].joined(separator: "\r\n")
 
-        commandQueue.sync {
-            wsConnection = connection
-            wsConnected = true
+        if let oldConnection = replaceActiveWebSocket(with: connection) {
+            NotchLog.app.info("Evicting previous browser bridge WebSocket connection for a new client")
+            oldConnection.cancel()
         }
 
         connection.send(content: Data(response.utf8), completion: .contentProcessed { [weak self] error in
@@ -592,6 +586,16 @@ final class FocusBrowserBridgeServer: @unchecked Sendable {
             self?.broadcastFocusState(snapshot: snap)
             self?.receiveWebSocketFrame(on: connection)
         })
+    }
+
+    private func replaceActiveWebSocket(with connection: NWConnection) -> NWConnection? {
+        commandQueue.sync {
+            let oldConnection = wsConnection
+            wsConnection = connection
+            wsConnected = true
+            wsParser = BrowserBridgeFrameParser()
+            return oldConnection
+        }
     }
 
     private func clearWebSocket(_ connection: NWConnection) {

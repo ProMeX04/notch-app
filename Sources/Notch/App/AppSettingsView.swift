@@ -12,7 +12,6 @@ struct AppSettingsView: View {
     @ObservedObject var portalAccount: PortalAccountCoordinator
     @ObservedObject var gemini: GeminiLiveViewModel
     @ObservedObject var entitlementStore: NotchEntitlementStore
-    @ObservedObject var shortcutStore: ShortcutStore
     @ObservedObject var shelf: NotchShelfViewModel
     @AppStorage("app_language") private var appLanguage: String = "English"
     @State private var selectedTab: AppSettingsTab
@@ -27,7 +26,6 @@ struct AppSettingsView: View {
         portalAccount: PortalAccountCoordinator,
         gemini: GeminiLiveViewModel,
         entitlementStore: NotchEntitlementStore,
-        shortcutStore: ShortcutStore,
         shelf: NotchShelfViewModel,
         initialTab: AppSettingsTab = .general
     ) {
@@ -39,7 +37,6 @@ struct AppSettingsView: View {
         self.portalAccount = portalAccount
         self.gemini = gemini
         self.entitlementStore = entitlementStore
-        self.shortcutStore = shortcutStore
         self.shelf = shelf
         _selectedTab = State(initialValue: initialTab)
     }
@@ -88,8 +85,6 @@ struct AppSettingsView: View {
                         )
                     case .talk:
                         AppTalkSettingsPane(gemini: gemini)
-                    case .shortcuts:
-                        AppShortcutsSettingsPane(shortcutStore: shortcutStore)
                     }
                 }
                 .padding(24)

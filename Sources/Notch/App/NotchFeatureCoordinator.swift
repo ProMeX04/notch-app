@@ -13,7 +13,6 @@ protocol NotchCommandHandling: AnyObject {
     func showFocusPanel()
     func showTalkPanel()
     func showShelfPanel()
-    func showShortcutsPanel()
     func togglePomodoro()
     func resetPomodoro()
     func toggleGeminiLive()
@@ -129,10 +128,6 @@ final class NotchFeatureCoordinator: NotchCommandHandling {
 
     func showShelfPanel() {
         showPanel(.shelf)
-    }
-
-    func showShortcutsPanel() {
-        showPanel(.shortcuts)
     }
 
     func togglePomodoro() {

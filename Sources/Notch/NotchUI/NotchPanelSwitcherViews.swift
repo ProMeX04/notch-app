@@ -30,8 +30,6 @@ struct PanelSwitcher: View {
             return "bubble.left.and.bubble.right"
         case .shelf:
             return "tray.full"
-        case .shortcuts:
-            return "command"
         }
     }
 
@@ -79,8 +77,6 @@ struct PanelSwitcher: View {
             return .talkConnection
         case .shelf:
             return .shelf
-        case .shortcuts:
-            return nil
         }
     }
 
@@ -94,8 +90,6 @@ struct PanelSwitcher: View {
             return "Talk"
         case .shelf:
             return ""
-        case .shortcuts:
-            return "Shortcuts"
         }
     }
 
@@ -122,7 +116,7 @@ struct PanelSwitcher: View {
             case .disconnected, .failed:
                 return nil
             }
-        case .media, .shelf, .shortcuts:
+        case .media, .shelf:
             return nil
         }
     }
@@ -185,17 +179,6 @@ struct HeaderUtilitySwitcher: View {
             }
             .buttonStyle(.plain)
             .help("Shelf")
-
-            Button {
-                presentationModel.selectPanel(.shortcuts)
-            } label: {
-                utilityIcon(
-                    "command",
-                    isSelected: presentationModel.selectedPanel == .shortcuts
-                )
-            }
-            .buttonStyle(.plain)
-            .help("Shortcuts")
 
             Button {
                 appSettingsController.open(tab: .general)

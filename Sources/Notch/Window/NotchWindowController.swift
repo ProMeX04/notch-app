@@ -11,7 +11,6 @@ final class NotchWindowController {
     let focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore
     let geminiLiveViewModel: GeminiLiveViewModel
     let shelfViewModel: NotchShelfViewModel
-    let shortcutStore: ShortcutStore
     let learningStatsStore: LearningStatsStore
     let presentationModel: NotchPresentationModel
     let entitlementStore: NotchEntitlementStore
@@ -33,7 +32,6 @@ final class NotchWindowController {
         focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore,
         geminiLiveViewModel: GeminiLiveViewModel,
         shelfViewModel: NotchShelfViewModel,
-        shortcutStore: ShortcutStore,
         learningStatsStore: LearningStatsStore,
         presentationModel: NotchPresentationModel,
         entitlementStore: NotchEntitlementStore,
@@ -44,7 +42,6 @@ final class NotchWindowController {
         self.focusWebsiteBlocklistStore = focusWebsiteBlocklistStore
         self.geminiLiveViewModel = geminiLiveViewModel
         self.shelfViewModel = shelfViewModel
-        self.shortcutStore = shortcutStore
         self.learningStatsStore = learningStatsStore
         self.presentationModel = presentationModel
         self.entitlementStore = entitlementStore
@@ -76,7 +73,6 @@ final class NotchWindowController {
                 focusWebsiteBlocklistStore: focusWebsiteBlocklistStore,
                 gemini: geminiLiveViewModel,
                 shelf: shelfViewModel,
-                shortcutStore: shortcutStore,
                 learningStats: learningStatsStore,
                 presentationModel: presentationModel,
                 entitlementStore: entitlementStore,
@@ -247,4 +243,5 @@ final class NotchWindowController {
             window.orderFrontRegardless()
         }
     }
+
 }

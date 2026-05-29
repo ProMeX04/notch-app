@@ -250,7 +250,6 @@ struct ShelfBrowserView: NSViewRepresentable {
         weak var collectionView: ShelfCollectionView?
         private var isSyncingSelection = false
         private var lastSnapshot: [ItemState] = []
-        private var draggedItemIDs: [UUID] = []
 
         init(shelf: NotchShelfViewModel, presentationModel: NotchPresentationModel) {
             self.shelf = shelf
@@ -267,26 +266,28 @@ struct ShelfBrowserView: NSViewRepresentable {
             }
         }
 
+        private func makeItemState(for item: NotchShelfItem, isConnected: Bool) -> ItemState {
+            ItemState(
+                id: item.id,
+                displayName: item.displayName,
+                driveFileID: item.driveFileID,
+                driveIsPublic: item.driveIsPublic,
+                driveUploadedAt: item.driveUploadedAt,
+                driveState: shelf.cachedDriveStates[item.id] ?? .local,
+                isGoogleDriveConnected: isConnected,
+                uploadProgress: shelf.uploadProgresses[item.id],
+                inProgress: shelf.itemsInProgress.contains(item.id) || shelf.uploadingItemIDs.contains(item.id),
+                hasError: shelf.itemErrors[item.id] != nil,
+                itemSize: shelf.preferences.itemSize,
+                showItemNames: shelf.preferences.showItemNames,
+                showDriveBadges: shelf.preferences.showDriveBadges
+            )
+        }
+
         func reloadData() {
             shelf.refreshDriveStates(force: false)
             let isConnected = shelf.isGoogleDriveConnected
-            let snapshot = shelf.items.map { item in
-                ItemState(
-                    id: item.id,
-                    displayName: item.displayName,
-                    driveFileID: item.driveFileID,
-                    driveIsPublic: item.driveIsPublic,
-                    driveUploadedAt: item.driveUploadedAt,
-                    driveState: shelf.cachedDriveStates[item.id] ?? .local,
-                    isGoogleDriveConnected: isConnected,
-                    uploadProgress: shelf.uploadProgresses[item.id],
-                    inProgress: shelf.itemsInProgress.contains(item.id) || shelf.uploadingItemIDs.contains(item.id),
-                    hasError: shelf.itemErrors[item.id] != nil,
-                    itemSize: shelf.preferences.itemSize,
-                    showItemNames: shelf.preferences.showItemNames,
-                    showDriveBadges: shelf.preferences.showDriveBadges
-                )
-            }
+            let snapshot = shelf.items.map { makeItemState(for: $0, isConnected: isConnected) }
             guard snapshot != lastSnapshot else { return }
 
             let oldSnapshot = lastSnapshot
@@ -682,42 +683,14 @@ struct ShelfBrowserView: NSViewRepresentable {
 
         func collectionView(
             _ collectionView: NSCollectionView,
-            draggingSession session: NSDraggingSession,
-            willBeginAt screenPoint: NSPoint,
-            forItemsAt indexPaths: Set<IndexPath>
-        ) {
-            let sortedIndexPaths = indexPaths.sorted { lhs, rhs in
-                if lhs.section == rhs.section {
-                    return lhs.item < rhs.item
-                }
-                return lhs.section < rhs.section
-            }
-
-            draggedItemIDs = sortedIndexPaths.compactMap { indexPath in
-                shelf.items.indices.contains(indexPath.item) ? shelf.items[indexPath.item].id : nil
-            }
-        }
-
-        func collectionView(
-            _ collectionView: NSCollectionView,
-            draggingSession session: NSDraggingSession,
-            endedAt screenPoint: NSPoint,
-            dragOperation operation: NSDragOperation
-        ) {
-            draggedItemIDs.removeAll()
-        }
-
-        func collectionView(
-            _ collectionView: NSCollectionView,
             validateDrop draggingInfo: NSDraggingInfo,
             proposedIndexPath proposedDropIndexPath: AutoreleasingUnsafeMutablePointer<NSIndexPath>,
             dropOperation proposedDropOperation: UnsafeMutablePointer<NSCollectionView.DropOperation>
         ) -> NSDragOperation {
-            // Internal reorder.
-            if draggingInfo.draggingSource as AnyObject? === collectionView,
-               !draggedItemIDs.isEmpty {
-                proposedDropOperation.pointee = .before
-                return .move
+            // Disable internal reorder. Check draggingSource and pasteboard types.
+            let hasInternalType = draggingInfo.draggingPasteboard.types?.contains(where: { $0.rawValue == NotchShelfItem.internalDragIdentityTypeIdentifier }) ?? false
+            if draggingInfo.draggingSource as AnyObject? === collectionView || hasInternalType {
+                return []
             }
 
             // External drop (e.g. from Finder). Routing this through the
@@ -739,15 +712,7 @@ struct ShelfBrowserView: NSViewRepresentable {
             dropOperation: NSCollectionView.DropOperation
         ) -> Bool {
             if draggingInfo.draggingSource as AnyObject? === collectionView {
-                guard !draggedItemIDs.isEmpty else { return false }
-                let destinationIndex = min(destinationIndexPath.item, shelf.items.count)
-                // Mutating `items` triggers SwiftUI's `updateNSView` which
-                // calls `reloadData()` → diff-based animation runs there.
-                // Avoid double reload (which previously cancelled the move
-                // animation).
-                shelf.moveItems(with: draggedItemIDs, to: destinationIndex)
-                draggedItemIDs.removeAll()
-                return true
+                return false
             }
 
             let providers = externalItemProviders(from: draggingInfo)
@@ -958,6 +923,24 @@ final class ShelfCollectionView: NSCollectionView {
     }
 }
 
+@MainActor
+private struct ShelfThumbnailCache {
+    static let cache: NSCache<NSString, NSImage> = {
+        let c = NSCache<NSString, NSImage>()
+        c.countLimit = 200
+        return c
+    }()
+}
+
+@MainActor
+private struct ShelfMetadataCache {
+    static let cache: NSCache<NSString, NSString> = {
+        let c = NSCache<NSString, NSString>()
+        c.countLimit = 200
+        return c
+    }()
+}
+
 private final class ShelfCollectionItem: NSCollectionViewItem {
     static let identifier = NSUserInterfaceItemIdentifier("ShelfCollectionItem")
     static let preferredSize = NSSize(width: 72, height: 84)
@@ -1018,8 +1001,6 @@ private final class ShelfCollectionItem: NSCollectionViewItem {
 
         shelfView.configureAppearance(itemSize: itemSize, showItemName: showItemNames)
         shelfView.setTitle(showItemNames ? item.displayName : "")
-        shelfView.infoField.stringValue = ""
-        shelfView.previewImageView.image = fallbackIcon(for: item)
         shelfView.applySelection(isSelected)
 
         shelfView.setUploadProgress(nil)
@@ -1075,30 +1056,60 @@ private final class ShelfCollectionItem: NSCollectionViewItem {
             }
         }
 
-        guard case let .file(reference) = item.kind else { return }
-        let itemID = item.id
-        thumbnailTask = Task { [weak self] in
-            guard let thumbnail = await NotchShelfThumbnailService.shared.thumbnail(
-                for: reference.url,
-                size: itemSize.previewSize
-            ) else {
-                return
-            }
+        // 1. Handle Metadata Info Cache Lookup
+        let metadataKey = item.id.uuidString as NSString
+        if let cachedInfo = ShelfMetadataCache.cache.object(forKey: metadataKey) {
+            shelfView.infoField.stringValue = cachedInfo as String
+            shelfView.infoField.isHidden = !showItemNames || cachedInfo.length == 0
+        } else {
+            shelfView.infoField.stringValue = ""
+            shelfView.infoField.isHidden = true
+            
+            if case let .file(reference) = item.kind {
+                let itemID = item.id
+                metadataTask = Task { [weak self] in
+                    let info = await NotchShelfMetadataService.shared.metadata(for: reference.url)
+                    if let info {
+                        ShelfMetadataCache.cache.setObject(info as NSString, forKey: metadataKey)
+                    }
 
-            await MainActor.run {
-                guard let self, self.currentItemID == itemID else { return }
-                self.shelfView.previewImageView.image = thumbnail
+                    await MainActor.run {
+                        guard let self, self.currentItemID == itemID else { return }
+                        self.shelfView.infoField.stringValue = info ?? ""
+                        self.shelfView.infoField.isHidden = !showItemNames || (info?.isEmpty ?? true)
+                    }
+                }
             }
         }
 
-        metadataTask = Task { [weak self] in
-            let info = await NotchShelfMetadataService.shared.metadata(for: reference.url)
+        // 2. Handle Thumbnail Cache Lookup
+        if case let .file(reference) = item.kind {
+            let itemID = item.id
+            let cacheKey = "\(item.id.uuidString)_\(Int(itemSize.previewSize.width))x\(Int(itemSize.previewSize.height))" as NSString
+            
+            if let cachedThumbnail = ShelfThumbnailCache.cache.object(forKey: cacheKey) {
+                shelfView.previewImageView.image = cachedThumbnail
+            } else {
+                shelfView.previewImageView.image = fallbackIcon(for: item)
+                
+                thumbnailTask = Task { [weak self] in
+                    guard let thumbnail = await NotchShelfThumbnailService.shared.thumbnail(
+                        for: reference.url,
+                        size: itemSize.previewSize
+                    ) else {
+                        return
+                    }
+                    
+                    ShelfThumbnailCache.cache.setObject(thumbnail, forKey: cacheKey)
 
-            await MainActor.run {
-                guard let self, self.currentItemID == itemID else { return }
-                self.shelfView.infoField.stringValue = info ?? ""
-                self.shelfView.infoField.isHidden = !showItemNames || (info?.isEmpty ?? true)
+                    await MainActor.run {
+                        guard let self, self.currentItemID == itemID else { return }
+                        self.shelfView.previewImageView.image = thumbnail
+                    }
+                }
             }
+        } else {
+            shelfView.previewImageView.image = fallbackIcon(for: item)
         }
     }
 

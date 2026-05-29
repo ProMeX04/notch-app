@@ -728,15 +728,8 @@ struct ShelfBrowserView: NSViewRepresentable {
         }
 
         private func hasAcceptableExternalContent(in pasteboard: NSPasteboard) -> Bool {
-            guard let types = pasteboard.types else { return false }
-            return types.contains(.fileURL)
-                || types.contains(.URL)
-                || types.contains(.string)
-                || types.contains(where: {
-                    $0.rawValue == "public.file-url"
-                    || $0.rawValue == "public.url"
-                    || $0.rawValue == "public.utf8-plain-text"
-                })
+            pasteboard.canReadObject(forClasses: [NSURL.self], options: nil)
+                || pasteboard.canReadObject(forClasses: [NSString.self], options: nil)
         }
 
         private func externalItemProviders(from info: NSDraggingInfo) -> [NSItemProvider] {

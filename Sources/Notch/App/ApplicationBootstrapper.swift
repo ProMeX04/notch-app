@@ -24,12 +24,14 @@ final class ApplicationBootstrapper {
 
         AppNotificationManager.setup()
         let notificationCenter = UNUserNotificationCenter.current()
-        notificationCenter.requestAuthorization(options: [.alert, .sound]) { @Sendable _, error in
-            if let error {
+        notificationCenter.delegate = notificationDelegate
+        Task {
+            do {
+                _ = try await notificationCenter.requestAuthorization(options: [.alert, .sound])
+            } catch {
                 NotchLog.app.error("Notification authorization error: \(error.localizedDescription)")
             }
         }
-        notificationCenter.delegate = notificationDelegate
 
         environment.appSettingsController.configure(
             presentationModel: environment.presentationModel,

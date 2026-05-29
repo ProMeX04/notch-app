@@ -726,7 +726,7 @@ final class GeminiLiveViewModel: ObservableObject {
         case .authorized:
             completion(true)
         case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .audio) { granted in
+            AVCaptureDevice.requestAccess(for: .audio) { @Sendable granted in
                 DispatchQueue.main.async {
                     completion(granted)
                 }

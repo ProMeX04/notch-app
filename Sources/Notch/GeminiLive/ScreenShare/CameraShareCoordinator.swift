@@ -66,7 +66,7 @@ final class CameraShareCoordinator: NSObject, ObservableObject {
         case .authorized:
             completion(true)
         case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { granted in
+            AVCaptureDevice.requestAccess(for: .video) { @Sendable granted in
                 Task { @MainActor in completion(granted) }
             }
         case .denied, .restricted:

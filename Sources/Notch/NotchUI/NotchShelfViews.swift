@@ -263,6 +263,7 @@ struct ShelfBrowserView: NSViewRepresentable {
             let itemSize: NotchShelfItemSize
             let showItemNames: Bool
             let showDriveBadges: Bool
+            let accentColorID: String
         }
         var shelf: NotchShelfViewModel
         let presentationModel: NotchPresentationModel
@@ -299,7 +300,8 @@ struct ShelfBrowserView: NSViewRepresentable {
                 hasError: shelf.itemErrors[item.id] != nil,
                 itemSize: shelf.preferences.itemSize,
                 showItemNames: shelf.preferences.showItemNames,
-                showDriveBadges: shelf.preferences.showDriveBadges
+                showDriveBadges: shelf.preferences.showDriveBadges,
+                accentColorID: presentationModel.accentColorID
             )
         }
 

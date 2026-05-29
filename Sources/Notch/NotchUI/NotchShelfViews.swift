@@ -940,8 +940,7 @@ final class ShelfCollectionView: NSCollectionView {
             hideDropIndicator()
             return
         }
-        let screenPoint = NSEvent.mouseLocation
-        let windowPoint = window.convertPoint(fromScreen: screenPoint)
+        let windowPoint = window.mouseLocationOutsideOfEventStream
         let localPoint = convert(windowPoint, from: nil)
         let itemCount = numberOfItems(inSection: 0)
 
@@ -1010,7 +1009,7 @@ final class ShelfCollectionView: NSCollectionView {
         }
 
         dropTargetIndex = insertIndex
-        print("--- ShelfCollectionView.updateDropIndicator: screenPoint=\(screenPoint), localPoint=\(localPoint), targetIndex=\(insertIndex) ---")
+        print("--- ShelfCollectionView.updateDropIndicator: windowPoint=\(windowPoint), localPoint=\(localPoint), targetIndex=\(insertIndex) ---")
 
         // Position and show.
         let refFrame = targetRow[0].frame

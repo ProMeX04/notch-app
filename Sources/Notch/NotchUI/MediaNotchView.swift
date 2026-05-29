@@ -227,6 +227,7 @@ struct MediaNotchView: View {
         }
         .compositingGroup()
         .preferredColorScheme(.dark)
+        .ignoresSafeArea()
     }
 
     /// Reveal the shelf instantly (no spring) so the user's drag can land

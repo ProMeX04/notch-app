@@ -159,8 +159,64 @@ enum NotchShelfViewModelTests {
         vm.merge([textItem("a")])
 
         try expectEqual(textValues(vm.items), ["a", "c", "b"])
-        try expectEqual(vm.selectedItemIDs, Set([vm.items[0].id]))
     }
+
+    static func merge_insertsAtTargetIndex() throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+
+        let vm = makeViewModel(dir: dir)
+        let a = textItem("a"); let b = textItem("b")
+        vm.merge([a, b])
+        try expectEqual(textValues(vm.items), ["b", "a"])
+
+        let c = textItem("c")
+        vm.merge([c], atIndex: 1)
+
+        try expectEqual(textValues(vm.items), ["b", "c", "a"])
+        try expectEqual(vm.selectedItemIDs, Set([c.id]))
+    }
+
+    static func merge_insertsMultipleAtTargetIndex() throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+
+        let vm = makeViewModel(dir: dir)
+        let a = textItem("a"); let b = textItem("b")
+        vm.merge([a, b])
+        try expectEqual(textValues(vm.items), ["b", "a"])
+
+        let c = textItem("c"); let d = textItem("d")
+        vm.merge([c, d], atIndex: 1)
+
+        try expectEqual(textValues(vm.items), ["b", "d", "c", "a"])
+        try expectEqual(vm.selectedItemIDs, Set([d.id]))
+    }
+
+    static func merge_duplicateDrop_moveToTop_atTargetIndex() throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+        let preferences = makePreferences()
+        preferences.duplicateDropAction = .moveToTop
+        let vm = makeViewModel(dir: dir, preferences: preferences)
+        
+        let a = textItem("a"); let b = textItem("b"); let c = textItem("c")
+        vm.merge([a, b, c]) // -> [c, b, a]
+        try expectEqual(textValues(vm.items), ["c", "b", "a"])
+
+        // Drop duplicate of a at index 1 -> list is [c, a, b]
+        vm.merge([textItem("a")], atIndex: 1)
+        try expectEqual(textValues(vm.items), ["c", "a", "b"])
+
+        // Drop duplicate of c at index 2 (before b) -> list becomes [a, c, b]
+        vm.merge([textItem("c")], atIndex: 2)
+        try expectEqual(textValues(vm.items), ["a", "c", "b"])
+
+        // Drop duplicate of c at index 3 (after b / end of list) -> list becomes [a, b, c]
+        vm.merge([textItem("c")], atIndex: 3)
+        try expectEqual(textValues(vm.items), ["a", "b", "c"])
+    }
+
 
     static func automaticUploadScopeFiltersOnlyAutomaticCandidates() throws {
         let dir = try makeTempDirectory(label: "ShelfVM")

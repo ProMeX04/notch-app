@@ -396,7 +396,7 @@ public final class NotchShelfViewModel: ObservableObject {
         }
     }
 
-    public func handleDrop(providers: [NSItemProvider]) -> Bool {
+    public func handleDrop(providers: [NSItemProvider], atIndex index: Int? = nil) -> Bool {
         guard !providers.isEmpty else { return false }
 
         dropTask?.cancel()
@@ -404,7 +404,7 @@ public final class NotchShelfViewModel: ObservableObject {
             guard let self else { return }
             let newItems = await self.dropService.items(from: providers)
             guard !newItems.isEmpty else { return }
-            self.merge(newItems)
+            self.merge(newItems, atIndex: index)
         }
 
         return true
@@ -727,7 +727,7 @@ public final class NotchShelfViewModel: ObservableObject {
         debouncedPersist()
     }
 
-    func merge(_ newItems: [NotchShelfItem]) {
+    func merge(_ newItems: [NotchShelfItem], atIndex requestedIndex: Int? = nil) {
         let existingKeys = Set(items.map(\.identityKey))
         var seenKeys = existingKeys
         var insertedItems: [NotchShelfItem] = []
@@ -752,12 +752,42 @@ public final class NotchShelfViewModel: ObservableObject {
         }
 
         guard !landingItems.isEmpty else { return }
+
+        // Determine the insertion target item before we mutate `items`
+        var targetItem: NotchShelfItem?
+        if let requestedIndex = requestedIndex, requestedIndex >= 0 {
+            // Find the first item at or after `requestedIndex` that is NOT in `movedIDs`.
+            // This is the item we want to insert BEFORE.
+            for i in requestedIndex..<items.count {
+                let candidate = items[i]
+                if !movedIDs.contains(candidate.id) {
+                    targetItem = candidate
+                    break
+                }
+            }
+        }
+
         if !movedIDs.isEmpty {
             items.removeAll { movedIDs.contains($0.id) }
         }
-        items.insert(contentsOf: landingItems.reversed(), at: 0)
+
+        let insertIndex: Int
+        if requestedIndex != nil {
+            if let targetItem = targetItem,
+               let newIndex = items.firstIndex(where: { $0.id == targetItem.id }) {
+                insertIndex = newIndex
+            } else {
+                // If there's no target item, or it was not found (e.g. dropped at the end),
+                // we insert at the end of the filtered list.
+                insertIndex = items.count
+            }
+        } else {
+            insertIndex = 0
+        }
+
+        items.insert(contentsOf: landingItems.reversed(), at: insertIndex)
         // Bug #2: select the VISUALLY topmost new item. Because we insert
-        // `mergedItems.reversed()` at index 0, the topmost item on screen is
+        // `mergedItems.reversed()` at index `insertIndex`, the topmost item on screen is
         // `mergedItems.last`, not `mergedItems.first`.
         if let topmostNewItem = landingItems.last {
             selectedItemIDs = [topmostNewItem.id]

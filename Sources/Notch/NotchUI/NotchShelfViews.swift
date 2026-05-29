@@ -693,11 +693,8 @@ struct ShelfBrowserView: NSViewRepresentable {
                 return []
             }
 
-            // External drop (e.g. from Finder). Routing this through the
-            // collection view rather than SwiftUI's `onDrop` keeps the
-            // event entirely in AppKit — no `@Published` round-trip — so
-            // the system insertion indicator and animations match Finder's.
-            if hasAcceptableExternalContent(in: draggingInfo.draggingPasteboard) {
+            let acceptable = hasAcceptableExternalContent(in: draggingInfo.draggingPasteboard)
+            if acceptable {
                 proposedDropOperation.pointee = .before
                 return .copy
             }
@@ -727,12 +724,19 @@ struct ShelfBrowserView: NSViewRepresentable {
             // auto-collapse 120 ms out. Drop succeeded — keep the shelf
             // open so the user sees what just landed.
             presentationModel.cancelScheduledCollapse()
-            return shelf.handleDrop(providers: providers)
+            return shelf.handleDrop(providers: providers, atIndex: destinationIndexPath.item)
         }
 
         private func hasAcceptableExternalContent(in pasteboard: NSPasteboard) -> Bool {
-            pasteboard.canReadObject(forClasses: [NSURL.self], options: nil)
-                || pasteboard.canReadObject(forClasses: [NSString.self], options: nil)
+            guard let types = pasteboard.types else { return false }
+            return types.contains(.fileURL)
+                || types.contains(.URL)
+                || types.contains(.string)
+                || types.contains(where: {
+                    $0.rawValue == "public.file-url"
+                    || $0.rawValue == "public.url"
+                    || $0.rawValue == "public.utf8-plain-text"
+                })
         }
 
         private func externalItemProviders(from info: NSDraggingInfo) -> [NSItemProvider] {

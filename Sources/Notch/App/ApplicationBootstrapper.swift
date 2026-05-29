@@ -24,7 +24,7 @@ final class ApplicationBootstrapper {
 
         AppNotificationManager.setup()
         let notificationCenter = UNUserNotificationCenter.current()
-        notificationCenter.requestAuthorization(options: [.alert, .sound]) { _, error in
+        notificationCenter.requestAuthorization(options: [.alert, .sound]) { @Sendable _, error in
             if let error {
                 NotchLog.app.error("Notification authorization error: \(error.localizedDescription)")
             }
@@ -40,7 +40,6 @@ final class ApplicationBootstrapper {
             portalAccount: environment.portalAccountCoordinator,
             gemini: environment.geminiLiveViewModel,
             entitlementStore: environment.entitlementStore,
-            shortcutStore: environment.shortcutStore,
             shelf: environment.shelfViewModel
         )
 

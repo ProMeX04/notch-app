@@ -128,7 +128,7 @@ public final class NotchShelfThumbnailService {
         request.iconMode = true
 
         return await withCheckedContinuation { (continuation: CheckedContinuation<CGImage?, Never>) in
-            generator.generateBestRepresentation(for: request) { representation, _ in
+            generator.generateBestRepresentation(for: request) { @Sendable representation, _ in
                 continuation.resume(returning: representation?.cgImage)
             }
         }

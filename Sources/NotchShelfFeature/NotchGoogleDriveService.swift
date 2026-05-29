@@ -56,6 +56,9 @@ private struct KeychainHelper {
     }
 
     static func save(key: String, value: String) -> Bool {
+        if let save = NotchGoogleDriveService.saveCredential {
+            return save(key, value)
+        }
         let attributes: [String: Any] = [
             kSecValueData as String: Data(value.utf8),
         ]
@@ -73,6 +76,9 @@ private struct KeychainHelper {
     }
 
     static func read(key: String) -> String? {
+        if let read = NotchGoogleDriveService.readCredential {
+            return read(key)
+        }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -92,6 +98,10 @@ private struct KeychainHelper {
     }
 
     static func delete(key: String) {
+        if let delete = NotchGoogleDriveService.deleteCredential {
+            delete(key)
+            return
+        }
         SecItemDelete(baseQuery(key: key) as CFDictionary)
     }
 
@@ -252,6 +262,10 @@ public final class NotchGoogleDriveService: Sendable {
     public static let shared = NotchGoogleDriveService()
     public static let maximumUploadByteCount = 100 * 1024 * 1024
     private static let newUploadGate = GoogleDriveNewUploadGate()
+
+    public nonisolated(unsafe) static var saveCredential: (@Sendable (String, String) -> Bool)?
+    public nonisolated(unsafe) static var readCredential: (@Sendable (String) -> String?)?
+    public nonisolated(unsafe) static var deleteCredential: (@Sendable (String) -> Void)?
 
     public init() {}
 

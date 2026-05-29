@@ -35,47 +35,23 @@ enum PortalStoragePaths {
 }
 
 final class PortalKeychainStore {
-    private let service: String
     private let account: String
 
     init(service: String = "dev.notch", account: String) {
-        self.service = service
         self.account = account
     }
 
     func read() -> String? {
-        var query = baseQuery
-        query[kSecReturnData as String] = true
-        query[kSecMatchLimit as String] = kSecMatchLimitOne
-
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-
-        guard status == errSecSuccess else { return nil }
-        guard let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        NotchKeychainSecretsManager.shared.read(key: account)
     }
 
     @discardableResult
     func save(_ value: String) -> Bool {
-        delete()
-
-        var query = baseQuery
-        query[kSecValueData as String] = Data(value.utf8)
-        let status = SecItemAdd(query as CFDictionary, nil)
-        return status == errSecSuccess
+        NotchKeychainSecretsManager.shared.save(key: account, value: value)
     }
 
     func delete() {
-        SecItemDelete(baseQuery as CFDictionary)
-    }
-
-    private var baseQuery: [String: Any] {
-        [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
+        NotchKeychainSecretsManager.shared.delete(key: account)
     }
 }
 

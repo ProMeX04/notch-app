@@ -21,6 +21,16 @@ final class NotchAppEnvironment {
     let appSettingsController: AppSettingsControlling
 
     init(appSettingsController: AppSettingsControlling = AppSettingsController.shared) {
+        NotchGoogleDriveService.saveCredential = { key, value in
+            NotchKeychainSecretsManager.shared.save(key: "gdrive_" + key, value: value)
+        }
+        NotchGoogleDriveService.readCredential = { key in
+            NotchKeychainSecretsManager.shared.read(key: "gdrive_" + key)
+        }
+        NotchGoogleDriveService.deleteCredential = { key in
+            NotchKeychainSecretsManager.shared.delete(key: "gdrive_" + key)
+        }
+
         self.appSettingsController = appSettingsController
         entitlementStore = NotchEntitlementStore()
         let portalAPIClient = PortalAPIClient()

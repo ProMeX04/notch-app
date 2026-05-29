@@ -737,7 +737,11 @@ struct ShelfBrowserView: NSViewRepresentable {
             proposedIndexPath proposedDropIndexPath: AutoreleasingUnsafeMutablePointer<NSIndexPath>,
             dropOperation proposedDropOperation: UnsafeMutablePointer<NSCollectionView.DropOperation>
         ) -> NSDragOperation {
-            // Disable internal reorder. Check draggingSource and pasteboard types.
+            if let shelfCollectionView = collectionView as? ShelfCollectionView,
+               !shelfCollectionView.draggedItemIDs.isEmpty {
+                return []
+            }
+
             let hasInternalType = draggingInfo.draggingPasteboard.types?.contains(where: { $0.rawValue == NotchShelfItem.internalDragIdentityTypeIdentifier }) ?? false
             if draggingInfo.draggingSource as AnyObject? === collectionView || hasInternalType {
                 return []

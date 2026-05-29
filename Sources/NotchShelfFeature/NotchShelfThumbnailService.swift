@@ -10,7 +10,7 @@ public final class NotchShelfThumbnailService {
     // we can seed and observe cache state without doing real file I/O.
     internal var cache: [String: NSImage] = [:]
     internal var cacheKeys: [String] = []
-    internal var pendingRequests: [String: Task<NSImage?, Never>] = [:]
+    internal var pendingRequests: [String: Task<CGImage?, Never>] = [:]
     private let generator = QLThumbnailGenerator.shared
 
     /// Maximum number of thumbnails to keep in memory at any time.
@@ -34,7 +34,8 @@ public final class NotchShelfThumbnailService {
         }
 
         if let pending = pendingRequests[cacheKey] {
-            return await pending.value
+            _ = await pending.value
+            return cache[cacheKey]
         }
 
         // Skip directory thumbnail generation as it can be very slow for large folders
@@ -43,17 +44,19 @@ public final class NotchShelfThumbnailService {
             return nil
         }
 
-        let task = Task<NSImage?, Never> { @MainActor in
-            let thumbnail = await generateThumbnail(for: url, size: size)
-            if let thumbnail {
-                insertCacheEntry(cacheKey, image: thumbnail)
+        let task = Task<CGImage?, Never> { @MainActor in
+            let cgImage = await generateCGThumbnail(for: url, size: size)
+            if let cgImage {
+                let nsImage = NSImage(cgImage: cgImage, size: cgImage.size)
+                insertCacheEntry(cacheKey, image: nsImage)
             }
             pendingRequests[cacheKey] = nil
-            return thumbnail
+            return cgImage
         }
 
         pendingRequests[cacheKey] = task
-        return await task.value
+        _ = await task.value
+        return cache[cacheKey]
     }
 
     public func clearCache(for url: URL) {
@@ -107,7 +110,7 @@ public final class NotchShelfThumbnailService {
         cacheKeys.append(key)
     }
 
-    private func generateThumbnail(for url: URL, size: CGSize) async -> NSImage? {
+    private func generateCGThumbnail(for url: URL, size: CGSize) async -> CGImage? {
         let scale = NSScreen.main?.backingScaleFactor ?? 2.0
         let didStartAccessing = url.startAccessingSecurityScopedResource()
         defer {
@@ -124,16 +127,10 @@ public final class NotchShelfThumbnailService {
         )
         request.iconMode = true
 
-        let cgImage = await withCheckedContinuation { (continuation: CheckedContinuation<CGImage?, Never>) in
+        return await withCheckedContinuation { (continuation: CheckedContinuation<CGImage?, Never>) in
             generator.generateBestRepresentation(for: request) { representation, _ in
                 continuation.resume(returning: representation?.cgImage)
             }
-        }
-
-        if let cgImage {
-            return NSImage(cgImage: cgImage, size: cgImage.size)
-        } else {
-            return nil
         }
     }
 }

@@ -262,7 +262,7 @@ private struct WebMarkdownRenderer: NSViewRepresentable {
     }
 
     private static func webMarkdownResourceURL() -> URL? {
-        if let url = Bundle.module.resourceURL?.appendingPathComponent("WebMarkdown") {
+        if let url = NotchResourceBundle.url(forResource: "WebMarkdown", withExtension: nil) {
             return url
         }
         if let url = Bundle.main.resourceURL?.appendingPathComponent("Notch_Notch.bundle/WebMarkdown") {

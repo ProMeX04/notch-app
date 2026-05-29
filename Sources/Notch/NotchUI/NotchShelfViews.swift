@@ -50,6 +50,25 @@ final class ShelfBrowserHost: ObservableObject {
     fileprivate let collectionView: ShelfCollectionView
     fileprivate var coordinator: ShelfBrowserView.Coordinator?
 
+    /// The insertion index calculated during the current drag session.
+    /// Read synchronously from `handleShelfDrop` before the indicator is cleared.
+    var pendingDropIndex: Int? {
+        collectionView.dropTargetIndex
+    }
+
+    var draggedItemIDs: [UUID] {
+        get { collectionView.draggedItemIDs }
+        set { collectionView.draggedItemIDs = newValue }
+    }
+
+    func updateDropIndicator() {
+        collectionView.updateDropIndicator()
+    }
+
+    func hideDropIndicator() {
+        collectionView.hideDropIndicator()
+    }
+
     init() {
         let scrollView = NSScrollView()
         scrollView.drawsBackground = false
@@ -683,6 +702,35 @@ struct ShelfBrowserView: NSViewRepresentable {
 
         func collectionView(
             _ collectionView: NSCollectionView,
+            draggingSession session: NSDraggingSession,
+            willBeginAt screenPoint: NSPoint,
+            forItemsAt indexPaths: Set<IndexPath>
+        ) {
+            let ids = indexPaths.compactMap { indexPath -> UUID? in
+                guard shelf.items.indices.contains(indexPath.item) else { return nil }
+                return shelf.items[indexPath.item].id
+            }
+            if let shelfCollectionView = collectionView as? ShelfCollectionView {
+                shelfCollectionView.draggedItemIDs = ids
+            }
+            print("--- CollectionView draggingSession began for items: \(ids) ---")
+        }
+
+        func collectionView(
+            _ collectionView: NSCollectionView,
+            draggingSession session: NSDraggingSession,
+            endedAt screenPoint: NSPoint,
+            dragOperation operation: NSDragOperation
+        ) {
+            if let shelfCollectionView = collectionView as? ShelfCollectionView {
+                shelfCollectionView.draggedItemIDs = []
+                shelfCollectionView.hideDropIndicator()
+            }
+            print("--- CollectionView draggingSession ended ---")
+        }
+
+        func collectionView(
+            _ collectionView: NSCollectionView,
             validateDrop draggingInfo: NSDraggingInfo,
             proposedIndexPath proposedDropIndexPath: AutoreleasingUnsafeMutablePointer<NSIndexPath>,
             dropOperation proposedDropOperation: UnsafeMutablePointer<NSCollectionView.DropOperation>
@@ -708,6 +756,7 @@ struct ShelfBrowserView: NSViewRepresentable {
             indexPath destinationIndexPath: IndexPath,
             dropOperation: NSCollectionView.DropOperation
         ) -> Bool {
+
             if draggingInfo.draggingSource as AnyObject? === collectionView {
                 return false
             }
@@ -728,8 +777,16 @@ struct ShelfBrowserView: NSViewRepresentable {
         }
 
         private func hasAcceptableExternalContent(in pasteboard: NSPasteboard) -> Bool {
-            pasteboard.canReadObject(forClasses: [NSURL.self], options: nil)
-                || pasteboard.canReadObject(forClasses: [NSString.self], options: nil)
+            guard let types = pasteboard.types else { return false }
+            let hasURL = types.contains(.fileURL) || types.contains(.URL)
+            let hasString = types.contains(.string)
+            let hasLegacy = types.contains(where: {
+                $0.rawValue == "public.file-url"
+                || $0.rawValue == "public.url"
+                || $0.rawValue == "public.utf8-plain-text"
+                || $0.rawValue == "NSFilenamesPboardType"
+            })
+            return hasURL || hasString || hasLegacy
         }
 
         private func externalItemProviders(from info: NSDraggingInfo) -> [NSItemProvider] {
@@ -852,6 +909,124 @@ struct ShelfBrowserView: NSViewRepresentable {
 
 final class ShelfCollectionView: NSCollectionView {
     weak var shelfCoordinator: ShelfBrowserView.Coordinator?
+
+    // The items currently being dragged internally.
+    var draggedItemIDs: [UUID] = []
+
+    // MARK: - Drop indicator
+
+    /// A thin blue line drawn between items to show where a drop will land.
+    private lazy var dropIndicatorLine: NSView = {
+        let v = NSView()
+        v.wantsLayer = true
+        v.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
+        v.layer?.cornerRadius = 1
+        v.layer?.zPosition = 1000
+        v.isHidden = true
+        addSubview(v)
+        return v
+    }()
+
+    /// The insertion index computed from the current drag position.
+    /// `NotchHostingView.performDragOperation` reads this synchronously
+    /// before SwiftUI's `.onDrop` handler fires.
+    var dropTargetIndex: Int?
+
+    /// Called by `ShelfContentDropDelegate` on every drag updated tick.
+    func updateDropIndicator() {
+        guard let window = self.window else {
+            hideDropIndicator()
+            return
+        }
+        let screenPoint = NSEvent.mouseLocation
+        let windowPoint = window.convertPoint(fromScreen: screenPoint)
+        let localPoint = convert(windowPoint, from: nil)
+        let itemCount = numberOfItems(inSection: 0)
+
+        // Reject internal drags — no indicator for reorders.
+        let pb = NSPasteboard(name: .drag)
+        let isInternal = pb.types?.contains(where: {
+            $0.rawValue == NotchShelfItem.internalDragIdentityTypeIdentifier
+        }) ?? false
+        if isInternal {
+            hideDropIndicator()
+            return
+        }
+
+        let accentColorID = UserDefaults.standard.string(forKey: NotchAccentColorOption.storageKey) ?? ""
+        let nsAccentColor = NotchAccentColorOption.resolve(rawValue: accentColorID).nsColor
+        dropIndicatorLine.layer?.backgroundColor = nsAccentColor.cgColor
+
+        guard itemCount > 0 else {
+            dropTargetIndex = 0
+            dropIndicatorLine.isHidden = true
+            return
+        }
+
+        // Gather item frames from the layout.
+        struct ItemFrame { let index: Int; let frame: NSRect }
+        var items: [ItemFrame] = []
+        for i in 0..<itemCount {
+            if let attrs = layoutAttributesForItem(at: IndexPath(item: i, section: 0)) {
+                items.append(ItemFrame(index: i, frame: attrs.frame))
+            }
+        }
+        guard !items.isEmpty else {
+            dropTargetIndex = 0
+            dropIndicatorLine.isHidden = true
+            return
+        }
+
+        // Group into rows (items whose minY are within 4 pt).
+        var rows: [[ItemFrame]] = []
+        var currentRow: [ItemFrame] = []
+        for item in items {
+            if let last = currentRow.last, abs(item.frame.minY - last.frame.minY) > 4 {
+                rows.append(currentRow)
+                currentRow = [item]
+            } else {
+                currentRow.append(item)
+            }
+        }
+        if !currentRow.isEmpty { rows.append(currentRow) }
+
+        // Pick the row closest to the cursor's y.
+        let targetRow = rows.min(by: {
+            abs($0[0].frame.midY - localPoint.y) < abs($1[0].frame.midY - localPoint.y)
+        }) ?? rows[0]
+
+        // Within the row, find the insertion gap.
+        var insertIndex = targetRow.last!.index + 1
+        var indicatorX = targetRow.last!.frame.maxX + 1
+
+        for item in targetRow {
+            if localPoint.x < item.frame.midX {
+                insertIndex = item.index
+                indicatorX = item.frame.minX - 2
+                break
+            }
+        }
+
+        dropTargetIndex = insertIndex
+        print("--- ShelfCollectionView.updateDropIndicator: screenPoint=\(screenPoint), localPoint=\(localPoint), targetIndex=\(insertIndex) ---")
+
+        // Position and show.
+        let refFrame = targetRow[0].frame
+        dropIndicatorLine.frame = NSRect(
+            x: indicatorX,
+            y: refFrame.minY,
+            width: 2,
+            height: refFrame.height
+        )
+        dropIndicatorLine.isHidden = false
+    }
+
+    func hideDropIndicator() {
+        dropIndicatorLine.isHidden = true
+        dropTargetIndex = nil
+    }
+
+    // MARK: - First-responder / interaction overrides
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -1469,7 +1644,10 @@ internal final class ShelfCollectionItemView: NSView {
         iconSelectionBackground.isHidden = !isFinderSelected
         iconSelectionBackground.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.15).cgColor
         titleSelectionBackground.isHidden = !isFinderSelected || titleField.isHidden || titleField.stringValue.isEmpty
-        titleSelectionBackground.layer?.backgroundColor = NSColor.selectedContentBackgroundColor.cgColor
+
+        let accentColorID = UserDefaults.standard.string(forKey: NotchAccentColorOption.storageKey) ?? ""
+        let nsAccentColor = NotchAccentColorOption.resolve(rawValue: accentColorID).nsColor
+        titleSelectionBackground.layer?.backgroundColor = nsAccentColor.cgColor
     }
 
     private func updateDisplayedTitle() {

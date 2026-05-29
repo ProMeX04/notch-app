@@ -200,33 +200,19 @@ struct MediaNotchView: View {
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
-                .onDrop(of: shelfDropTypes, isTargeted: $isShelfDropTargeted) { providers in
-                    handleShelfDrop(providers)
-                }
-        }
-        .onChange(of: isShelfDropTargeted) { wasTargeted, isTargeted in
-            shelf.isDropTargeted = isTargeted
-            // Ignore spurious re-emits with the same value (SwiftUI may
-            // republish during drag re-entry mid-animation).
-            guard wasTargeted != isTargeted else { return }
-
-            if isTargeted {
-                didAutoRevealForShelfDrop = !isExpanded
-                didCommitShelfDrop = false
-                let alreadyOnShelf = presentationModel.selectedPanel == .shelf
-                    && isExpanded
-                if !alreadyOnShelf {
-                    snapToShelf()
-                }
-                return
-            }
-
-            if didAutoRevealForShelfDrop && !didCommitShelfDrop {
-                presentationModel.scheduleCollapse(after: .milliseconds(120))
-            }
-
-            didAutoRevealForShelfDrop = false
-            didCommitShelfDrop = false
+                .onDrop(
+                    of: shelfDropTypes,
+                    delegate: MediaNotchDropDelegate(
+                        shelf: shelf,
+                        presentationModel: presentationModel,
+                        shelfBrowserHost: shelfBrowserHost,
+                        isTargeted: $isShelfDropTargeted,
+                        didAutoRevealForShelfDrop: $didAutoRevealForShelfDrop,
+                        didCommitShelfDrop: $didCommitShelfDrop,
+                        isExpanded: isExpanded,
+                        snapToShelf: { self.snapToShelf() }
+                    )
+                )
         }
         .transaction { transaction in
             // Whenever a drag-reveal is in flight, force every animation
@@ -262,24 +248,6 @@ struct MediaNotchView: View {
         DispatchQueue.main.async {
             isDragRevealing = false
         }
-    }
-
-    private func handleShelfDrop(_ providers: [NSItemProvider]) -> Bool {
-        // Reject drops that originated from within our own shelf to prevent
-        // duplicate reorders or glitches when dropping items back onto the notch.
-        let isInternalDrag = providers.contains { provider in
-            provider.hasItemConformingToTypeIdentifier(NotchShelfItem.internalDragIdentityTypeIdentifier)
-        }
-        guard !isInternalDrag else { return false }
-
-        let alreadyOnShelf = presentationModel.selectedPanel == .shelf
-            && isExpanded
-        if !alreadyOnShelf {
-            snapToShelf()
-        }
-        let accepted = shelf.handleDrop(providers: providers)
-        didCommitShelfDrop = accepted
-        return accepted
     }
 
     @ViewBuilder
@@ -389,6 +357,7 @@ struct MediaNotchView: View {
                 .frame(height: 1)
                 .padding(.horizontal, topCornerRadius)
                 .animation(.easeInOut(duration: 0.18), value: showsDarkInnerNotch)
+                .allowsHitTesting(false)
         }
         .overlay {
             NotchShape(
@@ -396,6 +365,7 @@ struct MediaNotchView: View {
                 bottomCornerRadius: bottomCornerRadius
             )
             .stroke(Color.white.opacity(isClosedNotchInvisible ? 0 : (isExpanded ? 0.07 : 0.05)), lineWidth: 1)
+            .allowsHitTesting(false)
         }
         .shadow(
             color: (isExpanded || (isHovering && !isClosedNotchInvisible)) ? .black.opacity(0.7) : .clear,
@@ -429,5 +399,96 @@ struct MediaNotchView: View {
                 talkHeaderAccessoryController.clear()
             }
         }
+    }
+}
+
+struct MediaNotchDropDelegate: DropDelegate {
+    let shelf: NotchShelfViewModel
+    let presentationModel: NotchPresentationModel
+    let shelfBrowserHost: ShelfBrowserHost
+    var isTargeted: Binding<Bool>
+    var didAutoRevealForShelfDrop: Binding<Bool>
+    var didCommitShelfDrop: Binding<Bool>
+    let isExpanded: Bool
+    let snapToShelf: () -> Void
+
+    func dropEntered(info: DropInfo) {
+        print("--- MediaNotchDropDelegate.dropEntered ---")
+        isTargeted.wrappedValue = true
+        shelf.isDropTargeted = true
+        presentationModel.cancelScheduledCollapse()
+        
+        let alreadyOnShelf = presentationModel.selectedPanel == .shelf && isExpanded
+        if !alreadyOnShelf {
+            didAutoRevealForShelfDrop.wrappedValue = !isExpanded
+            didCommitShelfDrop.wrappedValue = false
+            snapToShelf()
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        presentationModel.cancelScheduledCollapse()
+        if isTargeted.wrappedValue && presentationModel.selectedPanel == .shelf && isExpanded {
+            shelfBrowserHost.updateDropIndicator()
+        } else {
+            shelfBrowserHost.hideDropIndicator()
+        }
+        return DropProposal(operation: .copy)
+    }
+
+    func dropExited(info: DropInfo) {
+        print("--- MediaNotchDropDelegate.dropExited ---")
+        isTargeted.wrappedValue = false
+        shelf.isDropTargeted = false
+        shelfBrowserHost.hideDropIndicator()
+        
+        if didAutoRevealForShelfDrop.wrappedValue && !didCommitShelfDrop.wrappedValue {
+            presentationModel.scheduleCollapse(after: .milliseconds(120))
+        }
+        didAutoRevealForShelfDrop.wrappedValue = false
+        didCommitShelfDrop.wrappedValue = false
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        let providers = info.itemProviders(for: [.fileURL, .url, .utf8PlainText, .plainText, .data])
+        print("--- MediaNotchDropDelegate.performDrop: itemProviders count = \(providers.count) ---")
+        
+        let isInternalDrag = providers.contains { provider in
+            provider.hasItemConformingToTypeIdentifier(NotchShelfItem.internalDragIdentityTypeIdentifier)
+        }
+        
+        // Read the target index FIRST before clearing/hiding the indicator (which resets dropTargetIndex to nil)
+        let targetIndex = shelfBrowserHost.pendingDropIndex ?? 0
+        print("--- MediaNotchDropDelegate.performDrop: targetIndex = \(targetIndex) ---")
+        
+        // Check if we are performing an internal reorder!
+        let internalIDs = shelfBrowserHost.draggedItemIDs
+        if !internalIDs.isEmpty {
+            print("--- MediaNotchDropDelegate.performDrop: Processing internal reorder of items: \(internalIDs) to targetIndex = \(targetIndex) ---")
+            
+            shelf.moveItems(with: internalIDs, to: targetIndex)
+            
+            shelfBrowserHost.draggedItemIDs = []
+            shelfBrowserHost.hideDropIndicator()
+            isTargeted.wrappedValue = false
+            shelf.isDropTargeted = false
+            presentationModel.cancelScheduledCollapse()
+            didCommitShelfDrop.wrappedValue = true
+            return true
+        }
+        
+        shelfBrowserHost.hideDropIndicator()
+        isTargeted.wrappedValue = false
+        shelf.isDropTargeted = false
+        presentationModel.cancelScheduledCollapse()
+        
+        if isInternalDrag {
+            print("--- MediaNotchDropDelegate.performDrop: Rejecting internal drag ---")
+            return false
+        }
+        
+        let accepted = shelf.handleDrop(providers: providers, atIndex: targetIndex)
+        didCommitShelfDrop.wrappedValue = accepted
+        return accepted
     }
 }

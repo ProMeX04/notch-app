@@ -74,6 +74,21 @@ enum NotchAccentColorOption: String, CaseIterable, Identifiable {
         color.ensureMinimumBrightness(factor: 0.78)
     }
 
+    var nsColor: NSColor {
+        switch self {
+        case .blue: return .systemBlue
+        case .mint: return .systemMint
+        case .gold: return .systemYellow
+        case .coral: return .systemOrange
+        case .rose: return .systemPink
+        case .purple: return .systemPurple
+        case .indigo: return .systemIndigo
+        case .green: return .systemGreen
+        case .teal: return .systemTeal
+        case .cyan: return .systemCyan
+        }
+    }
+
     static func resolve(rawValue: String) -> Self {
         Self(rawValue: rawValue) ?? defaultOption
     }

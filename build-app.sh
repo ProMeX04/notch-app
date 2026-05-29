@@ -18,16 +18,8 @@ if [[ "${RELEASE:-}" == "1" ]]; then
 fi
 swift build "${SWIFT_BUILD_ARGS[@]}"
 
-# SwiftPM sinh Bundle.module tìm Notch_Notch.bundle tại Notch.app/Notch_Notch.bundle
-# (Bundle.main.bundleURL = góc .app), trong khi bundle thật nằm ở Contents/Resources/.
-# Vá accessor để ưu tiên Bundle.main.resourceURL — khớp layout .app đã ký; tránh lỗi
-# "could not load resource bundle" khi cài từ zip/Homebrew.
-while IFS= read -r accessor; do
-    if grep -q 'Bundle.main.bundleURL.appendingPathComponent("Notch_Notch.bundle")' "$accessor" 2>/dev/null; then
-        sed -i '' 's/Bundle\.main\.bundleURL\.appendingPathComponent("Notch_Notch\.bundle")/(Bundle.main.resourceURL ?? Bundle.main.bundleURL).appendingPathComponent("Notch_Notch.bundle")/g' "$accessor"
-    fi
-done < <(find "$ROOT_DIR/.build" -path '*/Notch.build/DerivedSources/resource_bundle_accessor.swift' 2>/dev/null || true)
-swift build "${SWIFT_BUILD_ARGS[@]}"
+# SwiftPM sinh Bundle.module tự động nhưng không còn được dùng trực tiếp trong code để tránh crash
+# và tránh phải build 2 lần gây mất thời gian (giúp giữ incremental build cực kỳ nhanh).
 
 BIN_DIR="$(swift build --show-bin-path "${SWIFT_BUILD_ARGS[@]}")"
 

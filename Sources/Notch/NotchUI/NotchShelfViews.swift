@@ -61,8 +61,8 @@ final class ShelfBrowserHost: ObservableObject {
         set { collectionView.draggedItemIDs = newValue }
     }
 
-    func updateDropIndicator() {
-        collectionView.updateDropIndicator()
+    func updateDropIndicator(at location: CGPoint? = nil) {
+        collectionView.updateDropIndicator(at: location)
     }
 
     func hideDropIndicator() {
@@ -935,12 +935,18 @@ final class ShelfCollectionView: NSCollectionView {
     var dropTargetIndex: Int?
 
     /// Called by `ShelfContentDropDelegate` on every drag updated tick.
-    func updateDropIndicator() {
+    func updateDropIndicator(at location: CGPoint? = nil) {
         guard let window = self.window else {
             hideDropIndicator()
             return
         }
-        let windowPoint = window.mouseLocationOutsideOfEventStream
+        let windowPoint: CGPoint
+        if let location {
+            let windowHeight = window.contentView?.bounds.height ?? 210
+            windowPoint = CGPoint(x: location.x, y: windowHeight - location.y)
+        } else {
+            windowPoint = window.mouseLocationOutsideOfEventStream
+        }
         let localPoint = convert(windowPoint, from: nil)
         let itemCount = numberOfItems(inSection: 0)
 

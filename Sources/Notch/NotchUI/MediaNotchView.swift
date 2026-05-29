@@ -429,7 +429,7 @@ struct MediaNotchDropDelegate: DropDelegate {
     func dropUpdated(info: DropInfo) -> DropProposal? {
         presentationModel.cancelScheduledCollapse()
         if isTargeted.wrappedValue && presentationModel.selectedPanel == .shelf && isExpanded {
-            shelfBrowserHost.updateDropIndicator()
+            shelfBrowserHost.updateDropIndicator(at: info.location)
         } else {
             shelfBrowserHost.hideDropIndicator()
         }

@@ -89,20 +89,22 @@ struct GeminiAgentAvatarArtwork: View {
         return cache
     }()
 
+    @MainActor
     private static func loadImageAsync(from url: URL) async -> NSImage? {
         let key = url as NSURL
         if let cached = imageCache.object(forKey: key) {
             return cached
         }
-        // Move file read off the main thread
-        let image = await Task.detached {
-            NSImage(contentsOf: url)
+        // Move file read off the main thread using Sendable Data
+        let data = await Task.detached {
+            try? Data(contentsOf: url)
         }.value
         
-        if let image {
+        if let data, let image = NSImage(data: data) {
             imageCache.setObject(image, forKey: key)
+            return image
         }
-        return image
+        return nil
     }
 
     var body: some View {

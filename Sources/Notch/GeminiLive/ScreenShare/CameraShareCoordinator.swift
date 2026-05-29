@@ -1,5 +1,5 @@
 @preconcurrency import AVFoundation
-import CoreImage
+@preconcurrency import CoreImage
 import Foundation
 import NotchScreenShareCore
 

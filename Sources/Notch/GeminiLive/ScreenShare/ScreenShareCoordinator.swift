@@ -3,6 +3,7 @@ import Combine
 import CoreMedia
 import Foundation
 import NotchScreenShareCore
+@preconcurrency import CoreImage
 @preconcurrency import ScreenCaptureKit
 
 enum ScreenShareMode {
@@ -390,7 +391,7 @@ final class ScreenShareCoordinator: ObservableObject {
         }
     }
 
-    fileprivate nonisolated(unsafe) static let jpegContext = CIContext(options: [.useSoftwareRenderer: false])
+    fileprivate nonisolated static let jpegContext = CIContext(options: [.useSoftwareRenderer: false])
 
     fileprivate nonisolated static func encodeJPEG(from pixelBuffer: CVPixelBuffer, maxDimension: CGFloat?, quality: CGFloat = 0.6) -> Data? {
         let originalWidth = CGFloat(CVPixelBufferGetWidth(pixelBuffer))

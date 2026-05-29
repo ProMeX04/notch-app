@@ -2,7 +2,8 @@ import AppKit
 import Foundation
 import QuickLookThumbnailing
 
-public actor NotchShelfThumbnailService {
+@MainActor
+public final class NotchShelfThumbnailService {
     public static let shared = NotchShelfThumbnailService()
 
     // Exposed as internal only for @testable access from NotchShelfTests so
@@ -18,7 +19,7 @@ public actor NotchShelfThumbnailService {
     /// every time the user reopens the shelf.
     internal let maxCacheEntries = 128
 
-    static func cacheKey(for url: URL, size: CGSize) -> String {
+    nonisolated static func cacheKey(for url: URL, size: CGSize) -> String {
         "\(url.standardizedFileURL.path)_\(Int(size.width))x\(Int(size.height))"
     }
 
@@ -42,7 +43,7 @@ public actor NotchShelfThumbnailService {
             return nil
         }
 
-        let task = Task<NSImage?, Never> {
+        let task = Task<NSImage?, Never> { @MainActor in
             let thumbnail = await generateThumbnail(for: url, size: size)
             if let thumbnail {
                 insertCacheEntry(cacheKey, image: thumbnail)
@@ -107,7 +108,7 @@ public actor NotchShelfThumbnailService {
     }
 
     private func generateThumbnail(for url: URL, size: CGSize) async -> NSImage? {
-        let scale = await MainActor.run { NSScreen.main?.backingScaleFactor ?? 2.0 }
+        let scale = NSScreen.main?.backingScaleFactor ?? 2.0
         let didStartAccessing = url.startAccessingSecurityScopedResource()
         defer {
             if didStartAccessing {
@@ -123,14 +124,16 @@ public actor NotchShelfThumbnailService {
         )
         request.iconMode = true
 
-        return await withCheckedContinuation { (continuation: CheckedContinuation<NSImage?, Never>) in
+        let cgImage = await withCheckedContinuation { (continuation: CheckedContinuation<CGImage?, Never>) in
             generator.generateBestRepresentation(for: request) { representation, _ in
-                if let representation {
-                    continuation.resume(returning: NSImage(cgImage: representation.cgImage, size: representation.cgImage.size))
-                } else {
-                    continuation.resume(returning: nil)
-                }
+                continuation.resume(returning: representation?.cgImage)
             }
+        }
+
+        if let cgImage {
+            return NSImage(cgImage: cgImage, size: cgImage.size)
+        } else {
+            return nil
         }
     }
 }

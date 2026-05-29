@@ -578,8 +578,8 @@ public final class NotchShelfViewModel: ObservableObject {
 
     public func clearPreviewCache() {
         WorkspaceIconCache.shared.clearAll()
+        NotchShelfThumbnailService.shared.clearAllCache()
         Task {
-            await NotchShelfThumbnailService.shared.clearAllCache()
             await NotchShelfMetadataService.shared.clearCache()
         }
     }
@@ -819,19 +819,13 @@ public final class NotchShelfViewModel: ObservableObject {
 
     private func clearThumbnailCache(for item: NotchShelfItem) {
         guard let fileURL = item.fileURL else { return }
-
-        Task {
-            await NotchShelfThumbnailService.shared.clearCache(for: fileURL)
-        }
+        NotchShelfThumbnailService.shared.clearCache(for: fileURL)
     }
 
     private func clearThumbnailCache(for items: [NotchShelfItem]) {
         let fileURLs = items.compactMap(\.fileURL)
         guard !fileURLs.isEmpty else { return }
-
-        Task {
-            await NotchShelfThumbnailService.shared.clearCache(for: fileURLs)
-        }
+        NotchShelfThumbnailService.shared.clearCache(for: fileURLs)
     }
 
     private func copyItemsToPasteboard(_ items: [NotchShelfItem]) {

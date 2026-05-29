@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 @testable import NotchShelfFeature
 
+@MainActor
 enum NotchShelfThumbnailServiceTests {
 
     // MARK: - Helpers

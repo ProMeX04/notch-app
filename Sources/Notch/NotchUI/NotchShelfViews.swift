@@ -172,7 +172,7 @@ private struct ShelfDriveStatusRow: View {
 }
 
 struct ShelfBrowserView: NSViewRepresentable {
-    static let itemSpacing: CGFloat = 4
+    static let itemSpacing: CGFloat = 2
     static let sectionInsets = NSEdgeInsets(top: 6, left: 6, bottom: 6, right: 6)
 
     @ObservedObject var shelf: NotchShelfViewModel

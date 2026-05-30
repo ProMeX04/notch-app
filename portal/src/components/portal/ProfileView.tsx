@@ -194,18 +194,6 @@ export function ProfileView() {
         </div>
         
         <div className="dashboard-hero-actions" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          {accountPlan !== 'pro' && (
-            <button 
-              className="dashboard-upgrade-cta portal-button" 
-              onClick={handleSubscribe}
-              disabled={isCheckoutLoading}
-              style={{ background: 'var(--accent)', color: 'white', display: 'flex', alignItems: 'center', gap: '8px' }}
-            >
-              <Sparkles size={16} />
-              <span>Nâng cấp Pro ngay</span>
-            </button>
-          )}
-          
           <button 
             className="portal-button-ghost" 
             onClick={() => signOut()}
@@ -355,7 +343,59 @@ export function ProfileView() {
                 <span style={{ color: 'var(--muted)' }}>Ngày tham gia</span>
                 <strong>{formatDate(user.created_at, { month: 'short', year: 'numeric' })}</strong>
               </div>
+              <div className="status-item" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--muted)' }}>Gói hiện tại</span>
+                <strong style={{ color: accountPlan === 'pro' ? 'var(--warm)' : 'var(--muted-strong)' }}>
+                  {accountPlan === 'pro' ? 'Gói Pro' : 'Gói Miễn phí'}
+                </strong>
+              </div>
             </div>
+
+            {accountPlan !== 'pro' && (
+              <>
+                <div style={{ height: '1px', background: 'var(--border)', margin: '8px 0' }} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' }}>
+                      <span style={{ color: 'var(--accent)', fontWeight: 'bold' }}>✓</span>
+                      <span style={{ color: 'var(--foreground)' }}>Không giới hạn thời gian Focus</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' }}>
+                      <span style={{ color: 'var(--accent)', fontWeight: 'bold' }}>✓</span>
+                      <span style={{ color: 'var(--foreground)' }}>Mở khóa Jarvis & Gemini Live</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' }}>
+                      <span style={{ color: 'var(--accent)', fontWeight: 'bold' }}>✓</span>
+                      <span style={{ color: 'var(--foreground)' }}>Đồng bộ Cloud & Shelf không giới hạn</span>
+                    </div>
+                  </div>
+                  <button 
+                    className="dashboard-upgrade-cta portal-button" 
+                    onClick={handleSubscribe}
+                    disabled={isCheckoutLoading}
+                    style={{ 
+                      background: 'linear-gradient(135deg, var(--accent) 0%, #a855f7 100%)', 
+                      color: 'white', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      gap: '8px',
+                      width: '100%',
+                      padding: '12px',
+                      borderRadius: 'var(--radius-md)',
+                      fontWeight: 600,
+                      border: 'none',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      boxShadow: '0 4px 12px rgba(56, 189, 248, 0.15)'
+                    }}
+                  >
+                    <Sparkles size={15} />
+                    <span>Nâng cấp Pro ngay</span>
+                  </button>
+                </div>
+              </>
+            )}
           </section>
         </div>
       </div>

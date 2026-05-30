@@ -171,7 +171,7 @@ export function ProfileView() {
 
   return (
     <div className="dashboard-container" style={{ paddingTop: '100px', paddingBottom: '100px' }}>
-      <section className="dashboard-hero" style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '32px', borderRadius: 'var(--radius-lg)', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '24px', marginBottom: '40px' }}>
+      <section className="dashboard-hero" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '24px', paddingBottom: '32px', borderBottom: '1px solid var(--border)', marginBottom: '40px' }}>
         <div className="dashboard-hero-content">
           <div className="dashboard-user-info">
             <h1 style={{ fontSize: '2rem', fontWeight: 800, marginBottom: '8px' }}>Chào quay lại, {accountName}</h1>
@@ -243,10 +243,10 @@ export function ProfileView() {
         </div>
       )}
 
-      <div className="dashboard-grid" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '32px', alignItems: 'start' }}>
+      <div className="dashboard-grid" style={{ display: 'grid', gap: '32px', alignItems: 'start' }}>
         {/* Main Content Area */}
         <div className="dashboard-main-col">
-          <section className="dashboard-section" style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '24px', borderRadius: 'var(--radius-lg)' }}>
+          <section style={{ display: 'flex', flexDirection: 'column', marginBottom: '32px' }}>
             <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '16px', marginBottom: '20px' }}>
               <div className="section-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <MonitorSmartphone size={20} className="text-accent" style={{ color: 'var(--accent)' }} />
@@ -341,7 +341,7 @@ export function ProfileView() {
 
         {/* Sidebar Info Area */}
         <div className="dashboard-side-col" style={{ display: 'grid', gap: '24px' }}>
-          <section className="dashboard-section profile-mini-card" style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '20px', borderRadius: 'var(--radius-lg)' }}>
+          <section className="profile-mini-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div className="section-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
               <ShieldCheck size={18} style={{ color: 'var(--green)' }} />
               <h2 style={{ fontSize: '1.05rem', fontWeight: 700 }}>Trạng thái tài khoản</h2>

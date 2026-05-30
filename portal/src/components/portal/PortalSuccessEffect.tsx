@@ -55,7 +55,7 @@ export function PortalSuccessEffect({
               </button>
             )}
 
-            <Link href="/pro" className="portal-button-ghost" style={{ border: 'none', background: 'transparent' }}>
+            <Link href="/account" className="portal-button" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '48px' }}>
               Quay về Dashboard
             </Link>
           </div>

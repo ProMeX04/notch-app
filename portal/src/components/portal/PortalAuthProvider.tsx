@@ -76,9 +76,21 @@ export function PortalAuthProvider({
   }, [authVersion])
 
   useEffect(() => {
-    return onPortalAuthSessionChange(() => {
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        window.location.reload()
+      }
+    }
+    window.addEventListener('pageshow', handlePageShow)
+
+    const unsubscribe = onPortalAuthSessionChange(() => {
       setAuthVersion((currentVersion) => currentVersion + 1)
     })
+
+    return () => {
+      window.removeEventListener('pageshow', handlePageShow)
+      unsubscribe()
+    }
   }, [])
 
   const value = useMemo<PortalAuthContextValue>(

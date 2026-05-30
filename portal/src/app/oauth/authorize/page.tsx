@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import { AlertCircle, Loader2 } from 'lucide-react'
 
 import { PortalLogo } from '@/components/portal/PortalLogo'
+import { Navbar } from '@/components/portal/Navbar'
 import { usePortalAuth } from '@/components/portal/PortalAuthProvider'
 import {
   buildPortalOAuthSearch,
@@ -17,15 +18,16 @@ import { PortalSuccessEffect } from '@/components/portal/PortalSuccessEffect'
 
 function OAuthAuthorizeFallback() {
   return (
-    <main className="portal-auth-page-centered">
-      <div className="portal-auth-topbar-minimal">
-        <PortalLogo />
-      </div>
+    <main className="portal-auth-page-centered" style={{ paddingTop: '100px' }}>
+      <Navbar />
 
       <section className="portal-auth-container">
-        <div className="portal-card portal-auth-card" style={{ display: 'grid', placeItems: 'center', minHeight: '280px', gap: '12px' }}>
-          <Loader2 size={20} className="portal-spinner" />
+        <div className="portal-auth-header-centered">
+          <h1 className="portal-auth-title-large">Tiếp tục trong Notch</h1>
           <p className="portal-muted">Đang chuẩn bị xác thực OAuth...</p>
+        </div>
+        <div className="portal-card portal-auth-card" style={{ display: 'grid', placeItems: 'center', minHeight: '200px' }}>
+          <Loader2 size={24} className="portal-spinner animate-spin" style={{ color: 'var(--accent)' }} />
         </div>
       </section>
     </main>
@@ -90,7 +92,7 @@ function OAuthAuthorizeContent() {
   }, [isAuthenticated, oauthRequest])
 
   return (
-    <main className="portal-auth-page-centered">
+    <main className="portal-auth-page-centered" style={{ paddingTop: '100px' }}>
       {isHandoffState ? (
         <PortalSuccessEffect 
           onPrimaryAction={() => {
@@ -105,28 +107,26 @@ function OAuthAuthorizeContent() {
         />
       ) : (
         <>
-          <div className="portal-auth-topbar-minimal">
-            <PortalLogo />
-          </div>
+          <Navbar />
 
           <section className="portal-auth-container">
-            <div className="portal-card portal-auth-card" style={{ display: 'grid', gap: '18px' }}>
-              <div className="portal-auth-header-centered">
-                <h1 className="portal-auth-title-large">Tiếp tục trong Notch</h1>
-                <p className="portal-muted">
-                  Mở ứng dụng để hoàn tất đăng nhập và tiếp tục.
-                </p>
-              </div>
+            <div className="portal-auth-header-centered">
+              <h1 className="portal-auth-title-large">Tiếp tục trong Notch</h1>
+              <p className="portal-muted">
+                Mở ứng dụng để hoàn tất đăng nhập và tiếp tục.
+              </p>
+            </div>
 
+            <div className="portal-card portal-auth-card" style={{ display: 'grid', gap: '18px' }}>
               {!oauthRequest ? (
-                <div className="portal-error">
+                <div className="portal-error" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', borderRadius: 'var(--radius-md)', background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.2)', color: 'var(--red)', fontSize: '0.9rem' }}>
                   <AlertCircle size={18} />
                   <span>Yêu cầu đăng nhập từ app không hợp lệ hoặc đã thiếu tham số PKCE.</span>
                 </div>
               ) : null}
 
               {error ? (
-                <div className="portal-error">
+                <div className="portal-error" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', borderRadius: 'var(--radius-md)', background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.2)', color: 'var(--red)', fontSize: '0.9rem' }}>
                   <AlertCircle size={18} />
                   <span>{error}</span>
                 </div>
@@ -134,20 +134,27 @@ function OAuthAuthorizeContent() {
 
               {oauthRequest && !isAuthenticated && status !== 'booting' ? (
                 <div style={{ display: 'grid', gap: '12px' }}>
-                  <Link href={`/api/auth/google${oauthSearch}`} className="portal-button" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                  <Link href={`/api/auth/google${oauthSearch}`} className="portal-button" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'white', color: 'black', height: '42px', fontWeight: 600 }}>
                     Tiếp tục với Google
                   </Link>
                 </div>
               ) : null}
 
               {status === 'booting' && !isRedirecting ? (
-                <div className="portal-success-view" style={{ minHeight: '140px' }}>
-                  <Loader2 size={22} className="portal-spinner" />
-                  <p className="portal-muted">Đang kiểm tra phiên hiện tại...</p>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '120px', gap: '12px' }}>
+                  <Loader2 size={24} className="portal-spinner animate-spin" style={{ color: 'var(--accent)' }} />
+                  <p className="portal-muted" style={{ fontSize: '0.9rem' }}>Đang kiểm tra phiên hiện tại...</p>
                 </div>
               ) : null}
 
-              <Link href="/" className="portal-button-ghost" style={{ justifySelf: 'center' }}>
+              {status === 'authenticated' && isRedirecting ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '120px', gap: '12px' }}>
+                  <Loader2 size={24} className="portal-spinner animate-spin" style={{ color: 'var(--accent)' }} />
+                  <p className="portal-muted" style={{ fontSize: '0.9rem' }}>Đang hoàn tất xác thực ứng dụng...</p>
+                </div>
+              ) : null}
+
+              <Link href="/" className="portal-button-ghost" style={{ justifySelf: 'center', border: 'none', background: 'transparent' }}>
                 Quay về trang chủ
               </Link>
             </div>

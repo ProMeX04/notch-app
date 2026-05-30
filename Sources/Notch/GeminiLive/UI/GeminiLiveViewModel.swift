@@ -33,6 +33,16 @@ final class GeminiLiveViewModel: ObservableObject {
             syncConfiguredConnectionState(updateStatus: !canDisconnectSession)
         }
     }
+    @Published var selectedEnvironment: NotchEnvironment = .production {
+        didSet {
+            UserDefaults.standard.set(selectedEnvironment.rawValue, forKey: "dev.notch.environment")
+            Task {
+                await logoutBackendAccount()
+                _ = backendConfigStore.save(baseURLString: selectedEnvironment.portalURL, clientToken: nil)
+                reloadKeyDrafts()
+            }
+        }
+    }
     @Published var userTranscript = ""
     @Published var modelTranscript = ""
     @Published var liveChatMessages: [LiveChatMessage] = []
@@ -215,6 +225,21 @@ final class GeminiLiveViewModel: ObservableObject {
         self.sessionController = dependencies.sessionController
         self.toolingController = dependencies.toolingController
         self.userAPIClient = dependencies.userAPIClient
+        #if DEBUG
+        let defaultEnv = "development"
+        #else
+        let defaultEnv = "production"
+        #endif
+        let envString = UserDefaults.standard.string(forKey: "dev.notch.environment") ?? defaultEnv
+        let resolvedEnv = NotchEnvironment(rawValue: envString) ?? .production
+        selectedEnvironment = resolvedEnv
+
+        // Sync backendConfigStore with the resolved environment on launch
+        let config = dependencies.settingsController.backendConfigStore.read()
+        if config == nil || config?.baseURL.absoluteString != resolvedEnv.portalURL {
+            _ = dependencies.settingsController.backendConfigStore.save(baseURLString: resolvedEnv.portalURL, clientToken: nil)
+        }
+
         apiKeyText = ""
         backendURLText = PortalHostedBackend.defaultURL
         backendClientTokenText = ""

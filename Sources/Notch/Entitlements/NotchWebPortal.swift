@@ -16,7 +16,14 @@ enum NotchWebPortal {
 
         let resolvedAPI = apiBaseURL ?? URL(string: PortalHostedBackend.defaultURL)
         guard let api = resolvedAPI else {
-            return URL(string: "https://portal-six-blue.vercel.app")!
+            #if DEBUG
+            let defaultEnv = "development"
+            #else
+            let defaultEnv = "production"
+            #endif
+            let envString = UserDefaults.standard.string(forKey: "dev.notch.environment") ?? defaultEnv
+            let env = NotchEnvironment(rawValue: envString) ?? .production
+            return URL(string: env.webOriginURL)!
         }
 
         if let trimmedAPI = trimmedPortalOrigin(from: api) {

@@ -154,17 +154,6 @@ struct AppShelfSettingsPane: View {
     private var behaviorCard: some View {
         AppSettingsCard(title: Localization.get("Behavior", lang: appLanguage)) {
             pickerRow(
-                icon: "arrow.up.to.line",
-                title: Localization.get("When Dropping Existing Items", lang: appLanguage),
-                options: NotchShelfDuplicateDropAction.allCases,
-                selection: Binding(
-                    get: { preferences.duplicateDropAction },
-                    set: { preferences.duplicateDropAction = $0 }
-                ),
-                titleMapper: duplicateTitle
-            )
-
-            pickerRow(
                 icon: "link",
                 title: Localization.get("Double-click Links", lang: appLanguage),
                 options: NotchShelfLinkDoubleClickAction.allCases,
@@ -454,10 +443,6 @@ struct AppShelfSettingsPane: View {
 
     private func itemSizeTitle(_ value: NotchShelfItemSize) -> String {
         Localization.get(value.rawValue.capitalized, lang: appLanguage)
-    }
-
-    private func duplicateTitle(_ value: NotchShelfDuplicateDropAction) -> String {
-        Localization.get(value == .ignore ? "Ignore" : "Move to Top", lang: appLanguage)
     }
 
     private func linkDoubleClickTitle(_ value: NotchShelfLinkDoubleClickAction) -> String {

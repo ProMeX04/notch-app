@@ -471,7 +471,6 @@ struct Localization {
         "Large": ["English": "Large", "Tiếng Việt": "Lớn"],
         "Show Item Names": ["English": "Show Item Names", "Tiếng Việt": "Hiện tên mục"],
         "Show Google Drive Status Badges": ["English": "Show Google Drive Status Badges", "Tiếng Việt": "Hiện trạng thái Google Drive"],
-        "When Dropping Existing Items": ["English": "When Dropping Existing Items", "Tiếng Việt": "Khi thả lại mục đã có"],
         "Ignore": ["English": "Ignore", "Tiếng Việt": "Bỏ qua"],
         "Move to Top": ["English": "Move to Top", "Tiếng Việt": "Đưa lên đầu"],
         "Double-click Links": ["English": "Double-click Links", "Tiếng Việt": "Bấm đúp vào liên kết"],

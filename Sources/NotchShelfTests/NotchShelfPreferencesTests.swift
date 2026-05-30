@@ -12,7 +12,6 @@ enum NotchShelfPreferencesTests {
         try expectEqual(preferences.itemSize, .medium)
         try expect(preferences.showItemNames)
         try expect(preferences.showDriveBadges)
-        try expectEqual(preferences.duplicateDropAction, .ignore)
         try expectEqual(preferences.autoUploadScope, .allItems)
         try expectEqual(preferences.retentionPolicy, NotchShelfRetentionPolicy())
 

@@ -9,13 +9,6 @@ public enum NotchShelfItemSize: String, CaseIterable, Identifiable, Sendable {
     public var id: String { rawValue }
 }
 
-public enum NotchShelfDuplicateDropAction: String, CaseIterable, Identifiable, Sendable {
-    case ignore
-    case moveToTop
-
-    public var id: String { rawValue }
-}
-
 public enum NotchShelfLinkDoubleClickAction: String, CaseIterable, Identifiable, Sendable {
     case open
     case copyURL
@@ -97,7 +90,6 @@ public final class NotchShelfPreferences: ObservableObject {
         static let itemSize = "dev.notch.shelf.item-size"
         static let showItemNames = "dev.notch.shelf.show-item-names"
         static let showDriveBadges = "dev.notch.shelf.show-drive-badges"
-        static let duplicateDropAction = "dev.notch.shelf.duplicate-drop-action"
         static let linkDoubleClickAction = "dev.notch.shelf.link-double-click-action"
         static let autoUploadScope = "dev.notch.shelf.auto-upload-scope"
         static let maximumItemCount = "dev.notch.shelf.maximum-item-count"
@@ -110,7 +102,6 @@ public final class NotchShelfPreferences: ObservableObject {
     @Published public var itemSize: NotchShelfItemSize { didSet { defaults.set(itemSize.rawValue, forKey: Key.itemSize) } }
     @Published public var showItemNames: Bool { didSet { defaults.set(showItemNames, forKey: Key.showItemNames) } }
     @Published public var showDriveBadges: Bool { didSet { defaults.set(showDriveBadges, forKey: Key.showDriveBadges) } }
-    @Published public var duplicateDropAction: NotchShelfDuplicateDropAction { didSet { defaults.set(duplicateDropAction.rawValue, forKey: Key.duplicateDropAction) } }
     @Published public var linkDoubleClickAction: NotchShelfLinkDoubleClickAction { didSet { defaults.set(linkDoubleClickAction.rawValue, forKey: Key.linkDoubleClickAction) } }
     @Published public var autoUploadEnabled: Bool { didSet { defaults.set(autoUploadEnabled, forKey: Self.autoUploadEnabledKey) } }
     @Published public var autoUploadScope: NotchShelfAutoUploadScope { didSet { defaults.set(autoUploadScope.rawValue, forKey: Key.autoUploadScope) } }
@@ -132,7 +123,6 @@ public final class NotchShelfPreferences: ObservableObject {
         itemSize = Self.value(NotchShelfItemSize.self, key: Key.itemSize, defaults: defaults) ?? .medium
         showItemNames = Self.bool(key: Key.showItemNames, defaultValue: true, defaults: defaults)
         showDriveBadges = Self.bool(key: Key.showDriveBadges, defaultValue: true, defaults: defaults)
-        duplicateDropAction = Self.value(NotchShelfDuplicateDropAction.self, key: Key.duplicateDropAction, defaults: defaults) ?? .ignore
         linkDoubleClickAction = Self.value(NotchShelfLinkDoubleClickAction.self, key: Key.linkDoubleClickAction, defaults: defaults) ?? .open
         autoUploadEnabled = defaults.bool(forKey: Self.autoUploadEnabledKey)
         autoUploadScope = Self.value(NotchShelfAutoUploadScope.self, key: Key.autoUploadScope, defaults: defaults) ?? .allItems

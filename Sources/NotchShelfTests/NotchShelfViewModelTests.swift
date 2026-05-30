@@ -152,7 +152,6 @@ enum NotchShelfViewModelTests {
         let dir = try makeTempDirectory(label: "ShelfVM")
         defer { cleanupDirectory(dir) }
         let preferences = makePreferences()
-        preferences.duplicateDropAction = .moveToTop
         let vm = makeViewModel(dir: dir, preferences: preferences)
         vm.merge([textItem("a"), textItem("b"), textItem("c")])
 
@@ -193,11 +192,10 @@ enum NotchShelfViewModelTests {
         try expectEqual(vm.selectedItemIDs, Set([d.id]))
     }
 
-    static func merge_duplicateDrop_moveToTop_atTargetIndex() throws {
+    static func merge_duplicateDrop_atTargetIndex() throws {
         let dir = try makeTempDirectory(label: "ShelfVM")
         defer { cleanupDirectory(dir) }
         let preferences = makePreferences()
-        preferences.duplicateDropAction = .moveToTop
         let vm = makeViewModel(dir: dir, preferences: preferences)
         
         let a = textItem("a"); let b = textItem("b"); let c = textItem("c")

@@ -737,8 +737,7 @@ public final class NotchShelfViewModel: ObservableObject {
         for item in newItems {
             let key = item.identityKey
             if seenKeys.contains(key) {
-                if preferences.duplicateDropAction == .moveToTop,
-                   let existing = items.first(where: { $0.identityKey == key }),
+                if let existing = items.first(where: { $0.identityKey == key }),
                    movedIDs.insert(existing.id).inserted {
                     landingItems.append(existing)
                 }

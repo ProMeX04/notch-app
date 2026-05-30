@@ -11,6 +11,7 @@ final class NotchKeychainSecretsManager: @unchecked Sendable {
     private init() {}
     
     private var testStorage: [String: String] = [:]
+    private var cachedDict: [String: String]?
     
     private var isTesting: Bool {
         #if DEBUG
@@ -61,6 +62,10 @@ final class NotchKeychainSecretsManager: @unchecked Sendable {
             return testStorage
         }
         
+        if let cached = cachedDict {
+            return cached
+        }
+        
         var query = baseQuery
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -68,11 +73,18 @@ final class NotchKeychainSecretsManager: @unchecked Sendable {
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         
+        if status == errSecItemNotFound {
+            cachedDict = [:]
+            return [:]
+        }
+        
         guard status == errSecSuccess,
               let data = result as? Data,
               let dict = try? JSONDecoder().decode([String: String].self, from: data) else {
+            cachedDict = [:]
             return [:]
         }
+        cachedDict = dict
         return dict
     }
     
@@ -85,6 +97,7 @@ final class NotchKeychainSecretsManager: @unchecked Sendable {
         SecItemDelete(baseQuery as CFDictionary)
         
         guard !dict.isEmpty else {
+            cachedDict = dict
             return true
         }
         
@@ -95,6 +108,10 @@ final class NotchKeychainSecretsManager: @unchecked Sendable {
         var query = baseQuery
         query[kSecValueData as String] = data
         let status = SecItemAdd(query as CFDictionary, nil)
-        return status == errSecSuccess
+        if status == errSecSuccess {
+            cachedDict = dict
+            return true
+        }
+        return false
     }
 }

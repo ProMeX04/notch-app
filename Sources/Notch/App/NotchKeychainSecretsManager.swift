@@ -10,6 +10,18 @@ final class NotchKeychainSecretsManager: @unchecked Sendable {
     
     private init() {}
     
+    private var testStorage: [String: String] = [:]
+    
+    private var isTesting: Bool {
+        #if DEBUG
+        if NSClassFromString("XCTestCase") != nil { return true }
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil { return true }
+        if ProcessInfo.processInfo.environment.keys.contains(where: { $0.contains("TEST") }) { return true }
+        if ProcessInfo.processInfo.processName.lowercased().contains("test") { return true }
+        #endif
+        return false
+    }
+    
     private var baseQuery: [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
@@ -45,6 +57,10 @@ final class NotchKeychainSecretsManager: @unchecked Sendable {
     }
     
     private func readAll() -> [String: String] {
+        if isTesting {
+            return testStorage
+        }
+        
         var query = baseQuery
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -61,6 +77,11 @@ final class NotchKeychainSecretsManager: @unchecked Sendable {
     }
     
     private func saveAll(_ dict: [String: String]) -> Bool {
+        if isTesting {
+            testStorage = dict
+            return true
+        }
+        
         SecItemDelete(baseQuery as CFDictionary)
         
         guard !dict.isEmpty else {

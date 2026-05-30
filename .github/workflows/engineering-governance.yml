@@ -7,7 +7,7 @@ on:
 jobs:
   governance:
     name: Agent governance
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,7 +18,7 @@ jobs:
 
   portal:
     name: Portal verification
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     env:
       DATABASE_URL: postgresql://notch:notch@127.0.0.1:5432/notch?schema=public
     defaults:

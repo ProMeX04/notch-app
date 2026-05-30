@@ -134,9 +134,9 @@ function LoginPageContent() {
                 </div>
               ) : null}
 
-              <Link href={`/api/auth/google${buildPortalOAuthSearch(oauthRequest)}`} className="portal-button" style={{ width: '100%', marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              <a href={`/api/auth/google${buildPortalOAuthSearch(oauthRequest)}`} className="portal-button" style={{ width: '100%', marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                 Tiếp tục với Google
-              </Link>
+              </a>
             </div>
           )}
         </div>

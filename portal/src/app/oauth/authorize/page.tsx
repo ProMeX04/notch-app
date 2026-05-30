@@ -126,9 +126,9 @@ function OAuthAuthorizeContent() {
 
               {oauthRequest && !isAuthenticated && status !== 'booting' ? (
                 <div style={{ display: 'grid', gap: '12px' }}>
-                  <Link href={`/api/auth/google${oauthSearch}`} className="portal-button" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'white', color: 'black', height: '42px', fontWeight: 600 }}>
+                  <a href={`/api/auth/google${oauthSearch}`} className="portal-button" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'white', color: 'black', height: '42px', fontWeight: 600 }}>
                     Tiếp tục với Google
-                  </Link>
+                  </a>
                 </div>
               ) : null}
 

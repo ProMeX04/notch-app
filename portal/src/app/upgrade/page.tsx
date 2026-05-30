@@ -56,10 +56,10 @@ export default function UpgradePage() {
           </div>
 
           <div style={{ display: 'grid', gap: '12px', marginTop: '24px' }}>
-            <Link href={isAuthenticated ? '/pro' : '/api/auth/google'} className="portal-button" style={{ width: '100%', height: '60px', borderRadius: '18px', fontSize: '1.1rem', boxShadow: '0 10px 20px rgba(37, 99, 235, 0.2)' }}>
+            <a href={isAuthenticated ? '/account' : '/api/auth/google'} className="portal-button" style={{ width: '100%', height: '60px', borderRadius: '18px', fontSize: '1.1rem', boxShadow: '0 10px 20px rgba(37, 99, 235, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', textDecoration: 'none' }}>
               {isAuthenticated ? 'Vào trang tài khoản' : 'Đăng nhập với Google để nâng cấp'}
               <ArrowRight size={20} />
-            </Link>
+            </a>
           </div>
 
           <div className="portal-divider" style={{ margin: '32px 0' }} />
@@ -87,7 +87,7 @@ export default function UpgradePage() {
         </div>
 
         <p className="portal-auth-footer-simple" style={{ marginTop: '32px', fontSize: '1rem' }}>
-          Đã đăng nhập rồi? <Link href="/pro" style={{ color: 'var(--accent)', fontWeight: 800 }}>Vào trang cá nhân để nâng cấp</Link>
+          Đã đăng nhập rồi? <Link href="/account" style={{ color: 'var(--accent)', fontWeight: 800 }}>Vào trang cá nhân để nâng cấp</Link>
         </p>
       </section>
     </main>

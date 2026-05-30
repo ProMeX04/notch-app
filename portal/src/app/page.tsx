@@ -100,17 +100,21 @@ function HomeContent() {
               </p>
 
               <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', alignItems: 'center' }}>
-                <Link href={primaryHref} className="portal-button" style={{ 
+                <a href={primaryHref} className="portal-button" style={{ 
                   height: '60px', 
                   padding: '0 40px', 
                   fontSize: '1.1rem', 
                   borderRadius: '999px',
                   background: 'white',
                   color: 'black',
-                  fontWeight: 600
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  textDecoration: 'none'
                 }}>
                   {isAuthenticated ? 'Xem tài khoản của tôi' : 'Khám phá ngay'}
-                </Link>
+                </a>
               </div>
             </div>
           </section>
@@ -230,9 +234,9 @@ function HomeContent() {
                     </li>
                   )}
                 </ul>
-                <Link href={primaryHref} className="portal-button-ghost" style={{ width: '100%', height: '56px', borderRadius: '16px', border: '1px solid var(--border-strong)' }}>
+                <a href={primaryHref} className="portal-button-ghost" style={{ width: '100%', height: '56px', borderRadius: '16px', border: '1px solid var(--border-strong)', display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>
                   Bắt đầu ngay
-                </Link>
+                </a>
               </div>
 
               {/* Pro Plan */}
@@ -294,7 +298,7 @@ function HomeContent() {
                     </>
                   )}
                 </ul>
-                <Link href={primaryHref} className="portal-button" style={{ 
+                <a href={primaryHref} className="portal-button" style={{ 
                   width: '100%', 
                   height: '60px', 
                   borderRadius: '16px', 
@@ -304,10 +308,11 @@ function HomeContent() {
                   fontWeight: 600,
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center'
+                  justifyContent: 'center',
+                  textDecoration: 'none'
                 }}>
                   {isAuthenticated ? 'Quản lý tài khoản' : 'Đăng nhập để nâng cấp'}
-                </Link>
+                </a>
               </div>
             </div>
           </section>
@@ -340,9 +345,9 @@ function HomeContent() {
                   Nâng tầm hiệu suất công việc của bạn với Notch ngay hôm nay.
                 </p>
                 <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
-                  <Link href={primaryHref} className="portal-button" style={{ background: 'white', color: 'black', height: '64px', padding: '0 40px', fontSize: '1.1rem', borderRadius: '999px', fontWeight: 600 }}>
+                  <a href={primaryHref} className="portal-button" style={{ background: 'white', color: 'black', height: '64px', padding: '0 40px', fontSize: '1.1rem', borderRadius: '999px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>
                     Bắt đầu miễn phí
-                  </Link>
+                  </a>
                 </div>
               </div>
             </div>

@@ -80,31 +80,31 @@ function NavbarContent() {
                  {isAuthenticated ? (
                   <div style={{ display: 'flex', alignItems: 'center', marginLeft: '12px' }}>
                     <Link href="/account" style={{
-                      ...linkStyle(isProfileActive),
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '8px',
+                      justifyContent: 'center',
                       background: isProfileActive ? 'var(--card-strong)' : 'transparent',
-                      padding: user?.avatar_url ? '4px 14px 4px 6px' : '6px 14px',
-                      borderRadius: '999px',
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '50%',
                       border: '1px solid var(--border)',
-                    }}>
+                      transition: 'all 0.2s ease',
+                    }} title="Tài khoản">
                       {user?.avatar_url ? (
                         <img 
                           src={user.avatar_url} 
                           alt="Avatar" 
                           referrerPolicy="no-referrer"
                           style={{
-                            width: '22px',
-                            height: '22px',
+                            width: '26px',
+                            height: '26px',
                             borderRadius: '50%',
                             objectFit: 'cover'
                           }}
                         />
                       ) : (
-                        <User size={14} />
+                        <User size={16} style={{ color: 'var(--foreground)' }} />
                       )}
-                      Tài khoản
                     </Link>
                   </div>
                 ) : (

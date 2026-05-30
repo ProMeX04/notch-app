@@ -248,7 +248,7 @@ export function ProfileView() {
         <div className="dashboard-main-col">
           <section style={{ display: 'flex', flexDirection: 'column', marginBottom: '32px' }}>
             <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '16px', marginBottom: '20px' }}>
-              <div className="section-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div className="section-title" style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--foreground)' }}>
                 <MonitorSmartphone size={20} className="text-accent" style={{ color: 'var(--accent)' }} />
                 <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Thiết bị của bạn</h2>
               </div>
@@ -342,7 +342,7 @@ export function ProfileView() {
         {/* Sidebar Info Area */}
         <div className="dashboard-side-col" style={{ display: 'grid', gap: '24px' }}>
           <section className="profile-mini-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div className="section-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
+            <div className="section-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px', color: 'var(--foreground)' }}>
               <ShieldCheck size={18} style={{ color: 'var(--green)' }} />
               <h2 style={{ fontSize: '1.05rem', fontWeight: 700 }}>Trạng thái tài khoản</h2>
             </div>

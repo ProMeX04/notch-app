@@ -39,7 +39,7 @@ jobs:
 
   swift:
     name: Swift verification
-    runs-on: macos-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - run: swift test

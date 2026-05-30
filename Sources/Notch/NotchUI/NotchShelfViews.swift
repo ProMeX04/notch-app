@@ -911,6 +911,7 @@ struct ShelfBrowserView: NSViewRepresentable {
         }
 
         func cleanupWhenShelfDisappears() {
+            lastSnapshot = []
             // Intentionally keep WorkspaceIconCache + thumbnail cache warm.
             // Flushing them every time the shelf hides used to force a full
             // QLThumbnailGenerator pass on the next reveal, which produced a

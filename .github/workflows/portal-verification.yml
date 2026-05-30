@@ -1,0 +1,35 @@
+name: Portal Verification
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'portal/**'
+      - '.github/workflows/portal-verification.yml'
+  pull_request:
+    paths:
+      - 'portal/**'
+      - '.github/workflows/portal-verification.yml'
+
+jobs:
+  portal:
+    name: Portal verification
+    runs-on: self-hosted
+    env:
+      DATABASE_URL: postgresql://notch:notch@127.0.0.1:5432/notch?schema=public
+    defaults:
+      run:
+        working-directory: portal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: portal/package-lock.json
+      - run: npm ci
+      - run: npm run test:focus
+      - run: npm run test:gemini-live
+      - run: npm run lint
+      - run: npm run build

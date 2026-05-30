@@ -72,23 +72,44 @@ export async function authenticatedFetch(
   input: RequestInfo | URL,
   init: RequestInit = {},
 ): Promise<Response> {
-  const headers = new Headers(init.headers)
-  headers.set('X-Notch-Device-Id', buildBrowserAuthDevicePayload().device_id)
+  const { apiClient } = await import('./api-client')
+  const url = typeof input === 'string' ? input : input.toString()
+  try {
+    const response = await apiClient({
+      url,
+      method: (init.method || 'GET').toUpperCase(),
+      data: init.body ? JSON.parse(init.body as string) : undefined,
+      headers: init.headers ? Object.fromEntries(new Headers(init.headers).entries()) : undefined,
+    })
 
-  return fetch(input, {
-    ...init,
-    credentials: 'same-origin',
-    headers,
-  })
+    return {
+      ok: true,
+      status: response.status,
+      statusText: response.statusText,
+      json: async () => response.data,
+      text: async () => typeof response.data === 'string' ? response.data : JSON.stringify(response.data),
+    } as unknown as Response
+  } catch (error: unknown) {
+    const errorWithResponse = error as { response?: { status?: number; statusText?: string; data?: unknown }; message?: string }
+    const status = errorWithResponse.response?.status || 500
+    const statusText = errorWithResponse.response?.statusText || 'Internal Server Error'
+    const data = errorWithResponse.response?.data || { error: errorWithResponse.message }
+    return {
+      ok: false,
+      status,
+      statusText,
+      json: async () => data,
+      text: async () => typeof data === 'string' ? data : JSON.stringify(data),
+    } as unknown as Response
+  }
 }
 
 export async function signOutImmediately() {
   try {
-    await fetch('/api/auth/logout', {
-      method: 'POST',
-      credentials: 'same-origin',
-      keepalive: true,
-    })
+    const { apiClient } = await import('./api-client')
+    await apiClient.post('/api/auth/logout')
+  } catch {
+    // Ignore logout error
   } finally {
     notifyAuthSessionChanged()
   }

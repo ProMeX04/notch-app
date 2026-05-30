@@ -384,7 +384,7 @@ export async function GET(req: Request) {
 
     // 5. Determine redirect destination
     // If state has oauth parameters, we redirect back to /oauth/authorize to finish the flow
-    let redirectDestination = '/pro';
+    let redirectDestination = '/account';
     if (state.includes('client_id=')) {
       redirectDestination = `/oauth/authorize?${state}`;
     }

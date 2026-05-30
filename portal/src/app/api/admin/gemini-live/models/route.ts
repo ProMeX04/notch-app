@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-
+import { z } from "zod";
 import {
   deleteGeminiLiveModelAdminConfig,
   listGeminiLiveModelAdminConfigs,
@@ -8,6 +8,21 @@ import {
   upsertGeminiLiveModelAdminConfig,
 } from "@/lib/gemini-live-model-policy";
 import { requireAdminUser } from "@/lib/notch-auth";
+
+const actionSchema = z.object({
+  action: z.enum(["restore_defaults", "sync_google"]),
+});
+
+const upsertModelSchema = z.object({
+  modelId: z.string().trim().min(1, "Model ID is required"),
+  displayName: z.string().trim().optional(),
+  isEnabled: z.boolean().optional().default(false),
+  sortOrder: z.number().finite().int().optional().default(0),
+});
+
+const deleteModelSchema = z.object({
+  modelId: z.string().trim().min(1, "Model ID is required"),
+});
 
 export async function GET(req: Request) {
   try {
@@ -25,29 +40,36 @@ export async function POST(req: Request) {
     const adminCheck = await requireAdminUser(req);
     if (adminCheck) return adminCheck;
 
-    const data = await req.json();
-    if (data?.action === "restore_defaults") {
-      return NextResponse.json(await restoreDefaultGeminiLiveModelAdminConfigs());
-    }
-    if (data?.action === "sync_google") {
-      return NextResponse.json(await syncGeminiLiveModelsFromGoogle());
+    const rawBody = await req.json();
+
+    // Check if it's an action (restore defaults or sync from google)
+    const actionResult = actionSchema.safeParse(rawBody);
+    if (actionResult.success) {
+      const { action } = actionResult.data;
+      if (action === "restore_defaults") {
+        return NextResponse.json(await restoreDefaultGeminiLiveModelAdminConfigs());
+      }
+      if (action === "sync_google") {
+        return NextResponse.json(await syncGeminiLiveModelsFromGoogle());
+      }
     }
 
-    const modelId = typeof data?.modelId === "string" ? data.modelId.trim() : "";
-    if (!modelId) {
-      return NextResponse.json({ error: "Model ID is required" }, { status: 400 });
+    // Otherwise, parse as model configuration upsert
+    const upsertResult = upsertModelSchema.safeParse(rawBody);
+    if (!upsertResult.success) {
+      return NextResponse.json(
+        { error: "Invalid request payload", details: upsertResult.error.format() },
+        { status: 400 }
+      );
     }
 
-    const displayName = typeof data?.displayName === "string" ? data.displayName : modelId;
-    const sortOrder = typeof data?.sortOrder === "number" && Number.isFinite(data.sortOrder)
-      ? Math.trunc(data.sortOrder)
-      : 0;
+    const { modelId, displayName, isEnabled, sortOrder } = upsertResult.data;
 
     return NextResponse.json(
       await upsertGeminiLiveModelAdminConfig({
         modelId,
-        displayName,
-        isEnabled: Boolean(data?.isEnabled),
+        displayName: displayName || modelId,
+        isEnabled,
         sortOrder,
       }),
     );
@@ -63,10 +85,18 @@ export async function DELETE(req: Request) {
     if (adminCheck) return adminCheck;
 
     const { searchParams } = new URL(req.url);
-    const modelId = searchParams.get("modelId")?.trim() ?? "";
-    if (!modelId) {
-      return NextResponse.json({ error: "Model ID is required" }, { status: 400 });
+    const paramsResult = deleteModelSchema.safeParse({
+      modelId: searchParams.get("modelId"),
+    });
+
+    if (!paramsResult.success) {
+      return NextResponse.json(
+        { error: "Invalid parameters", details: paramsResult.error.format() },
+        { status: 400 }
+      );
     }
+
+    const { modelId } = paramsResult.data;
 
     await deleteGeminiLiveModelAdminConfig(modelId);
     return NextResponse.json({ ok: true });

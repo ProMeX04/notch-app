@@ -8,6 +8,7 @@ import { AlertCircle, Loader2 } from 'lucide-react'
 import { PortalAppHandoffCard } from '@/components/portal/PortalAppHandoffCard'
 import { usePortalAuth } from '@/components/portal/PortalAuthProvider'
 import { PortalLogo } from '@/components/portal/PortalLogo'
+import { Navbar } from '@/components/portal/Navbar'
 import {
   buildPortalOAuthSearch,
   completePortalOAuthAuthorization,
@@ -64,7 +65,7 @@ function LoginPageContent() {
 
     const continueFlow = async () => {
       if (!oauthRequest) {
-        router.replace('/pro')
+        router.replace('/')
         return
       }
 
@@ -92,10 +93,8 @@ function LoginPageContent() {
 
 
   return (
-    <main className="portal-auth-page-centered">
-        <div className="portal-auth-topbar-minimal">
-          <PortalLogo />
-        </div>
+    <main className="portal-auth-page-centered" style={{ paddingTop: '100px' }}>
+      <Navbar />
 
       <section className="portal-auth-container">
         <div className="portal-auth-header-centered">

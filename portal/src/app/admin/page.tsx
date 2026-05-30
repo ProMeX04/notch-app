@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Activity, AlertTriangle, BarChart3, ChevronLeft, ChevronRight, CreditCard, Loader2, RefreshCw, ShieldCheck, TrendingUp, Users } from "lucide-react";
 import { StatCard } from "./components/StatCard";
+import { apiClient } from "@/lib/api-client";
+import { useQuery } from "@tanstack/react-query";
 
 type DailyMetric = {
   date: string;
@@ -126,55 +128,15 @@ function MiniBarChart({ data, field, color }: { data: DailyMetric[]; field: keyo
     </div>
   );
 }
-
 export default function AdminDashboard() {
-  const [stats, setStats] = useState<AdminStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [updating, setUpdating] = useState(false);
+  const { data: stats, isLoading: loading, error: queryError, isFetching: updating, refetch: loadStats } = useQuery<AdminStats>({
+    queryKey: ["adminStats"],
+    queryFn: () => apiClient.get("/api/admin/stats").then((res) => res.data),
+    refetchInterval: 1000,
+  });
+
+  const error = queryError ? (queryError instanceof Error ? queryError.message : "Không tải được thống kê") : null;
   const [recentEventsPage, setRecentEventsPage] = useState(1);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const loadStats = useCallback(async () => {
-    setError(null);
-    setUpdating(true);
-    try {
-      const response = await fetch("/api/admin/stats");
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.error || "Không tải được thống kê");
-      setStats(data);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Không tải được thống kê");
-    } finally {
-      setLoading(false);
-      setUpdating(false);
-    }
-  }, []);
-
-  const initialLoad = useCallback(async () => {
-    setLoading(true);
-    await loadStats();
-  }, [loadStats]);
-
-  const startPolling = useCallback(() => {
-    if (pollRef.current) return;
-    pollRef.current = setInterval(() => {
-      void loadStats();
-    }, 1000);
-  }, [loadStats]);
-
-  const stopPolling = useCallback(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => {
-    void initialLoad();
-    startPolling();
-    return () => stopPolling();
-  }, [initialLoad, startPolling, stopPolling]);
 
   const planPercent = useMemo(() => {
     if (!stats?.overview.totalUsers) return 0;
@@ -189,7 +151,10 @@ export default function AdminDashboard() {
   }, [recentEventsPage, stats]);
 
   useEffect(() => {
-    if (recentEventsPage > recentEventsTotalPages) setRecentEventsPage(recentEventsTotalPages);
+    if (recentEventsPage > recentEventsTotalPages) {
+      const timer = setTimeout(() => setRecentEventsPage(recentEventsTotalPages), 0);
+      return () => clearTimeout(timer);
+    }
   }, [recentEventsPage, recentEventsTotalPages]);
 
   if (loading && !stats) {
@@ -206,7 +171,7 @@ export default function AdminDashboard() {
         <AlertTriangle className="mx-auto mb-4 text-[#ea4335]" size={40} />
         <h1 className="text-xl font-medium text-[#202124]">Không tải được dashboard</h1>
         <p className="mt-2 text-sm text-[#5f6368]">{error}</p>
-        <button onClick={loadStats} className="mt-4 px-4 py-2 rounded bg-[#1a73e8] text-white text-sm font-medium hover:bg-[#1557b0] transition-colors">Thử lại</button>
+        <button onClick={() => { void loadStats(); }} className="mt-4 px-4 py-2 rounded bg-[#1a73e8] text-white text-sm font-medium hover:bg-[#1557b0] transition-colors">Thử lại</button>
       </div>
     );
   }

@@ -22,6 +22,12 @@ export const MAX_ACTIVE_DEVICES = resolvedPositiveInt(
   DEFAULT_MAX_ACTIVE_DEVICES,
 )
 
+export function isWebSession(device: { platform: string | null; deviceName: string | null }) {
+  const platform = device.platform?.toLowerCase() ?? ''
+  const deviceName = device.deviceName?.toLowerCase() ?? ''
+  return platform === 'web' || deviceName.includes('browser')
+}
+
 function normalizeText(value: unknown, maxLength: number) {
   if (typeof value !== 'string') return null
   const trimmed = value.trim()
@@ -154,14 +160,18 @@ export async function revokeSessionsByIds(
 export async function enforceActiveDeviceLimit(
   tx: DatabaseClient,
   userId: string,
-  currentDeviceId: string,
+  currentDevice: { deviceId: string; platform: string | null; deviceName: string | null },
 ) {
+  if (isWebSession(currentDevice)) {
+    return
+  }
+
   const activeSessions = await tx.authSession.findMany({
     where: {
       userId,
       revokedAt: null,
       expiresAt: { gt: new Date() },
-      deviceId: { not: currentDeviceId },
+      deviceId: { not: currentDevice.deviceId },
     },
     select: {
       id: true,
@@ -185,6 +195,10 @@ export async function enforceActiveDeviceLimit(
   >()
 
   for (const session of activeSessions) {
+    if (isWebSession(session)) {
+      continue
+    }
+
     const key = session.deviceId ?? `session:${session.id}`
     const existing = deviceMap.get(key)
     if (existing) {

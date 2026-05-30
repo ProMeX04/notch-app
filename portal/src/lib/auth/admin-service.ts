@@ -1,10 +1,17 @@
-import { readBearerToken, readCookie } from '@/lib/auth/token-service'
+import { readBearerToken, readCookie, verifyJWT } from '@/lib/auth/token-service'
 import { findSessionByAccessToken } from '@/lib/auth/session-query-service'
 
 export async function verifyAdminSession(token: string | null): Promise<boolean> {
   if (!token) return false
 
   try {
+    // Try offline verification first
+    const payload = verifyJWT(token)
+    if (payload) {
+      return Boolean(payload.isAdmin)
+    }
+
+    // Fallback to database lookup for old sessions
     const session = await findSessionByAccessToken(token)
     if (!session?.user) return false
 

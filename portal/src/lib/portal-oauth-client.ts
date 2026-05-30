@@ -1,6 +1,6 @@
 'use client'
 
-import { authenticatedFetch } from '@/lib/portal-auth-client'
+import { apiClient } from '@/lib/api-client'
 
 export type PortalOAuthAuthorizeRequest = {
   client_id: string
@@ -66,18 +66,17 @@ export function buildPortalOAuthSearch(request: PortalOAuthAuthorizeRequest | nu
 }
 
 export async function completePortalOAuthAuthorization(request: PortalOAuthAuthorizeRequest) {
-  const response = await authenticatedFetch('/api/oauth/authorize', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(request),
-  })
-
-  const data = await response.json().catch(() => null) as { redirect_to?: string; detail?: string } | null
-  if (!response.ok || !data?.redirect_to) {
-    throw new Error(data?.detail || 'Không thể hoàn tất đăng nhập cho Notch app.')
+  try {
+    const response = await apiClient.post<{ redirect_to?: string; detail?: string }>('/api/oauth/authorize', request)
+    if (!response.data || !response.data.redirect_to) {
+      throw new Error(response.data?.detail || 'Không thể hoàn tất đăng nhập cho Notch app.')
+    }
+    return response.data.redirect_to
+  } catch (error: unknown) {
+    const errorWithResponse = error as { response?: { data?: { detail?: string } }; message?: string }
+    const detail = errorWithResponse.response?.data?.detail || errorWithResponse.message
+    throw new Error(detail || 'Không thể hoàn tất đăng nhập cho Notch app.')
   }
-
-  return data.redirect_to
 }
 
 export function launchPortalOAuthAppRedirect(

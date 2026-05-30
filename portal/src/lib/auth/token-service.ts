@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 
 const PORTABLE_SESSION_TOKEN_PREFIX = 'nts_'
 
@@ -115,3 +115,90 @@ export function decodeSessionToken(token: string): DecodedSessionToken | null {
     return null
   }
 }
+
+export type JWTPayload = {
+  userId: string
+  email: string | null
+  name: string | null
+  displayName: string | null
+  avatarUrl: string | null
+  isPro: boolean
+  isAdmin: boolean
+  leaderboardOptIn: boolean
+  userCreatedAt: string
+  sessionId: string
+  deviceId: string | null
+  iat?: number
+  exp?: number
+}
+
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET?.trim()
+  if (!secret) {
+    return 'development-secret-key-notch-default-change-in-production'
+  }
+  return secret
+}
+
+function base64UrlEncode(str: string): string {
+  return Buffer.from(str).toString('base64url')
+}
+
+function base64UrlDecode(str: string): string {
+  return Buffer.from(str, 'base64url').toString('utf8')
+}
+
+export function signJWT(payload: Omit<JWTPayload, 'iat' | 'exp'>, expiresInMs: number): string {
+  const secret = getJwtSecret()
+  const header = { alg: 'HS256', typ: 'JWT' }
+  const now = Date.now()
+  const fullPayload = {
+    ...payload,
+    iat: Math.floor(now / 1000),
+    exp: Math.floor((now + expiresInMs) / 1000),
+  }
+
+  const encodedHeader = base64UrlEncode(JSON.stringify(header))
+  const encodedPayload = base64UrlEncode(JSON.stringify(fullPayload))
+
+  const hmac = createHmac('sha256', secret)
+  hmac.update(`${encodedHeader}.${encodedPayload}`)
+  const signature = hmac.digest('base64url')
+
+  return `${encodedHeader}.${encodedPayload}.${signature}`
+}
+
+export function verifyJWT(token: string): JWTPayload | null {
+  try {
+    const parts = token.split('.')
+    if (parts.length !== 3) return null
+
+    const [encodedHeader, encodedPayload, signature] = parts
+    const secret = getJwtSecret()
+
+    const hmac = createHmac('sha256', secret)
+    hmac.update(`${encodedHeader}.${encodedPayload}`)
+    const expectedSignature = hmac.digest('base64url')
+
+    const signatureBuf = Buffer.from(signature)
+    const expectedBuf = Buffer.from(expectedSignature)
+    if (signatureBuf.length !== expectedBuf.length) {
+      return null
+    }
+
+    if (!timingSafeEqual(signatureBuf, expectedBuf)) {
+      return null
+    }
+
+    const payload = JSON.parse(base64UrlDecode(encodedPayload)) as JWTPayload
+    const nowSeconds = Math.floor(Date.now() / 1000)
+    if (payload.exp && nowSeconds >= payload.exp) {
+      return null
+    }
+
+    return payload
+  } catch {
+    return null
+  }
+}
+

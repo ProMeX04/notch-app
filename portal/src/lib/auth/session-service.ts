@@ -20,6 +20,7 @@ import {
   createBridgeBackedSessionToken,
   hashToken,
   readBearerToken,
+  signJWT,
 } from '@/lib/auth/token-service'
 import { readCookie } from '@/lib/auth/token-service'
 import { serializeUser } from '@/lib/auth/user-service'
@@ -82,7 +83,7 @@ export async function issueDeviceBoundAuthPayload(args: {
 }): Promise<NotchAuthPayload> {
   const { tx, user, req } = args
   const now = new Date()
-  const accessToken = randomBytes(32).toString('base64url')
+  const sessionId = 'session_' + randomBytes(16).toString('hex')
   const refreshToken = randomBytes(48).toString('base64url')
   const accessExpiresAt = new Date(Date.now() + ACCESS_TOKEN_TTL_MS)
   const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS)
@@ -110,11 +111,26 @@ export async function issueDeviceBoundAuthPayload(args: {
     'replaced',
   )
 
-  await enforceActiveDeviceLimit(tx, user.id, normalizedDevice.deviceId)
+  await enforceActiveDeviceLimit(tx, user.id, normalizedDevice)
+
+  const accessToken = signJWT({
+    userId: user.id,
+    email: user.email,
+    name: user.name,
+    displayName: user.displayName,
+    avatarUrl: user.avatarUrl,
+    isPro: user.isPro,
+    isAdmin: user.isAdmin,
+    leaderboardOptIn: user.leaderboardOptIn,
+    userCreatedAt: user.createdAt.toISOString(),
+    sessionId: sessionId,
+    deviceId: normalizedDevice.deviceId,
+  }, ACCESS_TOKEN_TTL_MS)
 
   const trustedAt = normalizedDevice.trustDevice ? now : trustedDevice?.trustedAt ?? null
   const session = await tx.authSession.create({
     data: {
+      id: sessionId,
       tokenHash: hashToken(refreshToken),
       accessTokenHash: hashToken(accessToken),
       expiresAt: refreshExpiresAt,
@@ -202,11 +218,25 @@ async function rotateExistingSession(args: {
     existingDevice: existing,
   })
 
-  const accessToken = randomBytes(32).toString('base64url')
-  const refreshToken = randomBytes(48).toString('base64url')
   const accessExpiresAt = new Date(Date.now() + ACCESS_TOKEN_TTL_MS)
   const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS)
   const trustedAt = normalizedDevice.trustDevice ? new Date() : existing.trustedAt
+
+  const accessToken = signJWT({
+    userId: user.id,
+    email: user.email,
+    name: user.name,
+    displayName: user.displayName,
+    avatarUrl: user.avatarUrl,
+    isPro: user.isPro,
+    isAdmin: user.isAdmin,
+    leaderboardOptIn: user.leaderboardOptIn,
+    userCreatedAt: user.createdAt.toISOString(),
+    sessionId: sessionId,
+    deviceId: normalizedDevice.deviceId,
+  }, ACCESS_TOKEN_TTL_MS)
+
+  const refreshToken = randomBytes(48).toString('base64url')
 
   const session = await tx.authSession.update({
     where: { id: sessionId },

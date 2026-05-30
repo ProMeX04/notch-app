@@ -8,7 +8,8 @@ import {
   useState,
 } from 'react'
 
-import { authenticatedFetch, onPortalAuthSessionChange, signOutImmediately } from '@/lib/portal-auth-client'
+import { onPortalAuthSessionChange, signOutImmediately } from '@/lib/portal-auth-client'
+import { apiClient } from '@/lib/api-client'
 
 export type PortalAccountUser = {
   id: string
@@ -34,12 +35,8 @@ type PortalAuthContextValue = {
 const PortalAuthContext = createContext<PortalAuthContextValue | null>(null)
 
 async function fetchAuthenticatedUser() {
-  const response = await authenticatedFetch('/api/auth/me', { cache: 'no-store' })
-  if (!response.ok) {
-    throw new Error('Unable to load authenticated user.')
-  }
-
-  return (await response.json()) as PortalAccountUser
+  const response = await apiClient.get<PortalAccountUser>('/api/auth/me')
+  return response.data
 }
 
 export function PortalAuthProvider({

@@ -2,6 +2,10 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { Bot, CloudDownload, Loader2, Plus, RefreshCw, Save, Sparkles, Trash2 } from "lucide-react";
+import { apiClient } from "@/lib/api-client";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
 
 type GeminiLiveModelConfig = {
   id: string
@@ -14,11 +18,13 @@ type GeminiLiveModelConfig = {
   updatedAt: string | null
 }
 
-const emptyDraft = {
-  modelId: "",
-  displayName: "",
-  sortOrder: 0,
-};
+const addModelFormSchema = z.object({
+  modelId: z.string().trim().min(1, "Model ID là bắt buộc"),
+  displayName: z.string().trim().optional(),
+  sortOrder: z.number().int(),
+});
+
+type AddModelFormData = z.infer<typeof addModelFormSchema>;
 
 function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean }) {
   return (
@@ -37,11 +43,24 @@ function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (
 
 export default function GeminiLiveModelsAdminPage() {
   const [models, setModels] = useState<GeminiLiveModelConfig[]>([]);
-  const [draft, setDraft] = useState(emptyDraft);
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<AddModelFormData>({
+    resolver: zodResolver(addModelFormSchema),
+    defaultValues: {
+      modelId: "",
+      displayName: "",
+      sortOrder: 0,
+    },
+  });
 
   const enabledCount = useMemo(() => models.filter((model) => model.isEnabled).length, [models]);
   const usesDefaults = models.some((model) => model.source === "default");
@@ -51,10 +70,8 @@ export default function GeminiLiveModelsAdminPage() {
     setError(null);
     setNotice(null);
     try {
-      const response = await fetch("/api/admin/gemini-live/models");
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.error || "Không tải được danh sách model");
-      setModels(data);
+      const response = await apiClient.get<GeminiLiveModelConfig[]>("/api/admin/gemini-live/models");
+      setModels(response.data);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Không tải được danh sách model");
     } finally {
@@ -71,24 +88,18 @@ export default function GeminiLiveModelsAdminPage() {
     setError(null);
     setNotice(null);
     try {
-      const response = await fetch("/api/admin/gemini-live/models", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          modelId: model.id,
-          displayName: model.displayName,
-          isEnabled: model.isEnabled,
-          sortOrder: model.sortOrder,
-        }),
+      const response = await apiClient.post<GeminiLiveModelConfig>("/api/admin/gemini-live/models", {
+        modelId: model.id,
+        displayName: model.displayName,
+        isEnabled: model.isEnabled,
+        sortOrder: model.sortOrder,
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.error || "Không lưu được model");
+      const data = response.data;
       setModels((current) => {
         const existing = current.some((item) => item.id === data.id);
         const next = existing ? current.map((item) => (item.id === data.id ? data : item)) : [...current, data];
         return next.sort((left, right) => left.sortOrder - right.sortOrder || left.displayName.localeCompare(right.displayName));
       });
-      setDraft(emptyDraft);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Không lưu được model");
     } finally {
@@ -96,18 +107,14 @@ export default function GeminiLiveModelsAdminPage() {
     }
   };
 
-  const addModel = async () => {
-    const modelId = draft.modelId.trim();
-    if (!modelId) {
-      setError("Model ID là bắt buộc.");
-      return;
-    }
+  const onFormSubmit = async (formData: AddModelFormData) => {
     await saveModel({
-      id: modelId,
-      displayName: draft.displayName.trim() || modelId,
+      id: formData.modelId,
+      displayName: formData.displayName?.trim() || formData.modelId,
       isEnabled: true,
-      sortOrder: draft.sortOrder,
+      sortOrder: formData.sortOrder,
     });
+    reset();
   };
 
   const deleteModel = async (modelId: string) => {
@@ -115,11 +122,9 @@ export default function GeminiLiveModelsAdminPage() {
     setError(null);
     setNotice(null);
     try {
-      const response = await fetch(`/api/admin/gemini-live/models?modelId=${encodeURIComponent(modelId)}`, {
-        method: "DELETE",
+      await apiClient.delete(`/api/admin/gemini-live/models`, {
+        params: { modelId }
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.error || "Không xóa được model");
       setModels((current) => current.filter((model) => model.id !== modelId));
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : "Không xóa được model");
@@ -133,14 +138,8 @@ export default function GeminiLiveModelsAdminPage() {
     setError(null);
     setNotice(null);
     try {
-      const response = await fetch("/api/admin/gemini-live/models", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "restore_defaults" }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.error || "Không khôi phục được model mặc định");
-      setModels(data);
+      const response = await apiClient.post<GeminiLiveModelConfig[]>("/api/admin/gemini-live/models", { action: "restore_defaults" });
+      setModels(response.data);
     } catch (restoreError) {
       setError(restoreError instanceof Error ? restoreError.message : "Không khôi phục được model mặc định");
     } finally {
@@ -153,13 +152,8 @@ export default function GeminiLiveModelsAdminPage() {
     setError(null);
     setNotice(null);
     try {
-      const response = await fetch("/api/admin/gemini-live/models", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "sync_google" }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.error || "Không đồng bộ được model từ Google");
+      const response = await apiClient.post<{ models: GeminiLiveModelConfig[]; discoveredCount: number; addedCount: number }>("/api/admin/gemini-live/models", { action: "sync_google" });
+      const data = response.data;
       setModels(data.models);
       setNotice(`Đã tìm thấy ${data.discoveredCount} Live models từ Google; thêm mới ${data.addedCount} model ở trạng thái tắt.`);
     } catch (syncError) {
@@ -218,7 +212,7 @@ export default function GeminiLiveModelsAdminPage() {
         </div>
       </div>
 
-      <div className="rounded border border-[#dadce0] bg-white p-4 shadow-sm">
+      <form onSubmit={handleSubmit(onFormSubmit)} className="rounded border border-[#dadce0] bg-white p-4 shadow-sm">
         <div className="mb-4 flex items-start gap-3">
           <Bot className="text-[#1a73e8]" size={20} />
           <div>
@@ -227,15 +221,22 @@ export default function GeminiLiveModelsAdminPage() {
           </div>
         </div>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_120px_auto]">
-          <input value={draft.modelId} onChange={(event) => setDraft((current) => ({ ...current, modelId: event.target.value }))} className="rounded border border-[#dadce0] bg-white px-3 py-2 text-sm outline-none focus:border-[#1a73e8]" placeholder="model id" />
-          <input value={draft.displayName} onChange={(event) => setDraft((current) => ({ ...current, displayName: event.target.value }))} className="rounded border border-[#dadce0] bg-white px-3 py-2 text-sm outline-none focus:border-[#1a73e8]" placeholder="display name" />
-          <input type="number" value={draft.sortOrder} onChange={(event) => setDraft((current) => ({ ...current, sortOrder: Number(event.target.value) || 0 }))} className="rounded border border-[#dadce0] bg-white px-3 py-2 text-sm outline-none focus:border-[#1a73e8]" placeholder="thứ tự" />
-          <button onClick={addModel} disabled={Boolean(savingKey)} className="inline-flex items-center justify-center gap-2 rounded border border-[#1a73e8] bg-[#1a73e8] px-4 py-2 text-sm font-medium text-white hover:bg-[#1557b0] disabled:opacity-60">
+          <div className="flex flex-col gap-1">
+            <input {...register("modelId")} className={`w-full rounded border px-3 py-2 text-sm outline-none focus:border-[#1a73e8] ${errors.modelId ? 'border-red-500' : 'border-[#dadce0]'}`} placeholder="model id" />
+            {errors.modelId && <p className="text-xs text-red-500">{errors.modelId.message}</p>}
+          </div>
+          <div className="flex flex-col gap-1">
+            <input {...register("displayName")} className="w-full rounded border border-[#dadce0] bg-white px-3 py-2 text-sm outline-none focus:border-[#1a73e8]" placeholder="display name" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <input type="number" {...register("sortOrder", { valueAsNumber: true })} className="w-full rounded border border-[#dadce0] bg-white px-3 py-2 text-sm outline-none focus:border-[#1a73e8]" placeholder="thứ tự" />
+          </div>
+          <button type="submit" disabled={Boolean(savingKey)} className="h-[38px] inline-flex items-center justify-center gap-2 rounded border border-[#1a73e8] bg-[#1a73e8] px-4 py-2 text-sm font-medium text-white hover:bg-[#1557b0] disabled:opacity-60">
             <Plus size={16} />
             Thêm
           </button>
         </div>
-      </div>
+      </form>
 
       <div className="rounded border border-[#dadce0] bg-white shadow-sm">
         <div className="flex items-start justify-between gap-3 border-b border-[#dadce0] px-4 py-3 sm:items-center">

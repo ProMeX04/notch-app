@@ -1,16 +1,16 @@
 .page {
-  --page-bg: #f7f8fa;
-  --surface: #ffffff;
-  --surface-muted: #f1f4f5;
-  --ink: #152027;
-  --ink-secondary: #596770;
-  --ink-tertiary: #8b969d;
-  --line: #e4e9eb;
-  --line-strong: #d4dde0;
-  --accent: #0d866d;
-  --accent-soft: #e5f3ee;
-  --gold: #b78323;
-  --gold-soft: #f8f0e2;
+  --page-bg: transparent;
+  --surface: rgba(255, 255, 255, 0.03);
+  --surface-muted: rgba(255, 255, 255, 0.05);
+  --ink: #ffffff;
+  --ink-secondary: #d4d4d8;
+  --ink-tertiary: #a1a1aa;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.15);
+  --accent: #38bdf8;
+  --accent-soft: rgba(56, 189, 248, 0.1);
+  --gold: #f59e0b;
+  --gold-soft: rgba(245, 158, 11, 0.1);
   min-height: 100vh;
   background: var(--page-bg);
   color: var(--ink);
@@ -138,7 +138,7 @@
   padding: 4px;
   display: inline-flex;
   gap: 2px;
-  background: #edf1f2;
+  background: rgba(255, 255, 255, 0.05);
   border-radius: 8px;
 }
 
@@ -188,7 +188,7 @@
   height: 178px;
   padding: 25px 16px 15px;
   border-radius: 8px 8px 0 0;
-  background: #f5f7f7;
+  background: rgba(255, 255, 255, 0.015);
   border: 1px solid var(--line);
   border-bottom: none;
   display: flex;
@@ -208,8 +208,8 @@
 
 .firstPlace {
   height: 204px;
-  background: linear-gradient(180deg, #fcfaf5 0%, #fff 100%);
-  border-color: #ebdcc0;
+  background: linear-gradient(180deg, rgba(245, 158, 11, 0.15) 0%, rgba(255, 255, 255, 0.03) 100%);
+  border-color: rgba(245, 158, 11, 0.3);
   animation-delay: 90ms;
 }
 
@@ -246,8 +246,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #e4edec;
-  color: #326057;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--ink);
   font-size: 0.86rem;
   font-weight: 650;
 }
@@ -319,7 +319,7 @@
 .tableHead {
   height: 44px;
   color: var(--ink-tertiary);
-  background: #fcfcfd;
+  background: rgba(255, 255, 255, 0.02);
   font-size: 0.72rem;
   font-weight: 650;
   text-transform: uppercase;
@@ -346,7 +346,7 @@
 }
 
 .row:hover {
-  background: #f6faf8;
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .rank {
@@ -376,8 +376,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #eef2f2;
-  color: #55736d;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ink);
   font-size: 0.72rem;
   font-weight: 650;
 }
@@ -403,7 +403,7 @@
   height: 5px;
   overflow: hidden;
   border-radius: 4px;
-  background: #e7edef;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .bar::before {
@@ -649,5 +649,49 @@
 
   .sessions::after {
     content: " phiên";
+  }
+}
+
+.liveIndicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+  padding: 4px 8px;
+  border-radius: 9999px;
+  letter-spacing: 0.05em;
+  margin-left: 12px;
+  align-self: center;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.liveDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+  animation: pulse 1.6s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.6;
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+  }
+  70% {
+    transform: scale(1.1);
+    opacity: 1;
+    box-shadow: 0 0 0 5px rgba(16, 185, 129, 0);
+  }
+  100% {
+    transform: scale(0.9);
+    opacity: 0.6;
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
   }
 }

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { PortalAuthProvider } from "@/components/portal/PortalAuthProvider";
 import { PortalPendingLogoutFlusher } from "@/components/portal/PortalPendingLogoutFlusher";
+import { QueryProvider } from "@/components/portal/QueryProvider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -28,10 +29,12 @@ export default function RootLayout({
   return (
     <html lang="vi" className={`${geistSans.variable} ${geistMono.variable}`} data-scroll-behavior="smooth">
       <body className="portal-body">
-        <PortalAuthProvider>
-          <PortalPendingLogoutFlusher />
-          {children}
-        </PortalAuthProvider>
+        <QueryProvider>
+          <PortalAuthProvider>
+            <PortalPendingLogoutFlusher />
+            {children}
+          </PortalAuthProvider>
+        </QueryProvider>
       </body>
     </html>
   );

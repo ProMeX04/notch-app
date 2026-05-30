@@ -10,6 +10,7 @@ export type SessionUser = {
   avatarUrl: string | null
   createdAt: Date
   isPro: boolean
+  isAdmin: boolean
   leaderboardOptIn: boolean
 }
 

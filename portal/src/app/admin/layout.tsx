@@ -21,13 +21,13 @@ export default async function AdminLayout({
   }
 
   return (
-    <div className="min-h-screen bg-[#f8fafd] text-[#202124]">
-      <div className="fixed left-0 right-0 top-0 z-50 flex h-16 items-center border-b border-[#dadce0] bg-white px-4 shadow-[0_1px_2px_rgba(60,64,67,0.12)] sm:px-6">
+    <div className="min-h-screen bg-black text-white">
+      <div className="fixed left-0 right-0 top-0 z-50 flex h-16 items-center border-b border-slate-200 bg-black/80 px-4 backdrop-blur-md sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#dadce0] bg-white text-sm font-black text-[#1a73e8]">N</div>
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white/70 text-sm font-black text-sky-500">N</div>
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-[#3c4043]">Notch Admin Console</p>
-            <p className="truncate text-xs text-[#5f6368]">Quản lý người dùng và doanh thu</p>
+            <p className="truncate text-sm font-semibold text-white">Notch Admin Console</p>
+            <p className="truncate text-xs text-slate-400">Quản lý người dùng và doanh thu</p>
           </div>
         </div>
       </div>

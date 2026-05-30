@@ -10,7 +10,7 @@ import { usePortalAuth } from './PortalAuthProvider';
 function NavbarContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { status, signOut } = usePortalAuth();
+  const { status, signOut, user } = usePortalAuth();
   const isAuthenticated = status === 'authenticated';
   
   const [scrolled, setScrolled] = useState(false);
@@ -77,32 +77,35 @@ function NavbarContent() {
             
             {status !== 'booting' && (
               <>
-                {isAuthenticated ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: '12px' }}>
+                 {isAuthenticated ? (
+                  <div style={{ display: 'flex', alignItems: 'center', marginLeft: '12px' }}>
                     <Link href="/account" style={{
                       ...linkStyle(isProfileActive),
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '6px',
+                      gap: '8px',
                       background: isProfileActive ? 'var(--card-strong)' : 'transparent',
-                      padding: '6px 14px',
+                      padding: user?.avatar_url ? '4px 14px 4px 6px' : '6px 14px',
                       borderRadius: '999px',
                       border: '1px solid var(--border)',
                     }}>
-                      <User size={14} />
+                      {user?.avatar_url ? (
+                        <img 
+                          src={user.avatar_url} 
+                          alt="Avatar" 
+                          referrerPolicy="no-referrer"
+                          style={{
+                            width: '22px',
+                            height: '22px',
+                            borderRadius: '50%',
+                            objectFit: 'cover'
+                          }}
+                        />
+                      ) : (
+                        <User size={14} />
+                      )}
                       Tài khoản
                     </Link>
-                    <button onClick={() => signOut()} className="portal-button-ghost" style={{ 
-                      height: '36px', 
-                      padding: '0 16px', 
-                      fontSize: '0.85rem',
-                      borderRadius: '999px',
-                      border: '1px solid rgba(239, 68, 68, 0.2)',
-                      color: 'var(--red)',
-                      background: 'rgba(239, 68, 68, 0.05)'
-                    }}>
-                      Đăng xuất
-                    </button>
                   </div>
                 ) : (
                   <Link href="/login" className="portal-button" style={{ 
@@ -150,32 +153,31 @@ function NavbarContent() {
             
             {status !== 'booting' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
-                {isAuthenticated ? (
-                  <>
-                    <Link href="/account" onClick={() => setMobileMenuOpen(false)} style={{
-                      ...linkStyle(isProfileActive),
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      padding: '8px 0',
-                    }}>
+                 {isAuthenticated ? (
+                  <Link href="/account" onClick={() => setMobileMenuOpen(false)} style={{
+                    ...linkStyle(isProfileActive),
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '8px 0',
+                  }}>
+                    {user?.avatar_url ? (
+                      <img 
+                        src={user.avatar_url} 
+                        alt="Avatar" 
+                        referrerPolicy="no-referrer"
+                        style={{
+                          width: '24px',
+                          height: '24px',
+                          borderRadius: '50%',
+                          objectFit: 'cover'
+                        }}
+                      />
+                    ) : (
                       <User size={16} />
-                      Tài khoản cá nhân
-                    </Link>
-                    <button onClick={() => { signOut(); setMobileMenuOpen(false); }} style={{ 
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      color: 'var(--red)',
-                      fontSize: '0.95rem',
-                      fontWeight: 500,
-                      padding: '8px 0',
-                      textAlign: 'left'
-                    }}>
-                      <LogOut size={16} />
-                      Đăng xuất
-                    </button>
-                  </>
+                    )}
+                    Tài khoản cá nhân
+                  </Link>
                 ) : (
                   <Link href="/login" onClick={() => setMobileMenuOpen(false)} className="portal-button" style={{ 
                     width: '100%', 

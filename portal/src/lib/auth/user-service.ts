@@ -30,6 +30,7 @@ export async function authUserResponse(
     email: string | null
     name: string | null
     displayName?: string | null
+    avatarUrl?: string | null
     createdAt: Date
     isPro: boolean
     leaderboardOptIn?: boolean

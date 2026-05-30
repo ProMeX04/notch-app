@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Loader2, MonitorSmartphone, ShieldCheck, Sparkles } from 'lucide-react';
+import { Loader2, MonitorSmartphone, ShieldCheck, Sparkles, LogOut } from 'lucide-react';
 import { usePortalAuth } from './PortalAuthProvider';
 import { apiClient } from '@/lib/api-client';
 
@@ -40,7 +40,7 @@ function formatDate(value: string | null, options?: Intl.DateTimeFormatOptions) 
 }
 
 export function ProfileView() {
-  const { status, user } = usePortalAuth();
+  const { status, user, signOut } = usePortalAuth();
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   const [deviceLimit, setDeviceLimit] = useState(0);
   const [devices, setDevices] = useState<AccountDevice[]>([]);
@@ -193,7 +193,7 @@ export function ProfileView() {
           </div>
         </div>
         
-        <div className="dashboard-hero-actions">
+        <div className="dashboard-hero-actions" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
           {accountPlan !== 'pro' && (
             <button 
               className="dashboard-upgrade-cta portal-button" 
@@ -205,6 +205,26 @@ export function ProfileView() {
               <span>Nâng cấp Pro ngay</span>
             </button>
           )}
+          
+          <button 
+            className="portal-button-ghost" 
+            onClick={() => signOut()}
+            style={{ 
+              height: '42px', 
+              padding: '0 20px', 
+              fontSize: '0.85rem',
+              borderRadius: '999px',
+              border: '1px solid rgba(239, 68, 68, 0.25)',
+              color: 'var(--red)',
+              background: 'rgba(239, 68, 68, 0.05)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            <LogOut size={15} />
+            <span>Đăng xuất</span>
+          </button>
         </div>
       </section>
 

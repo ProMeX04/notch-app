@@ -1,10 +1,8 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, ChevronLeft, ChevronRight, Loader2, RefreshCw, Search, Users } from "lucide-react";
-import { apiClient } from "@/lib/api-client";
-import { useQuery } from "@tanstack/react-query";
 
 type AdminUserRow = {
   id: string;
@@ -49,11 +47,16 @@ function formatCurrency(value: number) {
 }
 
 export default function UsersManagement() {
+  const [data, setData] = useState<UsersResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [updating, setUpdating] = useState(false);
   const [query, setQuery] = useState("");
   const [plan, setPlan] = useState("all");
   const [role, setRole] = useState("all");
   const [sort, setSort] = useState("newest");
   const [page, setPage] = useState(1);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const params = useMemo(() => {
     const search = new URLSearchParams();
@@ -66,13 +69,46 @@ export default function UsersManagement() {
     return search;
   }, [query, plan, role, sort, page]);
 
-  const { data, isLoading: loading, error: queryError, isFetching: updating, refetch: loadUsers } = useQuery<UsersResponse>({
-    queryKey: ["adminUsers", params.toString()],
-    queryFn: () => apiClient.get<UsersResponse>(`/api/admin/users?${params.toString()}`).then((res) => res.data),
-    refetchInterval: 1000,
-  });
+  const loadUsers = useCallback(async () => {
+    setError(null);
+    setUpdating(true);
+    try {
+      const response = await fetch(`/api/admin/users?${params.toString()}`);
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.error || "Không tải được danh sách người dùng");
+      setData(payload);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Không tải được danh sách người dùng");
+    } finally {
+      setLoading(false);
+      setUpdating(false);
+    }
+  }, [params]);
 
-  const error = queryError ? (queryError instanceof Error ? queryError.message : "Không tải được danh sách người dùng") : null;
+  const initialLoad = useCallback(async () => {
+    setLoading(true);
+    await loadUsers();
+  }, [loadUsers]);
+
+  const startPolling = useCallback(() => {
+    if (pollRef.current) return;
+    pollRef.current = setInterval(() => {
+      void loadUsers();
+    }, 1000);
+  }, [loadUsers]);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    void initialLoad();
+    startPolling();
+    return () => stopPolling();
+  }, [initialLoad, startPolling, stopPolling]);
 
   const updateFilter = (setter: (value: string) => void, value: string) => {
     setter(value);
@@ -108,7 +144,7 @@ export default function UsersManagement() {
           <p className="mt-1 text-sm text-[#5f6368]">Xem tài khoản, gói đang dùng, lần hoạt động gần nhất và lịch sử thanh toán.</p>
         </div>
         <button
-          onClick={() => { void loadUsers(); }}
+          onClick={loadUsers}
           disabled={loading}
           className="inline-flex w-full items-center justify-center gap-2 rounded border border-[#dadce0] bg-white px-4 py-2 text-sm font-medium text-[#1a73e8] hover:bg-[#f8f9fa] transition-colors disabled:opacity-60 sm:w-auto"
         >

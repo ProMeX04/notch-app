@@ -3,7 +3,6 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, LogOut } from "lucide-react";
-import { apiClient } from "@/lib/api-client";
 
 export function AdminLogoutButton() {
   const router = useRouter();
@@ -15,7 +14,8 @@ export function AdminLogoutButton() {
     setError(null);
 
     try {
-      await apiClient.post("/api/auth/logout");
+      const response = await fetch("/api/auth/logout", { method: "POST" });
+      if (!response.ok && response.status !== 400) throw new Error("Không thể đăng xuất. Vui lòng thử lại.");
       router.replace("/login");
       router.refresh();
     } catch (logoutError) {

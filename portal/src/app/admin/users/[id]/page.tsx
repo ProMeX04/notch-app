@@ -1,11 +1,9 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, CreditCard, Database, Laptop, Loader2, RefreshCw, ShieldCheck, UserRound } from "lucide-react";
-import { apiClient } from "@/lib/api-client";
-import { useQuery } from "@tanstack/react-query";
 
 const tablePageSize = 10;
 
@@ -150,16 +148,50 @@ function InfoCard({ title, value, note, icon: Icon }: { title: string; value: st
 export default function AdminUserDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
+  const [data, setData] = useState<UserDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [eventsPage, setEventsPage] = useState(1);
+  const loadUser = useCallback(async () => {
+    setError(null);
+    try {
+      const response = await fetch(`/api/admin/users/${id}`);
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.error || "Không tải được chi tiết user");
+      setData(payload);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Không tải được chi tiết user");
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
 
-  const { data, isLoading: loading, error: queryError, refetch: loadUser } = useQuery<UserDetail>({
-    queryKey: ["adminUserDetail", id],
-    queryFn: () => apiClient.get<UserDetail>(`/api/admin/users/${id}`).then((res) => res.data),
-    refetchInterval: 1000,
-    enabled: Boolean(id),
-  });
+  const initialLoad = useCallback(async () => {
+    setLoading(true);
+    await loadUser();
+  }, [loadUser]);
 
-  const error = queryError ? (queryError instanceof Error ? queryError.message : "Không tải được chi tiết user") : null;
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startPolling = useCallback(() => {
+    if (pollRef.current) return;
+    pollRef.current = setInterval(() => {
+      void loadUser();
+    }, 1000);
+  }, [loadUser]);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    void initialLoad();
+    startPolling();
+    return () => stopPolling();
+  }, [initialLoad, startPolling, stopPolling]);
 
   const latestPayment = useMemo(() => data?.payments[0] ?? null, [data]);
   const eventsTotalPages = Math.max(Math.ceil((data?.events.length ?? 0) / tablePageSize), 1);
@@ -170,10 +202,7 @@ export default function AdminUserDetailPage() {
   }, [data, eventsPage]);
 
   useEffect(() => {
-    if (eventsPage > eventsTotalPages) {
-      const timer = setTimeout(() => setEventsPage(eventsTotalPages), 0);
-      return () => clearTimeout(timer);
-    }
+    if (eventsPage > eventsTotalPages) setEventsPage(eventsTotalPages);
   }, [eventsPage, eventsTotalPages]);
 
   if (loading && !data) {
@@ -191,7 +220,7 @@ export default function AdminUserDetailPage() {
         <p className="mt-2 text-[#5f6368]">{error}</p>
         <div className="mt-6 flex justify-center gap-3">
           <Link href="/admin/users" className="rounded border border-[#dadce0] bg-white px-5 py-3 font-medium text-[#3c4043]">Quay lại</Link>
-          <button onClick={() => { void loadUser(); }} className="rounded bg-[#1a73e8] px-5 py-3 font-medium text-white">Thử lại</button>
+          <button onClick={loadUser} className="rounded bg-[#1a73e8] px-5 py-3 font-medium text-white">Thử lại</button>
         </div>
       </div>
     );
@@ -211,7 +240,7 @@ export default function AdminUserDetailPage() {
             <p className="mt-1 text-sm text-[#5f6368]">{data.user.email || "Không có email"}</p>
           </div>
         </div>
-        <button onClick={() => { void loadUser(); }} disabled={loading} className="inline-flex items-center gap-2 rounded border border-[#dadce0] bg-white px-4 py-2 text-sm font-medium text-[#1a73e8] hover:bg-[#f8f9fa] transition-colors disabled:opacity-60">
+        <button onClick={loadUser} disabled={loading} className="inline-flex items-center gap-2 rounded border border-[#dadce0] bg-white px-4 py-2 text-sm font-medium text-[#1a73e8] hover:bg-[#f8f9fa] transition-colors disabled:opacity-60">
           <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
           Làm mới
         </button>

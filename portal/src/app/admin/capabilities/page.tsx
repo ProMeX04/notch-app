@@ -2,7 +2,6 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Loader2, RefreshCw, ShieldCheck, SlidersHorizontal, Sparkles } from "lucide-react";
-import { apiClient } from "@/lib/api-client";
 
 type Capability = {
   key: string;
@@ -44,8 +43,10 @@ export default function CapabilitiesManagement() {
     setLoading(true);
     setError(null);
     try {
-      const response = await apiClient.get<Capability[]>("/api/admin/capabilities");
-      setCapabilities(response.data);
+      const response = await fetch("/api/admin/capabilities");
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Không tải được quyền truy cập");
+      setCapabilities(data);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Không tải được quyền truy cập");
     } finally {
@@ -61,8 +62,14 @@ export default function CapabilitiesManagement() {
     setSavingKey(capability.key);
     setError(null);
     try {
-      const response = await apiClient.post<Capability>("/api/admin/capabilities", capability);
-      setCapabilities((current) => current.map((item) => (item.key === capability.key ? response.data : item)));
+      const response = await fetch("/api/admin/capabilities", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(capability),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Không lưu được thay đổi");
+      setCapabilities((current) => current.map((item) => (item.key === capability.key ? data : item)));
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Không lưu được thay đổi");
     } finally {
@@ -74,8 +81,14 @@ export default function CapabilitiesManagement() {
     setSavingKey("restore_defaults");
     setError(null);
     try {
-      const response = await apiClient.post<Capability[]>("/api/admin/capabilities", { action: "restore_defaults" });
-      setCapabilities(response.data);
+      const response = await fetch("/api/admin/capabilities", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "restore_defaults" }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Không khôi phục được cấu hình mặc định");
+      setCapabilities(data);
     } catch (restoreError) {
       setError(restoreError instanceof Error ? restoreError.message : "Không khôi phục được cấu hình mặc định");
     } finally {

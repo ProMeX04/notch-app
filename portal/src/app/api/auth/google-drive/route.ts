@@ -8,13 +8,8 @@ export async function GET(req: Request) {
   const codeChallenge = (searchParams.get('code_challenge') || '').trim();
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL ||
-    (process.env.VERCEL_PROJECT_PRODUCTION_URL
-      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-      : process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : 'http://localhost:3000');
+  const requestUrl = new URL(req.url);
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || `${requestUrl.protocol}//${requestUrl.host}`;
   const redirectUri = `${appUrl}/api/auth/google/callback`;
 
   if (!clientId) {

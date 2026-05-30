@@ -1,7 +1,18 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Loader2, MonitorSmartphone, ShieldCheck, Sparkles, LogOut } from 'lucide-react';
+import { 
+  Loader2, 
+  MonitorSmartphone, 
+  ShieldCheck, 
+  Sparkles, 
+  LogOut,
+  Apple,
+  Globe,
+  Laptop,
+  Terminal,
+  Monitor
+} from 'lucide-react';
 import { usePortalAuth } from './PortalAuthProvider';
 import { apiClient } from '@/lib/api-client';
 
@@ -38,6 +49,25 @@ function formatDate(value: string | null, options?: Intl.DateTimeFormatOptions) 
     },
   ).format(new Date(parsed));
 }
+
+const getDeviceIcon = (platform: string, deviceName: string) => {
+  const p = platform.toLowerCase();
+  const n = deviceName.toLowerCase();
+  
+  if (p.includes('mac') || p.includes('apple') || p.includes('darwin') || n.includes('mac') || n.includes('imac') || n.includes('macbook')) {
+    return <Apple size={20} />;
+  }
+  if (p.includes('web') || p.includes('browser') || p.includes('chrome') || p.includes('safari') || p.includes('firefox') || n.includes('browser') || n.includes('chrome')) {
+    return <Globe size={20} />;
+  }
+  if (p.includes('win') || n.includes('windows') || n.includes('win')) {
+    return <Laptop size={20} />;
+  }
+  if (p.includes('linux') || n.includes('linux') || n.includes('ubuntu')) {
+    return <Terminal size={20} />;
+  }
+  return <MonitorSmartphone size={20} />;
+};
 
 export function ProfileView() {
   const { status, user, signOut } = usePortalAuth();
@@ -279,7 +309,7 @@ export function ProfileView() {
                         justifyContent: 'center',
                         color: device.current ? 'var(--accent)' : 'var(--muted)'
                       }}>
-                        <MonitorSmartphone size={20} />
+                        {getDeviceIcon(device.platform, device.device_name)}
                       </div>
                       <div className="device-info">
                         <div className="device-name-row" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

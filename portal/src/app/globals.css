@@ -2450,7 +2450,7 @@ button {
 .device-name-row h3 {
   font-size: 16px;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--foreground);
 }
 
 .current-pill {

@@ -140,3 +140,9 @@ apiClient.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+export function clearRefreshLock() {
+  isRefreshing = false
+  failedQueue = []
+}
+

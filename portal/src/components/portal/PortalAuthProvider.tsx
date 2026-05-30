@@ -9,7 +9,7 @@ import {
 } from 'react'
 
 import { onPortalAuthSessionChange, signOutImmediately } from '@/lib/portal-auth-client'
-import { apiClient } from '@/lib/api-client'
+import { apiClient, clearRefreshLock } from '@/lib/api-client'
 
 export type PortalAccountUser = {
   id: string
@@ -77,8 +77,20 @@ export function PortalAuthProvider({
 
   useEffect(() => {
     const handlePageShow = (event: PageTransitionEvent) => {
-      if (event.persisted) {
+      clearRefreshLock()
+      let isBack = event.persisted
+      if (!isBack && typeof window !== 'undefined' && window.performance) {
+        const entries = window.performance.getEntriesByType('navigation')
+        if (entries.length > 0) {
+          isBack = (entries[0] as PerformanceNavigationTiming).type === 'back_forward'
+        } else if (window.performance.navigation) {
+          isBack = window.performance.navigation.type === 2
+        }
+      }
+      if (isBack) {
         window.location.reload()
+      } else {
+        setAuthVersion((v) => v + 1)
       }
     }
     window.addEventListener('pageshow', handlePageShow)

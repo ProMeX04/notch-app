@@ -391,7 +391,7 @@ export async function GET(req: Request) {
 
     // 6. Set Cookies and Redirect
     const response = NextResponse.redirect(new URL(redirectDestination, req.url));
-    return applyAuthCookies(response, payload);
+    return applyAuthCookies(response, payload, req);
 
   } catch (error) {
     console.error('Google OAuth error:', error);

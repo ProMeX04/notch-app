@@ -36,7 +36,7 @@ export async function POST(req: Request) {
       statusCode: 401,
       metadata: { reason: 'invalid_or_expired' },
     })
-    return clearAuthCookies(NextResponse.json({ detail: 'Refresh token is invalid or expired.' }, { status: 401 }))
+    return clearAuthCookies(NextResponse.json({ detail: 'Refresh token is invalid or expired.' }, { status: 401 }), req)
   }
 
   await logAppEvent({
@@ -54,5 +54,6 @@ export async function POST(req: Request) {
   return applyAuthCookies(
     NextResponse.json(payload),
     payload,
+    req,
   )
 }

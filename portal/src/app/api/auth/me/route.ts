@@ -16,7 +16,7 @@ export async function GET(req: Request) {
     device_id: req.headers.get('x-notch-device-id')?.trim() ?? undefined,
   })
   if (!payload) {
-    return clearAuthCookies(NextResponse.json({ detail: 'Invalid or expired session token.' }, { status: 401 }))
+    return clearAuthCookies(NextResponse.json({ detail: 'Invalid or expired session token.' }, { status: 401 }), req)
   }
 
   return applyAuthCookies(
@@ -26,5 +26,6 @@ export async function GET(req: Request) {
       max_active_devices: payload.max_active_devices,
     }),
     payload,
+    req,
   )
 }

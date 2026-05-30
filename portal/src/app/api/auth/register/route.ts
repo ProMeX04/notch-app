@@ -128,6 +128,7 @@ export async function POST(req: Request) {
     return applyAuthCookies(
       NextResponse.json(authPayloadUserResponse(payload.user, payload.session.id), { status: 201 }),
       payload,
+      req,
     );
   } catch (error) {
     if (error instanceof AuthDeviceLimitError) {

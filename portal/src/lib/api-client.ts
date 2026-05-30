@@ -88,9 +88,18 @@ apiClient.interceptors.response.use(
       originalRequest._retry = true
       isRefreshing = true
 
+      // Timeout safety: if refresh takes longer than 8 seconds, clear the lock and reject the queue
+      const refreshTimeout = setTimeout(() => {
+        if (isRefreshing) {
+          isRefreshing = false
+          processQueue(new Error('Token refresh operation timed out.'))
+        }
+      }, 8000)
+
       try {
         // Request token refresh
         await apiClient.post('/api/auth/refresh')
+        clearTimeout(refreshTimeout)
         isRefreshing = false
         processQueue(null)
 
@@ -102,6 +111,7 @@ apiClient.interceptors.response.use(
         // Retry the original request
         return apiClient(originalRequest)
       } catch (refreshError) {
+        clearTimeout(refreshTimeout)
         isRefreshing = false
         processQueue(refreshError as Error)
 

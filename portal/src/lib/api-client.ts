@@ -65,7 +65,9 @@ apiClient.interceptors.response.use(
     // Determine if we should attempt token refresh (status is 401 or 403 on client-side)
     const isUnauthorized = status === 401 || status === 403
     const isRefreshOrLogoutRequest =
-      originalRequest.url === '/api/auth/refresh' || originalRequest.url === '/api/auth/logout'
+      originalRequest.url === '/api/auth/refresh' ||
+      originalRequest.url === '/api/auth/logout' ||
+      originalRequest.url?.includes('/api/auth/me')
 
     if (
       typeof window !== 'undefined' &&
@@ -115,12 +117,7 @@ apiClient.interceptors.response.use(
         isRefreshing = false
         processQueue(refreshError as Error)
 
-        // Refresh failed, clean up local auth state
-        try {
-          await apiClient.post('/api/auth/logout')
-        } catch {
-          // Ignore logout error if session is already revoked
-        }
+        // Refresh failed, clean up local auth state (cookies already cleared by server-side /api/auth/refresh response)
 
         // Notify app context of auth state change unless this was already checking /api/auth/me
         if (!originalRequest.url?.includes('/api/auth/me')) {

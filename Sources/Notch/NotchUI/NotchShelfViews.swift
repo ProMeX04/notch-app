@@ -228,6 +228,7 @@ struct ShelfBrowserView: NSViewRepresentable {
             host.collectionView.shelfCoordinator = coord
         }
         coord.collectionView = host.collectionView
+        coord.updateLayout()
         coord.reloadData()
         coord.syncSelectionToCollectionView()
         return host.scrollView
@@ -282,8 +283,8 @@ struct ShelfBrowserView: NSViewRepresentable {
             let expected = NSSize(width: 72, height: shelf.preferences.itemSize.cellHeight(showName: shelf.preferences.showItemNames))
             if layout.itemSize.height != expected.height {
                 layout.itemSize = expected
-                layout.invalidateLayout()
             }
+            layout.invalidateLayout()
         }
 
         private func makeItemState(for item: NotchShelfItem, isConnected: Bool) -> ItemState {

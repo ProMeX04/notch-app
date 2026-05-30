@@ -95,14 +95,6 @@ function OAuthAuthorizeContent() {
     <main className="portal-auth-page-centered" style={{ paddingTop: '100px' }}>
       {isHandoffState ? (
         <PortalSuccessEffect 
-          onPrimaryAction={() => {
-            if (!lastRedirectTo) {
-              setHasOpenedApp(false)
-              hasAttemptedOAuthRedirect.current = false
-              return
-            }
-            handoffToApp(lastRedirectTo)
-          }}
           description={isRedirecting ? 'Đang chuyển hướng bạn quay lại ứng dụng Notch...' : 'Bạn có thể đóng tab này hoặc mở lại ứng dụng bên dưới.'}
         />
       ) : (

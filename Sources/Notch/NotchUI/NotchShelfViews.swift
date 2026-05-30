@@ -737,22 +737,23 @@ struct ShelfBrowserView: NSViewRepresentable {
             proposedIndexPath proposedDropIndexPath: AutoreleasingUnsafeMutablePointer<NSIndexPath>,
             dropOperation proposedDropOperation: UnsafeMutablePointer<NSCollectionView.DropOperation>
         ) -> NSDragOperation {
-            if let shelfCollectionView = collectionView as? ShelfCollectionView,
-               !shelfCollectionView.draggedItemIDs.isEmpty {
-                return []
-            }
+            let shelfCollectionView = collectionView as? ShelfCollectionView
+            let isInternal = shelfCollectionView.map { !$0.draggedItemIDs.isEmpty } ?? false
 
-            let hasInternalType = draggingInfo.draggingPasteboard.types?.contains(where: { $0.rawValue == NotchShelfItem.internalDragIdentityTypeIdentifier }) ?? false
-            if draggingInfo.draggingSource as AnyObject? === collectionView || hasInternalType {
-                return []
+            if isInternal {
+                shelfCollectionView?.updateDropIndicator()
+                proposedDropOperation.pointee = .before
+                return .move
             }
 
             let acceptable = hasAcceptableExternalContent(in: draggingInfo.draggingPasteboard)
             if acceptable {
+                shelfCollectionView?.updateDropIndicator()
                 proposedDropOperation.pointee = .before
                 return .copy
             }
 
+            shelfCollectionView?.hideDropIndicator()
             return []
         }
 
@@ -762,24 +763,31 @@ struct ShelfBrowserView: NSViewRepresentable {
             indexPath destinationIndexPath: IndexPath,
             dropOperation: NSCollectionView.DropOperation
         ) -> Bool {
+            let shelfCollectionView = collectionView as? ShelfCollectionView
+            let isInternal = shelfCollectionView.map { !$0.draggedItemIDs.isEmpty } ?? false
 
-            if draggingInfo.draggingSource as AnyObject? === collectionView {
-                return false
+            // Make sure the shelf panel is the active one so the user
+            // sees the items they just dropped.
+            presentationModel.selectPanel(.shelf, reveal: true)
+            presentationModel.cancelScheduledCollapse()
+
+            if isInternal, let shelfCollectionView {
+                let internalIDs = shelfCollectionView.draggedItemIDs
+                shelf.moveItems(with: internalIDs, to: destinationIndexPath.item)
+                shelfCollectionView.draggedItemIDs = []
+                shelfCollectionView.hideDropIndicator()
+                return true
             }
 
             let providers = externalItemProviders(from: draggingInfo)
-            guard !providers.isEmpty else { return false }
+            guard !providers.isEmpty else {
+                shelfCollectionView?.hideDropIndicator()
+                return false
+            }
 
-            // Make sure the shelf panel is the active one so the user
-            // sees the items they just dropped. This call is cheap when
-            // we're already on shelf because of the panel-switch guards.
-            presentationModel.selectPanel(.shelf, reveal: true)
-            // SwiftUI's `onDrop(isTargeted:)` already fired with `false`
-            // by the time AppKit reaches this acceptDrop, which armed an
-            // auto-collapse 120 ms out. Drop succeeded — keep the shelf
-            // open so the user sees what just landed.
-            presentationModel.cancelScheduledCollapse()
-            return shelf.handleDrop(providers: providers, atIndex: destinationIndexPath.item)
+            let accepted = shelf.handleDrop(providers: providers, atIndex: destinationIndexPath.item)
+            shelfCollectionView?.hideDropIndicator()
+            return accepted
         }
 
         private func hasAcceptableExternalContent(in pasteboard: NSPasteboard) -> Bool {

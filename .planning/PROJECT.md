@@ -8,9 +8,14 @@ This project is a migration of the existing Next.js web portal backend and front
 
 Ensure complete, secure, and reliable authentication, session, payment, capabilities, admin dashboard, and Gemini Live parity on the new Go + Vite React stack to enable seamless user transitions.
 
-## Current Milestone: Milestone Completed
+## Current Milestone: v3.0 Integration & Utilities Phase
 
-**Goal:** Milestone v2.0 has been successfully completed and verified.
+**Goal:** Complete the migration of payment return workflows, utility pages (downloads, help), and public leaderboards to Go + React.
+
+**Target features:**
+- Billing return handler page (`/billing/vnpay/return`) deep-linking integration.
+- Downloads page (`/downloads`) and Help center FAQ (`/help`).
+- Public Leaderboard page component wireup.
 
 ## Current State
 
@@ -48,7 +53,10 @@ Ensure complete, secure, and reliable authentication, session, payment, capabili
 
 ### Active
 
-*(No active requirements — run `/gsd-new-milestone` to start next phase)*
+- [ ] **PAY-MIG-04**: React Frontend payment return page (`/billing/vnpay/return`) parses query parameters, displays payment outcome (Success/Failure), and handles deep-link redirection back to the desktop application — v3.0
+- [ ] **UTL-MIG-01**: React Frontend Downloads page (`/downloads`) provides secure client download links and installation instructions — v3.0
+- [ ] **UTL-MIG-02**: React Frontend Help center page (`/help`) renders the FAQ directory and support links — v3.0
+- [ ] **LDB-MIG-01**: React Frontend Leaderboard page (`/leaderboard`) fetches active user rankings from Go backend API — v3.0
 
 ### Out of Scope
 

@@ -95,6 +95,8 @@ func (s *Server) mount(r chi.Router) {
 		api.Post("/auth/login", authHandler.Login)
 		api.Post("/auth/register", authHandler.Register)
 		api.Post("/auth/logout", authHandler.Logout)
+		api.Get("/auth/sessions", authHandler.ListSessions)
+		api.Delete("/auth/sessions/{id}", authHandler.RevokeSession)
 
 		api.Get("/focus/leaderboard", focusHandler.Leaderboard)
 		api.Get("/focus/me", focusHandler.Me)

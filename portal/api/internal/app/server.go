@@ -6,13 +6,17 @@ import (
 	"net/http"
 	"time"
 
+	"notch/portal/api/internal/admin"
 	"notch/portal/api/internal/auth"
 	"notch/portal/api/internal/auth/httpauth"
+	"notch/portal/api/internal/capabilities"
 	"notch/portal/api/internal/config"
 	"notch/portal/api/internal/db"
 	"notch/portal/api/internal/events"
 	"notch/portal/api/internal/focus"
+	"notch/portal/api/internal/geminilive"
 	"notch/portal/api/internal/httpjson"
+	"notch/portal/api/internal/payments"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -92,6 +96,14 @@ func (s *Server) mount(r chi.Router) {
 	focusRepo := focus.NewPgxRepository(s.db.Raw())
 	focusHandler := focus.NewHandler(focusRepo, authHandler.Authenticator, s.eventLog)
 
+	paymentsHandler := payments.NewHandler(s.cfg.Payments, s.cfg.HTTP.FrontendURL, s.db, authHandler.Authenticator, s.eventLog)
+
+	capabilitiesRepo := capabilities.NewPgxRepository(s.db.Raw())
+	capabilitiesHandler := capabilities.NewHandler(capabilitiesRepo, s.db.Raw(), s.eventLog)
+
+	adminHandler := admin.NewHandler(s.db.Raw(), s.eventLog)
+	geminiLiveHandler := geminilive.NewHandler(s.db.Raw(), s.eventLog, s.cfg.Gemini.APIKey)
+
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/healthz", s.health)
 		api.Get("/auth/me", authHandler.Me)
@@ -109,6 +121,32 @@ func (s *Server) mount(r chi.Router) {
 		api.Get("/focus/me", focusHandler.Me)
 		api.Patch("/focus/profile", focusHandler.Profile)
 		api.Post("/focus/sync", focusHandler.Sync)
+
+		api.Post("/payments/vnpay/create", paymentsHandler.Create)
+		api.Get("/payments/vnpay/ipn", paymentsHandler.IPN)
+		api.Get("/payments/vnpay/return", paymentsHandler.Return)
+
+		api.Get("/capabilities", capabilitiesHandler.GetCapabilities)
+
+		api.Get("/gemini-live/models", geminiLiveHandler.GetModels)
+		api.Get("/gemini-live/health", geminiLiveHandler.GetHealth)
+		api.Post("/gemini-live/session-token", geminiLiveHandler.CreateSessionToken)
+
+		api.Route("/admin", func(admin chi.Router) {
+			admin.Use(authHandler.Authenticator.Authenticate)
+			admin.Use(auth.AdminOnly)
+
+			admin.Get("/capabilities", capabilitiesHandler.AdminGetCapabilities)
+			admin.Post("/capabilities", capabilitiesHandler.AdminPostCapabilities)
+
+			admin.Get("/users", adminHandler.GetUsers)
+			admin.Get("/users/{id}", adminHandler.GetUserDetail)
+			admin.Patch("/users/{id}", adminHandler.UpdateUser)
+
+			admin.Get("/gemini-live/models", geminiLiveHandler.AdminGetModels)
+			admin.Post("/gemini-live/models", geminiLiveHandler.AdminPostModels)
+			admin.Delete("/gemini-live/models", geminiLiveHandler.AdminDeleteModel)
+		})
 
 		api.NotFound(func(w http.ResponseWriter, r *http.Request) {
 			httpjson.Error(w, http.StatusNotImplemented, "endpoint not migrated to Go yet")

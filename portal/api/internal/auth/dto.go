@@ -14,13 +14,14 @@ type UserResponse struct {
 	AvatarURL        *string          `json:"avatar_url"`
 	CreatedAt        string           `json:"created_at"`
 	IsPro            bool             `json:"is_pro"`
+	IsAdmin          bool             `json:"is_admin"`
 	LeaderboardOptIn bool             `json:"leaderboard_opt_in"`
 	PermissionPolicy PermissionPolicy `json:"permission_policy"`
 	CurrentSessionID *string          `json:"current_session_id"`
 	MaxActiveDevices int              `json:"max_active_devices"`
 }
 
-func BuildUserResponse(user User, sessionID *string, maxActiveDevices int) UserResponse {
+func BuildUserResponse(user User, sessionID *string, maxActiveDevices int, policy PermissionPolicy) UserResponse {
 	email := ""
 	if user.Email != nil {
 		email = *user.Email
@@ -34,8 +35,9 @@ func BuildUserResponse(user User, sessionID *string, maxActiveDevices int) UserR
 		AvatarURL:        user.AvatarURL,
 		CreatedAt:        createdAt,
 		IsPro:            user.IsPro,
+		IsAdmin:          user.IsAdmin,
 		LeaderboardOptIn: user.LeaderboardOptIn,
-		PermissionPolicy: PermissionPolicy{Features: map[string]bool{}},
+		PermissionPolicy: policy,
 		CurrentSessionID: sessionID,
 		MaxActiveDevices: maxActiveDevices,
 	}

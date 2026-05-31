@@ -7,12 +7,12 @@ import (
 type EventType string
 
 const (
-	SyncSucceeded             EventType = "focus.sync_succeeded"
-	SyncRejected              EventType = "focus.sync_rejected"
-	SyncFailed                EventType = "focus.sync_failed"
-	LeaderboardProfileUpdated EventType = "focus.leaderboard_profile_updated"
+	SyncSucceeded              EventType = "focus.sync_succeeded"
+	SyncRejected               EventType = "focus.sync_rejected"
+	SyncFailed                 EventType = "focus.sync_failed"
+	LeaderboardProfileUpdated  EventType = "focus.leaderboard_profile_updated"
 	LeaderboardProfileRejected EventType = "focus.leaderboard_profile_rejected"
-	LeaderboardProfileFailed  EventType = "focus.leaderboard_profile_failed"
+	LeaderboardProfileFailed   EventType = "focus.leaderboard_profile_failed"
 )
 
 type RejectedReason string

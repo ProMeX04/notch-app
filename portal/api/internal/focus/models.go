@@ -3,10 +3,10 @@ package focus
 import "time"
 
 const (
-	SchemaVersion        = 2
-	MaxBatchSize         = 120
-	MaxSecondsPerDay     = 24 * 60 * 60
-	MaxSessionCountPerDay = 500
+	SchemaVersion          = 2
+	MaxBatchSize           = 120
+	MaxSecondsPerDay       = 24 * 60 * 60
+	MaxSessionCountPerDay  = 500
 	PublicLeaderboardLimit = 50
 )
 
@@ -19,7 +19,7 @@ type FocusSyncInput struct {
 
 // FocusSyncRequest is the request body for POST /api/focus/sync.
 type FocusSyncRequest struct {
-	SchemaVersion int             `json:"schema_version"`
+	SchemaVersion int              `json:"schema_version"`
 	Entries       []FocusSyncInput `json:"entries"`
 }
 
@@ -44,9 +44,9 @@ type FocusSummary struct {
 // UserFocusProfile is the response for GET /api/focus/me and PATCH /api/focus/profile.
 type UserFocusProfile struct {
 	User struct {
-		ID                string `json:"id"`
-		DisplayName       string `json:"display_name"`
-		LeaderboardOptIn  bool   `json:"leaderboard_opt_in"`
+		ID               string `json:"id"`
+		DisplayName      string `json:"display_name"`
+		LeaderboardOptIn bool   `json:"leaderboard_opt_in"`
 	} `json:"user"`
 }
 
@@ -67,8 +67,8 @@ type LeaderboardResponse struct {
 
 // ProfileUpdateRequest is the request body for PATCH /api/focus/profile.
 type ProfileUpdateRequest struct {
-	DisplayName       *string `json:"display_name"`
-	LeaderboardOptIn  *bool   `json:"leaderboard_opt_in"`
+	DisplayName      *string `json:"display_name"`
+	LeaderboardOptIn *bool   `json:"leaderboard_opt_in"`
 }
 
 // ProfileUpdateResponse mirrors UserFocusProfile.

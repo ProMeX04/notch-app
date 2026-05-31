@@ -9,12 +9,12 @@ import (
 const rawDefaultManifest = `{
   "version": 1,
   "capabilities": [
-    {"key": "gemini_live", "name": "Gemini Live", "description": "Trải nghiệm trò chuyện trực tiếp bằng giọng nói với AI", "requirement": "pro"},
-    {"key": "advanced_pomodoro", "name": "Focus Pomodoro", "description": "Hỗ trợ tập trung và quản lý phiên làm việc nâng cao", "requirement": "free"},
-    {"key": "website_blocking", "name": "Chặn website", "description": "Chặn trang web gây xao nhãng", "requirement": "free"},
-    {"key": "media_control", "name": "Điều khiển nhạc", "description": "Điều khiển nhạc trên Notch", "requirement": "free"},
-    {"key": "browser_integration", "name": "Kết nối trình duyệt", "description": "Kết nối ứng dụng với trình duyệt", "requirement": "free"},
-    {"key": "shelf_sync", "name": "Shelf", "description": "Lưu tạm file, văn bản và đường dẫn trong Notch", "requirement": "pro"}
+    {"key": "talk_connection", "name": "Gemini Live", "description": "Trò chuyện với AI trực tiếp từ Notch", "requirement": "pro"},
+    {"key": "focus_pomodoro", "name": "Focus Pomodoro", "description": "Hỗ trợ tập trung và quản lý phiên làm việc", "requirement": "free"},
+    {"key": "focus_website_blocklist", "name": "Chặn website", "description": "Chặn trang web gây xao nhãng", "requirement": "free"},
+    {"key": "media_controls", "name": "Điều khiển nhạc", "description": "Điều khiển nhạc trên Notch", "requirement": "free"},
+    {"key": "browser_bridge", "name": "Kết nối trình duyệt", "description": "Kết nối ứng dụng với trình duyệt", "requirement": "free"},
+    {"key": "panel_shelf", "name": "Shelf", "description": "Lưu tạm file, văn bản và đường dẫn trong Notch", "requirement": "pro"}
   ]
 }`
 

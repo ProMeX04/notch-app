@@ -15,6 +15,7 @@ import { NotFoundPage } from '@/pages/NotFoundPage'
 import { AdminLayout } from '@/pages/Admin/AdminLayout'
 import { AdminDashboardPage } from '@/pages/Admin/AdminDashboardPage'
 import { AdminUsersPage } from '@/pages/Admin/AdminUsersPage'
+import { AdminUserDetailPage } from '@/pages/Admin/AdminUserDetailPage'
 import { AdminCapabilitiesPage } from '@/pages/Admin/AdminCapabilitiesPage'
 import { AdminGeminiLivePage } from '@/pages/Admin/AdminGeminiLivePage'
 import { AdminSettingsPage } from '@/pages/Admin/AdminSettingsPage'
@@ -34,6 +35,7 @@ const oauthAuthorizeRoute = createRoute({ getParentRoute: () => rootRoute, path:
 const adminRoute = createRoute({ getParentRoute: () => rootRoute, path: '/admin', component: AdminLayout })
 const adminIndexRoute = createRoute({ getParentRoute: () => adminRoute, path: '/', component: AdminDashboardPage })
 const adminUsersRoute = createRoute({ getParentRoute: () => adminRoute, path: '/users', component: AdminUsersPage })
+const adminUserDetailRoute = createRoute({ getParentRoute: () => adminRoute, path: '/users/$id', component: AdminUserDetailPage })
 const adminCapabilitiesRoute = createRoute({ getParentRoute: () => adminRoute, path: '/capabilities', component: AdminCapabilitiesPage })
 const adminGeminiRoute = createRoute({ getParentRoute: () => adminRoute, path: '/gemini-live', component: AdminGeminiLivePage })
 const adminSettingsRoute = createRoute({ getParentRoute: () => adminRoute, path: '/settings', component: AdminSettingsPage })
@@ -48,6 +50,7 @@ const routeTree = rootRoute.addChildren([
   adminRoute.addChildren([
     adminIndexRoute,
     adminUsersRoute,
+    adminUserDetailRoute,
     adminCapabilitiesRoute,
     adminGeminiRoute,
     adminSettingsRoute,

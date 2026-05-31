@@ -163,13 +163,57 @@ func (r *PgxSessionRepository) CreateUser(ctx context.Context, id string, email 
 	if r == nil || r.db == nil {
 		return nil, pgx.ErrNoRows
 	}
-	_, err := r.db.Exec(ctx, `
-		INSERT INTO "User" ("id", "email", "name", "password", "createdAt", "updatedAt")
-		VALUES ($1, $2, $3, $4, $5, $6)
-	`, id, email, name, hashedPassword, now, now)
+
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
+	defer tx.Rollback(ctx)
+
+	// Check if there is any paid payment transaction for this guest email
+	var hasPaidGuestTx bool
+	var paidTxID string
+	err = tx.QueryRow(ctx, `
+		SELECT "id"
+		FROM "PaymentTransaction"
+		WHERE LOWER("guestEmail") = LOWER($1) AND "status" = 'paid'
+		LIMIT 1
+	`, email).Scan(&paidTxID)
+	if err == nil {
+		hasPaidGuestTx = true
+	} else if err != pgx.ErrNoRows {
+		return nil, err
+	}
+
+	isPro := false
+	if hasPaidGuestTx {
+		isPro = true
+	}
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO "User" ("id", "email", "name", "password", "createdAt", "updatedAt", "isPro")
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, id, email, name, hashedPassword, now, now, isPro)
+	if err != nil {
+		return nil, err
+	}
+
+	if hasPaidGuestTx {
+		// Update all payment transactions matching guest email to link to this user
+		_, err = tx.Exec(ctx, `
+			UPDATE "PaymentTransaction"
+			SET "userId" = $1, "updatedAt" = NOW()
+			WHERE LOWER("guestEmail") = LOWER($2)
+		`, id, email)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
 	return r.FindUserByEmail(ctx, email)
 }
 

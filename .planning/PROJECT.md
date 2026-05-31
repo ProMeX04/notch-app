@@ -1,4 +1,4 @@
-# Notch Portal Migration - Auth Phase
+# Notch Portal Migration
 
 ## What This Is
 
@@ -6,7 +6,17 @@ This project is a migration of the existing Next.js web portal backend and front
 
 ## Core Value
 
-Ensure complete, secure, and reliable authentication and session parity on the new Go + Vite React stack to enable seamless user transitions.
+Ensure complete, secure, and reliable authentication, session, payment, capabilities, admin dashboard, and Gemini Live parity on the new Go + Vite React stack to enable seamless user transitions.
+
+## Current Milestone: v2.0 Feature Migration Phase
+
+**Goal:** Migrate payments, pro capabilities, admin dashboard, and Gemini Live APIs from Next.js to Go (Chi + pgx/v5) and Vite React.
+
+**Target features:**
+- Payments / VNPay Integration
+- Pro Capabilities check and gating
+- Admin Dashboard APIs and UI Pages
+- Gemini Live APIs and session token orchestration
 
 ## Current State
 
@@ -31,7 +41,7 @@ Ensure complete, secure, and reliable authentication and session parity on the n
 - ✓ **AUTH-MIG-10**: Set up concurrent Go backend and Vite React frontend local execution environment
 - ✓ **AUTH-MIG-11**: Perform comprehensive auth and session parity verification comparing Next.js and Go + Vite React
 
-### Next Milestone Goals (Milestone v2.0)
+### Active (Milestone v2.0)
 
 - [ ] **PAY-MIG-01**: User can create a payment transaction via VNPay integration
 - [ ] **PAY-MIG-02**: System handles VNPay IPN callbacks and updates payment transactions status
@@ -44,14 +54,11 @@ Ensure complete, secure, and reliable authentication and session parity on the n
 
 ### Out of Scope
 
-- Payments / VNPay migration — Moved to next milestone (v2.0).
-- Capabilities API migration — Moved to next milestone (v2.0).
-- Admin APIs and Pages migration — Moved to next milestone (v2.0).
-- Gemini Live APIs migration — Moved to next milestone (v2.0).
+- (None currently)
 
 ## Context
 
-The existing system is a Next.js App Router portal backed by PostgreSQL (Prisma). Portions of the Focus and Auth features have already been migrated to Go (internal package) and Vite React. This project completes the authentication migration using Chi for HTTP routing and pgx/v5 for DB interaction.
+The existing system is a Next.js App Router portal backed by PostgreSQL (Prisma). Portions of the Focus and Auth features have already been migrated to Go (internal package) and Vite React. This project completes the migration of all remaining subsystems using Chi for HTTP routing and pgx/v5 for DB interaction.
 
 ## Constraints
 
@@ -85,4 +92,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-31 after Milestone v1.0 completion*
+*Last updated: 2026-05-31 after Milestone v2.0 initialization*

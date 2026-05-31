@@ -349,16 +349,16 @@ func TestHandlerListSessions(t *testing.T) {
 		LastSeenAt:      now,
 	}
 	session2 := &Session{
-		ID:              "session_2",
-		TokenHash:       token.HashToken("refresh-token-2"),
-		ExpiresAt:       now.Add(-time.Hour),
-		UserID:          "user_1",
-		User:            user,
-		DeviceID:        ptrStr("device_phone"),
-		DeviceName:      ptrStr("iPhone"),
-		Platform:        ptrStr("iOS"),
-		CreatedAt:       now.Add(-24 * time.Hour),
-		LastSeenAt:      now.Add(-time.Hour),
+		ID:         "session_2",
+		TokenHash:  token.HashToken("refresh-token-2"),
+		ExpiresAt:  now.Add(-time.Hour),
+		UserID:     "user_1",
+		User:       user,
+		DeviceID:   ptrStr("device_phone"),
+		DeviceName: ptrStr("iPhone"),
+		Platform:   ptrStr("iOS"),
+		CreatedAt:  now.Add(-24 * time.Hour),
+		LastSeenAt: now.Add(-time.Hour),
 	}
 
 	repo := &fakeSessionRepo{
@@ -432,13 +432,13 @@ func TestHandlerRevokeSession(t *testing.T) {
 		LastSeenAt:      now,
 	}
 	session2 := &Session{
-		ID:              "session_2",
-		TokenHash:       token.HashToken("refresh-token-2"),
-		ExpiresAt:       now.Add(24 * time.Hour),
-		UserID:          "user_1",
-		User:            user,
-		CreatedAt:       now,
-		LastSeenAt:      now,
+		ID:         "session_2",
+		TokenHash:  token.HashToken("refresh-token-2"),
+		ExpiresAt:  now.Add(24 * time.Hour),
+		UserID:     "user_1",
+		User:       user,
+		CreatedAt:  now,
+		LastSeenAt: now,
 	}
 
 	repo := &fakeSessionRepo{
@@ -645,7 +645,7 @@ func TestHandlerGoogleCallbackSucceedsStandardLogin(t *testing.T) {
 			Secure: false,
 			Domain: "localhost",
 		},
-		MaxActiveDevices: 3,
+		MaxActiveDevices:   3,
 		GoogleClientID:     "mock-client-id",
 		GoogleClientSecret: "mock-client-secret",
 		FrontendURL:        "http://frontend.local",
@@ -729,11 +729,11 @@ func TestHandlerGoogleCallbackSucceedsDriveHandoff(t *testing.T) {
 	base64Key := base64.StdEncoding.EncodeToString(keyBytes)
 
 	handler := Handler{
-		Repo: repo,
-		GoogleClientID:     "mock-client-id",
-		GoogleClientSecret: "mock-client-secret",
+		Repo:                   repo,
+		GoogleClientID:         "mock-client-id",
+		GoogleClientSecret:     "mock-client-secret",
 		DriveHandoffEncryptKey: base64Key,
-		HTTPClient:         mockHTTP,
+		HTTPClient:             mockHTTP,
 	}
 
 	// state contains urlencoded fields: gdrive=true, desktop_state, code_challenge

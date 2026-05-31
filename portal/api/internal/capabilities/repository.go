@@ -6,4 +6,5 @@ import "context"
 type Repository interface {
 	FindAll(ctx context.Context) ([]FeatureConfig, error)
 	FindByKey(ctx context.Context, key string) (*FeatureConfig, error)
+	Upsert(ctx context.Context, cfg FeatureConfig) error
 }

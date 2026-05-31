@@ -19,7 +19,7 @@ export function AdminLayout() {
         </aside>
         <div className="portal-admin-content">
           {status === 'booting' ? <p>Checking admin session…</p> : null}
-          {status === 'guest' || !user ? <p>Sign in as an admin to continue.</p> : <Outlet />}
+          {status === 'guest' || !user || !user.is_admin ? <p>Sign in as an admin to continue.</p> : <Outlet />}
         </div>
       </section>
     </PageShell>

@@ -81,7 +81,8 @@ func (h Handler) Me(w http.ResponseWriter, req *http.Request) {
 	auth, err := h.Authenticator.AuthenticateRequest(req.Context(), req)
 	if err == nil {
 		sessionID := auth.SessionID
-		httpjson.JSON(w, http.StatusOK, BuildUserResponse(auth.User, &sessionID, h.MaxActiveDevices))
+		policy := h.getPermissionPolicy(req.Context(), auth.User.IsPro)
+		httpjson.JSON(w, http.StatusOK, BuildUserResponse(auth.User, &sessionID, h.MaxActiveDevices, policy))
 		return
 	}
 
@@ -101,6 +102,7 @@ func (h Handler) Me(w http.ResponseWriter, req *http.Request) {
 		AvatarURL:        payload.User.AvatarURL,
 		CreatedAt:        payload.User.CreatedAt,
 		IsPro:            payload.User.IsPro,
+		IsAdmin:          payload.User.IsAdmin,
 		LeaderboardOptIn: payload.User.LeaderboardOptIn,
 		PermissionPolicy: payload.User.PermissionPolicy,
 		CurrentSessionID: &sessionID,
@@ -169,7 +171,8 @@ func (h Handler) Login(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	httpjson.JSON(w, http.StatusOK, BuildUserResponse(*user, sessionID, h.MaxActiveDevices))
+	policy := h.getPermissionPolicy(req.Context(), user.IsPro)
+	httpjson.JSON(w, http.StatusOK, BuildUserResponse(*user, sessionID, h.MaxActiveDevices, policy))
 }
 
 func (h Handler) Register(w http.ResponseWriter, req *http.Request) {
@@ -240,7 +243,8 @@ func (h Handler) Register(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	httpjson.JSON(w, http.StatusCreated, BuildUserResponse(*user, sessionID, h.MaxActiveDevices))
+	policy := h.getPermissionPolicy(req.Context(), user.IsPro)
+	httpjson.JSON(w, http.StatusCreated, BuildUserResponse(*user, sessionID, h.MaxActiveDevices, policy))
 }
 
 func (h Handler) Logout(w http.ResponseWriter, req *http.Request) {
@@ -1068,4 +1072,43 @@ func stringifyJSON(value any) string {
 		return "null"
 	}
 	return string(b)
+}
+
+func (h Handler) getPermissionPolicy(ctx context.Context, isPro bool) PermissionPolicy {
+	features := map[string]bool{
+		"gemini_live":         isPro,
+		"advanced_pomodoro":   true,
+		"website_blocking":    true,
+		"media_control":       true,
+		"browser_integration": true,
+		"shelf_sync":          isPro,
+	}
+
+	pgxRepo, ok := h.Repo.(*PgxSessionRepository)
+	if !ok || pgxRepo == nil || pgxRepo.db == nil {
+		return PermissionPolicy{Features: features}
+	}
+
+	rows, err := pgxRepo.db.Query(ctx, `SELECT "key", "isProOnly", "isEnabled" FROM "FeatureConfig"`)
+	if err != nil {
+		return PermissionPolicy{Features: features}
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var key string
+		var isProOnly bool
+		var isEnabled bool
+		if err := rows.Scan(&key, &isProOnly, &isEnabled); err == nil {
+			if !isEnabled {
+				features[key] = false
+			} else if isProOnly {
+				features[key] = isPro
+			} else {
+				features[key] = true
+			}
+		}
+	}
+
+	return PermissionPolicy{Features: features}
 }

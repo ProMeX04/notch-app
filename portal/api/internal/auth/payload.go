@@ -25,6 +25,7 @@ type AuthPayloadUser struct {
 	AvatarURL        *string          `json:"avatar_url"`
 	CreatedAt        string           `json:"created_at"`
 	IsPro            bool             `json:"is_pro"`
+	IsAdmin          bool             `json:"is_admin"`
 	LeaderboardOptIn bool             `json:"leaderboard_opt_in"`
 	PermissionPolicy PermissionPolicy `json:"permission_policy"`
 }
@@ -45,7 +46,7 @@ type RotatedSession struct {
 	TrustedAt  *time.Time
 }
 
-func BuildAuthPayload(user User, session RotatedSession, accessToken string, accessExpiresAt time.Time, refreshToken string, refreshExpiresAt time.Time, maxActiveDevices int) AuthPayload {
+func BuildAuthPayload(user User, session RotatedSession, accessToken string, accessExpiresAt time.Time, refreshToken string, refreshExpiresAt time.Time, maxActiveDevices int, policy PermissionPolicy) AuthPayload {
 	email := ""
 	if user.Email != nil {
 		email = *user.Email
@@ -69,8 +70,9 @@ func BuildAuthPayload(user User, session RotatedSession, accessToken string, acc
 			AvatarURL:        user.AvatarURL,
 			CreatedAt:        user.CreatedAt.UTC().Format(time.RFC3339Nano),
 			IsPro:            user.IsPro,
+			IsAdmin:          user.IsAdmin,
 			LeaderboardOptIn: user.LeaderboardOptIn,
-			PermissionPolicy: PermissionPolicy{Features: map[string]bool{}},
+			PermissionPolicy: policy,
 		},
 		Session: AuthPayloadSession{
 			ID:         session.ID,

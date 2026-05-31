@@ -1,0 +1,12 @@
+{
+  "SessionStart": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "\"/Users/promex04/.nvm/versions/node/v22.22.1/bin/node\" \"/Users/promex04/Documents/NO/notch-app/.codex/hooks/gsd-check-update.js\""
+        }
+      ]
+    }
+  ]
+}

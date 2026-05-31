@@ -5,6 +5,7 @@ export type PortalAccountUser = {
   avatar_url: string | null
   created_at: string
   is_pro: boolean
+  is_admin: boolean
   current_session_id: string | null
   max_active_devices: number
 }

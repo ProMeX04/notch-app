@@ -8,21 +8,16 @@ This project is a migration of the existing Next.js web portal backend and front
 
 Ensure complete, secure, and reliable authentication, session, payment, capabilities, admin dashboard, and Gemini Live parity on the new Go + Vite React stack to enable seamless user transitions.
 
-## Current Milestone: v2.0 Feature Migration Phase
+## Current Milestone: Milestone Completed
 
-**Goal:** Migrate payments, pro capabilities, admin dashboard, and Gemini Live APIs from Next.js to Go (Chi + pgx/v5) and Vite React.
-
-**Target features:**
-- Payments / VNPay Integration
-- Pro Capabilities check and gating
-- Admin Dashboard APIs and UI Pages
-- Gemini Live APIs and session token orchestration
+**Goal:** Milestone v2.0 has been successfully completed and verified.
 
 ## Current State
 
 - **Milestone v1.0 (Auth Phase)**: Shipped on 2026-05-31.
   - All email/password authentication, Google OAuth, session audit/revocation backend endpoints and frontend views are migrated and 100% verified.
-  - Concurrent development scripts and parity checks are fully functional.
+- **Milestone v2.0 (Feature Phase)**: Shipped on 2026-05-31.
+  - Payments (VNPay), capabilities rules gating, admin dashboards (capabilities override config, users listing/detail role patches), and Gemini Live token and model APIs have been migrated and verified.
 
 ## Requirements
 
@@ -41,16 +36,19 @@ Ensure complete, secure, and reliable authentication, session, payment, capabili
 - ✓ **AUTH-MIG-10**: Set up concurrent Go backend and Vite React frontend local execution environment
 - ✓ **AUTH-MIG-11**: Perform comprehensive auth and session parity verification comparing Next.js and Go + Vite React
 
-### Active (Milestone v2.0)
+#### Milestone v2.0 (Feature Phase)
+- ✓ **PAY-MIG-01**: User can create a payment transaction via VNPay integration — v2.0
+- ✓ **PAY-MIG-02**: System handles VNPay IPN callbacks and updates payment transactions status — v2.0
+- ✓ **CAP-MIG-01**: User access is checked and updated dynamically based on active Pro capabilities — v2.0
+- ✓ **ADM-MIG-01**: Admin users can view list of users — v2.0
+- ✓ **ADM-MIG-02**: Admin users can view/edit specific user details and capabilities — v2.0
+- ✓ **ADM-MIG-03**: Admin users can view global stats and Gemini Live model configs — v2.0
+- ✓ **GEM-MIG-01**: Backend supports Gemini Live session token requests and model lists — v2.0
+- ✓ **GEM-MIG-02**: System provides Gemini Live API health status — v2.0
 
-- [ ] **PAY-MIG-01**: User can create a payment transaction via VNPay integration
-- [ ] **PAY-MIG-02**: System handles VNPay IPN callbacks and updates payment transactions status
-- [ ] **CAP-MIG-01**: User access is checked and updated dynamically based on active Pro capabilities
-- [ ] **ADM-MIG-01**: Admin users can view list of users
-- [ ] **ADM-MIG-02**: Admin users can view/edit specific user details and capabilities
-- [ ] **ADM-MIG-03**: Admin users can view global stats and Gemini Live model configs
-- [ ] **GEM-MIG-01**: Backend supports Gemini Live session token requests and model lists
-- [ ] **GEM-MIG-02**: System provides Gemini Live API health status
+### Active
+
+*(No active requirements — run `/gsd-new-milestone` to start next phase)*
 
 ### Out of Scope
 
@@ -73,6 +71,9 @@ The existing system is a Next.js App Router portal backed by PostgreSQL (Prisma)
 | Focus on Auth Phase | Authentication is the foundation block of the portal; migrating it first allows secure authentication for all subsequent feature migrations. | Shipped in v1.0 |
 | Horizontal Layers Strategy | Build out the backend API layers/endpoints in Go first, then wire the React UI pages, and finally test. | Shipped in v1.0 |
 | Dual-Server Setup | Run Go backend and Vite React simultaneously to check parity against Next.js. | Shipped in v1.0 |
+| HMAC-SHA512 Webhook Auth | VNPay signature verification requires timing-safe HMAC-SHA512 parsing. | Shipped in v2.0 |
+| Capabilities Policies Merge | Merging manifest defaults with user database overrides. | Shipped in v2.0 |
+| Dynamic Gemini Live Syncer | Syncing allowed models directly from Google APIs dynamically. | Shipped in v2.0 |
 
 ## Evolution
 
@@ -92,4 +93,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-31 after Milestone v2.0 initialization*
+*Last updated: 2026-05-31 after Milestone v2.0 completion*

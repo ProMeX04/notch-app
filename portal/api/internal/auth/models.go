@@ -51,4 +51,9 @@ type SessionRepository interface {
 	CreateUser(ctx context.Context, id string, email string, name string, hashedPassword string, now time.Time) (*User, error)
 	FindUserByEmail(ctx context.Context, email string) (*User, error)
 	CreateSession(ctx context.Context, sessionID string, userID string, tokenHash string, accessTokenHash *string, device NormalizedDevice, expiresAt time.Time, accessExpiresAt *time.Time, trustedAt *time.Time, now time.Time) error
+	UpdateUserPasswordAndName(ctx context.Context, id string, name string, hashedPassword string, now time.Time) (*User, error)
+	FindUserByID(ctx context.Context, id string) (*User, error)
+	RevokeSession(ctx context.Context, sessionID string, revokedAt time.Time, reason string) error
+	FindActiveSessionsByUserID(ctx context.Context, userID string) ([]*Session, error)
+	RevokeSessionByID(ctx context.Context, sessionID string, userID string) error
 }

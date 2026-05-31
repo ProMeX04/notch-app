@@ -51,6 +51,21 @@ func (r *refreshRepo) FindUserByEmail(_ context.Context, email string) (*User, e
 func (r *refreshRepo) CreateSession(_ context.Context, sessionID string, userID string, tokenHash string, accessTokenHash *string, device NormalizedDevice, expiresAt time.Time, accessExpiresAt *time.Time, trustedAt *time.Time, now time.Time) error {
 	return nil
 }
+func (r *refreshRepo) UpdateUserPasswordAndName(_ context.Context, id string, name string, hashedPassword string, now time.Time) (*User, error) {
+	return &User{ID: id, Name: &name, CreatedAt: now}, nil
+}
+func (r *refreshRepo) FindUserByID(_ context.Context, id string) (*User, error) {
+	return nil, nil
+}
+func (r *refreshRepo) RevokeSession(_ context.Context, sessionID string, revokedAt time.Time, reason string) error {
+	return nil
+}
+func (r *refreshRepo) FindActiveSessionsByUserID(_ context.Context, userID string) ([]*Session, error) {
+	return nil, nil
+}
+func (r *refreshRepo) RevokeSessionByID(_ context.Context, sessionID string, userID string) error {
+	return nil
+}
 
 func TestRefreshServiceRotatesValidRefreshToken(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()

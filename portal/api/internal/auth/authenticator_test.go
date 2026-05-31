@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,18 +13,33 @@ import (
 )
 
 type fakeSessionRepo struct {
-	byID       map[string]*Session
-	lastSeenID string
-	expiredID  string
+	byID         map[string]*Session
+	usersByEmail map[string]*User
+	lastSeenID   string
+	expiredID    string
 }
 
 func (r *fakeSessionRepo) FindSessionByID(_ context.Context, sessionID string) (*Session, error) {
 	return r.byID[sessionID], nil
 }
 func (r *fakeSessionRepo) FindSessionByRefreshTokenHash(_ context.Context, tokenHash string) (*Session, error) {
+	for _, s := range r.byID {
+		if s.TokenHash == tokenHash {
+			return s, nil
+		}
+	}
 	return nil, nil
 }
-func (r *fakeSessionRepo) RotateSession(_ context.Context, sessionID string, _ string, _ string, _ time.Time, _ time.Time, device NormalizedDevice, trustedAt *time.Time, _ time.Time) (RotatedSession, error) {
+func (r *fakeSessionRepo) RotateSession(_ context.Context, sessionID string, accessTokenHash string, refreshTokenHash string, accessExpiresAt time.Time, refreshExpiresAt time.Time, device NormalizedDevice, trustedAt *time.Time, _ time.Time) (RotatedSession, error) {
+	if s, ok := r.byID[sessionID]; ok {
+		s.TokenHash = refreshTokenHash
+		s.AccessTokenHash = &accessTokenHash
+		s.AccessExpiresAt = &accessExpiresAt
+		s.ExpiresAt = refreshExpiresAt
+		s.DeviceID = &device.DeviceID
+		s.Platform = &device.Platform
+		s.TrustedAt = trustedAt
+	}
 	return RotatedSession{ID: sessionID, DeviceID: device.DeviceID, DeviceName: device.DeviceName, Platform: device.Platform, TrustedAt: trustedAt}, nil
 }
 func (r *fakeSessionRepo) UpdateLastSeen(_ context.Context, sessionID string, _ time.Time) error {
@@ -35,12 +51,81 @@ func (r *fakeSessionRepo) MarkSessionExpired(_ context.Context, sessionID string
 	return nil
 }
 func (r *fakeSessionRepo) CreateUser(_ context.Context, id string, email string, name string, hashedPassword string, now time.Time) (*User, error) {
-	return &User{ID: id, Email: &email, Name: &name, CreatedAt: now}, nil
+	u := &User{ID: id, Email: &email, Name: &name, Password: &hashedPassword, CreatedAt: now}
+	if r.usersByEmail == nil {
+		r.usersByEmail = make(map[string]*User)
+	}
+	r.usersByEmail[strings.ToLower(email)] = u
+	return u, nil
 }
 func (r *fakeSessionRepo) FindUserByEmail(_ context.Context, email string) (*User, error) {
-	return nil, nil
+	if r.usersByEmail == nil {
+		return nil, nil
+	}
+	return r.usersByEmail[strings.ToLower(email)], nil
 }
 func (r *fakeSessionRepo) CreateSession(_ context.Context, sessionID string, userID string, tokenHash string, accessTokenHash *string, device NormalizedDevice, expiresAt time.Time, accessExpiresAt *time.Time, trustedAt *time.Time, now time.Time) error {
+	s := &Session{
+		ID:              sessionID,
+		TokenHash:       tokenHash,
+		AccessTokenHash: accessTokenHash,
+		DeviceID:        &device.DeviceID,
+		ExpiresAt:       expiresAt,
+		AccessExpiresAt: accessExpiresAt,
+		UserID:          userID,
+		CreatedAt:       now,
+	}
+	if r.byID == nil {
+		r.byID = make(map[string]*Session)
+	}
+	r.byID[sessionID] = s
+	return nil
+}
+func (r *fakeSessionRepo) UpdateUserPasswordAndName(_ context.Context, id string, name string, hashedPassword string, now time.Time) (*User, error) {
+	var user *User
+	for _, u := range r.usersByEmail {
+		if u.ID == id {
+			u.Password = &hashedPassword
+			if name != "" {
+				u.Name = &name
+			}
+			user = u
+			break
+		}
+	}
+	return user, nil
+}
+func (r *fakeSessionRepo) FindUserByID(_ context.Context, id string) (*User, error) {
+	for _, u := range r.usersByEmail {
+		if u.ID == id {
+			return u, nil
+		}
+	}
+	return nil, nil
+}
+func (r *fakeSessionRepo) RevokeSession(_ context.Context, sessionID string, revokedAt time.Time, reason string) error {
+	if s, ok := r.byID[sessionID]; ok {
+		s.RevokedAt = &revokedAt
+		s.RevokedReason = &reason
+	}
+	return nil
+}
+func (r *fakeSessionRepo) FindActiveSessionsByUserID(_ context.Context, userID string) ([]*Session, error) {
+	var active []*Session
+	for _, s := range r.byID {
+		if s.UserID == userID && s.RevokedAt == nil {
+			active = append(active, s)
+		}
+	}
+	return active, nil
+}
+func (r *fakeSessionRepo) RevokeSessionByID(_ context.Context, sessionID string, userID string) error {
+	if s, ok := r.byID[sessionID]; ok && s.UserID == userID {
+		now := time.Now()
+		reason := "user_revoked"
+		s.RevokedAt = &now
+		s.RevokedReason = &reason
+	}
 	return nil
 }
 

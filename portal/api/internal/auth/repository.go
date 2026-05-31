@@ -187,3 +187,129 @@ func (r *PgxSessionRepository) CreateSession(ctx context.Context, sessionID stri
 	`, sessionID, tokenHash, accessTokenHash, device.DeviceID, device.DeviceName, device.Platform, expiresAt, accessExpiresAt, now, now, trustedAt, now, userID)
 	return err
 }
+
+func (r *PgxSessionRepository) UpdateUserPasswordAndName(ctx context.Context, id string, name string, hashedPassword string, now time.Time) (*User, error) {
+	if r == nil || r.db == nil {
+		return nil, pgx.ErrNoRows
+	}
+	_, err := r.db.Exec(ctx, `
+		UPDATE "User"
+		SET "password" = $2, "name" = CASE WHEN TRIM($3) <> '' THEN $3 ELSE "name" END, "updatedAt" = $4
+		WHERE "id" = $1
+	`, id, hashedPassword, name, now)
+	if err != nil {
+		return nil, err
+	}
+	return r.FindUserByID(ctx, id)
+}
+
+func (r *PgxSessionRepository) FindUserByID(ctx context.Context, id string) (*User, error) {
+	if r == nil || r.db == nil {
+		return nil, pgx.ErrNoRows
+	}
+	var u User
+	var emailVal *string
+	var nameVal *string
+	err := r.db.QueryRow(ctx, `
+		SELECT "id", "email", "name", "displayName", "avatarUrl", "password", "createdAt", "isPro", "isAdmin", "leaderboardOptIn"
+		FROM "User"
+		WHERE "id" = $1
+		LIMIT 1
+	`, id).Scan(&u.ID, &emailVal, &nameVal, &u.DisplayName, &u.AvatarURL, &u.Password, &u.CreatedAt, &u.IsPro, &u.IsAdmin, &u.LeaderboardOptIn)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	u.Email = emailVal
+	u.Name = nameVal
+	return &u, nil
+}
+
+func (r *PgxSessionRepository) RevokeSession(ctx context.Context, sessionID string, revokedAt time.Time, reason string) error {
+	if r == nil || r.db == nil {
+		return pgx.ErrNoRows
+	}
+	_, err := r.db.Exec(ctx, `
+		UPDATE "AuthSession"
+		SET "revokedAt" = $2, "revokedReason" = $3
+		WHERE "id" = $1 AND "revokedAt" IS NULL
+	`, sessionID, revokedAt, reason)
+	return err
+}
+
+func (r *PgxSessionRepository) FindActiveSessionsByUserID(ctx context.Context, userID string) ([]*Session, error) {
+	if r == nil || r.db == nil {
+		return nil, pgx.ErrNoRows
+	}
+	rows, err := r.db.Query(ctx, `
+		SELECT
+			s."id", s."tokenHash", s."accessTokenHash", s."deviceId", s."deviceName", s."platform",
+			s."expiresAt", s."accessExpiresAt", s."createdAt", s."lastSeenAt", s."trustedAt",
+			s."revokedAt", s."revokedReason", s."userId",
+			u."id", u."email", u."name", u."displayName", u."avatarUrl", u."createdAt",
+			u."isPro", u."isAdmin", u."leaderboardOptIn"
+		FROM "AuthSession" s
+		JOIN "User" u ON u."id" = s."userId"
+		WHERE s."userId" = $1 AND s."revokedAt" IS NULL AND s."expiresAt" > $2
+		ORDER BY s."lastSeenAt" DESC
+	`, userID, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessions []*Session
+	for rows.Next() {
+		var s Session
+		var u User
+		var emailVal *string
+		var nameVal *string
+		err := rows.Scan(
+			&s.ID,
+			&s.TokenHash,
+			&s.AccessTokenHash,
+			&s.DeviceID,
+			&s.DeviceName,
+			&s.Platform,
+			&s.ExpiresAt,
+			&s.AccessExpiresAt,
+			&s.CreatedAt,
+			&s.LastSeenAt,
+			&s.TrustedAt,
+			&s.RevokedAt,
+			&s.RevokedReason,
+			&s.UserID,
+			&u.ID,
+			&emailVal,
+			&nameVal,
+			&u.DisplayName,
+			&u.AvatarURL,
+			&u.CreatedAt,
+			&u.IsPro,
+			&u.IsAdmin,
+			&u.LeaderboardOptIn,
+		)
+		if err != nil {
+			return nil, err
+		}
+		u.Email = emailVal
+		u.Name = nameVal
+		s.User = u
+		sessions = append(sessions, &s)
+	}
+	return sessions, nil
+}
+
+func (r *PgxSessionRepository) RevokeSessionByID(ctx context.Context, sessionID string, userID string) error {
+	if r == nil || r.db == nil {
+		return pgx.ErrNoRows
+	}
+	_, err := r.db.Exec(ctx, `
+		UPDATE "AuthSession"
+		SET "revokedAt" = NOW(), "revokedReason" = 'user_revoked'
+		WHERE "id" = $1 AND "userId" = $2 AND "revokedAt" IS NULL
+	`, sessionID, userID)
+	return err
+}

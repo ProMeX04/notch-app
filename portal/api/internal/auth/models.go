@@ -55,5 +55,8 @@ type SessionRepository interface {
 	FindUserByID(ctx context.Context, id string) (*User, error)
 	RevokeSession(ctx context.Context, sessionID string, revokedAt time.Time, reason string) error
 	FindActiveSessionsByUserID(ctx context.Context, userID string) ([]*Session, error)
+	FindAllSessionsByUserID(ctx context.Context, userID string) ([]*Session, error)
 	RevokeSessionByID(ctx context.Context, sessionID string, userID string) error
+	CreateGoogleDriveAuthHandoff(ctx context.Context, id string, tokenHash string, codeChallenge string, accessToken string, refreshToken *string, expiresIn *int, expiresAt time.Time, createdAt time.Time) error
+	UpdateUserAvatar(ctx context.Context, id string, avatarURL *string) error
 }

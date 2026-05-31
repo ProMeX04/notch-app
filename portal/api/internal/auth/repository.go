@@ -302,6 +302,69 @@ func (r *PgxSessionRepository) FindActiveSessionsByUserID(ctx context.Context, u
 	return sessions, nil
 }
 
+func (r *PgxSessionRepository) FindAllSessionsByUserID(ctx context.Context, userID string) ([]*Session, error) {
+	if r == nil || r.db == nil {
+		return nil, pgx.ErrNoRows
+	}
+	rows, err := r.db.Query(ctx, `
+		SELECT
+			s."id", s."tokenHash", s."accessTokenHash", s."deviceId", s."deviceName", s."platform",
+			s."expiresAt", s."accessExpiresAt", s."createdAt", s."lastSeenAt", s."trustedAt",
+			s."revokedAt", s."revokedReason", s."userId",
+			u."id", u."email", u."name", u."displayName", u."avatarUrl", u."createdAt",
+			u."isPro", u."isAdmin", u."leaderboardOptIn"
+		FROM "AuthSession" s
+		JOIN "User" u ON u."id" = s."userId"
+		WHERE s."userId" = $1
+		ORDER BY s."lastSeenAt" DESC, s."createdAt" DESC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessions []*Session
+	for rows.Next() {
+		var s Session
+		var u User
+		var emailVal *string
+		var nameVal *string
+		err := rows.Scan(
+			&s.ID,
+			&s.TokenHash,
+			&s.AccessTokenHash,
+			&s.DeviceID,
+			&s.DeviceName,
+			&s.Platform,
+			&s.ExpiresAt,
+			&s.AccessExpiresAt,
+			&s.CreatedAt,
+			&s.LastSeenAt,
+			&s.TrustedAt,
+			&s.RevokedAt,
+			&s.RevokedReason,
+			&s.UserID,
+			&u.ID,
+			&emailVal,
+			&nameVal,
+			&u.DisplayName,
+			&u.AvatarURL,
+			&u.CreatedAt,
+			&u.IsPro,
+			&u.IsAdmin,
+			&u.LeaderboardOptIn,
+		)
+		if err != nil {
+			return nil, err
+		}
+		u.Email = emailVal
+		u.Name = nameVal
+		s.User = u
+		sessions = append(sessions, &s)
+	}
+	return sessions, nil
+}
+
 func (r *PgxSessionRepository) RevokeSessionByID(ctx context.Context, sessionID string, userID string) error {
 	if r == nil || r.db == nil {
 		return pgx.ErrNoRows
@@ -311,5 +374,27 @@ func (r *PgxSessionRepository) RevokeSessionByID(ctx context.Context, sessionID 
 		SET "revokedAt" = NOW(), "revokedReason" = 'user_revoked'
 		WHERE "id" = $1 AND "userId" = $2 AND "revokedAt" IS NULL
 	`, sessionID, userID)
+	return err
+}
+
+func (r *PgxSessionRepository) CreateGoogleDriveAuthHandoff(ctx context.Context, id string, tokenHash string, codeChallenge string, accessToken string, refreshToken *string, expiresIn *int, expiresAt time.Time, createdAt time.Time) error {
+	if r == nil || r.db == nil {
+		return pgx.ErrNoRows
+	}
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO "GoogleDriveAuthHandoff" (
+			"id", "tokenHash", "codeChallenge", "accessToken", "refreshToken", "expiresIn", "expiresAt", "createdAt"
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7, $8
+		)
+	`, id, tokenHash, codeChallenge, accessToken, refreshToken, expiresIn, expiresAt, createdAt)
+	return err
+}
+
+func (r *PgxSessionRepository) UpdateUserAvatar(ctx context.Context, id string, avatarURL *string) error {
+	if r == nil || r.db == nil {
+		return pgx.ErrNoRows
+	}
+	_, err := r.db.Exec(ctx, `UPDATE "User" SET "avatarUrl" = $2, "updatedAt" = NOW() WHERE "id" = $1`, id, avatarURL)
 	return err
 }

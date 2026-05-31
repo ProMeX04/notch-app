@@ -63,7 +63,16 @@ func (r *refreshRepo) RevokeSession(_ context.Context, sessionID string, revoked
 func (r *refreshRepo) FindActiveSessionsByUserID(_ context.Context, userID string) ([]*Session, error) {
 	return nil, nil
 }
+func (r *refreshRepo) FindAllSessionsByUserID(_ context.Context, userID string) ([]*Session, error) {
+	return nil, nil
+}
 func (r *refreshRepo) RevokeSessionByID(_ context.Context, sessionID string, userID string) error {
+	return nil
+}
+func (r *refreshRepo) CreateGoogleDriveAuthHandoff(_ context.Context, id string, tokenHash string, codeChallenge string, accessToken string, refreshToken *string, expiresIn *int, expiresAt time.Time, createdAt time.Time) error {
+	return nil
+}
+func (r *refreshRepo) UpdateUserAvatar(_ context.Context, id string, avatarURL *string) error {
 	return nil
 }
 

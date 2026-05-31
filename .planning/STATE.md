@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Integration & Utilities Phase
 status: planning
-last_updated: "2026-05-31T05:37:35.460Z"
+last_updated: "2026-05-31T05:38:00.000Z"
 last_activity: 2026-05-31
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
-  total_plans: 0
+  total_plans: 4
   completed_plans: 0
   percent: 0
 ---
@@ -19,23 +19,23 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-05-31)
 
-**Core value:** Ensure complete, secure, and reliable payments, capability gating, admin dashboard, and Gemini Live parity on the new Go + Vite React stack to enable seamless user transitions.
-**Current focus:** Phase 5 (React Frontend Features Migration)
+**Core value:** Complete the migration of payment return workflows, utility pages (downloads, help), and public leaderboards to Go + React.
+**Current focus:** Phase 6 (Billing Return Integration)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-05-31 — Milestone v3.0 started
+Phase: 6 of 8 (Billing Return Integration)
+Plan: 0 of 1 in current phase
+Status: Planning
+Last activity: 2026-05-31 — Milestone v3.0 started, ready to plan Phase 6
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 6
+- Total plans completed: 8
 - Average duration: - min
-- Total execution time: 0.9 hours
+- Total execution time: 1.4 hours
 
 **By Phase:**
 
@@ -44,7 +44,8 @@ Last activity: 2026-05-31 — Milestone v3.0 started
 | 1 | 3/3 | 3 | - |
 | 2 | 2/2 | 2 | - |
 | 3 | 1/1 | 1 | - |
-| 5 | 0 | - | - |
+| 4 | 3/3 | 3 | - |
+| 5 | 2/2 | 2 | - |
 
 **Recent Trend:**
 
@@ -62,6 +63,7 @@ Recent decisions affecting current work:
 
 - [Init]: Horizontal Layers Strategy selected. Complete Go APIs first, then React UI.
 - [Init]: Notch selected as sub-repo. Disabled commit_docs and added .planning/ to .gitignore.
+- [v2.0]: Dynamic Google sync handles Gemini Live allowed models updates programmatically.
 
 ### Pending Todos
 
@@ -81,10 +83,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-31T05:11:00.000Z
-Stopped at: Phase 4 completed
-Resume file: .planning/phases/05-react-frontend-features-migration/05-CONTEXT.md
+Last session: 2026-05-31T05:37:00Z
+Stopped at: Milestone v3.0 initialized
+Resume file: .planning/phases/06-billing-return-integration/06-CONTEXT.md
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Execute /gsd-plan for Phase 6

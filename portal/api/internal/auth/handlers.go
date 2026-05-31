@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"notch/portal/api/internal/auth/token"
 	"notch/portal/api/internal/httpjson"
 
+	"github.com/go-chi/chi/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -22,6 +24,25 @@ type Handler struct {
 	CookieConfig     httpauth.CookieConfig
 	MaxActiveDevices int
 	Repo             SessionRepository
+}
+
+type DeviceSummary struct {
+	DeviceID           string  `json:"device_id"`
+	DeviceName         string  `json:"device_name"`
+	Platform           string  `json:"platform"`
+	TrustedAt          *string `json:"trusted_at"`
+	CreatedAt          string  `json:"created_at"`
+	LastSeenAt         string  `json:"last_seen_at"`
+	RevokedAt          *string `json:"revoked_at"`
+	RevokedReason      *string `json:"revoked_reason"`
+	Active             bool    `json:"active"`
+	Current            bool    `json:"current"`
+	ActiveSessionCount int     `json:"active_session_count"`
+}
+
+type SessionsResponse struct {
+	MaxActiveDevices int             `json:"max_active_devices"`
+	Devices          []DeviceSummary `json:"devices"`
 }
 
 type LoginRequest struct {
@@ -362,4 +383,156 @@ func deviceInputFromRequest(req *http.Request, bodyDeviceID, bodyDeviceName, bod
 		Platform:    platform,
 		TrustDevice: trustDevice,
 	}
+}
+
+func (h Handler) ListSessions(w http.ResponseWriter, req *http.Request) {
+	noStore(w)
+	authCtx, err := h.Authenticator.AuthenticateRequest(req.Context(), req)
+	if err != nil {
+		httpjson.Detail(w, http.StatusUnauthorized, "Invalid or expired session token.")
+		return
+	}
+
+	sessions, err := h.Repo.FindAllSessionsByUserID(req.Context(), authCtx.User.ID)
+	if err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch sessions")
+		return
+	}
+
+	now := time.Now()
+	devicesMap := make(map[string]*DeviceSummary)
+
+	for _, s := range sessions {
+		key := "session:" + s.ID
+		if s.DeviceID != nil && *s.DeviceID != "" {
+			key = *s.DeviceID
+		}
+
+		active := s.RevokedAt == nil && s.ExpiresAt.After(now)
+		existing, found := devicesMap[key]
+
+		if !found {
+			deviceName := "Unknown device"
+			if s.DeviceName != nil {
+				deviceName = *s.DeviceName
+			}
+			platform := "unknown"
+			if s.Platform != nil {
+				platform = *s.Platform
+			}
+			var trustedAtStr *string
+			if s.TrustedAt != nil {
+				val := s.TrustedAt.UTC().Format(time.RFC3339Nano)
+				trustedAtStr = &val
+			}
+			var revokedAtStr *string
+			if s.RevokedAt != nil {
+				val := s.RevokedAt.UTC().Format(time.RFC3339Nano)
+				revokedAtStr = &val
+			}
+			var revokedReasonStr *string
+			if s.RevokedReason != nil {
+				revokedReasonStr = s.RevokedReason
+			}
+
+			activeCount := 0
+			if active {
+				activeCount = 1
+			}
+
+			summary := &DeviceSummary{
+				DeviceID:           key,
+				DeviceName:         deviceName,
+				Platform:           platform,
+				TrustedAt:          trustedAtStr,
+				CreatedAt:          s.CreatedAt.UTC().Format(time.RFC3339Nano),
+				LastSeenAt:         s.LastSeenAt.UTC().Format(time.RFC3339Nano),
+				RevokedAt:          revokedAtStr,
+				RevokedReason:      revokedReasonStr,
+				Active:             active,
+				Current:            s.ID == authCtx.SessionID,
+				ActiveSessionCount: activeCount,
+			}
+			devicesMap[key] = summary
+		} else {
+			existing.Current = existing.Current || s.ID == authCtx.SessionID
+			existing.Active = existing.Active || active
+			if active {
+				existing.ActiveSessionCount++
+			}
+			if s.TrustedAt != nil {
+				val := s.TrustedAt.UTC().Format(time.RFC3339Nano)
+				if existing.TrustedAt == nil || val > *existing.TrustedAt {
+					existing.TrustedAt = &val
+				}
+			}
+			lastSeenVal := s.LastSeenAt.UTC().Format(time.RFC3339Nano)
+			if lastSeenVal > existing.LastSeenAt {
+				existing.LastSeenAt = lastSeenVal
+				if s.DeviceName != nil {
+					existing.DeviceName = *s.DeviceName
+				}
+				if s.Platform != nil {
+					existing.Platform = *s.Platform
+				}
+				if s.RevokedAt != nil {
+					val := s.RevokedAt.UTC().Format(time.RFC3339Nano)
+					existing.RevokedAt = &val
+				} else {
+					existing.RevokedAt = nil
+				}
+				existing.RevokedReason = s.RevokedReason
+			}
+		}
+	}
+
+	devicesSlice := make([]DeviceSummary, 0, len(devicesMap))
+	for _, dev := range devicesMap {
+		devicesSlice = append(devicesSlice, *dev)
+	}
+
+	sort.Slice(devicesSlice, func(i, j int) bool {
+		a := devicesSlice[i]
+		b := devicesSlice[j]
+		if a.Current != b.Current {
+			return a.Current
+		}
+		if a.Active != b.Active {
+			return a.Active
+		}
+		return a.LastSeenAt > b.LastSeenAt
+	})
+
+	maxActive := h.MaxActiveDevices
+	if maxActive <= 0 {
+		maxActive = 3
+	}
+
+	httpjson.JSON(w, http.StatusOK, SessionsResponse{
+		MaxActiveDevices: maxActive,
+		Devices:          devicesSlice,
+	})
+}
+
+func (h Handler) RevokeSession(w http.ResponseWriter, req *http.Request) {
+	noStore(w)
+	authCtx, err := h.Authenticator.AuthenticateRequest(req.Context(), req)
+	if err != nil {
+		httpjson.Detail(w, http.StatusUnauthorized, "Invalid or expired session token.")
+		return
+	}
+
+	sessionID := chi.URLParam(req, "id")
+	if strings.TrimSpace(sessionID) == "" {
+		httpjson.Error(w, http.StatusBadRequest, "Missing session ID")
+		return
+	}
+
+	err = h.Repo.RevokeSessionByID(req.Context(), sessionID, authCtx.User.ID)
+	if err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "Failed to revoke session")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }

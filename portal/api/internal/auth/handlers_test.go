@@ -13,6 +13,7 @@ import (
 	"notch/portal/api/internal/auth/httpauth"
 	"notch/portal/api/internal/auth/token"
 
+	"github.com/go-chi/chi/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -314,6 +315,166 @@ func TestHandlerLogout(t *testing.T) {
 	}
 	if !clearedAccess || !clearedRefresh {
 		t.Errorf("cookies not cleared properly: access=%t, refresh=%t", clearedAccess, clearedRefresh)
+	}
+}
+
+func TestHandlerListSessions(t *testing.T) {
+	now := time.Now()
+	email := "user@example.com"
+	user := User{ID: "user_1", Email: &email, CreatedAt: now}
+	deviceID := "device_mac"
+	accessToken, _ := token.SignJWT(token.JWTPayload{
+		UserID:    "user_1",
+		SessionID: "session_1",
+		DeviceID:  &deviceID,
+	}, "testsecret", time.Hour, now)
+	accessTokenHash := token.HashToken(accessToken)
+
+	session1 := &Session{
+		ID:              "session_1",
+		TokenHash:       token.HashToken("refresh-token-1"),
+		AccessTokenHash: &accessTokenHash,
+		ExpiresAt:       now.Add(24 * time.Hour),
+		AccessExpiresAt: ptrTime(now.Add(time.Hour)),
+		UserID:          "user_1",
+		User:            user,
+		DeviceID:        ptrStr("device_mac"),
+		DeviceName:      ptrStr("Macbook Pro"),
+		Platform:        ptrStr("macOS"),
+		CreatedAt:       now,
+		LastSeenAt:      now,
+	}
+	session2 := &Session{
+		ID:              "session_2",
+		TokenHash:       token.HashToken("refresh-token-2"),
+		ExpiresAt:       now.Add(-time.Hour),
+		UserID:          "user_1",
+		User:            user,
+		DeviceID:        ptrStr("device_phone"),
+		DeviceName:      ptrStr("iPhone"),
+		Platform:        ptrStr("iOS"),
+		CreatedAt:       now.Add(-24 * time.Hour),
+		LastSeenAt:      now.Add(-time.Hour),
+	}
+
+	repo := &fakeSessionRepo{
+		byID: map[string]*Session{
+			"session_1": session1,
+			"session_2": session2,
+		},
+		usersByEmail: map[string]*User{
+			"user@example.com": &user,
+		},
+	}
+
+	handler := Handler{
+		Repo: repo,
+		Authenticator: Authenticator{
+			Repo:      repo,
+			JWTSecret: "testsecret",
+		},
+		MaxActiveDevices: 3,
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/sessions", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("X-Notch-Device-Id", "device_mac")
+	rec := httptest.NewRecorder()
+
+	handler.ListSessions(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d. Body: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp SessionsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if resp.MaxActiveDevices != 3 {
+		t.Errorf("expected max active devices 3, got %d", resp.MaxActiveDevices)
+	}
+
+	if len(resp.Devices) != 2 {
+		t.Fatalf("expected 2 devices, got %d", len(resp.Devices))
+	}
+
+	// Verify sorting and contents (current session comes first)
+	if resp.Devices[0].DeviceID != "device_mac" || !resp.Devices[0].Current {
+		t.Errorf("expected current device_mac first, got device %s (current: %t)", resp.Devices[0].DeviceID, resp.Devices[0].Current)
+	}
+}
+
+func TestHandlerRevokeSession(t *testing.T) {
+	now := time.Now()
+	email := "user@example.com"
+	user := User{ID: "user_1", Email: &email, CreatedAt: now}
+	accessToken, _ := token.SignJWT(token.JWTPayload{
+		UserID:    "user_1",
+		SessionID: "session_1",
+	}, "testsecret", time.Hour, now)
+	accessTokenHash := token.HashToken(accessToken)
+
+	session1 := &Session{
+		ID:              "session_1",
+		TokenHash:       token.HashToken("refresh-token-1"),
+		AccessTokenHash: &accessTokenHash,
+		ExpiresAt:       now.Add(24 * time.Hour),
+		AccessExpiresAt: ptrTime(now.Add(time.Hour)),
+		UserID:          "user_1",
+		User:            user,
+		CreatedAt:       now,
+		LastSeenAt:      now,
+	}
+	session2 := &Session{
+		ID:              "session_2",
+		TokenHash:       token.HashToken("refresh-token-2"),
+		ExpiresAt:       now.Add(24 * time.Hour),
+		UserID:          "user_1",
+		User:            user,
+		CreatedAt:       now,
+		LastSeenAt:      now,
+	}
+
+	repo := &fakeSessionRepo{
+		byID: map[string]*Session{
+			"session_1": session1,
+			"session_2": session2,
+		},
+		usersByEmail: map[string]*User{
+			"user@example.com": &user,
+		},
+	}
+
+	handler := Handler{
+		Repo: repo,
+		Authenticator: Authenticator{
+			Repo:      repo,
+			JWTSecret: "testsecret",
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/auth/sessions/session_2", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	// Mock chi URL Param "id" -> "session_2"
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "session_2")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rec := httptest.NewRecorder()
+
+	handler.RevokeSession(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected status 204, got %d. Body: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify session2 was revoked in repo
+	sess := repo.byID["session_2"]
+	if sess.RevokedAt == nil || *sess.RevokedReason != "user_revoked" {
+		t.Errorf("expected session2 to be revoked with user_revoked, got revokedAt: %v, reason: %v", sess.RevokedAt, sess.RevokedReason)
 	}
 }
 

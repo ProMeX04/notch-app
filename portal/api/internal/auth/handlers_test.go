@@ -831,3 +831,158 @@ func TestHandlerGoogleCallbackFailures(t *testing.T) {
 		}
 	})
 }
+
+func TestHandlerPatchSessions(t *testing.T) {
+	now := time.Now()
+	email := "user@example.com"
+	user := User{ID: "user_1", Email: &email, CreatedAt: now}
+	deviceID := "device_mac"
+	accessToken, _ := token.SignJWT(token.JWTPayload{
+		UserID:    "user_1",
+		SessionID: "session_1",
+		DeviceID:  &deviceID,
+	}, "testsecret", time.Hour, now)
+	accessTokenHash := token.HashToken(accessToken)
+
+	session1 := &Session{
+		ID:              "session_1",
+		TokenHash:       token.HashToken("refresh-token-1"),
+		AccessTokenHash: &accessTokenHash,
+		ExpiresAt:       now.Add(24 * time.Hour),
+		AccessExpiresAt: ptrTime(now.Add(time.Hour)),
+		UserID:          "user_1",
+		User:            user,
+		DeviceID:        ptrStr("device_mac"),
+		DeviceName:      ptrStr("Macbook Pro"),
+		Platform:        ptrStr("macOS"),
+		CreatedAt:       now,
+		LastSeenAt:      now,
+	}
+	session2 := &Session{
+		ID:              "session_2",
+		TokenHash:       token.HashToken("refresh-token-2"),
+		ExpiresAt:       now.Add(24 * time.Hour),
+		AccessExpiresAt: ptrTime(now.Add(time.Hour)),
+		UserID:          "user_1",
+		User:            user,
+		DeviceID:        ptrStr("device_phone"),
+		DeviceName:      ptrStr("iPhone"),
+		Platform:        ptrStr("iOS"),
+		CreatedAt:       now,
+		LastSeenAt:      now,
+	}
+
+	repo := &fakeSessionRepo{
+		byID: map[string]*Session{
+			"session_1": session1,
+			"session_2": session2,
+		},
+		usersByEmail: map[string]*User{
+			"user@example.com": &user,
+		},
+	}
+
+	handler := Handler{
+		Repo: repo,
+		Authenticator: Authenticator{
+			Repo:      repo,
+			JWTSecret: "testsecret",
+		},
+		MaxActiveDevices: 3,
+	}
+
+	t.Run("trust device", func(t *testing.T) {
+		reqBody := `{"action": "trust", "device_id": "device_mac"}`
+		req := httptest.NewRequest(http.MethodPatch, "/api/auth/sessions", strings.NewReader(reqBody))
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+		req.Header.Set("X-Notch-Device-Id", "device_mac")
+		rec := httptest.NewRecorder()
+
+		handler.PatchSessions(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+
+		var resp SessionsResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("failed to parse response: %v", err)
+		}
+
+		// Verify session1 is trusted in DB
+		if session1.TrustedAt == nil {
+			t.Error("expected session1 to be trusted in DB")
+		}
+
+		// Verify trusted_at is returned in response
+		var found bool
+		for _, d := range resp.Devices {
+			if d.DeviceID == "device_mac" {
+				found = true
+				if d.TrustedAt == nil {
+					t.Error("expected trusted_at to be populated in response")
+				}
+			}
+		}
+		if !found {
+			t.Error("expected device_mac to be in response")
+		}
+	})
+
+	t.Run("untrust device", func(t *testing.T) {
+		reqBody := `{"action": "untrust", "device_id": "device_mac"}`
+		req := httptest.NewRequest(http.MethodPatch, "/api/auth/sessions", strings.NewReader(reqBody))
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+		req.Header.Set("X-Notch-Device-Id", "device_mac")
+		rec := httptest.NewRecorder()
+
+		handler.PatchSessions(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+
+		// Verify session1 is untrusted in DB
+		if session1.TrustedAt != nil {
+			t.Error("expected session1 to be untrusted in DB")
+		}
+	})
+
+	t.Run("revoke other device sessions", func(t *testing.T) {
+		reqBody := `{"action": "revoke", "device_id": "device_phone"}`
+		req := httptest.NewRequest(http.MethodPatch, "/api/auth/sessions", strings.NewReader(reqBody))
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+		req.Header.Set("X-Notch-Device-Id", "device_mac")
+		rec := httptest.NewRecorder()
+
+		handler.PatchSessions(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+
+		// Verify session2 is revoked in DB
+		if session2.RevokedAt == nil || *session2.RevokedReason != "manual_revoke" {
+			t.Errorf("expected session2 to be revoked with manual_revoke, got revokedAt: %v, reason: %v", session2.RevokedAt, session2.RevokedReason)
+		}
+	})
+
+	t.Run("revoke current device should not revoke current session", func(t *testing.T) {
+		reqBody := `{"action": "revoke", "device_id": "device_mac"}`
+		req := httptest.NewRequest(http.MethodPatch, "/api/auth/sessions", strings.NewReader(reqBody))
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+		req.Header.Set("X-Notch-Device-Id", "device_mac")
+		rec := httptest.NewRecorder()
+
+		handler.PatchSessions(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+
+		// Verify session1 is NOT revoked in DB because it matches authCtx.SessionID
+		if session1.RevokedAt != nil {
+			t.Error("expected current session1 to NOT be revoked")
+		}
+	})
+}

@@ -101,6 +101,7 @@ func (s *Server) mount(r chi.Router) {
 		api.Post("/auth/logout", authHandler.Logout)
 		api.Get("/auth/sessions", authHandler.ListSessions)
 		api.Delete("/auth/sessions/{id}", authHandler.RevokeSession)
+		api.Patch("/auth/sessions", authHandler.PatchSessions)
 		api.Get("/auth/google", authHandler.GoogleLogin)
 		api.Get("/auth/google/callback", authHandler.GoogleCallback)
 

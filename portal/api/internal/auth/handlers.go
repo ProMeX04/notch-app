@@ -549,6 +549,54 @@ func (h Handler) RevokeSession(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h Handler) PatchSessions(w http.ResponseWriter, req *http.Request) {
+	noStore(w)
+	authCtx, err := h.Authenticator.AuthenticateRequest(req.Context(), req)
+	if err != nil {
+		httpjson.Detail(w, http.StatusUnauthorized, "Invalid or expired session token.")
+		return
+	}
+
+	type SessionPatchRequest struct {
+		Action   string `json:"action"`
+		DeviceID string `json:"device_id"`
+	}
+
+	var body SessionPatchRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		httpjson.Error(w, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+
+	deviceID := strings.TrimSpace(body.DeviceID)
+	if deviceID == "" {
+		httpjson.Error(w, http.StatusBadRequest, "Missing device_id")
+		return
+	}
+
+	action := strings.ToLower(strings.TrimSpace(body.Action))
+	if action != "trust" && action != "untrust" && action != "revoke" {
+		httpjson.Error(w, http.StatusBadRequest, "Unsupported or missing action")
+		return
+	}
+
+	switch action {
+	case "trust":
+		err = h.Repo.SetTrustedDevice(req.Context(), authCtx.User.ID, deviceID, true)
+	case "untrust":
+		err = h.Repo.SetTrustedDevice(req.Context(), authCtx.User.ID, deviceID, false)
+	case "revoke":
+		err = h.Repo.RevokeDeviceSessions(req.Context(), authCtx.User.ID, deviceID, authCtx.SessionID)
+	}
+
+	if err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "Failed to execute session patch action")
+		return
+	}
+
+	h.ListSessions(w, req)
+}
+
 func parseEncryptionKey(base64Key string) ([]byte, error) {
 	key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(base64Key))
 	if err != nil {

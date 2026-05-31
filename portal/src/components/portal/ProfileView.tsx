@@ -110,7 +110,7 @@ export function ProfileView() {
     void hydrateDevices();
 
     return () => {
-      ignore = false;
+      ignore = true;
     };
   }, [status]);
 

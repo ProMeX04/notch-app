@@ -75,6 +75,12 @@ func (r *refreshRepo) CreateGoogleDriveAuthHandoff(_ context.Context, id string,
 func (r *refreshRepo) UpdateUserAvatar(_ context.Context, id string, avatarURL *string) error {
 	return nil
 }
+func (r *refreshRepo) SetTrustedDevice(_ context.Context, userID string, deviceID string, trusted bool) error {
+	return nil
+}
+func (r *refreshRepo) RevokeDeviceSessions(_ context.Context, userID string, deviceID string, exceptSessionID string) error {
+	return nil
+}
 
 func TestRefreshServiceRotatesValidRefreshToken(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()

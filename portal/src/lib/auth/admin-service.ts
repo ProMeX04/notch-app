@@ -5,18 +5,18 @@ export async function verifyAdminSession(token: string | null): Promise<boolean>
   if (!token) return false
 
   try {
-    // Try offline verification first
     const payload = verifyJWT(token)
-    if (payload) {
-      return Boolean(payload.isAdmin)
-    }
-
-    // Fallback to database lookup for old sessions
     const session = await findSessionByAccessToken(token)
     if (!session?.user) return false
 
     const accessExpiresAt = session.accessExpiresAt ?? session.expiresAt
-    if (session.revokedAt || accessExpiresAt <= new Date()) return false
+    if (
+      session.revokedAt ||
+      accessExpiresAt <= new Date() ||
+      (payload && session.userId !== payload.userId)
+    ) {
+      return false
+    }
 
     return Boolean(session.user.isAdmin)
   } catch {

@@ -170,6 +170,30 @@ func (r *fakeSessionRepo) UpdateUserAvatar(_ context.Context, id string, avatarU
 	r.updatedAvatars[id] = avatarURL
 	return nil
 }
+func (r *fakeSessionRepo) SetTrustedDevice(_ context.Context, userID string, deviceID string, trusted bool) error {
+	for _, s := range r.byID {
+		if s.UserID == userID && s.DeviceID != nil && *s.DeviceID == deviceID {
+			if trusted {
+				now := time.Now()
+				s.TrustedAt = &now
+			} else {
+				s.TrustedAt = nil
+			}
+		}
+	}
+	return nil
+}
+func (r *fakeSessionRepo) RevokeDeviceSessions(_ context.Context, userID string, deviceID string, exceptSessionID string) error {
+	for _, s := range r.byID {
+		if s.UserID == userID && s.DeviceID != nil && *s.DeviceID == deviceID && s.ID != exceptSessionID {
+			now := time.Now()
+			reason := "manual_revoke"
+			s.RevokedAt = &now
+			s.RevokedReason = &reason
+		}
+	}
+	return nil
+}
 
 func TestAuthenticatorAcceptsSessionBoundJWT(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()

@@ -13,14 +13,14 @@ import {
 
 export function OAuthAuthorizePage() {
   const { status, isAuthenticated } = usePortalAuth()
-  const [error, setError] = useState<string | null>(null)
+  // Use standard browser search params to ensure maximum compatibility and bypass strict TanStack router search validation
+  const searchParams = useMemo(() => new URLSearchParams(window.location.search), [])
+
+  const [error, setError] = useState<string | null>(() => searchParams.get('error'))
   const [isRedirecting, setIsRedirecting] = useState(false)
   const [hasOpenedApp, setHasOpenedApp] = useState(false)
   const [lastRedirectTo, setLastRedirectTo] = useState<string | null>(null)
   const hasAttemptedOAuthRedirect = useRef(false)
-
-  // Use standard browser search params to ensure maximum compatibility and bypass strict TanStack router search validation
-  const searchParams = useMemo(() => new URLSearchParams(window.location.search), [])
 
   const oauthRequest = useMemo(() => readPortalOAuthAuthorizeRequest(searchParams), [searchParams])
   const oauthSearch = useMemo(() => buildPortalOAuthSearch(oauthRequest), [oauthRequest])
@@ -70,13 +70,7 @@ export function OAuthAuthorizePage() {
     }
   }, [isAuthenticated, oauthRequest])
 
-  // Get initial query param error if any
-  useEffect(() => {
-    const errParam = searchParams.get('error')
-    if (errParam) {
-      setError(errParam)
-    }
-  }, [searchParams])
+
 
   if (isHandoffState) {
     return (

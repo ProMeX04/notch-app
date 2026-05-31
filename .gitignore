@@ -11,3 +11,5 @@ AppIcon.iconset/
 .vercel
 xcuserdata/
 *.xcuserstate
+.planning/
+

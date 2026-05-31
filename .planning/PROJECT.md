@@ -8,35 +8,46 @@ This project is a migration of the existing Next.js web portal backend and front
 
 Ensure complete, secure, and reliable authentication and session parity on the new Go + Vite React stack to enable seamless user transitions.
 
+## Current State
+
+- **Milestone v1.0 (Auth Phase)**: Shipped on 2026-05-31.
+  - All email/password authentication, Google OAuth, session audit/revocation backend endpoints and frontend views are migrated and 100% verified.
+  - Concurrent development scripts and parity checks are fully functional.
+
 ## Requirements
 
 ### Validated
 
-- ✓ Focus Leaderboard backend Go API and Vite React frontend Page — existing
-- ✓ Focus Sync backend Go API — existing
-- ✓ Focus Me/Profile backend Go API and Profile UI updates — existing
-- ✓ Partial Auth Me/Refresh backend Go APIs — existing
+#### Milestone v1.0 (Auth Phase)
+- ✓ **AUTH-MIG-01**: User can log in with email and password via Go backend (`/api/auth/login`)
+- ✓ **AUTH-MIG-02**: User can register a new account via Go backend (`/api/auth/register`)
+- ✓ **AUTH-MIG-03**: User can log out and revoke sessions via Go backend (`/api/auth/logout`)
+- ✓ **AUTH-MIG-04**: User can view and manage their active sessions/devices via Go backend (`/api/auth/sessions`)
+- ✓ **AUTH-MIG-05**: User can authenticate using Google OAuth (Redirect & Callback) via Go backend (`/api/auth/google` and `/api/auth/google/callback`)
+- ✓ **AUTH-MIG-06**: System supports Google Drive OAuth integration (exchange, refresh, and handoff) via Go backend (`/api/auth/google-drive/*`)
+- ✓ **AUTH-MIG-07**: React Frontend LoginPage integrates with Go backend Login & Google OAuth API
+- ✓ **AUTH-MIG-08**: React Frontend AccountPage shows active sessions and handles logout via Go backend APIs
+- ✓ **AUTH-MIG-09**: React Frontend OAuth authorization page integrates with Go backend OAuth handlers
+- ✓ **AUTH-MIG-10**: Set up concurrent Go backend and Vite React frontend local execution environment
+- ✓ **AUTH-MIG-11**: Perform comprehensive auth and session parity verification comparing Next.js and Go + Vite React
 
-### Active
+### Next Milestone Goals (Milestone v2.0)
 
-- [ ] **AUTH-MIG-01**: User can log in with email and password via Go backend (`/api/auth/login`)
-- [ ] **AUTH-MIG-02**: User can register a new account via Go backend (`/api/auth/register`)
-- [ ] **AUTH-MIG-03**: User can log out and revoke sessions via Go backend (`/api/auth/logout`)
-- [ ] **AUTH-MIG-04**: User can view and manage their active sessions/devices via Go backend (`/api/auth/sessions`)
-- [ ] **AUTH-MIG-05**: User can authenticate using Google OAuth (Redirect & Callback) via Go backend (`/api/auth/google` and `/api/auth/google/callback`)
-- [ ] **AUTH-MIG-06**: System supports Google Drive OAuth integration (exchange, refresh, and handoff) via Go backend (`/api/auth/google-drive/*`)
-- [ ] **AUTH-MIG-07**: React Frontend LoginPage integrates with Go backend Login & Google OAuth API
-- [ ] **AUTH-MIG-08**: React Frontend AccountPage shows active sessions and handles logout via Go backend APIs
-- [ ] **AUTH-MIG-09**: React Frontend OAuth authorization page integrates with Go backend OAuth handlers
-- [ ] **AUTH-MIG-10**: Set up concurrent Go backend and Vite React frontend local execution environment
-- [ ] **AUTH-MIG-11**: Perform comprehensive auth and session parity verification comparing Next.js and Go + Vite React
+- [ ] **PAY-MIG-01**: User can create a payment transaction via VNPay integration
+- [ ] **PAY-MIG-02**: System handles VNPay IPN callbacks and updates payment transactions status
+- [ ] **CAP-MIG-01**: User access is checked and updated dynamically based on active Pro capabilities
+- [ ] **ADM-MIG-01**: Admin users can view list of users
+- [ ] **ADM-MIG-02**: Admin users can view/edit specific user details and capabilities
+- [ ] **ADM-MIG-03**: Admin users can view global stats and Gemini Live model configs
+- [ ] **GEM-MIG-01**: Backend supports Gemini Live session token requests and model lists
+- [ ] **GEM-MIG-02**: System provides Gemini Live API health status
 
 ### Out of Scope
 
-- Payments / VNPay migration — Deferred to subsequent milestone to focus on Auth first.
-- Capabilities API migration — Deferred to subsequent milestone.
-- Admin APIs and Pages migration — Deferred to subsequent milestone.
-- Gemini Live APIs migration — Deferred to subsequent milestone.
+- Payments / VNPay migration — Moved to next milestone (v2.0).
+- Capabilities API migration — Moved to next milestone (v2.0).
+- Admin APIs and Pages migration — Moved to next milestone (v2.0).
+- Gemini Live APIs migration — Moved to next milestone (v2.0).
 
 ## Context
 
@@ -52,9 +63,9 @@ The existing system is a Next.js App Router portal backed by PostgreSQL (Prisma)
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Focus on Auth Phase | Authentication is the foundation block of the portal; migrating it first allows secure authentication for all subsequent feature migrations. | — Pending |
-| Horizontal Layers Strategy | Build out the backend API layers/endpoints in Go first, then wire the React UI pages, and finally test. | — Pending |
-| Dual-Server Setup | Run Go backend and Vite React simultaneously to check parity against Next.js. | — Pending |
+| Focus on Auth Phase | Authentication is the foundation block of the portal; migrating it first allows secure authentication for all subsequent feature migrations. | Shipped in v1.0 |
+| Horizontal Layers Strategy | Build out the backend API layers/endpoints in Go first, then wire the React UI pages, and finally test. | Shipped in v1.0 |
+| Dual-Server Setup | Run Go backend and Vite React simultaneously to check parity against Next.js. | Shipped in v1.0 |
 
 ## Evolution
 
@@ -74,4 +85,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-31 after initialization*
+*Last updated: 2026-05-31 after Milestone v1.0 completion*

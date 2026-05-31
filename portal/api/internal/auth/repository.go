@@ -398,3 +398,32 @@ func (r *PgxSessionRepository) UpdateUserAvatar(ctx context.Context, id string, 
 	_, err := r.db.Exec(ctx, `UPDATE "User" SET "avatarUrl" = $2, "updatedAt" = NOW() WHERE "id" = $1`, id, avatarURL)
 	return err
 }
+
+func (r *PgxSessionRepository) SetTrustedDevice(ctx context.Context, userID string, deviceID string, trusted bool) error {
+	if r == nil || r.db == nil {
+		return pgx.ErrNoRows
+	}
+	var trustedAt *time.Time
+	if trusted {
+		now := time.Now()
+		trustedAt = &now
+	}
+	_, err := r.db.Exec(ctx, `
+		UPDATE "AuthSession"
+		SET "trustedAt" = $3, "updatedAt" = NOW()
+		WHERE "userId" = $1 AND "deviceId" = $2 AND "revokedAt" IS NULL
+	`, userID, deviceID, trustedAt)
+	return err
+}
+
+func (r *PgxSessionRepository) RevokeDeviceSessions(ctx context.Context, userID string, deviceID string, exceptSessionID string) error {
+	if r == nil || r.db == nil {
+		return pgx.ErrNoRows
+	}
+	_, err := r.db.Exec(ctx, `
+		UPDATE "AuthSession"
+		SET "revokedAt" = NOW(), "revokedReason" = 'manual_revoke', "updatedAt" = NOW()
+		WHERE "userId" = $1 AND "deviceId" = $2 AND "id" != $3 AND "revokedAt" IS NULL
+	`, userID, deviceID, exceptSessionID)
+	return err
+}

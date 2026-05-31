@@ -32,27 +32,41 @@ export async function getAuthenticatedUser(req: Request) {
   if (!token) return null
   const requestDeviceID = readDeviceIDHeader(req)
 
-  // Try decoding as JWT first (offline verification)
+  const now = new Date()
+
+  // JWTs are signed, but still session-bound so logout and device revocation take effect immediately.
   const payload = verifyJWT(token)
   if (payload) {
     if (payload.deviceId && requestDeviceID !== payload.deviceId) {
       return null
     }
 
+    const session = await prisma.authSession.findUnique({
+      where: { id: payload.sessionId },
+      include: { user: true },
+    })
+    const accessExpiresAt = session?.accessExpiresAt ?? session?.expiresAt
+    if (
+      !session ||
+      session.userId !== payload.userId ||
+      session.revokedAt ||
+      !accessExpiresAt ||
+      accessExpiresAt <= now ||
+      session.accessTokenHash !== hashToken(token) ||
+      (session.deviceId && requestDeviceID !== session.deviceId)
+    ) {
+      return null
+    }
+
+    await prisma.authSession.update({
+      where: { id: session.id },
+      data: { lastSeenAt: now },
+    }).catch(() => {})
+
     return {
-      sessionId: payload.sessionId,
-      deviceId: payload.deviceId,
-      user: {
-        id: payload.userId,
-        email: payload.email,
-        name: payload.name,
-        displayName: payload.displayName,
-        avatarUrl: payload.avatarUrl,
-        createdAt: new Date(payload.userCreatedAt),
-        isPro: payload.isPro,
-        isAdmin: payload.isAdmin,
-        leaderboardOptIn: payload.leaderboardOptIn,
-      },
+      sessionId: session.id,
+      deviceId: session.deviceId,
+      user: session.user,
     }
   }
 

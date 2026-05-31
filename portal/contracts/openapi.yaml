@@ -1,0 +1,167 @@
+openapi: 3.1.0
+info:
+  title: Notch Portal API
+  version: 0.1.0-migration
+  description: |
+    Contract baseline for migrating the Portal API from Next.js route handlers to Go.
+    This file starts intentionally broad and will be tightened endpoint-by-endpoint as
+    each route is ported and covered by contract tests.
+servers:
+  - url: http://localhost:8080
+    description: Local Go API
+  - url: http://localhost:3000
+    description: Existing Next.js Portal during transition
+security:
+  - cookieAuth: []
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: notch_access_token
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ErrorResponse:
+      type: object
+      additionalProperties: true
+      properties:
+        error:
+          type: string
+        detail:
+          type: string
+    PortalAccountUser:
+      type: object
+      required: [id, email, name, avatar_url, created_at, is_pro, current_session_id, max_active_devices]
+      properties:
+        id: { type: string }
+        email: { type: [string, 'null'] }
+        name: { type: [string, 'null'] }
+        avatar_url: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        is_pro: { type: boolean }
+        current_session_id: { type: [string, 'null'] }
+        max_active_devices: { type: integer }
+    AuthPayload:
+      type: object
+      additionalProperties: true
+      required: [access_token, token_type, expires_at, refresh_token, refresh_expires_at, user, session, max_active_devices]
+      properties:
+        access_token: { type: string }
+        token_type: { type: string, enum: [Bearer] }
+        expires_at: { type: string, format: date-time }
+        refresh_token: { type: string }
+        refresh_expires_at: { type: string, format: date-time }
+        user: { type: object, additionalProperties: true }
+        session: { type: object, additionalProperties: true }
+        max_active_devices: { type: integer }
+    FocusSyncRequest:
+      type: object
+      required: [schema_version, entries]
+      properties:
+        schema_version: { type: integer, const: 2 }
+        entries:
+          type: array
+          maxItems: 120
+          items:
+            type: object
+            required: [date, focus_seconds, session_count]
+            properties:
+              date: { type: string, pattern: '^\\d{4}-\\d{2}-\\d{2}$' }
+              focus_seconds: { type: integer, minimum: 0, maximum: 86400 }
+              session_count: { type: integer, minimum: 0, maximum: 500 }
+    FocusSyncResponse:
+      type: object
+      required: [synced]
+      properties:
+        synced: { type: integer }
+    LeaderboardEntry:
+      type: object
+      required: [rank, user_id, display_name, focus_seconds, session_count]
+      properties:
+        rank: { type: integer }
+        user_id: { type: string }
+        display_name: { type: string }
+        focus_seconds: { type: integer }
+        session_count: { type: integer }
+paths:
+  /healthz:
+    get:
+      security: []
+      summary: Go API liveness check
+      responses:
+        '200': { description: OK }
+  /readyz:
+    get:
+      security: []
+      summary: Go API readiness check
+      responses:
+        '200': { description: Ready }
+        '503': { description: Not ready }
+  /api/auth/me:
+    get:
+      summary: Get current authenticated Portal user, refreshing from cookie when possible
+      responses:
+        '200':
+          description: Authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAccountUser'
+        '401':
+          description: Invalid or expired session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/auth/refresh:
+    post:
+      summary: Rotate refresh/access tokens
+      responses:
+        '200':
+          description: New auth payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthPayload'
+        '401':
+          description: Refresh token invalid or expired
+  /api/focus/sync:
+    post:
+      summary: Sync cumulative focus aggregates from an authenticated device-bound session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FocusSyncRequest'
+      responses:
+        '200':
+          description: Sync accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FocusSyncResponse'
+        '400': { description: Invalid payload }
+        '401': { description: Unauthorized or device-unbound session }
+  /api/focus/leaderboard:
+    get:
+      security: []
+      summary: Public focus leaderboard
+      parameters:
+        - name: window
+          in: query
+          schema:
+            type: string
+            enum: [week, all]
+      responses:
+        '200':
+          description: Public leaderboard entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaderboardEntry'

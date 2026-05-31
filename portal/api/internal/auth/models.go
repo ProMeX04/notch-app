@@ -59,4 +59,6 @@ type SessionRepository interface {
 	RevokeSessionByID(ctx context.Context, sessionID string, userID string) error
 	CreateGoogleDriveAuthHandoff(ctx context.Context, id string, tokenHash string, codeChallenge string, accessToken string, refreshToken *string, expiresIn *int, expiresAt time.Time, createdAt time.Time) error
 	UpdateUserAvatar(ctx context.Context, id string, avatarURL *string) error
+	SetTrustedDevice(ctx context.Context, userID string, deviceID string, trusted bool) error
+	RevokeDeviceSessions(ctx context.Context, userID string, deviceID string, exceptSessionID string) error
 }

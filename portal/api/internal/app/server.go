@@ -81,8 +81,12 @@ func (s *Server) mount(r chi.Router) {
 			Secure: s.cfg.Auth.SecureCookies,
 			Domain: s.cfg.Auth.CookieDomain,
 		},
-		MaxActiveDevices: s.cfg.Auth.MaxActiveDevices,
-		Repo:             sessionRepo,
+		MaxActiveDevices:       s.cfg.Auth.MaxActiveDevices,
+		Repo:                   sessionRepo,
+		GoogleClientID:         s.cfg.OAuth.GoogleClientID,
+		GoogleClientSecret:     s.cfg.OAuth.GoogleClientSecret,
+		DriveHandoffEncryptKey: s.cfg.OAuth.DriveHandoffEncryptKey,
+		FrontendURL:            s.cfg.HTTP.FrontendURL,
 	}
 
 	focusRepo := focus.NewPgxRepository(s.db.Raw())
@@ -97,6 +101,8 @@ func (s *Server) mount(r chi.Router) {
 		api.Post("/auth/logout", authHandler.Logout)
 		api.Get("/auth/sessions", authHandler.ListSessions)
 		api.Delete("/auth/sessions/{id}", authHandler.RevokeSession)
+		api.Get("/auth/google", authHandler.GoogleLogin)
+		api.Get("/auth/google/callback", authHandler.GoogleCallback)
 
 		api.Get("/focus/leaderboard", focusHandler.Leaderboard)
 		api.Get("/focus/me", focusHandler.Me)

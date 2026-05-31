@@ -12,11 +12,24 @@ import (
 	"notch/portal/api/internal/auth/token"
 )
 
+type fakeHandoffRecord struct {
+	ID            string
+	TokenHash     string
+	CodeChallenge string
+	AccessToken   string
+	RefreshToken  *string
+	ExpiresIn     *int
+	ExpiresAt     time.Time
+	CreatedAt     time.Time
+}
+
 type fakeSessionRepo struct {
-	byID         map[string]*Session
-	usersByEmail map[string]*User
-	lastSeenID   string
-	expiredID    string
+	byID           map[string]*Session
+	usersByEmail   map[string]*User
+	lastSeenID     string
+	expiredID      string
+	handoffs       []fakeHandoffRecord
+	updatedAvatars map[string]*string
 }
 
 func (r *fakeSessionRepo) FindSessionByID(_ context.Context, sessionID string) (*Session, error) {
@@ -119,6 +132,15 @@ func (r *fakeSessionRepo) FindActiveSessionsByUserID(_ context.Context, userID s
 	}
 	return active, nil
 }
+func (r *fakeSessionRepo) FindAllSessionsByUserID(_ context.Context, userID string) ([]*Session, error) {
+	var all []*Session
+	for _, s := range r.byID {
+		if s.UserID == userID {
+			all = append(all, s)
+		}
+	}
+	return all, nil
+}
 func (r *fakeSessionRepo) RevokeSessionByID(_ context.Context, sessionID string, userID string) error {
 	if s, ok := r.byID[sessionID]; ok && s.UserID == userID {
 		now := time.Now()
@@ -126,6 +148,26 @@ func (r *fakeSessionRepo) RevokeSessionByID(_ context.Context, sessionID string,
 		s.RevokedAt = &now
 		s.RevokedReason = &reason
 	}
+	return nil
+}
+func (r *fakeSessionRepo) CreateGoogleDriveAuthHandoff(_ context.Context, id string, tokenHash string, codeChallenge string, accessToken string, refreshToken *string, expiresIn *int, expiresAt time.Time, createdAt time.Time) error {
+	r.handoffs = append(r.handoffs, fakeHandoffRecord{
+		ID:            id,
+		TokenHash:     tokenHash,
+		CodeChallenge: codeChallenge,
+		AccessToken:   accessToken,
+		RefreshToken:  refreshToken,
+		ExpiresIn:     expiresIn,
+		ExpiresAt:     expiresAt,
+		CreatedAt:     createdAt,
+	})
+	return nil
+}
+func (r *fakeSessionRepo) UpdateUserAvatar(_ context.Context, id string, avatarURL *string) error {
+	if r.updatedAvatars == nil {
+		r.updatedAvatars = make(map[string]*string)
+	}
+	r.updatedAvatars[id] = avatarURL
 	return nil
 }
 

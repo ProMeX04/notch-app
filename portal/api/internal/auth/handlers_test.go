@@ -6,8 +6,10 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -515,4 +517,317 @@ func ptrStr(s string) *string {
 
 func ptrTime(t time.Time) *time.Time {
 	return &t
+}
+
+type mockTransport struct {
+	roundTripFunc func(req *http.Request) (*http.Response, error)
+}
+
+func (m *mockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return m.roundTripFunc(req)
+}
+
+func TestHandlerGoogleLogin(t *testing.T) {
+	handler := Handler{
+		GoogleClientID: "mock-client-id",
+	}
+
+	t.Run("standard login redirect", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/auth/google?state=somestate", nil)
+		rec := httptest.NewRecorder()
+
+		handler.GoogleLogin(rec, req)
+
+		if rec.Code != http.StatusTemporaryRedirect {
+			t.Fatalf("expected redirect status, got %d", rec.Code)
+		}
+
+		loc := rec.Header().Get("Location")
+		if !strings.Contains(loc, "accounts.google.com") {
+			t.Errorf("expected location to be accounts.google.com, got %q", loc)
+		}
+		if !strings.Contains(loc, "client_id=mock-client-id") {
+			t.Errorf("expected client_id param, got %q", loc)
+		}
+		if !strings.Contains(loc, "scope=openid+email+profile") {
+			t.Errorf("expected login scopes, got %q", loc)
+		}
+	})
+
+	t.Run("gdrive handoff redirect", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/auth/google?gdrive=true&state=desktopstate&code_challenge=challenge_abc", nil)
+		rec := httptest.NewRecorder()
+
+		handler.GoogleLogin(rec, req)
+
+		if rec.Code != http.StatusTemporaryRedirect {
+			t.Fatalf("expected redirect status, got %d", rec.Code)
+		}
+
+		loc := rec.Header().Get("Location")
+		if !strings.Contains(loc, "accounts.google.com") {
+			t.Errorf("expected location to be accounts.google.com, got %q", loc)
+		}
+		if !strings.Contains(loc, "scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive.file") {
+			t.Errorf("expected gdrive scope, got %q", loc)
+		}
+		if !strings.Contains(loc, "prompt=consent") {
+			t.Errorf("expected prompt=consent, got %q", loc)
+		}
+		if !strings.Contains(loc, "access_type=offline") {
+			t.Errorf("expected access_type=offline, got %q", loc)
+		}
+	})
+}
+
+func TestHandlerGoogleCallbackSucceedsStandardLogin(t *testing.T) {
+	repo := &fakeSessionRepo{
+		byID:         make(map[string]*Session),
+		usersByEmail: make(map[string]*User),
+	}
+
+	mockHTTP := &http.Client{
+		Transport: &mockTransport{
+			roundTripFunc: func(req *http.Request) (*http.Response, error) {
+				if req.URL.String() == "https://oauth2.googleapis.com/token" {
+					resp := `{
+						"access_token": "mock-access-token-123",
+						"refresh_token": "mock-refresh-token-123",
+						"expires_in": 3600
+					}`
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Body:       io.NopCloser(strings.NewReader(resp)),
+						Header:     make(http.Header),
+					}, nil
+				}
+				if req.URL.String() == "https://www.googleapis.com/oauth2/v2/userinfo" {
+					if req.Header.Get("Authorization") != "Bearer mock-access-token-123" {
+						return &http.Response{
+							StatusCode: http.StatusUnauthorized,
+							Body:       io.NopCloser(strings.NewReader(`{"error": "unauthorized"}`)),
+							Header:     make(http.Header),
+						}, nil
+					}
+					resp := `{
+						"email": "googleuser@example.com",
+						"name": "Google User",
+						"picture": "https://lh3.googleusercontent.com/a/mock-picture-url"
+					}`
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Body:       io.NopCloser(strings.NewReader(resp)),
+						Header:     make(http.Header),
+					}, nil
+				}
+				return &http.Response{
+					StatusCode: http.StatusNotFound,
+					Body:       io.NopCloser(strings.NewReader(`{}`)),
+					Header:     make(http.Header),
+				}, nil
+			},
+		},
+	}
+
+	handler := Handler{
+		Repo: repo,
+		Authenticator: Authenticator{
+			Repo:      repo,
+			JWTSecret: "testsecret",
+		},
+		RefreshService: RefreshService{
+			Repo:            repo,
+			JWTSecret:       "testsecret",
+			AccessTokenTTL:  time.Hour,
+			RefreshTokenTTL: 24 * time.Hour,
+		},
+		CookieConfig: httpauth.CookieConfig{
+			Secure: false,
+			Domain: "localhost",
+		},
+		MaxActiveDevices: 3,
+		GoogleClientID:     "mock-client-id",
+		GoogleClientSecret: "mock-client-secret",
+		FrontendURL:        "http://frontend.local",
+		HTTPClient:         mockHTTP,
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/google/callback?code=mock-auth-code&state=state_param", nil)
+	rec := httptest.NewRecorder()
+
+	handler.GoogleCallback(rec, req)
+
+	if rec.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("expected redirect status, got %d. Body: %s", rec.Code, rec.Body.String())
+	}
+
+	loc := rec.Header().Get("Location")
+	if loc != "http://frontend.local/account" {
+		t.Errorf("expected redirect to account page, got %q", loc)
+	}
+
+	// Verify user is created in database
+	u, err := repo.FindUserByEmail(context.Background(), "googleuser@example.com")
+	if err != nil || u == nil {
+		t.Fatalf("expected user to be created in database")
+	}
+	if *u.Name != "Google User" {
+		t.Errorf("expected user name 'Google User', got %q", *u.Name)
+	}
+	if u.AvatarURL == nil || *u.AvatarURL != "https://lh3.googleusercontent.com/a/mock-picture-url" {
+		t.Errorf("expected avatar URL to match, got %v", u.AvatarURL)
+	}
+
+	// Verify cookies set
+	cookies := rec.Result().Cookies()
+	var hasAccess, hasRefresh bool
+	for _, c := range cookies {
+		if c.Name == httpauth.AccessCookieName {
+			hasAccess = true
+		}
+		if c.Name == httpauth.RefreshCookieName {
+			hasRefresh = true
+		}
+	}
+	if !hasAccess || !hasRefresh {
+		t.Errorf("expected cookies to be set, access=%t, refresh=%t", hasAccess, hasRefresh)
+	}
+}
+
+func TestHandlerGoogleCallbackSucceedsDriveHandoff(t *testing.T) {
+	repo := &fakeSessionRepo{
+		byID:         make(map[string]*Session),
+		usersByEmail: make(map[string]*User),
+	}
+
+	mockHTTP := &http.Client{
+		Transport: &mockTransport{
+			roundTripFunc: func(req *http.Request) (*http.Response, error) {
+				if req.URL.String() == "https://oauth2.googleapis.com/token" {
+					resp := `{
+						"access_token": "mock-drive-access-token-123",
+						"refresh_token": "mock-drive-refresh-token-123",
+						"expires_in": 3600
+					}`
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Body:       io.NopCloser(strings.NewReader(resp)),
+						Header:     make(http.Header),
+					}, nil
+				}
+				return &http.Response{
+					StatusCode: http.StatusNotFound,
+					Body:       io.NopCloser(strings.NewReader(`{}`)),
+					Header:     make(http.Header),
+				}, nil
+			},
+		},
+	}
+
+	keyBytes := make([]byte, 32)
+	_, _ = rand.Read(keyBytes)
+	base64Key := base64.StdEncoding.EncodeToString(keyBytes)
+
+	handler := Handler{
+		Repo: repo,
+		GoogleClientID:     "mock-client-id",
+		GoogleClientSecret: "mock-client-secret",
+		DriveHandoffEncryptKey: base64Key,
+		HTTPClient:         mockHTTP,
+	}
+
+	// state contains urlencoded fields: gdrive=true, desktop_state, code_challenge
+	// The driveCodeChallenge must be exactly 43 characters
+	driveCodeChallenge := "challenge_123456789012345678901234567890123" // 43 chars
+	desktopState := "my-desktop-state"
+	stateVal := "gdrive=true&desktop_state=" + url.QueryEscape(desktopState) + "&code_challenge=" + url.QueryEscape(driveCodeChallenge)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/google/callback?code=mock-auth-code&state="+url.QueryEscape(stateVal), nil)
+	rec := httptest.NewRecorder()
+
+	handler.GoogleCallback(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d. Body: %s", rec.Code, rec.Body.String())
+	}
+
+	contentType := rec.Header().Get("Content-Type")
+	if !strings.Contains(contentType, "text/html") {
+		t.Errorf("expected content type text/html, got %q", contentType)
+	}
+
+	bodyStr := rec.Body.String()
+	if !strings.Contains(bodyStr, "notch://gdrive/callback") {
+		t.Errorf("expected deep link in body, got: %s", bodyStr)
+	}
+
+	// Verify handoff record in fake repo
+	if len(repo.handoffs) != 1 {
+		t.Fatalf("expected exactly 1 handoff record to be created, got %d", len(repo.handoffs))
+	}
+
+	handoff := repo.handoffs[0]
+	if handoff.CodeChallenge != driveCodeChallenge {
+		t.Errorf("expected code challenge %q, got %q", driveCodeChallenge, handoff.CodeChallenge)
+	}
+
+	// Decrypt stored access token
+	decAccess, err := decryptGoogleDriveHandoffValue(handoff.AccessToken, base64Key)
+	if err != nil {
+		t.Fatalf("failed to decrypt access token: %v", err)
+	}
+	if decAccess != "mock-drive-access-token-123" {
+		t.Errorf("expected decrypted access token %q, got %q", "mock-drive-access-token-123", decAccess)
+	}
+
+	// Decrypt stored refresh token
+	if handoff.RefreshToken == nil {
+		t.Fatalf("expected refresh token to be stored")
+	}
+	decRefresh, err := decryptGoogleDriveHandoffValue(*handoff.RefreshToken, base64Key)
+	if err != nil {
+		t.Fatalf("failed to decrypt refresh token: %v", err)
+	}
+	if decRefresh != "mock-drive-refresh-token-123" {
+		t.Errorf("expected decrypted refresh token %q, got %q", "mock-drive-refresh-token-123", decRefresh)
+	}
+}
+
+func TestHandlerGoogleCallbackFailures(t *testing.T) {
+	handler := Handler{
+		GoogleClientID:     "mock-client-id",
+		GoogleClientSecret: "mock-client-secret",
+		FrontendURL:        "http://frontend.local",
+	}
+
+	t.Run("missing code standard login redirect", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/auth/google/callback?error=access_denied", nil)
+		rec := httptest.NewRecorder()
+
+		handler.GoogleCallback(rec, req)
+
+		if rec.Code != http.StatusTemporaryRedirect {
+			t.Fatalf("expected redirect, got %d", rec.Code)
+		}
+		loc := rec.Header().Get("Location")
+		if loc != "http://frontend.local/?error=Canceled" {
+			t.Errorf("expected canceled redirect, got %q", loc)
+		}
+	})
+
+	t.Run("missing code drive handoff deep link", func(t *testing.T) {
+		stateVal := "gdrive=true&desktop_state=state123"
+		req := httptest.NewRequest(http.MethodGet, "/api/auth/google/callback?error=access_denied&state="+url.QueryEscape(stateVal), nil)
+		rec := httptest.NewRecorder()
+
+		handler.GoogleCallback(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", rec.Code)
+		}
+		bodyStr := rec.Body.String()
+		if !strings.Contains(bodyStr, "notch://gdrive/callback") || !strings.Contains(bodyStr, "state=state123") || !strings.Contains(bodyStr, "error=access_denied") {
+			t.Errorf("expected deep link with error in body, got: %s", bodyStr)
+		}
+	})
 }

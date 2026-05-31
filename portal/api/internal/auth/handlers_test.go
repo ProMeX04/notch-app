@@ -3,6 +3,8 @@ package auth
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -475,6 +477,35 @@ func TestHandlerRevokeSession(t *testing.T) {
 	sess := repo.byID["session_2"]
 	if sess.RevokedAt == nil || *sess.RevokedReason != "user_revoked" {
 		t.Errorf("expected session2 to be revoked with user_revoked, got revokedAt: %v, reason: %v", sess.RevokedAt, sess.RevokedReason)
+	}
+}
+
+func TestGoogleDriveHandoffCryptography(t *testing.T) {
+	// Generate a 32-byte key and base64 encode it
+	keyBytes := make([]byte, 32)
+	_, _ = rand.Read(keyBytes)
+	base64Key := base64.StdEncoding.EncodeToString(keyBytes)
+
+	originalPlaintext := "my-secret-access-token-12345"
+
+	// Encrypt
+	encrypted, err := encryptGoogleDriveHandoffValue(originalPlaintext, base64Key)
+	if err != nil {
+		t.Fatalf("encryption failed: %v", err)
+	}
+
+	if !strings.HasPrefix(encrypted, "v1.") {
+		t.Errorf("expected prefix v1., got %s", encrypted)
+	}
+
+	// Decrypt
+	decrypted, err := decryptGoogleDriveHandoffValue(encrypted, base64Key)
+	if err != nil {
+		t.Fatalf("decryption failed: %v", err)
+	}
+
+	if decrypted != originalPlaintext {
+		t.Errorf("decrypted value mismatch: got %q, want %q", decrypted, originalPlaintext)
 	}
 }
 

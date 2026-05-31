@@ -2,9 +2,14 @@ package auth
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -535,4 +540,97 @@ func (h Handler) RevokeSession(w http.ResponseWriter, req *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func parseEncryptionKey(base64Key string) ([]byte, error) {
+	key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(base64Key))
+	if err != nil {
+		return nil, err
+	}
+	if len(key) != 32 {
+		return nil, fmt.Errorf("encryption key must be 32 bytes, got %d", len(key))
+	}
+	return key, nil
+}
+
+func encryptGoogleDriveHandoffValue(value string, base64Key string) (string, error) {
+	key, err := parseEncryptionKey(base64Key)
+	if err != nil {
+		return "", err
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+
+	iv := make([]byte, 12)
+	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+		return "", err
+	}
+
+	ciphertextAndTag := aesgcm.Seal(nil, iv, []byte(value), nil)
+	tagSize := aesgcm.Overhead()
+	ciphertext := ciphertextAndTag[:len(ciphertextAndTag)-tagSize]
+	authTag := ciphertextAndTag[len(ciphertextAndTag)-tagSize:]
+
+	encodedIV := base64.RawURLEncoding.EncodeToString(iv)
+	encodedTag := base64.RawURLEncoding.EncodeToString(authTag)
+	encodedCiphertext := base64.RawURLEncoding.EncodeToString(ciphertext)
+
+	return fmt.Sprintf("v1.%s.%s.%s", encodedIV, encodedTag, encodedCiphertext), nil
+}
+
+func decryptGoogleDriveHandoffValue(value string, base64Key string) (string, error) {
+	parts := strings.Split(value, ".")
+	if len(parts) != 4 || parts[0] != "v1" {
+		return "", errors.New("invalid Google Drive handoff payload")
+	}
+
+	encodedIV := parts[1]
+	encodedTag := parts[2]
+	encodedCiphertext := parts[3]
+
+	iv, err := base64.RawURLEncoding.DecodeString(encodedIV)
+	if err != nil {
+		return "", err
+	}
+
+	authTag, err := base64.RawURLEncoding.DecodeString(encodedTag)
+	if err != nil {
+		return "", err
+	}
+
+	ciphertext, err := base64.RawURLEncoding.DecodeString(encodedCiphertext)
+	if err != nil {
+		return "", err
+	}
+
+	key, err := parseEncryptionKey(base64Key)
+	if err != nil {
+		return "", err
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+
+	ciphertextAndTag := append(ciphertext, authTag...)
+	plaintext, err := aesgcm.Open(nil, iv, ciphertextAndTag, nil)
+	if err != nil {
+		return "", err
+	}
+
+	return string(plaintext), nil
 }

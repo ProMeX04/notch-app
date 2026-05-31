@@ -1,0 +1,54 @@
+package auth
+
+import (
+	"context"
+	"time"
+)
+
+type User struct {
+	ID               string
+	Email            *string
+	Name             *string
+	DisplayName      *string
+	AvatarURL        *string
+	Password         *string
+	CreatedAt        time.Time
+	IsPro            bool
+	IsAdmin          bool
+	LeaderboardOptIn bool
+}
+
+type Session struct {
+	ID              string
+	TokenHash       string
+	AccessTokenHash *string
+	DeviceID        *string
+	DeviceName      *string
+	Platform        *string
+	ExpiresAt       time.Time
+	AccessExpiresAt *time.Time
+	CreatedAt       time.Time
+	LastSeenAt      time.Time
+	TrustedAt       *time.Time
+	RevokedAt       *time.Time
+	RevokedReason   *string
+	UserID          string
+	User            User
+}
+
+type AuthContext struct {
+	SessionID string
+	DeviceID  *string
+	User      User
+}
+
+type SessionRepository interface {
+	FindSessionByID(ctx context.Context, sessionID string) (*Session, error)
+	FindSessionByRefreshTokenHash(ctx context.Context, tokenHash string) (*Session, error)
+	RotateSession(ctx context.Context, sessionID string, accessTokenHash string, refreshTokenHash string, accessExpiresAt time.Time, refreshExpiresAt time.Time, device NormalizedDevice, trustedAt *time.Time, now time.Time) (RotatedSession, error)
+	UpdateLastSeen(ctx context.Context, sessionID string, seenAt time.Time) error
+	MarkSessionExpired(ctx context.Context, sessionID string, expiredAt time.Time) error
+	CreateUser(ctx context.Context, id string, email string, name string, hashedPassword string, now time.Time) (*User, error)
+	FindUserByEmail(ctx context.Context, email string) (*User, error)
+	CreateSession(ctx context.Context, sessionID string, userID string, tokenHash string, accessTokenHash *string, device NormalizedDevice, expiresAt time.Time, accessExpiresAt *time.Time, trustedAt *time.Time, now time.Time) error
+}

@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -76,16 +75,8 @@ func (r *PgxSessionRepository) findSession(ctx context.Context, where string, ar
 	if r == nil || r.db == nil {
 		return nil, nil
 	}
-	fmt.Printf("[DEBUG Repository] findSession: where=%s, arg=%s\n", where, arg)
 	row := r.db.QueryRow(ctx, sessionSelectSQL(where), arg)
 	session, err := scanSession(row)
-	if err != nil {
-		fmt.Printf("[DEBUG Repository] findSession error: %v\n", err)
-	} else if session == nil {
-		fmt.Printf("[DEBUG Repository] findSession not found (nil)\n")
-	} else {
-		fmt.Printf("[DEBUG Repository] findSession found: id=%s, userID=%s, revokedAt=%v, expiresAt=%v\n", session.ID, session.UserID, session.RevokedAt, session.ExpiresAt)
-	}
 	return session, err
 }
 

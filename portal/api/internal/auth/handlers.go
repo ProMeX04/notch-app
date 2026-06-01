@@ -80,28 +80,20 @@ type RegisterRequest struct {
 
 func (h Handler) Me(w http.ResponseWriter, req *http.Request) {
 	noStore(w)
-	fmt.Printf("[DEBUG Me] req.Header: %+v\n", req.Header)
-	for _, cookie := range req.Cookies() {
-		fmt.Printf("[DEBUG Me] cookie: Name=%s, Value=%s\n", cookie.Name, cookie.Value)
-	}
 	auth, err := h.Authenticator.AuthenticateRequest(req.Context(), req)
 	if err == nil {
-		fmt.Printf("[DEBUG Me] Success: auth.SessionID=%s, auth.DeviceID=%+v\n", auth.SessionID, auth.DeviceID)
 		sessionID := auth.SessionID
 		policy := h.getPermissionPolicy(req.Context(), auth.User.IsPro)
 		httpjson.JSON(w, http.StatusOK, BuildUserResponse(auth.User, &sessionID, h.MaxActiveDevices, policy))
 		return
 	}
-	fmt.Printf("[DEBUG Me] AuthenticateRequest failed: %v\n", err)
 
 	payload, refreshErr := h.RefreshService.RefreshWithToken(req.Context(), req, httpauth.ReadRefreshTokenCookie(req), DeviceInputFromRefreshRequest(req))
 	if refreshErr != nil {
-		fmt.Printf("[DEBUG Me] RefreshWithToken failed: %v\n", refreshErr)
 		httpauth.ClearAuthCookies(w, req, h.CookieConfig)
 		httpjson.Detail(w, http.StatusUnauthorized, "Invalid or expired session token.")
 		return
 	}
-	fmt.Printf("[DEBUG Me] RefreshWithToken success: session.ID=%s\n", payload.Session.ID)
 	applyPayloadCookies(w, req, h.CookieConfig, payload)
 	sessionID := payload.Session.ID
 	httpjson.JSON(w, http.StatusOK, UserResponse{
@@ -794,7 +786,6 @@ func (h Handler) GoogleCallback(w http.ResponseWriter, req *http.Request) {
 		"redirect_uri":  {redirectURI},
 	})
 	if err != nil {
-		fmt.Printf("[DEBUG GoogleCallback] Google token exchange request failed: %v\n", err)
 		if gdrive == "true" {
 			httpjson.Error(w, http.StatusBadRequest, "Failed to exchange token: "+err.Error())
 		} else {
@@ -805,8 +796,6 @@ func (h Handler) GoogleCallback(w http.ResponseWriter, req *http.Request) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		fmt.Printf("[DEBUG GoogleCallback] Google token exchange returned HTTP %d: %s\n", resp.StatusCode, string(bodyBytes))
 		if gdrive == "true" {
 			httpjson.Error(w, http.StatusBadRequest, fmt.Sprintf("Failed to exchange token: Google returned %d", resp.StatusCode))
 		} else {

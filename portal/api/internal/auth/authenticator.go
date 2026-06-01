@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -43,25 +42,20 @@ func (a Authenticator) AuthenticateAccessToken(ctx context.Context, rawToken str
 
 func (a Authenticator) authenticateJWT(ctx context.Context, rawToken string, payload *token.JWTPayload, requestDeviceID *string, now time.Time) (*AuthContext, error) {
 	if payload.DeviceID != nil && !sameStringPtr(payload.DeviceID, requestDeviceID) {
-		fmt.Printf("[DEBUG Auth] reject=payload_device_mismatch sessionID=%s payloadDevice=%s requestDevice=%s\n", payload.SessionID, debugStringPtr(payload.DeviceID), debugStringPtr(requestDeviceID))
 		return nil, ErrUnauthenticated
 	}
 	session, err := a.Repo.FindSessionByID(ctx, payload.SessionID)
 	if err != nil {
-		fmt.Printf("[DEBUG Auth] reject=session_lookup_error sessionID=%s err=%v\n", payload.SessionID, err)
 		return nil, ErrUnauthenticated
 	}
 	if session == nil {
-		fmt.Printf("[DEBUG Auth] reject=session_not_found sessionID=%s\n", payload.SessionID)
 		return nil, ErrUnauthenticated
 	}
 	if session.UserID != payload.UserID {
-		fmt.Printf("[DEBUG Auth] reject=user_mismatch sessionID=%s payloadUser=%s sessionUser=%s\n", payload.SessionID, payload.UserID, session.UserID)
 		return nil, ErrUnauthenticated
 	}
 	accessHash := token.HashToken(rawToken)
 	if err := validateSession(session, accessHash, requestDeviceID, now, true); err != nil {
-		fmt.Printf("[DEBUG Auth] reject=%s sessionID=%s requestDevice=%s sessionDevice=%s accessHashMatch=%t accessHashPresent=%t accessExpiresAt=%s now=%s revoked=%t\n", sessionRejectReason(session, accessHash, requestDeviceID, now, true), payload.SessionID, debugStringPtr(requestDeviceID), debugStringPtr(session.DeviceID), session.AccessTokenHash != nil && *session.AccessTokenHash == accessHash, session.AccessTokenHash != nil, accessExpiry(session).UTC().Format(time.RFC3339), now.UTC().Format(time.RFC3339), session.RevokedAt != nil)
 		return nil, err
 	}
 	_ = a.Repo.UpdateLastSeen(ctx, session.ID, now)

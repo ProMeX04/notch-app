@@ -95,4 +95,8 @@ private final class TestFocusPortalSyncClient: FocusPortalSyncClient {
     func updateFocusProfile(configuration: PortalBackendConfiguration, request body: FocusCloudProfileUpdateRequest) async throws -> FocusCloudProfileResponse {
         FocusCloudProfileResponse(user: FocusCloudUser(displayName: body.displayName, leaderboardOptIn: body.leaderboardOptIn, weeklyRank: nil, streakDays: nil))
     }
+
+    func fetchFocusLeaderboard(configuration: PortalBackendConfiguration, window: String) async throws -> FocusLeaderboardResponse {
+        FocusLeaderboardResponse(window: window, leaderboard: [])
+    }
 }

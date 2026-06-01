@@ -8,11 +8,14 @@ on:
       - 'portal/**'
       - '.github/workflows/deploy-portal.yml'
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   deploy-backend:
     name: Deploy Backend to Google Cloud Run
     runs-on: self-hosted
-    if: ${{ secrets.GCP_SA_KEY != '' }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -20,7 +23,8 @@ jobs:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: 'projects/657193756037/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
+          service_account: '657193756037-compute@developer.gserviceaccount.com'
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2

@@ -120,47 +120,6 @@ struct AppTalkSettingsPane: View {
                                     }
                                     .padding(.top, 4)
                                     #endif
-
-                                    if gemini.isBackendAuthenticated {
-                                        VStack(alignment: .leading, spacing: 8) {
-                                            HStack(spacing: 8) {
-                                                Text(Localization.get("Logged in as:", lang: appLanguage))
-                                                    .font(.system(size: 12, weight: .medium))
-                                                    .foregroundStyle(.white.opacity(0.6))
-                                                Text(gemini.backendSignedInSummary ?? "")
-                                                    .font(.system(size: 12, weight: .bold))
-                                                    .foregroundStyle(.white.opacity(0.9))
-                                            }
-
-                                            StandardActionButton(
-                                                title: Localization.get("Sign out", lang: appLanguage),
-                                                icon: "power",
-                                                tint: Color(nsColor: .systemRed).opacity(0.85),
-                                                variant: .primary,
-                                                isDisabled: !gemini.canManageConfiguration
-                                            ) {
-                                                Task { await gemini.logoutBackendAccount() }
-                                            }
-                                        }
-                                        .padding(.top, 6)
-                                    } else {
-                                        VStack(alignment: .leading, spacing: 8) {
-                                            Text(Localization.get("Sign in to your account to use server-managed Gemini session.", lang: appLanguage))
-                                                .font(.system(size: 11, weight: .medium))
-                                                .foregroundStyle(.white.opacity(0.55))
-
-                                            StandardActionButton(
-                                                title: Localization.get("Sign in", lang: appLanguage),
-                                                icon: "safari",
-                                                tint: tint,
-                                                variant: .primary,
-                                                isDisabled: !gemini.canManageConfiguration
-                                            ) {
-                                                gemini.openWebAccountLogin()
-                                            }
-                                        }
-                                        .padding(.top, 6)
-                                    }
                                 }
                             }
                         }

@@ -719,7 +719,11 @@ func (h Handler) GoogleLogin(w http.ResponseWriter, req *http.Request) {
 	if req.TLS != nil || req.Header.Get("X-Forwarded-Proto") == "https" {
 		scheme = "https"
 	}
-	redirectURI := fmt.Sprintf("%s://%s/api/auth/google/callback", scheme, req.Host)
+	host := req.Host
+	if forwardedHost := req.Header.Get("X-Forwarded-Host"); forwardedHost != "" {
+		host = forwardedHost
+	}
+	redirectURI := fmt.Sprintf("%s://%s/api/auth/google/callback", scheme, host)
 
 	googleAuthURL := "https://accounts.google.com/o/oauth2/v2/auth"
 	authURL := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&response_type=code", googleAuthURL, h.GoogleClientID, url.QueryEscape(redirectURI))
@@ -749,7 +753,11 @@ func (h Handler) GoogleCallback(w http.ResponseWriter, req *http.Request) {
 	if req.TLS != nil || req.Header.Get("X-Forwarded-Proto") == "https" {
 		scheme = "https"
 	}
-	redirectURI := fmt.Sprintf("%s://%s/api/auth/google/callback", scheme, req.Host)
+	host := req.Host
+	if forwardedHost := req.Header.Get("X-Forwarded-Host"); forwardedHost != "" {
+		host = forwardedHost
+	}
+	redirectURI := fmt.Sprintf("%s://%s/api/auth/google/callback", scheme, host)
 
 	if code == "" {
 		if gdrive == "true" {

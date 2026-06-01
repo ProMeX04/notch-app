@@ -27,13 +27,13 @@ jobs:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
-      - run: swift test
-      - run: swift run NotchFocusTests
-      - run: swift run NotchBridgeParserTests
-      - run: swift run NotchMailParserTests
-      - run: swift run NotchShelfTests
-      - run: swift run NotchSkillsTests
-      - run: swift run NotchChatHistoryTests
-      - run: swift run NotchScreenShareTests
-      - run: swift run NotchGeminiLiveTests
-      - run: swift build
+      - run: swift test --scratch-path ../swift-build
+      - run: swift run --scratch-path ../swift-build NotchFocusTests
+      - run: swift run --scratch-path ../swift-build NotchBridgeParserTests
+      - run: swift run --scratch-path ../swift-build NotchMailParserTests
+      - run: swift run --scratch-path ../swift-build NotchShelfTests
+      - run: swift run --scratch-path ../swift-build NotchSkillsTests
+      - run: swift run --scratch-path ../swift-build NotchChatHistoryTests
+      - run: swift run --scratch-path ../swift-build NotchScreenShareTests
+      - run: swift run --scratch-path ../swift-build NotchGeminiLiveTests
+      - run: swift build --scratch-path ../swift-build

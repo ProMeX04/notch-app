@@ -34,6 +34,7 @@ jobs:
       - name: Build App Bundle
         env:
           RELEASE: 1
+          SCRATCH_PATH: ../swift-build
         run: ./build-app.sh
 
       - name: Create Release ZIP

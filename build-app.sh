@@ -7,21 +7,25 @@ APP_NAME="Notch"
 APP_DIR="$ROOT_DIR/dist/$APP_NAME.app"
 
 cd "$ROOT_DIR"
-# Mặc định KHÔNG clean — giữ incremental build cho lặp nhanh.
-# Khi đổi dependency / build lỗi lạ: CLEAN=1 ./build-app.sh
-if [[ "${CLEAN:-}" == "1" ]]; then
-    swift package clean
-fi
 SWIFT_BUILD_ARGS=()
 if [[ "${RELEASE:-}" == "1" ]]; then
     SWIFT_BUILD_ARGS=(-c release)
+fi
+if [[ "${SCRATCH_PATH:-}" != "" ]]; then
+    SWIFT_BUILD_ARGS+=(--scratch-path "$SCRATCH_PATH")
+fi
+
+# Mặc định KHÔNG clean — giữ incremental build cho lặp nhanh.
+# Khi đổi dependency / build lỗi lạ: CLEAN=1 ./build-app.sh
+if [[ "${CLEAN:-}" == "1" ]]; then
+    swift package "${SWIFT_BUILD_ARGS[@]}" clean
 fi
 swift build "${SWIFT_BUILD_ARGS[@]}"
 
 # SwiftPM sinh Bundle.module tự động nhưng không còn được dùng trực tiếp trong code để tránh crash
 # và tránh phải build 2 lần gây mất thời gian (giúp giữ incremental build cực kỳ nhanh).
 
-BIN_DIR="$(swift build --show-bin-path "${SWIFT_BUILD_ARGS[@]}")"
+BIN_DIR="$(swift build "${SWIFT_BUILD_ARGS[@]}" --show-bin-path)"
 
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS"

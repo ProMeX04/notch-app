@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { Check, Loader2, AlertTriangle, Sparkles } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/api/client'
 import { launchPortalOAuthAppRedirect } from '@/auth/portal-oauth-client'
+import { AUTH_ME_QUERY_KEY } from '@/auth/auth-query'
 
 type VerificationResponse = {
   verified: boolean
@@ -11,6 +13,7 @@ type VerificationResponse = {
 }
 
 export function VNPayReturnPage() {
+  const queryClient = useQueryClient()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<VerificationResponse | null>(null)
@@ -48,6 +51,9 @@ export function VNPayReturnPage() {
 
           // If the payment is successful, trigger automatic deep link redirect back to the desktop application
           if (response.data.success) {
+            // Invalidate auth query to ensure the client updates its Pro/Pro-badge status immediately
+            void queryClient.invalidateQueries({ queryKey: AUTH_ME_QUERY_KEY })
+
             // Delay slightly to let the UI render first and show the success state
             setTimeout(() => {
               if (!ignore) {

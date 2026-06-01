@@ -1,0 +1,40 @@
+name: Portal Backend Verification
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'portal/api/**'
+      - 'portal/prisma/**'
+      - 'portal/contracts/**'
+      - '.github/workflows/portal-verification-api.yml'
+  pull_request:
+    paths:
+      - 'portal/api/**'
+      - 'portal/prisma/**'
+      - 'portal/contracts/**'
+      - '.github/workflows/portal-verification-api.yml'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  verify-api:
+    name: Verify Go Backend API
+    runs-on: self-hosted
+    defaults:
+      run:
+        working-directory: portal/api
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.23
+          cache: false
+
+      - name: Run Tests
+        run: go test -v ./...

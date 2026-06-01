@@ -1,0 +1,44 @@
+name: Deploy Portal Backend
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'portal/api/**'
+      - 'portal/prisma/**'
+      - 'portal/contracts/**'
+      - '.github/workflows/deploy-portal-backend.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  deploy-backend:
+    name: Deploy Backend to Google Cloud Run
+    runs-on: self-hosted
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: 'projects/657193756037/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
+          service_account: '657193756037-compute@developer.gserviceaccount.com'
+          project_id: 'tryapi-489314'
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy notch-portal-api \
+            --source portal/api \
+            --region asia-southeast1 \
+            --project tryapi-489314 \
+            --quiet

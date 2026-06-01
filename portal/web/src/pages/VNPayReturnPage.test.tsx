@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { VNPayReturnPage } from '@/pages/VNPayReturnPage'
 import { apiClient } from '@/api/client'
 import { launchPortalOAuthAppRedirect } from '@/auth/portal-oauth-client'
@@ -21,8 +22,17 @@ vi.mock('@tanstack/react-router', () => ({
 }))
 
 describe('VNPayReturnPage', () => {
+  let queryClient: QueryClient
+
   beforeEach(() => {
     vi.clearAllMocks()
+    queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
+      },
+    })
     // Mock window.location
     Object.defineProperty(window, 'location', {
       writable: true,
@@ -35,7 +45,11 @@ describe('VNPayReturnPage', () => {
   it('renders loading state initially', async () => {
     vi.mocked(apiClient.get).mockReturnValue(new Promise(() => {})) // Never resolves to keep loading state
 
-    render(<VNPayReturnPage />)
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VNPayReturnPage />
+      </QueryClientProvider>
+    )
 
     expect(screen.getByText('Xác thực thanh toán...')).toBeInTheDocument()
     expect(screen.getByText('Vui lòng chờ trong giây lát khi chúng tôi xác minh giao dịch của bạn.')).toBeInTheDocument()
@@ -50,7 +64,11 @@ describe('VNPayReturnPage', () => {
       },
     })
 
-    render(<VNPayReturnPage />)
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VNPayReturnPage />
+      </QueryClientProvider>
+    )
 
     await waitFor(() => {
       expect(screen.getByText('Thanh toán thành công!')).toBeInTheDocument()
@@ -75,7 +93,11 @@ describe('VNPayReturnPage', () => {
       },
     })
 
-    render(<VNPayReturnPage />)
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VNPayReturnPage />
+      </QueryClientProvider>
+    )
 
     await waitFor(() => {
       expect(screen.getByText('Thanh toán thất bại')).toBeInTheDocument()
@@ -88,7 +110,11 @@ describe('VNPayReturnPage', () => {
   it('renders error state when backend fetch fails', async () => {
     vi.mocked(apiClient.get).mockRejectedValue(new Error('Network Error'))
 
-    render(<VNPayReturnPage />)
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VNPayReturnPage />
+      </QueryClientProvider>
+    )
 
     await waitFor(() => {
       expect(screen.getByText('Thanh toán thất bại')).toBeInTheDocument()

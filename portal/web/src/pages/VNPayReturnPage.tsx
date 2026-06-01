@@ -75,7 +75,7 @@ export function VNPayReturnPage() {
     return () => {
       ignore = true
     }
-  }, [searchParams])
+  }, [searchParams, queryClient])
 
   if (loading) {
     return (

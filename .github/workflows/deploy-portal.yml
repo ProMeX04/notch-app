@@ -12,6 +12,9 @@ permissions:
   contents: read
   id-token: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   deploy-backend:
     name: Deploy Backend to Google Cloud Run

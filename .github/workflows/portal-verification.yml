@@ -11,6 +11,8 @@ on:
     paths:
       - 'portal/**'
       - '.github/workflows/portal-verification.yml'
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   verify-api:

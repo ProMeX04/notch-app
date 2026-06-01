@@ -24,6 +24,7 @@ final class FocusCloudSyncCoordinator: ObservableObject {
     @Published private(set) var leaderboardEntries: [FocusLeaderboardEntry] = []
     @Published private(set) var isFetchingLeaderboard = false
     @Published private(set) var leaderboardWindow = "week"
+    @Published private(set) var isOffline = false
 
     private let repository: FocusDailyStatsRepository
     private let portalAccount: any FocusPortalAuthenticationProviding
@@ -96,15 +97,18 @@ final class FocusCloudSyncCoordinator: ObservableObject {
             )
             repository.acknowledgeSynced(entries)
             state = .idle
+            isOffline = false
             Task { [weak self] in
                 await self?.refreshProfile()
             }
             if !repository.pendingDateKeys.isEmpty { scheduleSync(delay: .zero) }
         } catch PortalAPIError.unauthorized {
             state = .signedOut
+            isOffline = false
             scheduleRetry(after: .seconds(60))
         } catch {
             state = .failed("Focus sync failed. Retrying soon.")
+            isOffline = true
             scheduleRetry(after: .seconds(30))
         }
     }
@@ -120,8 +124,10 @@ final class FocusCloudSyncCoordinator: ObservableObject {
             displayName = profile.user.displayName ?? ""
             weeklyRank = profile.user.weeklyRank ?? 0
             streakDays = profile.user.streakDays ?? 0
+            isOffline = false
         } catch {
             NotchLog.app.error("[ERROR refreshProfile] failed: \(error.localizedDescription)")
+            isOffline = true
             return
         }
     }
@@ -143,6 +149,7 @@ final class FocusCloudSyncCoordinator: ObservableObject {
             weeklyRank = profile.user.weeklyRank ?? 0
             streakDays = profile.user.streakDays ?? 0
             state = .idle
+            isOffline = false
             scheduleSync(delay: .zero)
         } catch {
             state = .failed("Couldn't update leaderboard profile.")
@@ -160,8 +167,10 @@ final class FocusCloudSyncCoordinator: ObservableObject {
         do {
             let response = try await portalClient.fetchFocusLeaderboard(configuration: configuration, window: window)
             self.leaderboardEntries = response.leaderboard
+            isOffline = false
         } catch {
             NotchLog.app.error("[ERROR fetchLeaderboard] failed: \(error.localizedDescription)")
+            isOffline = true
         }
         isFetchingLeaderboard = false
     }

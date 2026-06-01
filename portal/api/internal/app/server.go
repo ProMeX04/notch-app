@@ -61,6 +61,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 func (s *Server) mount(r chi.Router) {
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
+	if os.Getenv("NODE_ENV") != "production" {
+		r.Use(middleware.Logger)
+	}
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(30 * time.Second))
 	r.Use(cors.Handler(cors.Options{
@@ -113,7 +116,7 @@ func (s *Server) mount(r chi.Router) {
 	}
 
 	focusRepo := focus.NewPgxRepository(s.db.Raw())
-	focusHandler := focus.NewHandler(focusRepo, authHandler.Authenticator, s.eventLog)
+	focusHandler := focus.NewHandler(focusRepo, authHandler.Authenticator, s.eventLog, s.logger)
 
 	paymentsHandler := payments.NewHandler(s.cfg.Payments, s.cfg.HTTP.FrontendURL, s.db, authHandler.Authenticator, s.eventLog)
 

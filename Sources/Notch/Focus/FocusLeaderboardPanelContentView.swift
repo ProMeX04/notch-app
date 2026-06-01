@@ -6,6 +6,7 @@ struct FocusLeaderboardPanelContentView: View {
 
     @State private var selectedWindow: String = "week"
     @AppStorage("app_language") private var appLanguage: String = "English"
+    @Environment(\.colorScheme) private var colorScheme
 
     private var titleText: String {
         appLanguage == "Tiếng Việt" ? "Bảng xếp hạng" : "Leaderboard"
@@ -38,7 +39,7 @@ struct FocusLeaderboardPanelContentView: View {
                             .foregroundStyle(.yellow)
                         Text(titleText)
                             .font(.system(size: 15, weight: .bold, design: .rounded))
-                            .foregroundStyle(.black.opacity(0.85))
+                            .foregroundStyle(colorScheme == .light ? .black.opacity(0.85) : .white.opacity(0.9))
                     }
 
                     Spacer()
@@ -51,9 +52,9 @@ struct FocusLeaderboardPanelContentView: View {
                     } label: {
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(.black.opacity(0.55))
+                            .foregroundStyle(colorScheme == .light ? .black.opacity(0.55) : .white.opacity(0.65))
                             .padding(6)
-                            .background(Circle().fill(Color.black.opacity(0.06)))
+                            .background(Circle().fill(colorScheme == .light ? Color.black.opacity(0.06) : Color.white.opacity(0.12)))
                     }
                     .buttonStyle(.plain)
                     .help(appLanguage == "Tiếng Việt" ? "Tải lại" : "Refresh")
@@ -62,9 +63,9 @@ struct FocusLeaderboardPanelContentView: View {
                     Button(action: onClose) {
                         Image(systemName: "xmark")
                             .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(.black.opacity(0.55))
+                            .foregroundStyle(colorScheme == .light ? .black.opacity(0.55) : .white.opacity(0.65))
                             .padding(6)
-                            .background(Circle().fill(Color.black.opacity(0.06)))
+                            .background(Circle().fill(colorScheme == .light ? Color.black.opacity(0.06) : Color.white.opacity(0.12)))
                     }
                     .buttonStyle(.plain)
                     .padding(.leading, 4)
@@ -83,7 +84,7 @@ struct FocusLeaderboardPanelContentView: View {
                     }
                 }
                 .padding(3)
-                .background(RoundedRectangle(cornerRadius: 9).fill(Color.black.opacity(0.06)))
+                .background(RoundedRectangle(cornerRadius: 9).fill(colorScheme == .light ? Color.black.opacity(0.06) : Color.white.opacity(0.08)))
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
 
@@ -95,16 +96,16 @@ struct FocusLeaderboardPanelContentView: View {
                                 .controlSize(.small)
                             Text(loadingText)
                                 .font(.system(size: 12, design: .rounded))
-                                .foregroundStyle(.black.opacity(0.45))
+                                .foregroundStyle(colorScheme == .light ? .black.opacity(0.45) : .white.opacity(0.55))
                         }
                     } else if focusCloudSync.leaderboardEntries.isEmpty {
                         VStack(spacing: 8) {
                             Image(systemName: "crown.slash")
                                 .font(.system(size: 24))
-                                .foregroundStyle(.black.opacity(0.2))
+                                .foregroundStyle(colorScheme == .light ? .black.opacity(0.2) : .white.opacity(0.3))
                             Text(noDataText)
                                 .font(.system(size: 12, design: .rounded))
-                                .foregroundStyle(.black.opacity(0.45))
+                                .foregroundStyle(colorScheme == .light ? .black.opacity(0.45) : .white.opacity(0.55))
                         }
                     } else {
                         ScrollView {
@@ -145,18 +146,19 @@ private struct SegmentButton: View {
     let title: String
     let isSelected: Bool
     let action: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 11, weight: isSelected ? .bold : .medium, design: .rounded))
-                .foregroundStyle(isSelected ? .black.opacity(0.85) : .black.opacity(0.45))
+                .foregroundStyle(isSelected ? (colorScheme == .light ? .black.opacity(0.85) : .white) : (colorScheme == .light ? .black.opacity(0.45) : .white.opacity(0.55)))
                 .frame(maxWidth: .infinity)
                 .frame(height: 24)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(isSelected ? Color.white : Color.clear)
-                        .shadow(color: isSelected ? Color.black.opacity(0.08) : Color.clear, radius: 2, x: 0, y: 1)
+                        .fill(isSelected ? (colorScheme == .light ? Color.white : Color.white.opacity(0.15)) : Color.clear)
+                        .shadow(color: isSelected ? (colorScheme == .light ? Color.black.opacity(0.08) : Color.black.opacity(0.2)) : Color.clear, radius: 2, x: 0, y: 1)
                 )
         }
         .buttonStyle(.plain)
@@ -167,6 +169,7 @@ private struct LeaderboardRow: View {
     let entry: FocusLeaderboardEntry
     let isMe: Bool
     let sessionsLabel: String
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         HStack(spacing: 12) {
@@ -180,12 +183,12 @@ private struct LeaderboardRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.displayName)
                     .font(.system(size: 12, weight: isMe ? .bold : .medium, design: .rounded))
-                    .foregroundStyle(isMe ? Color.orange : .black.opacity(0.85))
+                    .foregroundStyle(isMe ? Color.orange : (colorScheme == .light ? .black.opacity(0.85) : .white.opacity(0.9)))
                     .lineLimit(1)
                 
                 Text("\(entry.sessionCount) \(sessionsLabel)")
                     .font(.system(size: 10, design: .rounded))
-                    .foregroundStyle(.black.opacity(0.45))
+                    .foregroundStyle(colorScheme == .light ? .black.opacity(0.45) : .white.opacity(0.55))
             }
 
             Spacer()
@@ -193,17 +196,17 @@ private struct LeaderboardRow: View {
             // Time Spent
             Text(formatDuration(entry.focusSeconds))
                 .font(.system(size: 12, weight: .bold, design: .monospaced))
-                .foregroundStyle(.black.opacity(0.75))
+                .foregroundStyle(colorScheme == .light ? .black.opacity(0.75) : .white.opacity(0.85))
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(isMe ? Color.orange.opacity(0.08) : Color.black.opacity(0.03))
+                .fill(isMe ? Color.orange.opacity(colorScheme == .light ? 0.08 : 0.15) : (colorScheme == .light ? Color.black.opacity(0.03) : Color.white.opacity(0.05)))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(isMe ? Color.orange.opacity(0.3) : Color.black.opacity(0.06), lineWidth: 1)
+                .stroke(isMe ? Color.orange.opacity(colorScheme == .light ? 0.3 : 0.5) : (colorScheme == .light ? Color.black.opacity(0.06) : Color.white.opacity(0.1)), lineWidth: 1)
         )
     }
 
@@ -217,6 +220,8 @@ private struct LeaderboardRow: View {
 
 private struct RankMedalView: View {
     let rank: Int
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         ZStack {
             if rank == 1 {
@@ -238,7 +243,7 @@ private struct RankMedalView: View {
             } else {
                 Text("\(rank)")
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.black.opacity(0.45))
+                    .foregroundStyle(colorScheme == .light ? .black.opacity(0.45) : .white.opacity(0.55))
                     .frame(width: 18, height: 18)
             }
         }
@@ -250,6 +255,7 @@ private struct AvatarView: View {
     let avatarURLString: String?
     let displayName: String
     var size: CGFloat = 30
+    @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
         if let urlString = avatarURLString, let url = URL(string: urlString) {
@@ -273,15 +279,15 @@ private struct AvatarView: View {
     private var defaultAvatar: some View {
         ZStack {
             Circle()
-                .fill(Color.black.opacity(0.06))
+                .fill(colorScheme == .light ? Color.black.opacity(0.06) : Color.white.opacity(0.12))
             if displayName == "Ẩn danh" {
                 Image(systemName: "person.badge.shield.fill")
                     .font(.system(size: size * 0.45))
-                    .foregroundStyle(.black.opacity(0.4))
+                    .foregroundStyle(colorScheme == .light ? .black.opacity(0.4) : .white.opacity(0.5))
             } else {
                 Text(initials(displayName))
                     .font(.system(size: size * 0.4, weight: .bold, design: .rounded))
-                    .foregroundStyle(.black.opacity(0.6))
+                    .foregroundStyle(colorScheme == .light ? .black.opacity(0.6) : .white.opacity(0.7))
             }
         }
         .frame(width: size, height: size)
@@ -300,28 +306,32 @@ private struct AvatarView: View {
 
 private struct LeaderboardGlassSurface: View {
     var cornerRadius: CGFloat = 16
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(Color.white.opacity(0.85))
+                .fill(colorScheme == .light ? Color.white.opacity(0.85) : Color.black.opacity(0.85))
             VisualEffectView(
-                material: .windowBackground,
+                material: colorScheme == .light ? .windowBackground : .hudWindow,
                 blendingMode: .behindWindow,
                 cornerRadius: cornerRadius
             )
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [Color.white.opacity(0.3), Color.white.opacity(0.1)],
+                        colors: colorScheme == .light 
+                            ? [Color.white.opacity(0.3), Color.white.opacity(0.1)]
+                            : [Color.white.opacity(0.1), Color.white.opacity(0.03)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
                 .blendMode(.overlay)
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.6), lineWidth: 1)
+                .strokeBorder(colorScheme == .light ? Color.white.opacity(0.6) : Color.white.opacity(0.15), lineWidth: 1)
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .strokeBorder(Color.black.opacity(0.12), lineWidth: 0.5)
+                .strokeBorder(colorScheme == .light ? Color.black.opacity(0.12) : Color.black.opacity(0.3), lineWidth: 0.5)
         }
     }
 }

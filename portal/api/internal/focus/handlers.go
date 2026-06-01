@@ -2,6 +2,7 @@ package focus
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -15,10 +16,11 @@ type Handler struct {
 	Repo          Repository
 	Authenticator auth.Authenticator
 	EventLog      *events.Logger
+	Logger        *slog.Logger
 }
 
-func NewHandler(repo Repository, authenticator auth.Authenticator, eventLog *events.Logger) *Handler {
-	return &Handler{Repo: repo, Authenticator: authenticator, EventLog: eventLog}
+func NewHandler(repo Repository, authenticator auth.Authenticator, eventLog *events.Logger, logger *slog.Logger) *Handler {
+	return &Handler{Repo: repo, Authenticator: authenticator, EventLog: eventLog, Logger: logger}
 }
 
 func (h *Handler) Leaderboard(w http.ResponseWriter, req *http.Request) {
@@ -28,7 +30,9 @@ func (h *Handler) Leaderboard(w http.ResponseWriter, req *http.Request) {
 
 	leaderboard, err := h.Repo.ReadFocusLeaderboard(req.Context(), window, weekStart, PublicLeaderboardLimit)
 	if err != nil {
-		println("[ERROR Leaderboard] ReadFocusLeaderboard failed:", err.Error())
+		if h.Logger != nil {
+			h.Logger.Error("ReadFocusLeaderboard failed", "error", err)
+		}
 		httpjson.Detail(w, http.StatusInternalServerError, "Failed to read leaderboard.")
 		return
 	}
@@ -67,11 +71,15 @@ func (h *Handler) Me(w http.ResponseWriter, req *http.Request) {
 
 	rank, streak, err := h.Repo.ReadUserWeeklyRankAndStreak(req.Context(), authCtx.User.ID, weekStart)
 	if err != nil {
-		println("[ERROR Handler.Me] ReadUserWeeklyRankAndStreak failed:", err.Error())
+		if h.Logger != nil {
+			h.Logger.Error("ReadUserWeeklyRankAndStreak failed", "error", err)
+		}
 		rank = 0
 		streak = 0
 	}
-	println("[DEBUG Focus Me] called for userID:", authCtx.User.ID, "rank:", rank, "streak:", streak, "optIn:", authCtx.User.LeaderboardOptIn)
+	if h.Logger != nil {
+		h.Logger.Debug("Focus Me called", "userID", authCtx.User.ID, "rank", rank, "streak", streak, "optIn", authCtx.User.LeaderboardOptIn)
+	}
 
 	httpjson.JSON(w, http.StatusOK, map[string]any{
 		"user": map[string]any{

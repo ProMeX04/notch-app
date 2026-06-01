@@ -30,6 +30,9 @@ struct PomodoroSimpleFocusPanel: View {
     }
 
     private var rankText: String {
+        if focusCloudSync.isOffline {
+            return appLanguage == "Tiếng Việt" ? "#? Ngoại tuyến" : "#? Offline"
+        }
         if focusCloudSync.weeklyRank > 0 {
             return appLanguage == "Tiếng Việt" 
                 ? "#\(focusCloudSync.weeklyRank) Tuần" 
@@ -77,7 +80,7 @@ struct PomodoroSimpleFocusPanel: View {
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "trophy.fill")
-                                .foregroundStyle(.yellow)
+                                .foregroundStyle(focusCloudSync.isOffline ? .gray : .yellow)
                             Text(rankText)
                         }
                         .contentShape(Rectangle())

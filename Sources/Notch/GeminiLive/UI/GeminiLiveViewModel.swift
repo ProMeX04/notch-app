@@ -226,12 +226,11 @@ final class GeminiLiveViewModel: ObservableObject {
         self.toolingController = dependencies.toolingController
         self.userAPIClient = dependencies.userAPIClient
         #if DEBUG
-        let defaultEnv = "development"
-        #else
-        let defaultEnv = "production"
-        #endif
-        let envString = UserDefaults.standard.string(forKey: "dev.notch.environment") ?? defaultEnv
+        let envString = UserDefaults.standard.string(forKey: "dev.notch.environment") ?? "development"
         let resolvedEnv = NotchEnvironment(rawValue: envString) ?? .production
+        #else
+        let resolvedEnv = NotchEnvironment.production
+        #endif
         selectedEnvironment = resolvedEnv
 
         // Sync backendConfigStore with the resolved environment on launch

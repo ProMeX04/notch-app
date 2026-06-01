@@ -37,12 +37,11 @@ enum NotchEnvironment: String, CaseIterable, Identifiable {
 enum PortalHostedBackend {
     static var defaultURL: String {
         #if DEBUG
-        let defaultEnv = "development"
-        #else
-        let defaultEnv = "production"
-        #endif
-        let envString = UserDefaults.standard.string(forKey: "dev.notch.environment") ?? defaultEnv
+        let envString = UserDefaults.standard.string(forKey: "dev.notch.environment") ?? "development"
         let env = NotchEnvironment(rawValue: envString) ?? .production
         return env.portalURL
+        #else
+        return NotchEnvironment.production.portalURL
+        #endif
     }
 }

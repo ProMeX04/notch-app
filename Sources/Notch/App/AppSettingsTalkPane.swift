@@ -96,6 +96,7 @@ struct AppTalkSettingsPane: View {
 
                             if gemini.selectedConnectionMethod == .managedServer {
                                 VStack(alignment: .leading, spacing: 12) {
+                                    #if DEBUG
                                     HStack(spacing: 8) {
                                         Image(systemName: "server.rack")
                                             .font(.system(size: 14, weight: .semibold))
@@ -118,6 +119,7 @@ struct AppTalkSettingsPane: View {
                                         .disabled(!gemini.canManageConfiguration)
                                     }
                                     .padding(.top, 4)
+                                    #endif
 
                                     if gemini.isBackendAuthenticated {
                                         VStack(alignment: .leading, spacing: 8) {

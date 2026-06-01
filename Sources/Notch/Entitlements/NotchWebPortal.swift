@@ -17,13 +17,12 @@ enum NotchWebPortal {
         let resolvedAPI = apiBaseURL ?? URL(string: PortalHostedBackend.defaultURL)
         guard let api = resolvedAPI else {
             #if DEBUG
-            let defaultEnv = "development"
-            #else
-            let defaultEnv = "production"
-            #endif
-            let envString = UserDefaults.standard.string(forKey: "dev.notch.environment") ?? defaultEnv
+            let envString = UserDefaults.standard.string(forKey: "dev.notch.environment") ?? "development"
             let env = NotchEnvironment(rawValue: envString) ?? .production
             return URL(string: env.webOriginURL)!
+            #else
+            return URL(string: NotchEnvironment.production.webOriginURL)!
+            #endif
         }
 
         // Check if the API matches any of our known environments, and if so, use the respective webOriginURL

@@ -36,6 +36,8 @@ type Handler struct {
 	FrontendURL            string
 	DriveHandoffEncryptKey string
 	HTTPClient             *http.Client
+	NativeClientID         string
+	NativeRedirectURIs     []string
 }
 
 type DeviceSummary struct {
@@ -78,20 +80,28 @@ type RegisterRequest struct {
 
 func (h Handler) Me(w http.ResponseWriter, req *http.Request) {
 	noStore(w)
+	fmt.Printf("[DEBUG Me] req.Header: %+v\n", req.Header)
+	for _, cookie := range req.Cookies() {
+		fmt.Printf("[DEBUG Me] cookie: Name=%s, Value=%s\n", cookie.Name, cookie.Value)
+	}
 	auth, err := h.Authenticator.AuthenticateRequest(req.Context(), req)
 	if err == nil {
+		fmt.Printf("[DEBUG Me] Success: auth.SessionID=%s, auth.DeviceID=%+v\n", auth.SessionID, auth.DeviceID)
 		sessionID := auth.SessionID
 		policy := h.getPermissionPolicy(req.Context(), auth.User.IsPro)
 		httpjson.JSON(w, http.StatusOK, BuildUserResponse(auth.User, &sessionID, h.MaxActiveDevices, policy))
 		return
 	}
+	fmt.Printf("[DEBUG Me] AuthenticateRequest failed: %v\n", err)
 
 	payload, refreshErr := h.RefreshService.RefreshWithToken(req.Context(), req, httpauth.ReadRefreshTokenCookie(req), DeviceInputFromRefreshRequest(req))
 	if refreshErr != nil {
+		fmt.Printf("[DEBUG Me] RefreshWithToken failed: %v\n", refreshErr)
 		httpauth.ClearAuthCookies(w, req, h.CookieConfig)
 		httpjson.Detail(w, http.StatusUnauthorized, "Invalid or expired session token.")
 		return
 	}
+	fmt.Printf("[DEBUG Me] RefreshWithToken success: session.ID=%s\n", payload.Session.ID)
 	applyPayloadCookies(w, req, h.CookieConfig, payload)
 	sessionID := payload.Session.ID
 	httpjson.JSON(w, http.StatusOK, UserResponse{
@@ -776,8 +786,9 @@ func (h Handler) GoogleCallback(w http.ResponseWriter, req *http.Request) {
 		"redirect_uri":  {redirectURI},
 	})
 	if err != nil {
+		fmt.Printf("[DEBUG GoogleCallback] Google token exchange request failed: %v\n", err)
 		if gdrive == "true" {
-			httpjson.Error(w, http.StatusBadRequest, "Failed to exchange token")
+			httpjson.Error(w, http.StatusBadRequest, "Failed to exchange token: "+err.Error())
 		} else {
 			http.Redirect(w, req, h.FrontendURL+"/?error=Failed to exchange token", http.StatusTemporaryRedirect)
 		}
@@ -786,8 +797,10 @@ func (h Handler) GoogleCallback(w http.ResponseWriter, req *http.Request) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		fmt.Printf("[DEBUG GoogleCallback] Google token exchange returned HTTP %d: %s\n", resp.StatusCode, string(bodyBytes))
 		if gdrive == "true" {
-			httpjson.Error(w, http.StatusBadRequest, "Failed to exchange token")
+			httpjson.Error(w, http.StatusBadRequest, fmt.Sprintf("Failed to exchange token: Google returned %d", resp.StatusCode))
 		} else {
 			http.Redirect(w, req, h.FrontendURL+"/?error=Failed to exchange token", http.StatusTemporaryRedirect)
 		}
@@ -1075,40 +1088,40 @@ func stringifyJSON(value any) string {
 }
 
 func (h Handler) getPermissionPolicy(ctx context.Context, isPro bool) PermissionPolicy {
-	features := map[string]bool{
-		"gemini_live":         isPro,
-		"advanced_pomodoro":   true,
-		"website_blocking":    true,
-		"media_control":       true,
-		"browser_integration": true,
-		"shelf_sync":          isPro,
+	features := map[string]string{
+		"talk_connection":         "pro",
+		"focus_pomodoro":          "free",
+		"focus_website_blocklist": "free",
+		"media_controls":          "free",
+		"browser_bridge":          "free",
+		"panel_shelf":             "pro",
 	}
 
 	pgxRepo, ok := h.Repo.(*PgxSessionRepository)
-	if !ok || pgxRepo == nil || pgxRepo.db == nil {
-		return PermissionPolicy{Features: features}
-	}
-
-	rows, err := pgxRepo.db.Query(ctx, `SELECT "key", "isProOnly", "isEnabled" FROM "FeatureConfig"`)
-	if err != nil {
-		return PermissionPolicy{Features: features}
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var key string
-		var isProOnly bool
-		var isEnabled bool
-		if err := rows.Scan(&key, &isProOnly, &isEnabled); err == nil {
-			if !isEnabled {
-				features[key] = false
-			} else if isProOnly {
-				features[key] = isPro
-			} else {
-				features[key] = true
+	if ok && pgxRepo != nil && pgxRepo.db != nil {
+		rows, err := pgxRepo.db.Query(ctx, `SELECT "key", "isProOnly", "isEnabled" FROM "FeatureConfig"`)
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var key string
+				var isProOnly bool
+				var isEnabled bool
+				if err := rows.Scan(&key, &isProOnly, &isEnabled); err == nil {
+					if !isEnabled {
+						features[key] = "disabled"
+					} else if isProOnly {
+						features[key] = "pro"
+					} else {
+						features[key] = "free"
+					}
+				}
 			}
 		}
 	}
 
-	return PermissionPolicy{Features: features}
+	return PermissionPolicy{
+		Version:   1,
+		Features:  features,
+		UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+	}
 }

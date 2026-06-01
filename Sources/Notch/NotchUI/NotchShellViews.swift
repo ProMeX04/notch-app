@@ -21,6 +21,7 @@ struct ExpandedNotchContent: View {
     @ObservedObject var gemini: GeminiLiveViewModel
     @ObservedObject var shelf: NotchShelfViewModel
     @ObservedObject var learningStats: LearningStatsStore
+    @ObservedObject var focusCloudSync: FocusCloudSyncCoordinator
     @ObservedObject var presentationModel: NotchPresentationModel
     @ObservedObject var entitlementStore: NotchEntitlementStore
     @ObservedObject var talkHeaderAccessoryController: NotchHeaderAccessoryController
@@ -31,7 +32,9 @@ struct ExpandedNotchContent: View {
         Group {
             if presentationModel.selectedPanel == .focus {
                 PomodoroPanelView(
-                    pomodoro: pomodoro
+                    pomodoro: pomodoro,
+                    learningStats: learningStats,
+                    focusCloudSync: focusCloudSync
                 )
             } else if presentationModel.selectedPanel == .talk {
                 GeminiTalkPanelView(

@@ -29,6 +29,251 @@ func NewHandler(db *pgxpool.Pool, logger *events.Logger) *Handler {
 	}
 }
 
+type DailyMetric struct {
+	Date             string `json:"date"`
+	Users            int    `json:"users"`
+	PaidTransactions int    `json:"paidTransactions"`
+	Revenue          int    `json:"revenue"`
+	Events           int    `json:"events"`
+}
+
+type AdminStatsOverview struct {
+	TotalUsers           int `json:"totalUsers"`
+	ProUsers             int `json:"proUsers"`
+	FreeUsers            int `json:"freeUsers"`
+	AdminUsers           int `json:"adminUsers"`
+	NewUsers7d           int `json:"newUsers7d"`
+	NewUsers30d          int `json:"newUsers30d"`
+	ActiveSessions       int `json:"activeSessions"`
+	PaidTransactions     int `json:"paidTransactions"`
+	FailedTransactions   int `json:"failedTransactions"`
+	PendingTransactions  int `json:"pendingTransactions"`
+	TotalRevenue         int `json:"totalRevenue"`
+	RecentRejectedEvents int `json:"recentRejectedEvents"`
+	RecentFailedEvents   int `json:"recentFailedEvents"`
+}
+
+type AdminStatsActorUser struct {
+	Name  *string `json:"name"`
+	Email *string `json:"email"`
+}
+
+type AdminStatsRecentEvent struct {
+	ID            string               `json:"id"`
+	CreatedAt     time.Time            `json:"createdAt"`
+	EventType     string               `json:"eventType"`
+	Outcome       string               `json:"outcome"`
+	Source        string               `json:"source"`
+	RequestPath   *string              `json:"requestPath"`
+	RequestMethod *string              `json:"requestMethod"`
+	StatusCode    *int                 `json:"statusCode"`
+	ActorUserID   *string              `json:"actorUserId"`
+	ActorUser     *AdminStatsActorUser `json:"actorUser"`
+}
+
+type AdminStatsResponse struct {
+	Overview     AdminStatsOverview      `json:"overview"`
+	Trends       []DailyMetric           `json:"trends"`
+	RecentEvents []AdminStatsRecentEvent `json:"recentEvents"`
+	SystemHealth string                  `json:"systemHealth"`
+	GeneratedAt  time.Time               `json:"generatedAt"`
+}
+
+func startOfUTCDay(t time.Time) time.Time {
+	y, m, d := t.UTC().Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+}
+
+func metricDateKey(t time.Time) string {
+	return t.UTC().Format("2006-01-02")
+}
+
+func buildDailyMetrics(start time.Time, days int) ([]DailyMetric, map[string]*DailyMetric) {
+	metrics := make([]DailyMetric, 0, days)
+	byDate := make(map[string]*DailyMetric, days)
+	for i := 0; i < days; i++ {
+		date := start.AddDate(0, 0, i)
+		metrics = append(metrics, DailyMetric{Date: metricDateKey(date)})
+		byDate[metrics[i].Date] = &metrics[i]
+	}
+	return metrics, byDate
+}
+
+func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	now := time.Now().UTC()
+	sevenDaysAgo := now.Add(-7 * 24 * time.Hour)
+	thirtyDaysAgo := now.Add(-30 * 24 * time.Hour)
+	trendDays := 14
+	trendStart := startOfUTCDay(now.AddDate(0, 0, -(trendDays - 1)))
+	metrics, metricsByDate := buildDailyMetrics(trendStart, trendDays)
+
+	var overview AdminStatsOverview
+	if err := h.DB.QueryRow(ctx, `SELECT COUNT(*) FROM "User"`).Scan(&overview.TotalUsers); err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch stats")
+		return
+	}
+	if err := h.DB.QueryRow(ctx, `SELECT COUNT(*) FROM "User" WHERE "isPro" = true`).Scan(&overview.ProUsers); err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch stats")
+		return
+	}
+	if err := h.DB.QueryRow(ctx, `SELECT COUNT(*) FROM "User" WHERE "isAdmin" = true`).Scan(&overview.AdminUsers); err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch stats")
+		return
+	}
+	if err := h.DB.QueryRow(ctx, `SELECT COUNT(*) FROM "User" WHERE "createdAt" >= $1`, sevenDaysAgo).Scan(&overview.NewUsers7d); err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch stats")
+		return
+	}
+	if err := h.DB.QueryRow(ctx, `SELECT COUNT(*) FROM "User" WHERE "createdAt" >= $1`, thirtyDaysAgo).Scan(&overview.NewUsers30d); err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch stats")
+		return
+	}
+	if err := h.DB.QueryRow(ctx, `SELECT COUNT(*) FROM "AuthSession" WHERE "revokedAt" IS NULL AND "expiresAt" > $1`, now).Scan(&overview.ActiveSessions); err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch stats")
+		return
+	}
+	if err := h.DB.QueryRow(ctx, `SELECT COUNT(*) FROM "PaymentTransaction" WHERE status = 'paid'`).Scan(&overview.PaidTransactions); err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch stats")
+		return
+	}
+	if err := h.DB.QueryRow(ctx, `SELECT COUNT(*) FROM "PaymentTransaction" WHERE status = 'failed'`).Scan(&overview.FailedTransactions); err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch stats")
+		return
+	}
+	if err := h.DB.QueryRow(ctx, `SELECT COUNT(*) FROM "PaymentTransaction" WHERE status = 'pending'`).Scan(&overview.PendingTransactions); err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch stats")
+		return
+	}
+	if err := h.DB.QueryRow(ctx, `SELECT COALESCE(SUM(amount), 0) FROM "PaymentTransaction" WHERE status = 'paid'`).Scan(&overview.TotalRevenue); err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch stats")
+		return
+	}
+	if err := h.DB.QueryRow(ctx, `SELECT COUNT(*) FROM "AppEvent" WHERE outcome = 'rejected' AND "createdAt" >= $1`, sevenDaysAgo).Scan(&overview.RecentRejectedEvents); err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch stats")
+		return
+	}
+	if err := h.DB.QueryRow(ctx, `SELECT COUNT(*) FROM "AppEvent" WHERE outcome = 'failure' AND "createdAt" >= $1`, sevenDaysAgo).Scan(&overview.RecentFailedEvents); err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch stats")
+		return
+	}
+	overview.FreeUsers = int(math.Max(float64(overview.TotalUsers-overview.ProUsers), 0))
+
+	userRows, err := h.DB.Query(ctx, `
+		SELECT to_char("createdAt" AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day, COUNT(*)
+		FROM "User"
+		WHERE "createdAt" >= $1
+		GROUP BY day
+	`, trendStart)
+	if err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch stats")
+		return
+	}
+	defer userRows.Close()
+	for userRows.Next() {
+		var day string
+		var count int
+		if err := userRows.Scan(&day, &count); err != nil {
+			httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch stats")
+			return
+		}
+		if metric := metricsByDate[day]; metric != nil {
+			metric.Users = count
+		}
+	}
+
+	paymentRows, err := h.DB.Query(ctx, `
+		SELECT to_char("createdAt" AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day,
+			COUNT(*) FILTER (WHERE status = 'paid'),
+			COALESCE(SUM(amount) FILTER (WHERE status = 'paid'), 0)
+		FROM "PaymentTransaction"
+		WHERE "createdAt" >= $1
+		GROUP BY day
+	`, trendStart)
+	if err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch stats")
+		return
+	}
+	defer paymentRows.Close()
+	for paymentRows.Next() {
+		var day string
+		var count int
+		var revenue int
+		if err := paymentRows.Scan(&day, &count, &revenue); err != nil {
+			httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch stats")
+			return
+		}
+		if metric := metricsByDate[day]; metric != nil {
+			metric.PaidTransactions = count
+			metric.Revenue = revenue
+		}
+	}
+
+	eventRows, err := h.DB.Query(ctx, `
+		SELECT to_char("createdAt" AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day, COUNT(*)
+		FROM "AppEvent"
+		WHERE "createdAt" >= $1
+		GROUP BY day
+	`, trendStart)
+	if err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch stats")
+		return
+	}
+	defer eventRows.Close()
+	for eventRows.Next() {
+		var day string
+		var count int
+		if err := eventRows.Scan(&day, &count); err != nil {
+			httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch stats")
+			return
+		}
+		if metric := metricsByDate[day]; metric != nil {
+			metric.Events = count
+		}
+	}
+
+	recentRows, err := h.DB.Query(ctx, `
+		SELECT e.id, e."createdAt", e."eventType", e.outcome, e.source, e."requestPath", e."requestMethod", e."statusCode", e."actorUserId", u.name, u.email
+		FROM "AppEvent" e
+		LEFT JOIN "User" u ON u.id = e."actorUserId"
+		ORDER BY e."createdAt" DESC
+		LIMIT 12
+	`)
+	if err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch stats")
+		return
+	}
+	defer recentRows.Close()
+
+	recentEvents := make([]AdminStatsRecentEvent, 0, 12)
+	for recentRows.Next() {
+		var event AdminStatsRecentEvent
+		var actorName *string
+		var actorEmail *string
+		if err := recentRows.Scan(&event.ID, &event.CreatedAt, &event.EventType, &event.Outcome, &event.Source, &event.RequestPath, &event.RequestMethod, &event.StatusCode, &event.ActorUserID, &actorName, &actorEmail); err != nil {
+			httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch stats")
+			return
+		}
+		if actorName != nil || actorEmail != nil {
+			event.ActorUser = &AdminStatsActorUser{Name: actorName, Email: actorEmail}
+		}
+		recentEvents = append(recentEvents, event)
+	}
+
+	systemHealth := "Healthy"
+	if overview.RecentFailedEvents > 0 {
+		systemHealth = "Degraded"
+	}
+
+	httpjson.JSON(w, http.StatusOK, AdminStatsResponse{
+		Overview:     overview,
+		Trends:       metrics,
+		RecentEvents: recentEvents,
+		SystemHealth: systemHealth,
+		GeneratedAt:  now,
+	})
+}
+
 type PaginationResponse struct {
 	Page       int `json:"page"`
 	Limit      int `json:"limit"`
@@ -91,15 +336,15 @@ func (h *Handler) GetUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if plan == "pro" {
-		whereClauses = append(whereClauses, "u.isPro = true")
+		whereClauses = append(whereClauses, `u."isPro" = true`)
 	} else if plan == "free" {
-		whereClauses = append(whereClauses, "u.isPro = false")
+		whereClauses = append(whereClauses, `u."isPro" = false`)
 	}
 
 	if role == "admin" {
-		whereClauses = append(whereClauses, "u.isAdmin = true")
+		whereClauses = append(whereClauses, `u."isAdmin" = true`)
 	} else if role == "user" {
-		whereClauses = append(whereClauses, "u.isAdmin = false")
+		whereClauses = append(whereClauses, `u."isAdmin" = false`)
 	}
 
 	whereSQL := ""
@@ -123,12 +368,12 @@ func (h *Handler) GetUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Order by
-	orderBySQL := " ORDER BY u.createdAt DESC"
+	orderBySQL := ` ORDER BY u."createdAt" DESC`
 	switch sort {
 	case "oldest":
-		orderBySQL = " ORDER BY u.createdAt ASC"
+		orderBySQL = ` ORDER BY u."createdAt" ASC`
 	case "updated":
-		orderBySQL = " ORDER BY u.updatedAt DESC"
+		orderBySQL = ` ORDER BY u."updatedAt" DESC`
 	case "name":
 		orderBySQL = " ORDER BY u.name ASC"
 	case "email":
@@ -141,17 +386,17 @@ func (h *Handler) GetUsers(w http.ResponseWriter, r *http.Request) {
 			u.id, 
 			u.name, 
 			u.email, 
-			u.isPro, 
-			u.isAdmin, 
-			u.createdAt, 
-			u.updatedAt,
-			(SELECT s.lastSeenAt FROM "AuthSession" s WHERE s.userId = u.id ORDER BY s.lastSeenAt DESC LIMIT 1) AS lastSeenAt,
-			(SELECT MAX(COALESCE(p.paidAt, p.createdAt)) FROM "PaymentTransaction" p WHERE p.userId = u.id) AS latestPaymentAt,
-			(SELECT COUNT(*) FROM "AuthSession" s WHERE s.userId = u.id AND s.revokedAt IS NULL AND s.expiresAt > NOW()) AS activeSessionCount,
-			(SELECT COUNT(*) FROM "AuthSession" s WHERE s.userId = u.id) AS totalSessionCount,
-			(SELECT COUNT(DISTINCT s.deviceId) FROM "AuthSession" s WHERE s.userId = u.id AND s.trustedAt IS NOT NULL AND s.deviceId IS NOT NULL) AS trustedDeviceCount,
-			(SELECT COUNT(*) FROM "PaymentTransaction" p WHERE p.userId = u.id AND p.status = 'paid') AS paidPaymentCount,
-			(SELECT COALESCE(SUM(p.amount), 0) FROM "PaymentTransaction" p WHERE p.userId = u.id AND p.status = 'paid') AS totalPaidRevenue
+			u."isPro", 
+			u."isAdmin", 
+			u."createdAt", 
+			u."updatedAt",
+			(SELECT s."lastSeenAt" FROM "AuthSession" s WHERE s."userId" = u.id ORDER BY s."lastSeenAt" DESC LIMIT 1) AS lastSeenAt,
+			(SELECT MAX(COALESCE(p."paidAt", p."createdAt")) FROM "PaymentTransaction" p WHERE p."userId" = u.id) AS latestPaymentAt,
+			(SELECT COUNT(*) FROM "AuthSession" s WHERE s."userId" = u.id AND s."revokedAt" IS NULL AND s."expiresAt" > NOW()) AS activeSessionCount,
+			(SELECT COUNT(*) FROM "AuthSession" s WHERE s."userId" = u.id) AS totalSessionCount,
+			(SELECT COUNT(DISTINCT s."deviceId") FROM "AuthSession" s WHERE s."userId" = u.id AND s."trustedAt" IS NOT NULL AND s."deviceId" IS NOT NULL) AS trustedDeviceCount,
+			(SELECT COUNT(*) FROM "PaymentTransaction" p WHERE p."userId" = u.id AND p.status = 'paid') AS paidPaymentCount,
+			(SELECT COALESCE(SUM(p.amount), 0) FROM "PaymentTransaction" p WHERE p."userId" = u.id AND p.status = 'paid') AS totalPaidRevenue
 		FROM "User" u
 	` + whereSQL + orderBySQL + " LIMIT $" + strconv.Itoa(argID) + " OFFSET $" + strconv.Itoa(argID+1)
 

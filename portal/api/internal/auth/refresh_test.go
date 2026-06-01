@@ -81,6 +81,24 @@ func (r *refreshRepo) SetTrustedDevice(_ context.Context, userID string, deviceI
 func (r *refreshRepo) RevokeDeviceSessions(_ context.Context, userID string, deviceID string, exceptSessionID string) error {
 	return nil
 }
+func (r *refreshRepo) CreateOAuthAuthorizationCode(_ context.Context, _ *OAuthAuthorizationCode) error {
+	return nil
+}
+func (r *refreshRepo) FindOAuthAuthorizationCode(_ context.Context, _ string) (*OAuthAuthorizationCode, error) {
+	return nil, nil
+}
+func (r *refreshRepo) ConsumeOAuthAuthorizationCode(_ context.Context, _ string, _ time.Time) error {
+	return nil
+}
+func (r *refreshRepo) FindGoogleDriveAuthHandoff(_ context.Context, _ string) (*GoogleDriveAuthHandoff, error) {
+	return nil, nil
+}
+func (r *refreshRepo) ConsumeGoogleDriveAuthHandoff(_ context.Context, _ string, _ time.Time) error {
+	return nil
+}
+func (r *refreshRepo) DeleteExpiredGoogleDriveAuthHandoffs(_ context.Context, _ time.Time) error {
+	return nil
+}
 
 func TestRefreshServiceRotatesValidRefreshToken(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()

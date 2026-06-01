@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"log/slog"
 	"net"
 	"net/http"
@@ -44,14 +45,26 @@ func (l *Logger) Log(ctx context.Context, req *http.Request, event Event) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
+	var metadataStr string
+	if len(metadata) > 0 {
+		b, err := json.Marshal(metadata)
+		if err != nil || len(b) == 0 {
+			metadataStr = "{}"
+		} else {
+			metadataStr = string(b)
+		}
+	} else {
+		metadataStr = "{}"
+	}
+
 	_, err := l.db.Exec(ctx, `
 		INSERT INTO "AppEvent" (
 			"id", "eventType", "outcome", "source", "actorUserId", "sessionId", "deviceId",
 			"requestPath", "requestMethod", "statusCode", "ipHash", "userAgent", "metadata", "createdAt"
 		) VALUES (
-			gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW()
+			gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, NOW()
 		)
-	`, event.EventType, event.Outcome, event.Source, event.ActorUserID, event.SessionID, event.DeviceID, path, method, event.StatusCode, ipHash, userAgent, metadata)
+	`, event.EventType, event.Outcome, event.Source, event.ActorUserID, event.SessionID, event.DeviceID, path, method, event.StatusCode, ipHash, userAgent, metadataStr)
 	if err != nil && l.logger != nil {
 		l.logger.Warn("failed to write app event", "event_type", event.EventType, "error", err)
 	}

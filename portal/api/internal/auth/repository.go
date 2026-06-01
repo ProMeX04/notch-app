@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -74,8 +76,17 @@ func (r *PgxSessionRepository) findSession(ctx context.Context, where string, ar
 	if r == nil || r.db == nil {
 		return nil, nil
 	}
+	fmt.Printf("[DEBUG Repository] findSession: where=%s, arg=%s\n", where, arg)
 	row := r.db.QueryRow(ctx, sessionSelectSQL(where), arg)
-	return scanSession(row)
+	session, err := scanSession(row)
+	if err != nil {
+		fmt.Printf("[DEBUG Repository] findSession error: %v\n", err)
+	} else if session == nil {
+		fmt.Printf("[DEBUG Repository] findSession not found (nil)\n")
+	} else {
+		fmt.Printf("[DEBUG Repository] findSession found: id=%s, userID=%s, revokedAt=%v, expiresAt=%v\n", session.ID, session.UserID, session.RevokedAt, session.ExpiresAt)
+	}
+	return session, err
 }
 
 type sessionScanner interface {
@@ -469,5 +480,107 @@ func (r *PgxSessionRepository) RevokeDeviceSessions(ctx context.Context, userID 
 		SET "revokedAt" = NOW(), "revokedReason" = 'manual_revoke', "updatedAt" = NOW()
 		WHERE "userId" = $1 AND "deviceId" = $2 AND "id" != $3 AND "revokedAt" IS NULL
 	`, userID, deviceID, exceptSessionID)
+	return err
+}
+
+func (r *PgxSessionRepository) CreateOAuthAuthorizationCode(ctx context.Context, code *OAuthAuthorizationCode) error {
+	if r == nil || r.db == nil {
+		return pgx.ErrNoRows
+	}
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO "OAuthAuthorizationCode" (
+			"id", "codeHash", "clientId", "redirectUri", "codeChallenge", "codeChallengeMethod", "expiresAt", "createdAt", "userId"
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	`, code.ID, code.CodeHash, code.ClientID, code.RedirectURI, code.CodeChallenge, code.CodeChallengeMethod, code.ExpiresAt, code.CreatedAt, code.UserID)
+	return err
+}
+
+func (r *PgxSessionRepository) FindOAuthAuthorizationCode(ctx context.Context, codeHash string) (*OAuthAuthorizationCode, error) {
+	if r == nil || r.db == nil {
+		return nil, pgx.ErrNoRows
+	}
+	var c OAuthAuthorizationCode
+	var u User
+	var emailVal *string
+	var nameVal *string
+	var consumedVal *time.Time
+
+	err := r.db.QueryRow(ctx, `
+		SELECT 
+			c."id", c."codeHash", c."clientId", c."redirectUri", c."codeChallenge", c."codeChallengeMethod", c."expiresAt", c."createdAt", c."consumedAt", c."userId",
+			u."id", u."email", u."name", u."displayName", u."avatarUrl", u."password", u."createdAt", u."isPro", u."isAdmin", u."leaderboardOptIn"
+		FROM "OAuthAuthorizationCode" c
+		JOIN "User" u ON c."userId" = u."id"
+		WHERE c."codeHash" = $1
+		LIMIT 1
+	`, codeHash).Scan(
+		&c.ID, &c.CodeHash, &c.ClientID, &c.RedirectURI, &c.CodeChallenge, &c.CodeChallengeMethod, &c.ExpiresAt, &c.CreatedAt, &consumedVal, &c.UserID,
+		&u.ID, &emailVal, &nameVal, &u.DisplayName, &u.AvatarURL, &u.Password, &u.CreatedAt, &u.IsPro, &u.IsAdmin, &u.LeaderboardOptIn,
+	)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	u.Email = emailVal
+	u.Name = nameVal
+	c.User = u
+	c.ConsumedAt = consumedVal
+	return &c, nil
+}
+
+func (r *PgxSessionRepository) ConsumeOAuthAuthorizationCode(ctx context.Context, id string, consumedAt time.Time) error {
+	if r == nil || r.db == nil {
+		return pgx.ErrNoRows
+	}
+	_, err := r.db.Exec(ctx, `
+		UPDATE "OAuthAuthorizationCode"
+		SET "consumedAt" = $2
+		WHERE "id" = $1 AND "consumedAt" IS NULL
+	`, id, consumedAt)
+	return err
+}
+
+func (r *PgxSessionRepository) FindGoogleDriveAuthHandoff(ctx context.Context, tokenHash string) (*GoogleDriveAuthHandoff, error) {
+	if r == nil || r.db == nil {
+		return nil, pgx.ErrNoRows
+	}
+	var h GoogleDriveAuthHandoff
+	err := r.db.QueryRow(ctx, `
+		SELECT "id", "tokenHash", "codeChallenge", "accessToken", "refreshToken", "expiresIn", "expiresAt", "createdAt", "consumedAt"
+		FROM "GoogleDriveAuthHandoff"
+		WHERE "tokenHash" = $1
+		LIMIT 1
+	`, tokenHash).Scan(&h.ID, &h.TokenHash, &h.CodeChallenge, &h.AccessToken, &h.RefreshToken, &h.ExpiresIn, &h.ExpiresAt, &h.CreatedAt, &h.ConsumedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &h, nil
+}
+
+func (r *PgxSessionRepository) ConsumeGoogleDriveAuthHandoff(ctx context.Context, handoffID string, consumedAt time.Time) error {
+	if r == nil || r.db == nil {
+		return pgx.ErrNoRows
+	}
+	_, err := r.db.Exec(ctx, `
+		UPDATE "GoogleDriveAuthHandoff"
+		SET "consumedAt" = $2, "accessToken" = '', "refreshToken" = NULL
+		WHERE "id" = $1 AND "consumedAt" IS NULL
+	`, handoffID, consumedAt)
+	return err
+}
+
+func (r *PgxSessionRepository) DeleteExpiredGoogleDriveAuthHandoffs(ctx context.Context, maxExpiresAt time.Time) error {
+	if r == nil || r.db == nil {
+		return pgx.ErrNoRows
+	}
+	_, err := r.db.Exec(ctx, `
+		DELETE FROM "GoogleDriveAuthHandoff"
+		WHERE "expiresAt" <= $1
+	`, maxExpiresAt)
 	return err
 }

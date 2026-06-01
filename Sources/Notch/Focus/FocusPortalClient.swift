@@ -16,10 +16,14 @@ struct FocusCloudProfileResponse: Decodable { let user: FocusCloudUser }
 struct FocusCloudUser: Decodable {
     let displayName: String?
     let leaderboardOptIn: Bool
+    let weeklyRank: Int?
+    let streakDays: Int?
 
     enum CodingKeys: String, CodingKey {
         case displayName = "display_name"
         case leaderboardOptIn = "leaderboard_opt_in"
+        case weeklyRank = "weekly_rank"
+        case streakDays = "streak_days"
     }
 }
 
@@ -33,10 +37,35 @@ struct FocusCloudProfileUpdateRequest: Encodable {
     }
 }
 
+struct FocusLeaderboardEntry: Codable, Identifiable, Equatable {
+    var id: String { userID }
+    let rank: Int
+    let userID: String
+    let displayName: String
+    let avatarURL: String?
+    let focusSeconds: Int
+    let sessionCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case rank
+        case userID = "user_id"
+        case displayName = "display_name"
+        case avatarURL = "avatar_url"
+        case focusSeconds = "focus_seconds"
+        case sessionCount = "session_count"
+    }
+}
+
+struct FocusLeaderboardResponse: Decodable {
+    let window: String
+    let leaderboard: [FocusLeaderboardEntry]
+}
+
 protocol FocusPortalSyncClient: AnyObject, Sendable {
     func focusSync(configuration: PortalBackendConfiguration, request body: FocusCloudSyncRequest) async throws
     func focusMe(configuration: PortalBackendConfiguration) async throws -> FocusCloudMeResponse
     func updateFocusProfile(configuration: PortalBackendConfiguration, request body: FocusCloudProfileUpdateRequest) async throws -> FocusCloudProfileResponse
+    func fetchFocusLeaderboard(configuration: PortalBackendConfiguration, window: String) async throws -> FocusLeaderboardResponse
 }
 
 final class URLSessionFocusPortalClient: FocusPortalSyncClient, @unchecked Sendable {
@@ -64,6 +93,15 @@ final class URLSessionFocusPortalClient: FocusPortalSyncClient, @unchecked Senda
     func updateFocusProfile(configuration: PortalBackendConfiguration, request body: FocusCloudProfileUpdateRequest) async throws -> FocusCloudProfileResponse {
         let request = try makeJSONRequest(configuration: configuration, path: "focus/profile", method: "PATCH", body: body)
         return try await decodedResponse(request: request, as: FocusCloudProfileResponse.self)
+    }
+
+    func fetchFocusLeaderboard(configuration: PortalBackendConfiguration, window: String) async throws -> FocusLeaderboardResponse {
+        let request = try makeRequest(
+            configuration: configuration,
+            path: "focus/leaderboard?window=\(window)",
+            method: "GET"
+        )
+        return try await decodedResponse(request: request, as: FocusLeaderboardResponse.self)
     }
 
     private func decodedResponse<Response: Decodable>(request: URLRequest, as type: Response.Type) async throws -> Response {
@@ -96,7 +134,20 @@ final class URLSessionFocusPortalClient: FocusPortalSyncClient, @unchecked Senda
         method: String
     ) throws -> URLRequest {
         let trimmedPath = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let url = configuration.baseURL.appendingPathComponent(trimmedPath)
+        let url: URL
+        if trimmedPath.contains("?") {
+            let parts = trimmedPath.components(separatedBy: "?")
+            let pathPart = parts[0]
+            let queryPart = parts.dropFirst().joined(separator: "?")
+            var components = URLComponents(url: configuration.baseURL.appendingPathComponent(pathPart), resolvingAgainstBaseURL: true)
+            components?.query = queryPart
+            guard let finalURL = components?.url else {
+                throw PortalAPIError.invalidResponse
+            }
+            url = finalURL
+        } else {
+            url = configuration.baseURL.appendingPathComponent(trimmedPath)
+        }
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
         request.httpMethod = method
         request.timeoutInterval = 15

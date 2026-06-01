@@ -17,9 +17,9 @@ type FeatureConfig struct {
 	Key         string    `json:"key"`
 	Name        string    `json:"name"`
 	Description *string   `json:"description"`
-	IsProOnly   bool      `json:"is_pro_only"`
-	IsEnabled   bool      `json:"is_enabled"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	IsProOnly   bool      `json:"isProOnly"`
+	IsEnabled   bool      `json:"isEnabled"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
 // CapabilityDeclaration maps the static default capabilities configuration.

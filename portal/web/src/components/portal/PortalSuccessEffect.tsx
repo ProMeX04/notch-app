@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { Check, ExternalLink } from 'lucide-react'
+import { Check } from 'lucide-react'
 
 type PortalSuccessEffectProps = {
   title?: string
@@ -11,12 +11,10 @@ type PortalSuccessEffectProps = {
 export function PortalSuccessEffect({
   title = 'Đăng nhập thành công',
   description = 'Đang chuyển hướng bạn quay lại ứng dụng Notch...',
-  primaryLabel = 'Mở Notch thủ công',
-  onPrimaryAction,
 }: PortalSuccessEffectProps) {
 
   return (
-    <div className="portal-success-overlay">
+    <div className="portal-success-overlay is-success">
       <div className="portal-success-bg">
         <div className="bg-blob blob-1"></div>
         <div className="bg-blob blob-2"></div>
@@ -43,15 +41,7 @@ export function PortalSuccessEffect({
               <div className="loading-bar-progress"></div>
             </div>
             
-            {onPrimaryAction && (
-              <button 
-                onClick={onPrimaryAction}
-                className="portal-button-glass"
-              >
-                <span>{primaryLabel}</span>
-                <ExternalLink size={16} />
-              </button>
-            )}
+
 
             <Link to="/account" className="portal-button" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '48px' }}>
               Quay về Dashboard

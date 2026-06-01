@@ -14,6 +14,7 @@ final class NotchWindowController {
     let learningStatsStore: LearningStatsStore
     let presentationModel: NotchPresentationModel
     let entitlementStore: NotchEntitlementStore
+    let focusCloudSyncService: FocusCloudSyncCoordinator
 
     private let hostingView: NotchHostingView<MediaNotchView>
     private let window: NotchFloatingPanel
@@ -35,6 +36,7 @@ final class NotchWindowController {
         learningStatsStore: LearningStatsStore,
         presentationModel: NotchPresentationModel,
         entitlementStore: NotchEntitlementStore,
+        focusCloudSyncService: FocusCloudSyncCoordinator,
         screen: NSScreen
     ) {
         self.playbackViewModel = playbackViewModel
@@ -45,6 +47,7 @@ final class NotchWindowController {
         self.learningStatsStore = learningStatsStore
         self.presentationModel = presentationModel
         self.entitlementStore = entitlementStore
+        self.focusCloudSyncService = focusCloudSyncService
         self.screen = screen
         self.screenID = NotchScreenID(screen: screen)
 
@@ -76,6 +79,7 @@ final class NotchWindowController {
                 learningStats: learningStatsStore,
                 presentationModel: presentationModel,
                 entitlementStore: entitlementStore,
+                focusCloudSync: focusCloudSyncService,
                 screenID: screenID
             )
         )

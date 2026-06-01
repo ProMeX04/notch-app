@@ -151,40 +151,40 @@ func (s RefreshService) maxDevices() int {
 }
 
 func (s RefreshService) getPermissionPolicy(ctx context.Context, isPro bool) PermissionPolicy {
-	features := map[string]bool{
-		"gemini_live":         isPro,
-		"advanced_pomodoro":   true,
-		"website_blocking":    true,
-		"media_control":       true,
-		"browser_integration": true,
-		"shelf_sync":          isPro,
+	features := map[string]string{
+		"talk_connection":         "pro",
+		"focus_pomodoro":          "free",
+		"focus_website_blocklist": "free",
+		"media_controls":          "free",
+		"browser_bridge":          "free",
+		"panel_shelf":             "pro",
 	}
 
 	pgxRepo, ok := s.Repo.(*PgxSessionRepository)
-	if !ok || pgxRepo == nil || pgxRepo.db == nil {
-		return PermissionPolicy{Features: features}
-	}
-
-	rows, err := pgxRepo.db.Query(ctx, `SELECT "key", "isProOnly", "isEnabled" FROM "FeatureConfig"`)
-	if err != nil {
-		return PermissionPolicy{Features: features}
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var key string
-		var isProOnly bool
-		var isEnabled bool
-		if err := rows.Scan(&key, &isProOnly, &isEnabled); err == nil {
-			if !isEnabled {
-				features[key] = false
-			} else if isProOnly {
-				features[key] = isPro
-			} else {
-				features[key] = true
+	if ok && pgxRepo != nil && pgxRepo.db != nil {
+		rows, err := pgxRepo.db.Query(ctx, `SELECT "key", "isProOnly", "isEnabled" FROM "FeatureConfig"`)
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var key string
+				var isProOnly bool
+				var isEnabled bool
+				if err := rows.Scan(&key, &isProOnly, &isEnabled); err == nil {
+					if !isEnabled {
+						features[key] = "disabled"
+					} else if isProOnly {
+						features[key] = "pro"
+					} else {
+						features[key] = "free"
+					}
+				}
 			}
 		}
 	}
 
-	return PermissionPolicy{Features: features}
+	return PermissionPolicy{
+		Version:   1,
+		Features:  features,
+		UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+	}
 }

@@ -95,7 +95,8 @@ final class NotchAppEnvironment {
             shelfViewModel: shelfViewModel,
             learningStatsStore: learningStatsStore,
             presentationModel: presentationModel,
-            entitlementStore: entitlementStore
+            entitlementStore: entitlementStore,
+            focusCloudSyncService: focusCloudSyncService
         )
 
         featureCoordinator = NotchFeatureCoordinator(

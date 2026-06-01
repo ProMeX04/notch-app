@@ -117,7 +117,7 @@ func VerifyVNPayPayload(params url.Values, hashSecret string) bool {
 		return false
 	}
 
-	provided := strings.TrimSpace(params.Get("vnp_SecureHash"))
+	provided := strings.ToLower(strings.TrimSpace(params.Get("vnp_SecureHash")))
 	if provided == "" {
 		return false
 	}
@@ -234,7 +234,7 @@ func ProcessVNPayResult(ctx context.Context, dbPool dbPoolWrapper, params url.Va
 		UPDATE "PaymentTransaction"
 		SET "status" = $1, "providerRef" = $2, "paidAt" = $3, "rawNotification" = $4, "updatedAt" = NOW()
 		WHERE "id" = $5
-	`, status, providerRefPtr, paidAt, notificationJSON, txID)
+	`, status, providerRefPtr, paidAt, string(notificationJSON), txID)
 	if err != nil {
 		return ProcessResult{}, err
 	}

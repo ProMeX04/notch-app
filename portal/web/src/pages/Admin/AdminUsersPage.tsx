@@ -103,9 +103,14 @@ export function AdminUsersPage() {
   }, [])
 
   useEffect(() => {
-    void initialLoad()
+    const timer = setTimeout(() => {
+      void initialLoad()
+    }, 0)
     startPolling()
-    return () => stopPolling()
+    return () => {
+      clearTimeout(timer)
+      stopPolling()
+    }
   }, [initialLoad, startPolling, stopPolling])
 
   const updateFilter = (setter: (value: string) => void, value: string) => {
@@ -131,101 +136,92 @@ export function AdminUsersPage() {
   }, [data?.pagination.page, data?.pagination.totalPages, page])
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
+      {/* Accessibility: announce polling updates to screen readers */}
       <span aria-live="polite" className="sr-only">
         {updating ? 'Đang cập nhật danh sách người dùng...' : data ? 'Đã cập nhật danh sách người dùng' : ''}
       </span>
-      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
-        <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, margin: 0 }}>Quản lý người dùng</h1>
-          <p style={{ color: 'var(--muted)', fontSize: '0.9rem', margin: '4px 0 0 0' }}>Xem tài khoản, gói đang dùng, lần hoạt động gần nhất và lịch sử thanh toán.</p>
+      <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+        <div className="min-w-0">
+          <h1 className="text-3xl font-medium tracking-tight text-[#202124]">Người dùng</h1>
+          <p className="mt-1 text-sm text-[#5f6368]">Xem tài khoản, gói đang dùng, lần hoạt động gần nhất và lịch sử thanh toán.</p>
         </div>
         <button
           type="button"
           onClick={() => void loadUsers()}
           disabled={loading}
-          className="portal-button"
-          style={{ 
-            display: 'inline-flex', 
-            alignItems: 'center', 
-            gap: '6px',
-            padding: '10px 16px',
-            borderRadius: '12px',
-            fontWeight: 600,
-            fontSize: '0.9rem',
-            cursor: 'pointer'
-          }}
+          className="inline-flex w-full items-center justify-center gap-2 rounded border border-[#dadce0] bg-white px-4 py-2 text-sm font-medium text-[#1a73e8] hover:bg-[#f8f9fa] transition-colors disabled:opacity-60 sm:w-auto cursor-pointer"
         >
           <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
           Làm mới
         </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
-        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '16px' }}>
-          <label style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--muted)' }}>Tìm kiếm</label>
-          <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid var(--border)', background: 'rgba(0,0,0,0.2)', padding: '10px 12px', borderRadius: '12px' }}>
-            <Search size={16} style={{ color: 'var(--muted)' }} />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="md:col-span-3 lg:col-span-1 rounded border border-[#dadce0] bg-white p-4 shadow-sm">
+          <label className="text-xs font-medium uppercase tracking-wider text-[#5f6368]">Tìm kiếm</label>
+          <div className="mt-2 flex items-center gap-3 rounded border border-[#dadce0] bg-[#f8f9fa] px-4 py-3">
+            <Search size={18} className="text-slate-400" />
             <input
               value={query}
               onChange={event => updateFilter(setQuery, event.target.value)}
               placeholder="Tên hoặc email"
-              style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: 'var(--foreground)', fontSize: '0.9rem' }}
+              className="w-full bg-transparent outline-none text-sm text-slate-800 placeholder:text-slate-400"
             />
           </div>
         </div>
-        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '16px' }}>
-          <label style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--muted)' }}>Gói cước</label>
-          <select 
-            value={plan} 
-            onChange={event => updateFilter(setPlan, event.target.value)} 
-            style={{ marginTop: '8px', width: '100%', border: '1px solid var(--border)', background: 'rgba(0,0,0,0.2)', padding: '10px 12px', borderRadius: '12px', color: 'var(--foreground)', fontSize: '0.9rem', outline: 'none' }}
+        <div className="rounded border border-[#dadce0] bg-white p-4 shadow-sm">
+          <label className="text-xs font-medium uppercase tracking-wider text-[#5f6368]">Gói cước</label>
+          <select
+            value={plan}
+            onChange={event => updateFilter(setPlan, event.target.value)}
+            className="mt-2 w-full rounded border border-[#dadce0] bg-[#f8f9fa] px-4 py-3 text-sm font-medium outline-none"
           >
-            <option value="all" style={{ background: '#18181b' }}>Tất cả</option>
-            <option value="pro" style={{ background: '#18181b' }}>Pro</option>
-            <option value="free" style={{ background: '#18181b' }}>Free</option>
+            <option value="all">Tất cả</option>
+            <option value="pro">Pro</option>
+            <option value="free">Free</option>
           </select>
         </div>
-        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '16px' }}>
-          <label style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--muted)' }}>Quyền & sắp xếp</label>
-          <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-            <select 
-              value={role} 
-              onChange={event => updateFilter(setRole, event.target.value)} 
-              style={{ border: '1px solid var(--border)', background: 'rgba(0,0,0,0.2)', padding: '10px 8px', borderRadius: '12px', color: 'var(--foreground)', fontSize: '0.9rem', outline: 'none' }}
+        <div className="rounded border border-[#dadce0] bg-white p-4 shadow-sm">
+          <label className="text-xs font-medium uppercase tracking-wider text-[#5f6368]">Quyền & sắp xếp</label>
+          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <select
+              value={role}
+              onChange={event => updateFilter(setRole, event.target.value)}
+              className="rounded border border-[#dadce0] bg-[#f8f9fa] px-3 py-3 text-sm font-medium outline-none"
             >
-              <option value="all" style={{ background: '#18181b' }}>Mọi quyền</option>
-              <option value="admin" style={{ background: '#18181b' }}>Admin</option>
-              <option value="user" style={{ background: '#18181b' }}>User</option>
+              <option value="all">Mọi quyền</option>
+              <option value="admin">Admin</option>
+              <option value="user">User</option>
             </select>
-            <select 
-              value={sort} 
-              onChange={event => updateFilter(setSort, event.target.value)} 
-              style={{ border: '1px solid var(--border)', background: 'rgba(0,0,0,0.2)', padding: '10px 8px', borderRadius: '12px', color: 'var(--foreground)', fontSize: '0.9rem', outline: 'none' }}
+            <select
+              value={sort}
+              onChange={event => updateFilter(setSort, event.target.value)}
+              className="rounded border border-[#dadce0] bg-[#f8f9fa] px-3 py-3 text-sm font-medium outline-none"
             >
-              <option value="newest" style={{ background: '#18181b' }}>Mới nhất</option>
-              <option value="oldest" style={{ background: '#18181b' }}>Cũ nhất</option>
-              <option value="updated" style={{ background: '#18181b' }}>Vừa cập nhật</option>
-              <option value="name" style={{ background: '#18181b' }}>Theo tên</option>
-              <option value="email" style={{ background: '#18181b' }}>Theo email</option>
+              <option value="newest">Mới nhất</option>
+              <option value="oldest">Cũ nhất</option>
+              <option value="updated">Vừa cập nhật</option>
+              <option value="name">Theo tên</option>
+              <option value="email">Theo email</option>
             </select>
           </div>
         </div>
       </div>
 
       {error && (
-        <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', color: '#ef4444', padding: '12px 16px', borderRadius: '12px', fontSize: '0.9rem' }}>
+        <div className="rounded border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-700">
           {error}
         </div>
       )}
 
-      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '24px', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      <div className="overflow-hidden rounded border border-[#dadce0] bg-white shadow-sm">
+        <div className="flex items-center justify-between gap-3 border-b border-[#dadce0] bg-[#f8f9fa] px-4 py-4 sm:px-6">
+          <div className="flex items-center gap-3">
             <Users className="text-indigo-500" size={20} />
             <div>
-              <p style={{ margin: 0, fontWeight: 700, color: 'var(--foreground)' }}>{data?.pagination.total ?? 0} người dùng</p>
-              <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: 'var(--muted)' }}>Trang {data?.pagination.page ?? page} / {data?.pagination.totalPages ?? 1}</p>
+              <p className="font-bold text-slate-900">{data?.pagination.total ?? 0} người dùng</p>
+              <p className="text-xs text-slate-500">Trang {data?.pagination.page ?? page} / {data?.pagination.totalPages ?? 1}</p>
             </div>
           </div>
           {loading && <Loader2 className="animate-spin text-indigo-500" size={20} />}
@@ -241,67 +237,56 @@ export function AdminUsersPage() {
                 <th>Thiết bị</th>
                 <th>Thanh toán</th>
                 <th>Ngày tham gia</th>
-                <th style={{ textAlign: 'right' }}>Chi tiết</th>
+                <th className="text-right">Chi tiết</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-slate-200">
               {data?.users.length === 0 && !loading ? (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: '40px', color: 'var(--muted)' }}>Không tìm thấy người dùng phù hợp.</td>
+                  <td colSpan={7} className="px-6 py-14 text-center text-sm text-slate-500">Không tìm thấy người dùng phù hợp.</td>
                 </tr>
               ) : data?.users.map(user => (
-                <tr key={user.id}>
+                <tr key={user.id} className="odd:bg-white even:bg-slate-50/70 hover:bg-indigo-50/80 transition-colors group">
                   <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ display: 'flex', height: '36px', width: '36px', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: 'rgba(56, 189, 248, 0.1)', fontSize: '0.9rem', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase' }}>
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#e8f0fe] text-sm font-semibold uppercase text-[#1967d2]">
                         {user.name?.[0] || user.email?.[0] || '?'}
                       </div>
-                      <div style={{ minWidth: 0 }}>
-                        <p className="truncate" style={{ margin: 0, fontWeight: 600, color: 'var(--foreground)' }}>{user.name || 'Chưa đặt tên'}</p>
-                        <p className="truncate" style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: 'var(--muted)' }}>{user.email || 'Không có email'}</p>
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-[#202124]">{user.name || 'Chưa đặt tên'}</p>
+                        <p className="truncate text-xs text-[#5f6368]">{user.email || 'Không có email'}</p>
                       </div>
                     </div>
                   </td>
                   <td>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    <div className="flex flex-wrap gap-2">
                       <span className={`admin-pill ${user.isPro ? 'admin-pill-blue' : 'admin-pill-gray'}`}>{user.isPro ? 'Pro' : 'Miễn phí'}</span>
                       <span className={`admin-pill ${user.isAdmin ? 'admin-pill-yellow' : 'admin-pill-gray'}`}>{user.isAdmin ? 'Quản trị' : 'Người dùng'}</span>
                     </div>
                   </td>
                   <td>
-                    <p style={{ margin: 0, fontWeight: 600 }}>{formatDateTime(user.lastSeenAt)}</p>
-                    <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: 'var(--muted)' }}>Lần gần nhất mở ứng dụng hoặc website</p>
+                    <p className="font-medium text-[#202124]">{formatDateTime(user.lastSeenAt)}</p>
+                    <p className="text-xs text-[#5f6368]">Lần gần nhất mở ứng dụng hoặc website</p>
                   </td>
                   <td>
-                    <p style={{ margin: 0, fontWeight: 600 }}>{user.activeSessionCount} đang hoạt động</p>
-                    <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: 'var(--muted)' }}>{user.totalSessionCount} tổng phiên · {user.trustedDeviceCount} thiết bị tin cậy</p>
+                    <p className="font-medium text-[#202124]">{user.activeSessionCount} đang hoạt động</p>
+                    <p className="text-xs text-[#5f6368]">{user.totalSessionCount} tổng phiên · {user.trustedDeviceCount} thiết bị tin cậy</p>
                   </td>
                   <td>
-                    <p style={{ margin: 0, fontWeight: 600, color: '#10b981' }}>{formatCurrency(user.totalPaidRevenue)}</p>
-                    <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: 'var(--muted)' }}>{user.paidPaymentCount} lần thanh toán · mới nhất {formatDate(user.latestPaymentAt)}</p>
+                    <p className="font-medium text-[#137333]">{formatCurrency(user.totalPaidRevenue)}</p>
+                    <p className="text-xs text-[#5f6368]">{user.paidPaymentCount} lần thanh toán · mới nhất {formatDate(user.latestPaymentAt)}</p>
                   </td>
                   <td>
                     <span>{formatDate(user.createdAt)}</span>
                   </td>
-                  <td style={{ textAlign: 'right' }}>
-                    <Link 
-                      to="/admin/users/$id" 
+                  <td className="text-right">
+                    <Link
+                      to="/admin/users/$id"
                       params={{ id: user.id }}
-                      className="portal-button-ghost" 
-                      style={{ 
-                        display: 'inline-flex', 
-                        alignItems: 'center', 
-                        gap: '6px',
-                        padding: '8px 12px',
-                        borderRadius: '10px',
-                        border: '1px solid var(--border)',
-                        fontSize: '0.85rem',
-                        fontWeight: 600,
-                        cursor: 'pointer'
-                      }}
+                      className="inline-flex items-center gap-2 rounded border border-[#dadce0] bg-white px-3 py-2 text-sm font-medium text-[#1a73e8] hover:bg-[#f8f9fa] transition-colors"
                     >
-                      Chi tiết
-                      <ArrowRight size={14} />
+                      Xem chi tiết
+                      <ArrowRight size={16} />
                     </Link>
                   </td>
                 </tr>
@@ -310,56 +295,36 @@ export function AdminUsersPage() {
           </table>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', borderTop: '1px solid var(--border)', padding: '16px 24px' }}>
-          <div style={{ textAlign: 'center', fontSize: '0.85rem', color: 'var(--muted)' }}>
-            <p style={{ margin: 0, fontWeight: 600 }}>Trang {data?.pagination.page ?? page} / {data?.pagination.totalPages ?? 1}</p>
-            <p style={{ margin: '2px 0 0 0' }}>{data?.pagination.total ?? 0} người dùng · {data?.users.length ?? 0} hiển thị</p>
+        <div className="flex flex-col gap-4 border-t border-[#dadce0] px-4 py-4 sm:px-6">
+          <div className="text-center text-sm text-slate-500 sm:text-left">
+            <p className="font-semibold">Trang {data?.pagination.page ?? page} / {data?.pagination.totalPages ?? 1}</p>
+            <p>{data?.pagination.total ?? 0} người dùng · {data?.users.length ?? 0} hiển thị</p>
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+          <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-between">
             <button
               type="button"
               onClick={() => setPage(current => Math.max(current - 1, 1))}
               disabled={page <= 1 || loading}
-              className="portal-button-ghost"
-              style={{ 
-                display: 'inline-flex', 
-                alignItems: 'center', 
-                gap: '6px',
-                padding: '8px 14px',
-                borderRadius: '10px',
-                border: '1px solid var(--border)',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                cursor: 'pointer'
-              }}
+              className="inline-flex items-center justify-center gap-2 rounded border border-[#dadce0] bg-white px-4 py-2 text-sm font-medium text-[#3c4043] transition-colors hover:bg-[#f8f9fa] disabled:opacity-40"
             >
-              <ChevronLeft size={14} />
+              <ChevronLeft size={16} />
               Trước
             </button>
-            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+            <div className="flex flex-wrap items-center justify-center gap-2">
               {paginationPages.map((pageItem, index) =>
                 pageItem === 'ellipsis' ? (
-                  <span key={`ellipsis-${index}`} style={{ padding: '0 4px', fontSize: '0.85rem', color: 'var(--muted)' }}>...</span>
+                  <span key={`ellipsis-${index}`} className="px-2 text-sm font-medium text-slate-400">...</span>
                 ) : (
                   <button
                     key={pageItem}
                     type="button"
                     onClick={() => setPage(pageItem)}
                     disabled={loading || pageItem === (data?.pagination.page ?? page)}
-                    style={{
-                      display: 'inline-flex',
-                      height: '32px',
-                      minWidth: '32px',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderRadius: '8px',
-                      border: '1px solid var(--border)',
-                      fontSize: '0.85rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      background: pageItem === (data?.pagination.page ?? page) ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255,255,255,0.02)',
-                      color: pageItem === (data?.pagination.page ?? page) ? '#38bdf8' : 'var(--foreground)'
-                    }}
+                    className={`inline-flex h-9 min-w-9 items-center justify-center rounded border px-3 text-sm font-semibold transition-colors disabled:opacity-100 ${
+                      pageItem === (data?.pagination.page ?? page)
+                        ? 'border-[#1a73e8] bg-[#e8f0fe] text-[#1967d2]'
+                        : 'border-[#dadce0] bg-white text-[#3c4043] hover:bg-[#f8f9fa]'
+                    }`}
                   >
                     {pageItem}
                   </button>
@@ -370,21 +335,10 @@ export function AdminUsersPage() {
               type="button"
               onClick={() => setPage(current => Math.min(current + 1, data?.pagination.totalPages ?? current))}
               disabled={loading || page >= (data?.pagination.totalPages ?? 1)}
-              className="portal-button-ghost"
-              style={{ 
-                display: 'inline-flex', 
-                alignItems: 'center', 
-                gap: '6px',
-                padding: '8px 14px',
-                borderRadius: '10px',
-                border: '1px solid var(--border)',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                cursor: 'pointer'
-              }}
+              className="inline-flex items-center justify-center gap-2 rounded border border-[#dadce0] bg-white px-4 py-2 text-sm font-medium text-[#3c4043] transition-colors hover:bg-[#f8f9fa] disabled:opacity-40"
             >
               Sau
-              <ChevronRight size={14} />
+              <ChevronRight size={16} />
             </button>
           </div>
         </div>

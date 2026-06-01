@@ -13,10 +13,12 @@ final class NotchWindowManager {
     let learningStatsStore: LearningStatsStore
     let presentationModel: NotchPresentationModel
     let entitlementStore: NotchEntitlementStore
+    let focusCloudSyncService: FocusCloudSyncCoordinator
 
     private var controllers: [NotchScreenID: NotchWindowController] = [:]
     private var cancellables = Set<AnyCancellable>()
     private let liveChatInputPanel = GeminiLiveChatInputWindowController()
+    private let leaderboardPanel = NotchLeaderboardWindowController()
 
     private(set) var isVisible = true
     let visibilityDidChange = PassthroughSubject<Bool, Never>()
@@ -29,7 +31,8 @@ final class NotchWindowManager {
         shelfViewModel: NotchShelfViewModel,
         learningStatsStore: LearningStatsStore,
         presentationModel: NotchPresentationModel,
-        entitlementStore: NotchEntitlementStore
+        entitlementStore: NotchEntitlementStore,
+        focusCloudSyncService: FocusCloudSyncCoordinator
     ) {
         self.playbackViewModel = playbackViewModel
         self.pomodoroViewModel = pomodoroViewModel
@@ -39,10 +42,12 @@ final class NotchWindowManager {
         self.learningStatsStore = learningStatsStore
         self.presentationModel = presentationModel
         self.entitlementStore = entitlementStore
+        self.focusCloudSyncService = focusCloudSyncService
 
         syncControllers(repositionSingleToCursor: true)
         observeSharedState()
         liveChatInputPanel.observe(gemini: geminiLiveViewModel)
+        leaderboardPanel.observe(focusCloudSync: focusCloudSyncService)
         updateOverlayScreen()
     }
 
@@ -86,6 +91,7 @@ final class NotchWindowManager {
     func shutdown() {
         hide()
         liveChatInputPanel.stopObserving()
+        leaderboardPanel.stopObserving()
         controllers.values.forEach { $0.shutdown(shutdownSharedModels: false) }
         controllers.removeAll()
         shelfViewModel.shutdown()
@@ -180,6 +186,7 @@ final class NotchWindowManager {
             learningStatsStore: learningStatsStore,
             presentationModel: presentationModel,
             entitlementStore: entitlementStore,
+            focusCloudSyncService: focusCloudSyncService,
             screen: screen
         )
     }
@@ -198,6 +205,7 @@ final class NotchWindowManager {
     private func updateOverlayScreen() {
         let screen = activeController()?.screen ?? preferredController()?.screen ?? NotchMetrics.preferredScreen()
         liveChatInputPanel.setPreferredScreen(screen)
+        leaderboardPanel.setPreferredScreen(screen)
     }
 
 }

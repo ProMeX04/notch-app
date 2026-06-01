@@ -3,7 +3,9 @@ package auth
 import "time"
 
 type PermissionPolicy struct {
-	Features map[string]bool `json:"features"`
+	Version   int               `json:"version"`
+	Features  map[string]string `json:"features"`
+	UpdatedAt string            `json:"updated_at,omitempty"`
 }
 
 type UserResponse struct {

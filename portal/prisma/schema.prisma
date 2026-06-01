@@ -18,7 +18,7 @@ model User {
   password                String?
   isAdmin                 Boolean                  @default(false)
   isPro                   Boolean                  @default(false)
-  leaderboardOptIn        Boolean                  @default(false)
+  leaderboardOptIn        Boolean                  @default(true)
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
   sessions                AuthSession[]

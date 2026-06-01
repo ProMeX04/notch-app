@@ -89,7 +89,7 @@ func (h *Handler) Create(w http.ResponseWriter, req *http.Request) {
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW(), $11
 		)
-	`, txID, "vnpay", "pending", h.Config.VNPayProAmount, "VND", payment.OrderID, payment.OrderID, payment.PaymentURL, orderInfo, rawResponse, authCtx.User.ID)
+	`, txID, "vnpay", "pending", h.Config.VNPayProAmount, "VND", payment.OrderID, payment.OrderID, payment.PaymentURL, orderInfo, string(rawResponse), authCtx.User.ID)
 
 	if err != nil {
 		h.logEvent(req, "payment.vnpay_create_failed", "failure", "web", &authCtx.User.ID, &authCtx.SessionID, authCtx.DeviceID, http.StatusInternalServerError, map[string]any{
@@ -110,6 +110,13 @@ func (h *Handler) Create(w http.ResponseWriter, req *http.Request) {
 		"pay_url":  payment.PaymentURL,
 		"order_id": payment.OrderID,
 	})
+}
+
+func (h *Handler) CreateGuest(w http.ResponseWriter, req *http.Request) {
+	h.logEvent(req, "payment.vnpay_create_guest_rejected", "rejected", "web", nil, nil, nil, http.StatusForbidden, map[string]any{
+		"reason": "login_required",
+	})
+	httpjson.Detail(w, http.StatusForbidden, "Vui lòng đăng nhập hoặc tạo tài khoản trước khi nâng cấp Pro.")
 }
 
 func (h *Handler) IPN(w http.ResponseWriter, req *http.Request) {

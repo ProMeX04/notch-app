@@ -10,7 +10,9 @@ cd "$DIR"
 # Load biến môi trường từ file .env nếu có
 if [ -f .env ]; then
   echo "Loading environment variables from .env..."
-  export $(grep -v '^#' .env | xargs)
+  set -a
+  source .env
+  set +a
 fi
 
 # Chạy Go API Backend ở background

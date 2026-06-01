@@ -3,7 +3,7 @@ import { ProfileView } from '@/components/portal/ProfileView'
 
 export function AccountPage() {
   return (
-    <PageShell>
+    <PageShell noShell>
       <ProfileView />
     </PageShell>
   )

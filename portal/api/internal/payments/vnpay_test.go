@@ -89,6 +89,19 @@ func TestVerifyVNPayPayload(t *testing.T) {
 		t.Error("VerifyVNPayPayload failed to verify a valid signature")
 	}
 
+	// Verify uppercase signature matching
+	uppercaseParams := url.Values{}
+	for k, v := range validParams {
+		if k == "vnp_SecureHash" {
+			uppercaseParams[k] = []string{strings.ToUpper(v[0])}
+		} else {
+			uppercaseParams[k] = v
+		}
+	}
+	if !VerifyVNPayPayload(uppercaseParams, hashSecret) {
+		t.Error("VerifyVNPayPayload failed to verify an uppercase signature")
+	}
+
 	// Verify rejection of invalid signature
 	invalidParams := url.Values{}
 	for k, v := range validParams {

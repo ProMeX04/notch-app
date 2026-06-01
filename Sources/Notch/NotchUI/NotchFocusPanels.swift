@@ -3,6 +3,8 @@ import NotchFocusFeature
 
 struct PomodoroPanelView: View {
     @ObservedObject var pomodoro: PomodoroViewModel
+    @ObservedObject var learningStats: LearningStatsStore
+    @ObservedObject var focusCloudSync: FocusCloudSyncCoordinator
     @Namespace private var timerNamespace
 
     private var displayedTint: Color {
@@ -20,6 +22,8 @@ struct PomodoroPanelView: View {
             } else {
                 PomodoroSimpleFocusPanel(
                     pomodoro: pomodoro,
+                    learningStats: learningStats,
+                    focusCloudSync: focusCloudSync,
                     tint: displayedTint,
                     namespace: timerNamespace
                 )

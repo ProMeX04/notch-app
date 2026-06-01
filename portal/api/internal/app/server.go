@@ -34,7 +34,13 @@ type Server struct {
 func NewServer(cfg config.Config, database *db.Pool, logger *slog.Logger) *Server {
 	eventLog := events.NewLogger(database.Raw(), logger, cfg.Observatory.EventLogIPSalt)
 	router := chi.NewRouter()
-	server := &Server{cfg: cfg, db: database, logger: logger, eventLog: eventLog}
+
+	server := &Server{
+		cfg:      cfg,
+		db:       database,
+		logger:   logger,
+		eventLog: eventLog,
+	}
 	server.mount(router)
 	server.http = &http.Server{
 		Addr:              cfg.HTTP.Addr,
@@ -68,6 +74,17 @@ func (s *Server) mount(r chi.Router) {
 	r.Get("/healthz", s.health)
 	r.Get("/readyz", s.ready)
 
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, s.cfg.HTTP.FrontendURL, http.StatusTemporaryRedirect)
+	})
+	r.Get("/oauth/authorize", func(w http.ResponseWriter, r *http.Request) {
+		redirectURL := s.cfg.HTTP.FrontendURL + r.URL.Path
+		if r.URL.RawQuery != "" {
+			redirectURL += "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
+	})
+
 	sessionRepo := auth.NewPgxSessionRepository(s.db.Raw())
 	authHandler := auth.Handler{
 		Authenticator: auth.Authenticator{
@@ -91,6 +108,8 @@ func (s *Server) mount(r chi.Router) {
 		GoogleClientSecret:     s.cfg.OAuth.GoogleClientSecret,
 		DriveHandoffEncryptKey: s.cfg.OAuth.DriveHandoffEncryptKey,
 		FrontendURL:            s.cfg.HTTP.FrontendURL,
+		NativeClientID:         s.cfg.OAuth.NativeClientID,
+		NativeRedirectURIs:     s.cfg.OAuth.NativeRedirectURIAllow,
 	}
 
 	focusRepo := focus.NewPgxRepository(s.db.Raw())
@@ -116,25 +135,39 @@ func (s *Server) mount(r chi.Router) {
 		api.Patch("/auth/sessions", authHandler.PatchSessions)
 		api.Get("/auth/google", authHandler.GoogleLogin)
 		api.Get("/auth/google/callback", authHandler.GoogleCallback)
+		api.Get("/auth/google-drive", authHandler.GoogleDriveAuth)
+		api.Post("/auth/google-drive/exchange", authHandler.GoogleDriveExchange)
+		api.Post("/auth/google-drive/refresh", authHandler.GoogleDriveRefresh)
+		api.Post("/oauth/authorize", authHandler.OAuthAuthorize)
+		api.Post("/oauth/token", authHandler.OAuthToken)
 
 		api.Get("/focus/leaderboard", focusHandler.Leaderboard)
 		api.Get("/focus/me", focusHandler.Me)
 		api.Patch("/focus/profile", focusHandler.Profile)
 		api.Post("/focus/sync", focusHandler.Sync)
 
+
 		api.Post("/payments/vnpay/create", paymentsHandler.Create)
+		api.Post("/payments/vnpay/create-guest", paymentsHandler.CreateGuest)
 		api.Get("/payments/vnpay/ipn", paymentsHandler.IPN)
 		api.Get("/payments/vnpay/return", paymentsHandler.Return)
 
 		api.Get("/capabilities", capabilitiesHandler.GetCapabilities)
 
-		api.Get("/gemini-live/models", geminiLiveHandler.GetModels)
-		api.Get("/gemini-live/health", geminiLiveHandler.GetHealth)
-		api.Post("/gemini-live/session-token", geminiLiveHandler.CreateSessionToken)
+		api.Route("/gemini-live", func(gl chi.Router) {
+			gl.Get("/health", geminiLiveHandler.GetHealth)
+			gl.Group(func(authGL chi.Router) {
+				authGL.Use(authHandler.Authenticator.Authenticate)
+				authGL.Get("/models", geminiLiveHandler.GetModels)
+				authGL.Post("/session-token", geminiLiveHandler.CreateSessionToken)
+			})
+		})
 
 		api.Route("/admin", func(admin chi.Router) {
 			admin.Use(authHandler.Authenticator.Authenticate)
 			admin.Use(auth.AdminOnly)
+
+			admin.Get("/stats", adminHandler.GetStats)
 
 			admin.Get("/capabilities", capabilitiesHandler.AdminGetCapabilities)
 			admin.Post("/capabilities", capabilitiesHandler.AdminPostCapabilities)

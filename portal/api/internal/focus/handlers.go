@@ -28,6 +28,7 @@ func (h *Handler) Leaderboard(w http.ResponseWriter, req *http.Request) {
 
 	leaderboard, err := h.Repo.ReadFocusLeaderboard(req.Context(), window, weekStart, PublicLeaderboardLimit)
 	if err != nil {
+		println("[ERROR Leaderboard] ReadFocusLeaderboard failed:", err.Error())
 		httpjson.Detail(w, http.StatusInternalServerError, "Failed to read leaderboard.")
 		return
 	}
@@ -64,11 +65,21 @@ func (h *Handler) Me(w http.ResponseWriter, req *http.Request) {
 		displayName = name
 	}
 
+	rank, streak, err := h.Repo.ReadUserWeeklyRankAndStreak(req.Context(), authCtx.User.ID, weekStart)
+	if err != nil {
+		println("[ERROR Handler.Me] ReadUserWeeklyRankAndStreak failed:", err.Error())
+		rank = 0
+		streak = 0
+	}
+	println("[DEBUG Focus Me] called for userID:", authCtx.User.ID, "rank:", rank, "streak:", streak, "optIn:", authCtx.User.LeaderboardOptIn)
+
 	httpjson.JSON(w, http.StatusOK, map[string]any{
 		"user": map[string]any{
 			"id":                 authCtx.User.ID,
 			"display_name":       displayName,
 			"leaderboard_opt_in": authCtx.User.LeaderboardOptIn,
+			"weekly_rank":        rank,
+			"streak_days":        streak,
 		},
 		"week":     summary.Week,
 		"all_time": summary.AllTime,

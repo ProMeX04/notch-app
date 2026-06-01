@@ -64,7 +64,7 @@ type ObservabilityConfig struct {
 func Load() (Config, error) {
 	cfg := Config{
 		HTTP: HTTPConfig{
-			Addr:              env("PORTAL_API_ADDR", ":8080"),
+			Addr:              env("PORTAL_API_ADDR", fmt.Sprintf(":%s", env("PORT", "8080"))),
 			PublicAppURL:      env("PUBLIC_APP_URL", env("NEXT_PUBLIC_APP_URL", "http://localhost:5173")),
 			AllowedDevOrigins: csvEnv("PORTAL_DEV_ORIGINS", []string{"http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"}),
 			FrontendURL:       env("FRONTEND_URL", env("PUBLIC_APP_URL", env("NEXT_PUBLIC_APP_URL", "http://localhost:5173"))),
@@ -102,9 +102,15 @@ func Load() (Config, error) {
 		if cfg.Auth.JWTSecret == "" {
 			return cfg, fmt.Errorf("JWT_SECRET is required in production")
 		}
+		if cfg.OAuth.DriveHandoffEncryptKey == "" {
+			return cfg, fmt.Errorf("GOOGLE_DRIVE_HANDOFF_ENCRYPTION_KEY is required in production")
+		}
 	}
 	if cfg.Auth.JWTSecret == "" {
 		cfg.Auth.JWTSecret = "development-secret-key-notch-default-change-in-production"
+	}
+	if cfg.OAuth.DriveHandoffEncryptKey == "" {
+		cfg.OAuth.DriveHandoffEncryptKey = "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY="
 	}
 	return cfg, nil
 }

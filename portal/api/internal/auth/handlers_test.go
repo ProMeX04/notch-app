@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -986,3 +987,133 @@ func TestHandlerPatchSessions(t *testing.T) {
 		}
 	})
 }
+
+func TestHandlerGoogleDriveAuth(t *testing.T) {
+	handler := Handler{}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/google-drive?state=desktop_state_abc&code_challenge=challenge_123456789012345678901234567890123", nil)
+	rec := httptest.NewRecorder()
+
+	handler.GoogleDriveAuth(rec, req)
+
+	if rec.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("expected status 307, got %d", rec.Code)
+	}
+
+	loc := rec.Header().Get("Location")
+	if !strings.Contains(loc, "/api/auth/google?gdrive=true") {
+		t.Errorf("expected location to redirect to /api/auth/google, got %q", loc)
+	}
+}
+
+func TestHandlerGoogleDriveExchange(t *testing.T) {
+	keyBytes := make([]byte, 32)
+	_, _ = rand.Read(keyBytes)
+	base64Key := base64.StdEncoding.EncodeToString(keyBytes)
+
+	encryptedAccess, _ := encryptGoogleDriveHandoffValue("access-123", base64Key)
+	encryptedRefresh, _ := encryptGoogleDriveHandoffValue("refresh-123", base64Key)
+	expiresIn := 3600
+	expiresAt := time.Now().Add(5 * time.Minute)
+
+	codeVerifier := "verifier_1234567890123456789012345678901234" // 43 chars
+	hash := sha256.Sum256([]byte(codeVerifier))
+	driveCodeChallenge := base64.RawURLEncoding.EncodeToString(hash[:])
+
+	repo := &fakeSessionRepo{
+		handoffs: []fakeHandoffRecord{
+			{
+				ID:            "gdh_123",
+				TokenHash:     token.HashToken("handoff-token-abc"),
+				CodeChallenge: driveCodeChallenge,
+				AccessToken:   encryptedAccess,
+				RefreshToken:  &encryptedRefresh,
+				ExpiresIn:     &expiresIn,
+				ExpiresAt:     expiresAt,
+			},
+		},
+	}
+
+	handler := Handler{
+		Repo:                   repo,
+		DriveHandoffEncryptKey: base64Key,
+	}
+
+	body := GoogleDriveExchangeRequest{
+		HandoffToken: "handoff-token-abc",
+		CodeVerifier: codeVerifier,
+	}
+	bodyBytes, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/google-drive/exchange", strings.NewReader(string(bodyBytes)))
+	rec := httptest.NewRecorder()
+
+	handler.GoogleDriveExchange(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d. Body: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp GoogleDriveExchangeResponse
+	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+
+	if resp.AccessToken != "access-123" {
+		t.Errorf("expected access token 'access-123', got %q", resp.AccessToken)
+	}
+	if resp.RefreshToken != "refresh-123" {
+		t.Errorf("expected refresh token 'refresh-123', got %q", resp.RefreshToken)
+	}
+
+	if repo.handoffs[0].ConsumedAt == nil {
+		t.Error("expected handoff record to be consumed")
+	}
+}
+
+func TestHandlerGoogleDriveRefresh(t *testing.T) {
+	mockHTTP := &http.Client{
+		Transport: &mockTransport{
+			roundTripFunc: func(req *http.Request) (*http.Response, error) {
+				if req.URL.String() == "https://oauth2.googleapis.com/token" {
+					resp := `{
+						"access_token": "new-access-123",
+						"expires_in": 3600
+					}`
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Body:       io.NopCloser(strings.NewReader(resp)),
+						Header:     make(http.Header),
+					}, nil
+				}
+				return &http.Response{StatusCode: http.StatusNotFound, Body: io.NopCloser(strings.NewReader(`{}`))}, nil
+			},
+		},
+	}
+
+	handler := Handler{
+		GoogleClientID:     "mock-client-id",
+		GoogleClientSecret: "mock-client-secret",
+		HTTPClient:         mockHTTP,
+	}
+
+	body := GoogleDriveRefreshRequest{
+		RefreshToken: "refresh-123",
+	}
+	bodyBytes, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/google-drive/refresh", strings.NewReader(string(bodyBytes)))
+	rec := httptest.NewRecorder()
+
+	handler.GoogleDriveRefresh(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d. Body: %s", rec.Code, rec.Body.String())
+	}
+
+	var data map[string]interface{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &data)
+
+	if data["access_token"] != "new-access-123" {
+		t.Errorf("expected access token 'new-access-123', got %v", data["access_token"])
+	}
+}
+

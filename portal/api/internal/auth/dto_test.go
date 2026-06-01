@@ -18,7 +18,7 @@ func TestBuildUserResponseMatchesMeShape(t *testing.T) {
 		CreatedAt:        createdAt,
 		IsPro:            true,
 		LeaderboardOptIn: true,
-	}, &sessionID, 3, PermissionPolicy{Features: map[string]bool{"test": true}})
+	}, &sessionID, 3, PermissionPolicy{Version: 1, Features: map[string]string{"test": "free"}})
 
 	if response.Email != email || response.Name == nil || *response.Name != name {
 		t.Fatalf("unexpected identity response: %#v", response)

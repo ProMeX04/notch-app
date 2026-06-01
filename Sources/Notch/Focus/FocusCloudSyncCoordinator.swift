@@ -17,8 +17,13 @@ final class FocusCloudSyncCoordinator: ObservableObject {
     }
 
     @Published private(set) var state: SyncState = .idle
-    @Published private(set) var leaderboardOptIn = false
+    @Published private(set) var leaderboardOptIn = true
     @Published private(set) var displayName = ""
+    @Published private(set) var weeklyRank = 0
+    @Published private(set) var streakDays = 0
+    @Published private(set) var leaderboardEntries: [FocusLeaderboardEntry] = []
+    @Published private(set) var isFetchingLeaderboard = false
+    @Published private(set) var leaderboardWindow = "week"
 
     private let repository: FocusDailyStatsRepository
     private let portalAccount: any FocusPortalAuthenticationProviding
@@ -91,6 +96,9 @@ final class FocusCloudSyncCoordinator: ObservableObject {
             )
             repository.acknowledgeSynced(entries)
             state = .idle
+            Task { [weak self] in
+                await self?.refreshProfile()
+            }
             if !repository.pendingDateKeys.isEmpty { scheduleSync(delay: .zero) }
         } catch PortalAPIError.unauthorized {
             state = .signedOut
@@ -110,7 +118,10 @@ final class FocusCloudSyncCoordinator: ObservableObject {
             let profile = try await portalClient.focusMe(configuration: configuration)
             leaderboardOptIn = profile.user.leaderboardOptIn
             displayName = profile.user.displayName ?? ""
+            weeklyRank = profile.user.weeklyRank ?? 0
+            streakDays = profile.user.streakDays ?? 0
         } catch {
+            NotchLog.app.error("[ERROR refreshProfile] failed: \(error.localizedDescription)")
             return
         }
     }
@@ -129,11 +140,30 @@ final class FocusCloudSyncCoordinator: ObservableObject {
             let profile = try await portalClient.updateFocusProfile(configuration: configuration, request: payload)
             leaderboardOptIn = profile.user.leaderboardOptIn
             self.displayName = profile.user.displayName ?? ""
+            weeklyRank = profile.user.weeklyRank ?? 0
+            streakDays = profile.user.streakDays ?? 0
             state = .idle
             scheduleSync(delay: .zero)
         } catch {
             state = .failed("Couldn't update leaderboard profile.")
         }
+    }
+
+    func fetchLeaderboard(window: String) async {
+        guard let configuration = await portalAccount.freshConfiguredPortalUserConfiguration(forceRefresh: false) else {
+            state = .signedOut
+            return
+        }
+
+        isFetchingLeaderboard = true
+        leaderboardWindow = window
+        do {
+            let response = try await portalClient.fetchFocusLeaderboard(configuration: configuration, window: window)
+            self.leaderboardEntries = response.leaderboard
+        } catch {
+            NotchLog.app.error("[ERROR fetchLeaderboard] failed: \(error.localizedDescription)")
+        }
+        isFetchingLeaderboard = false
     }
 
     private func scheduleRetry(after delay: Duration) {

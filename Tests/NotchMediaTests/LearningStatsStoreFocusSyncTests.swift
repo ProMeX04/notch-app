@@ -89,10 +89,10 @@ private final class TestFocusPortalSyncClient: FocusPortalSyncClient {
     func focusSync(configuration: PortalBackendConfiguration, request body: FocusCloudSyncRequest) async throws {}
 
     func focusMe(configuration: PortalBackendConfiguration) async throws -> FocusCloudMeResponse {
-        FocusCloudMeResponse(user: FocusCloudUser(displayName: nil, leaderboardOptIn: false))
+        FocusCloudMeResponse(user: FocusCloudUser(displayName: nil, leaderboardOptIn: false, weeklyRank: nil, streakDays: nil))
     }
 
     func updateFocusProfile(configuration: PortalBackendConfiguration, request body: FocusCloudProfileUpdateRequest) async throws -> FocusCloudProfileResponse {
-        FocusCloudProfileResponse(user: FocusCloudUser(displayName: body.displayName, leaderboardOptIn: body.leaderboardOptIn))
+        FocusCloudProfileResponse(user: FocusCloudUser(displayName: body.displayName, leaderboardOptIn: body.leaderboardOptIn, weeklyRank: nil, streakDays: nil))
     }
 }

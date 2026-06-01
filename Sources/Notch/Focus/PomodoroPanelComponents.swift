@@ -9,6 +9,8 @@ enum PomodoroPanelMetrics {
 
 struct PomodoroSimpleFocusPanel: View {
     @ObservedObject var pomodoro: PomodoroViewModel
+    @ObservedObject var learningStats: LearningStatsStore
+    @ObservedObject var focusCloudSync: FocusCloudSyncCoordinator
     let tint: Color
     let namespace: Namespace.ID
 
@@ -18,35 +20,115 @@ struct PomodoroSimpleFocusPanel: View {
         pomodoro.hasActiveSession ? "Resume" : "Start"
     }
 
+    private var streakText: String {
+        let days = max(learningStats.streakDays, focusCloudSync.streakDays)
+        if appLanguage == "Tiếng Việt" {
+            return "\(days) ngày"
+        } else {
+            return "\(days)d"
+        }
+    }
+
+    private var rankText: String {
+        if focusCloudSync.weeklyRank > 0 {
+            return appLanguage == "Tiếng Việt" 
+                ? "#\(focusCloudSync.weeklyRank) Tuần" 
+                : "#\(focusCloudSync.weeklyRank) Weekly"
+        } else {
+            return appLanguage == "Tiếng Việt" ? "Chưa xếp hạng" : "Unranked"
+        }
+    }
+
+    @State private var isHoveringTrophy = false
+
     var body: some View {
-        VStack(spacing: 8) {
+        HStack(alignment: .center) {
+            // LEFT SIDE: Clock / Timer
             PomodoroTimerCluster(pomodoro: pomodoro, tint: tint)
                 .matchedGeometryEffect(id: "focus-timer", in: namespace)
-                .frame(width: 480)
 
-            HStack(spacing: 8) {
-                StandardActionButton(
-                    title: Localization.get(primaryTitle, lang: appLanguage),
-                    icon: "play.fill",
-                    tint: tint,
-                    variant: .primary
-                ) {
-                    pomodoro.toggleRunning()
+            Spacer()
+
+            // RIGHT SIDE: Stats, Phase, and Action Buttons
+            VStack(alignment: .leading, spacing: 6) {
+                // Phase Name (e.g. "Focus" or "Short Break")
+                HStack(spacing: 6) {
+                    Image(systemName: pomodoro.phase.symbolName)
+                        .foregroundStyle(tint)
+                        .font(.system(size: 13, weight: .bold))
+                    Text(Localization.get(pomodoro.phase.rawValue, lang: appLanguage))
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
                 }
 
-                if pomodoro.hasActiveSession {
+                // Stats (Streak and Rank)
+                HStack(spacing: 10) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "flame.fill")
+                            .foregroundStyle(.orange)
+                        Text(streakText)
+                    }
+
+                    Text("•")
+                        .foregroundStyle(.white.opacity(0.18))
+
+                    Button {
+                        NotificationCenter.default.post(name: Notification.Name("ToggleLeaderboardPanel"), object: nil)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "trophy.fill")
+                                .foregroundStyle(.yellow)
+                            Text(rankText)
+                        }
+                        .contentShape(Rectangle())
+                        .opacity(isHoveringTrophy ? 1.0 : 0.8)
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { hovering in
+                        isHoveringTrophy = hovering
+                        if hovering {
+                            NSCursor.pointingHand.set()
+                        } else {
+                            NSCursor.arrow.set()
+                        }
+                    }
+                }
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.65))
+
+                Spacer().frame(height: 4)
+
+                // Buttons
+                HStack(spacing: 8) {
                     StandardActionButton(
-                        title: Localization.get("Reset", lang: appLanguage),
-                        icon: "arrow.counterclockwise",
+                        title: Localization.get(primaryTitle, lang: appLanguage),
+                        icon: "play.fill",
                         tint: tint,
-                        variant: .secondary
+                        variant: .primary
                     ) {
-                        pomodoro.reset()
+                        pomodoro.toggleRunning()
+                    }
+
+                    if pomodoro.hasActiveSession {
+                        StandardActionButton(
+                            title: Localization.get("Reset", lang: appLanguage),
+                            icon: "arrow.counterclockwise",
+                            tint: tint,
+                            variant: .secondary
+                        ) {
+                            pomodoro.reset()
+                        }
                     }
                 }
             }
         }
+        .frame(width: 480)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .onAppear {
+            Task {
+                await focusCloudSync.refreshProfile()
+            }
+        }
     }
 }
 

@@ -126,21 +126,25 @@ type GoogleLiveConfig struct {
 	MediaResolution    string                   `json:"mediaResolution,omitempty"`
 }
 
-type GoogleLiveConnectConstraints struct {
-	Model  string           `json:"model"`
-	Config GoogleLiveConfig `json:"config"`
+type GoogleGenerationConfig struct {
+	ResponseModalities []string                 `json:"responseModalities"`
+	SpeechConfig       *GoogleSpeechConfig      `json:"speechConfig,omitempty"`
+	ThinkingConfig     *GoogleThinkingConfig    `json:"thinkingConfig,omitempty"`
+	MediaResolution    string                   `json:"mediaResolution,omitempty"`
 }
 
-type GoogleCreateTokenConfig struct {
-	Uses                   int                          `json:"uses"`
-	ExpireTime             string                       `json:"expireTime"`
-	NewSessionExpireTime   string                       `json:"newSessionExpireTime"`
-	LockAdditionalFields   []string                     `json:"lockAdditionalFields"`
-	LiveConnectConstraints GoogleLiveConnectConstraints `json:"liveConnectConstraints"`
+type GoogleBidiGenerateContentSetup struct {
+	Model             string                   `json:"model"`
+	GenerationConfig  GoogleGenerationConfig   `json:"generationConfig"`
+	SystemInstruction *GoogleSystemInstruction `json:"systemInstruction,omitempty"`
 }
 
 type GoogleCreateTokenRequest struct {
-	Config GoogleCreateTokenConfig `json:"config"`
+	ExpireTime               string                         `json:"expireTime,omitempty"`
+	NewSessionExpireTime     string                         `json:"newSessionExpireTime,omitempty"`
+	Uses                     int                            `json:"uses,omitempty"`
+	BidiGenerateContentSetup GoogleBidiGenerateContentSetup `json:"bidiGenerateContentSetup"`
+	FieldMask                string                         `json:"fieldMask,omitempty"`
 }
 
 type GoogleCreateTokenResponse struct {
@@ -229,17 +233,40 @@ func (h *Handler) CreateSessionToken(w http.ResponseWriter, r *http.Request) {
 		"requirement":        requirement,
 	})
 
+	var maskParts []string
+	maskParts = append(maskParts, "model")
+	if len(responseModalities) > 0 {
+		maskParts = append(maskParts, "generationConfig.responseModalities")
+	}
+	if mediaRes != "" {
+		maskParts = append(maskParts, "generationConfig.mediaResolution")
+	}
+	if hasVoice {
+		maskParts = append(maskParts, "generationConfig.speechConfig")
+	}
+	if hasThinkingLevel || hasThinkingBudget {
+		maskParts = append(maskParts, "generationConfig.thinkingConfig")
+	}
+	if body.SystemInstruction != nil && strings.TrimSpace(*body.SystemInstruction) != "" {
+		maskParts = append(maskParts, "systemInstruction.parts")
+	}
+	fieldMask := strings.Join(maskParts, ",")
+
 	googleReq := GoogleCreateTokenRequest{
-		Config: GoogleCreateTokenConfig{
-			Uses:                 uses,
-			ExpireTime:           expireTime,
-			NewSessionExpireTime: newSessionExpireTime,
-			LockAdditionalFields: []string{},
-			LiveConnectConstraints: GoogleLiveConnectConstraints{
-				Model:  resolvedModelID,
-				Config: liveConfig,
+		ExpireTime:           expireTime,
+		NewSessionExpireTime: newSessionExpireTime,
+		Uses:                 uses,
+		BidiGenerateContentSetup: GoogleBidiGenerateContentSetup{
+			Model: allowedModel.Name,
+			GenerationConfig: GoogleGenerationConfig{
+				ResponseModalities: responseModalities,
+				SpeechConfig:       liveConfig.SpeechConfig,
+				ThinkingConfig:     liveConfig.ThinkingConfig,
+				MediaResolution:    mediaRes,
 			},
+			SystemInstruction: liveConfig.SystemInstruction,
 		},
+		FieldMask: fieldMask,
 	}
 
 	reqBytes, err := json.Marshal(googleReq)
@@ -255,7 +282,7 @@ func (h *Handler) CreateSessionToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	googleURL := "https://generativelanguage.googleapis.com/v1alpha/authTokens?key=" + h.APIKey
+	googleURL := "https://generativelanguage.googleapis.com/v1alpha/auth_tokens?key=" + h.APIKey
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", googleURL, bytes.NewBuffer(reqBytes))
 	if err != nil {
 		h.logAppEvent(r, "gemini_live.session_token_failed", "failure", http.StatusInternalServerError, map[string]any{"errorName": "RequestCreationError"})

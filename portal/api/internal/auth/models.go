@@ -42,6 +42,20 @@ type AuthContext struct {
 	User      User
 }
 
+type OAuthAuthorizationCode struct {
+	ID                  string
+	CodeHash            string
+	ClientID            string
+	RedirectURI         string
+	CodeChallenge       string
+	CodeChallengeMethod string
+	ExpiresAt           time.Time
+	CreatedAt           time.Time
+	ConsumedAt          *time.Time
+	UserID              string
+	User                User
+}
+
 type SessionRepository interface {
 	FindSessionByID(ctx context.Context, sessionID string) (*Session, error)
 	FindSessionByRefreshTokenHash(ctx context.Context, tokenHash string) (*Session, error)
@@ -61,4 +75,24 @@ type SessionRepository interface {
 	UpdateUserAvatar(ctx context.Context, id string, avatarURL *string) error
 	SetTrustedDevice(ctx context.Context, userID string, deviceID string, trusted bool) error
 	RevokeDeviceSessions(ctx context.Context, userID string, deviceID string, exceptSessionID string) error
+
+	CreateOAuthAuthorizationCode(ctx context.Context, code *OAuthAuthorizationCode) error
+	FindOAuthAuthorizationCode(ctx context.Context, codeHash string) (*OAuthAuthorizationCode, error)
+	ConsumeOAuthAuthorizationCode(ctx context.Context, id string, consumedAt time.Time) error
+
+	FindGoogleDriveAuthHandoff(ctx context.Context, tokenHash string) (*GoogleDriveAuthHandoff, error)
+	ConsumeGoogleDriveAuthHandoff(ctx context.Context, handoffID string, consumedAt time.Time) error
+	DeleteExpiredGoogleDriveAuthHandoffs(ctx context.Context, maxExpiresAt time.Time) error
+}
+
+type GoogleDriveAuthHandoff struct {
+	ID            string
+	TokenHash     string
+	CodeChallenge string
+	AccessToken   string
+	RefreshToken  *string
+	ExpiresIn     *int
+	ExpiresAt     time.Time
+	CreatedAt     time.Time
+	ConsumedAt    *time.Time
 }

@@ -484,22 +484,6 @@ export function ProfileView() {
                       </div>
                     </div>
                     <div className="device-actions" style={{ display: 'flex', gap: '10px' }}>
-                      <button
-                        type="button"
-                        className="portal-button-ghost"
-                        disabled={activeDeviceAction === device.device_id}
-                        onClick={() =>
-                          void mutateDevice(device.trusted_at ? 'untrust' : 'trust', device.device_id)
-                        }
-                        style={{
-                          height: '32px',
-                          padding: '0 12px',
-                          fontSize: '0.8rem',
-                          borderRadius: '999px',
-                        }}
-                      >
-                        {device.trusted_at ? 'Bỏ tin cậy' : 'Tin cậy'}
-                      </button>
                       {!device.current && device.active && (
                         <button
                           type="button"

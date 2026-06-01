@@ -19,10 +19,9 @@ function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (
       aria-checked={checked}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 items-center rounded-full border transition-colors disabled:opacity-40 cursor-pointer focus:outline-none ${checked ? 'border-[#1a73e8] bg-[#1a73e8]' : 'border-neutral-700 bg-neutral-800'}`}
-      style={{ borderStyle: 'solid', borderWidth: '1px' }}
+      className={`relative inline-flex h-4 w-7 items-center rounded-full border transition-colors disabled:opacity-40 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1a73e8] focus-visible:ring-offset-1 ${checked ? 'border-[#1a73e8] bg-[#1a73e8]' : 'border-[#dadce0] bg-[#e8eaed]'}`}
     >
-      <span className={`h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${checked ? 'translate-x-[16px]' : 'translate-x-0.5'}`} />
+      <span className={`h-3 w-3 rounded-full bg-white shadow-sm transition-transform ${checked ? 'translate-x-[13px]' : 'translate-x-0.5'}`} />
     </button>
   )
 }
@@ -54,7 +53,10 @@ export function AdminCapabilitiesPage() {
   }
 
   useEffect(() => {
-    void fetchCapabilities()
+    const timer = setTimeout(() => {
+      void fetchCapabilities()
+    }, 0)
+    return () => clearTimeout(timer)
   }, [])
 
   const updateCapability = async (capability: Capability) => {
@@ -85,55 +87,34 @@ export function AdminCapabilitiesPage() {
 
   if (loading && capabilities.length === 0) {
     return (
-      <div style={{ display: 'flex', height: '300px', alignItems: 'center', justifyContent: 'center' }}>
-        <Loader2 className="animate-spin text-[#1a73e8]" size={36} />
+      <div className="h-full w-full flex items-center justify-center bg-[#f8f9fa]">
+        <Loader2 className="animate-spin text-[#1a73e8]" size={48} />
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
-        <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, margin: 0 }}>Quyền truy cập (Capabilities)</h1>
-          <p style={{ color: 'var(--muted)', fontSize: '0.9rem', margin: '4px 0 0 0' }}>Bật tắt tính năng và chọn nhóm người dùng được phép sử dụng.</p>
+    <div className="space-y-6 bg-[#f8f9fa] font-sans text-[#202124]">
+      <div className="flex flex-col items-start justify-between gap-4 border-b border-[#dadce0] pb-4 sm:flex-row sm:items-center">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-normal tracking-tight text-[#202124]">Quyền truy cập</h1>
+          <p className="mt-1 text-sm text-[#5f6368]">Bật tắt tính năng và chọn nhóm người dùng được phép sử dụng.</p>
         </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button 
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+          <button
             type="button"
-            onClick={() => void initDefaultCapabilities()} 
+            onClick={() => void initDefaultCapabilities()}
             disabled={savingKey === 'restore_defaults'}
-            className="portal-button"
-            style={{ 
-              display: 'inline-flex', 
-              alignItems: 'center', 
-              gap: '6px',
-              padding: '10px 16px',
-              borderRadius: '12px',
-              fontWeight: 600,
-              fontSize: '0.9rem',
-              cursor: 'pointer'
-            }}
+            className="inline-flex items-center justify-center gap-2 rounded border border-[#1a73e8] bg-[#1a73e8] px-4 py-2 text-sm font-medium text-white hover:bg-[#1557b0] cursor-pointer"
           >
             <Sparkles size={16} />
             Khôi phục mặc định
           </button>
-          <button 
+          <button
             type="button"
-            onClick={() => void fetchCapabilities()} 
+            onClick={() => void fetchCapabilities()}
             disabled={loading}
-            className="portal-button-ghost"
-            style={{ 
-              display: 'inline-flex', 
-              alignItems: 'center', 
-              gap: '6px',
-              padding: '10px 16px',
-              borderRadius: '12px',
-              border: '1px solid var(--border)',
-              fontWeight: 600,
-              fontSize: '0.9rem',
-              cursor: 'pointer'
-            }}
+            className="inline-flex items-center justify-center gap-2 rounded border border-[#dadce0] bg-white px-4 py-2 text-sm font-medium text-[#1a73e8] hover:bg-[#f8f9fa] disabled:opacity-60 cursor-pointer"
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
             Làm mới
@@ -142,111 +123,84 @@ export function AdminCapabilitiesPage() {
       </div>
 
       {error && (
-        <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', color: '#ef4444', padding: '12px 16px', borderRadius: '12px', fontSize: '0.9rem' }}>
+        <div className="rounded border border-[#fad2cf] bg-[#fce8e6] p-4 text-sm font-medium text-[#c5221f]">
           {error}
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
-        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '16px' }}>
-          <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase' }}>Tổng tính năng</p>
-          <p style={{ margin: '8px 0 0 0', fontSize: '2rem', fontWeight: 800 }}>{capabilities.length}</p>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="rounded border border-[#dadce0] bg-white p-4 shadow-sm">
+          <p className="text-xs font-medium text-[#5f6368]">Tổng tính năng</p>
+          <p className="mt-2 text-2xl font-normal text-[#202124]">{capabilities.length}</p>
         </div>
-        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '16px' }}>
-          <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase' }}>Đang bật</p>
-          <p style={{ margin: '8px 0 0 0', fontSize: '2rem', fontWeight: 800, color: '#10b981' }}>{enabledCount}</p>
+        <div className="rounded border border-[#dadce0] bg-white p-4 shadow-sm">
+          <p className="text-xs font-medium text-[#5f6368]">Đang bật</p>
+          <p className="mt-2 text-2xl font-normal text-[#137333]">{enabledCount}</p>
         </div>
-        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '16px' }}>
-          <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase' }}>Dành cho Pro</p>
-          <p style={{ margin: '8px 0 0 0', fontSize: '2rem', fontWeight: 800, color: 'var(--accent)' }}>{proCount}</p>
+        <div className="rounded border border-[#dadce0] bg-white p-4 shadow-sm">
+          <p className="text-xs font-medium text-[#5f6368]">Dành cho Pro</p>
+          <p className="mt-2 text-2xl font-normal text-[#1967d2]">{proCount}</p>
         </div>
       </div>
 
-      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '24px', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <ShieldCheck className="text-indigo-500" size={20} />
+      <div className="rounded border border-[#dadce0] bg-white shadow-sm">
+        <div className="flex items-start justify-between gap-3 border-b border-[#dadce0] px-4 py-3 sm:items-center">
+          <div className="flex min-w-0 items-start gap-3 sm:items-center">
+            <ShieldCheck className="text-[#1a73e8]" size={20} />
             <div>
-              <h2 style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}>Danh sách tính năng</h2>
-              <p style={{ fontSize: '0.75rem', color: 'var(--muted)', margin: '2px 0 0 0' }}>Thay đổi có hiệu lực ngay trên ứng dụng và portal.</p>
+              <h2 className="text-base font-medium text-[#202124]">Danh sách tính năng</h2>
+              <p className="text-xs text-[#5f6368]">Thay đổi có hiệu lực ngay trên ứng dụng và portal.</p>
             </div>
           </div>
-          {savingKey && <Loader2 className="animate-spin text-indigo-500" size={18} />}
+          {savingKey && <Loader2 className="animate-spin text-[#1a73e8]" size={18} />}
         </div>
 
         {capabilities.length === 0 ? (
-          <div style={{ padding: '60px 20px', textAlign: 'center' }}>
-            <SlidersHorizontal style={{ margin: '0 auto 12px', color: 'var(--muted)' }} size={32} />
-            <p style={{ margin: 0, fontWeight: 600 }}>Chưa có tính năng nào được cấu hình.</p>
-            <p style={{ margin: '4px 0 0 0', fontSize: '0.9rem', color: 'var(--muted)' }}>Tạo cấu hình mặc định để bắt đầu quản lý quyền truy cập.</p>
+          <div className="p-10 text-center">
+            <SlidersHorizontal className="mx-auto mb-3 text-[#5f6368]" size={32} />
+            <p className="text-sm font-medium text-[#202124]">Chưa có tính năng nào được cấu hình.</p>
+            <p className="mt-1 text-sm text-[#5f6368]">Tạo cấu hình mặc định để bắt đầu quản lý quyền truy cập.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="admin-console-table">
+            <table className="admin-console-table min-w-[900px]">
               <thead>
                 <tr>
                   <th>Tính năng</th>
                   <th>Người được dùng</th>
                   <th>Trạng thái</th>
-                  <th style={{ textAlign: 'right' }}>Bật/Tắt</th>
+                  <th className="text-right">Bật/Tắt</th>
                 </tr>
               </thead>
               <tbody>
                 {capabilities.map(capability => (
                   <tr key={capability.key}>
                     <td>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                        <div style={{ 
-                          padding: '8px', 
-                          borderRadius: '8px', 
-                          background: capability.isProOnly ? 'rgba(168, 85, 247, 0.1)' : 'rgba(56, 189, 248, 0.1)', 
-                          color: capability.isProOnly ? '#a855f7' : 'var(--accent)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0
-                        }}>
+                      <div className="flex items-start gap-3">
+                        <div className={`mt-0.5 rounded border p-2 ${capability.isProOnly ? 'border-[#d7aefb] bg-[#f3e8fd] text-[#8430ce]' : 'border-[#d2e3fc] bg-[#e8f0fe] text-[#1967d2]'}`}>
                           {capability.isProOnly ? <Sparkles size={16} /> : <CheckCircle2 size={16} />}
                         </div>
                         <div>
-                          <p style={{ margin: 0, fontWeight: 600, color: 'var(--foreground)' }}>{capability.name}</p>
-                          <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: 'var(--muted)' }}>{capability.description}</p>
+                          <p className="font-medium text-[#202124]">{capability.name}</p>
+                          <p className="mt-1 text-sm text-[#5f6368]">{capability.description}</p>
                         </div>
                       </div>
                     </td>
                     <td>
-                      <div style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: '10px', background: 'rgba(255,255,255,0.02)', padding: '2px' }}>
-                        <button 
+                      <div className="inline-flex rounded border border-[#dadce0] bg-[#f8f9fa] p-1">
+                        <button
                           type="button"
-                          onClick={() => void updateCapability({ ...capability, isProOnly: false })} 
-                          disabled={savingKey === capability.key} 
-                          style={{
-                            border: 'none',
-                            borderRadius: '8px',
-                            padding: '6px 12px',
-                            fontSize: '0.75rem',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            background: !capability.isProOnly ? 'rgba(255,255,255,0.08)' : 'transparent',
-                            color: !capability.isProOnly ? 'var(--foreground)' : 'var(--muted)'
-                          }}
+                          onClick={() => void updateCapability({ ...capability, isProOnly: false })}
+                          disabled={savingKey === capability.key}
+                          className={`rounded px-3 py-1.5 text-xs font-medium cursor-pointer ${!capability.isProOnly ? 'bg-white text-[#1a73e8] shadow-sm' : 'text-[#5f6368] hover:text-[#202124]'}`}
                         >
                           Mọi người dùng
                         </button>
-                        <button 
+                        <button
                           type="button"
-                          onClick={() => void updateCapability({ ...capability, isProOnly: true })} 
-                          disabled={savingKey === capability.key} 
-                          style={{
-                            border: 'none',
-                            borderRadius: '8px',
-                            padding: '6px 12px',
-                            fontSize: '0.75rem',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            background: capability.isProOnly ? 'rgba(255,255,255,0.08)' : 'transparent',
-                            color: capability.isProOnly ? 'var(--foreground)' : 'var(--muted)'
-                          }}
+                          onClick={() => void updateCapability({ ...capability, isProOnly: true })}
+                          disabled={savingKey === capability.key}
+                          className={`rounded px-3 py-1.5 text-xs font-medium cursor-pointer ${capability.isProOnly ? 'bg-white text-[#1a73e8] shadow-sm' : 'text-[#5f6368] hover:text-[#202124]'}`}
                         >
                           Chỉ Pro
                         </button>
@@ -256,13 +210,13 @@ export function AdminCapabilitiesPage() {
                       <span className={`admin-pill ${capability.isEnabled ? 'admin-pill-green' : 'admin-pill-gray'}`}>
                         {capability.isEnabled ? 'Đang bật' : 'Đang tắt'}
                       </span>
-                      <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: 'var(--muted)' }}>{accessLabel(capability)}</p>
+                      <p className="mt-1 text-xs text-[#5f6368]">{accessLabel(capability)}</p>
                     </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <Toggle 
-                        checked={capability.isEnabled} 
-                        disabled={savingKey === capability.key} 
-                        onChange={checked => void updateCapability({ ...capability, isEnabled: checked })} 
+                    <td className="text-right">
+                      <Toggle
+                        checked={capability.isEnabled}
+                        disabled={savingKey === capability.key}
+                        onChange={checked => void updateCapability({ ...capability, isEnabled: checked })}
                       />
                     </td>
                   </tr>

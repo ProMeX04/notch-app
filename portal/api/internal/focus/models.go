@@ -52,11 +52,12 @@ type UserFocusProfile struct {
 
 // LeaderboardEntry is a single row in the leaderboard.
 type LeaderboardEntry struct {
-	Rank         int    `json:"rank"`
-	UserID       string `json:"user_id"`
-	DisplayName  string `json:"display_name"`
-	FocusSeconds int    `json:"focus_seconds"`
-	SessionCount int    `json:"session_count"`
+	Rank         int     `json:"rank"`
+	UserID       string  `json:"user_id"`
+	DisplayName  string  `json:"display_name"`
+	AvatarURL    *string `json:"avatar_url"`
+	FocusSeconds int     `json:"focus_seconds"`
+	SessionCount int     `json:"session_count"`
 }
 
 // LeaderboardResponse is the response for GET /api/focus/leaderboard.

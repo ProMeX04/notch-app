@@ -17,4 +17,6 @@ type Repository interface {
 	GetUserForLeaderboard(ctx context.Context, userID string) (string, bool, error)
 	// UpdateLeaderboardProfile updates a user's leaderboard settings (opt-in and display name).
 	UpdateLeaderboardProfile(ctx context.Context, userID string, displayName *string, optIn bool) (UserFocusProfile, error)
+	// ReadUserWeeklyRankAndStreak queries the user's weekly leaderboard ranking and current active focus streak (in days).
+	ReadUserWeeklyRankAndStreak(ctx context.Context, userID string, weekStart time.Time) (int, int, error)
 }

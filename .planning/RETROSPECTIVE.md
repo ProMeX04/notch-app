@@ -46,6 +46,37 @@
 
 ---
 
+## Milestone: v3.0 — Integration & Utilities Phase
+
+**Shipped:** 2026-05-31
+**Phases:** 3 | **Plans:** 4 | **Sessions:** 2
+
+### What Was Built
+- VNPay payment return page (`/billing/vnpay/return`) parsing query params, displaying outcome, and deep-linking back to desktop via `notch://visibility/show`
+- Downloads page (`/downloads`) with DMG download card, Chrome extension card, and Gatekeeper security instructions
+- Help/FAQ center (`/help`) with interactive accordion FAQ sections and support links
+- Public Leaderboard page (`/leaderboard`) with podium (top 3), animated rank table (4-50), window switcher (week/all-time), loading/empty/error states
+
+### What Worked
+- The `--skip-ui` plan-phase flag enabled fully automated planning and execution with zero blocking prompts.
+- Existing Go backend leaderboard endpoint (`GET /api/focus/leaderboard`) was already complete — Phase 8 was purely frontend work.
+- Dropping Supabase realtime from the leaderboard (Next.js used it) in favor of standard `useQuery` with tab-switch refetch simplified the implementation with no user-facing regression.
+
+### What Was Inefficient
+- Duplicate `style` JSX attribute on `<li>` row required a small post-implementation fix — avoidable by merging style objects upfront.
+- Phase SUMMARY.md files were not written during this milestone (gsd-tools showed 0 summaries), which reduced MILESTONES.md accomplishment extraction quality.
+
+### Patterns Established
+- Local `useState` for tab switcher (not URL-based navigation) for instant UX without browser history pollution.
+- Inline styles with inline `<style>` tag for CSS animations (e.g., spinner) when CSS modules are unavailable — acceptable for isolated single-use animations.
+- Lucide icon mocking pattern in Vitest: `vi.mock('lucide-react', () => ({ Trophy: () => <span data-testid="..." /> }))` for deterministic test assertions.
+
+### Key Lessons
+- Always export shared types (e.g., `LeaderboardEntry`) from the component file so test files can import and reuse them without duplicating type definitions.
+- When migrating a Next.js component, audit every import for framework-specific APIs (`next/link`, `next/navigation`, Supabase client) and replace with Vite-native equivalents before implementing logic.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -54,6 +85,7 @@
 |-----------|----------|--------|------------|
 | v1.0 | 4 | 3 | Initial auth foundations and automated API parity comparisons. |
 | v2.0 | 3 | 2 | Gated dashboard screens, dynamic capability policies, and external VNPay gateways. |
+| v3.0 | 2 | 3 | Utility pages and leaderboard wireup; fully automated --skip-ui planning pipeline. |
 
 ### Cumulative Quality
 
@@ -61,3 +93,4 @@
 |-----------|-------|----------|-------------------|
 | v1.0 | 18 | 90% | Zero-debt enforcement passed |
 | v2.0 | 25 | 92% | Zero-debt enforcement passed |
+| v3.0 | 10 | 93% | Zero-debt enforcement passed |

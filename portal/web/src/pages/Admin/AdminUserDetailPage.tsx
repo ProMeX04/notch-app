@@ -135,14 +135,14 @@ function humanOutcome(outcome: string) {
 
 function InfoCard({ title, value, note, icon: Icon }: { title: string; value: string | number; note?: string; icon: React.ComponentType<{ size?: number; className?: string }> }) {
   return (
-    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '16px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
+    <div className="rounded border border-[#dadce0] bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--muted)', fontWeight: 600 }}>{title}</p>
-          <p style={{ margin: '8px 0 0 0', fontSize: '1.75rem', fontWeight: 800 }}>{value}</p>
-          {note && <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: 'var(--muted)' }}>{note}</p>}
+          <p className="text-xs font-medium text-[#5f6368]">{title}</p>
+          <p className="mt-2 text-2xl font-normal text-[#202124]">{value}</p>
+          {note && <p className="mt-1 text-xs text-[#5f6368]">{note}</p>}
         </div>
-        <div style={{ padding: '8px', borderRadius: '8px', background: 'rgba(56, 189, 248, 0.1)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="rounded border border-[#d2e3fc] bg-[#e8f0fe] p-2 text-[#1967d2]">
           <Icon size={20} />
         </div>
       </div>
@@ -151,18 +151,18 @@ function InfoCard({ title, value, note, icon: Icon }: { title: string; value: st
 }
 
 function EmptyState({ text }: { text: string }) {
-  return <div style={{ border: '1px solid var(--border)', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', padding: '16px', color: 'var(--muted)', fontSize: '0.9rem' }}>{text}</div>
+  return <div className="rounded border border-[#e8eaed] bg-[#f8f9fa] p-4 text-sm text-[#5f6368]">{text}</div>
 }
 
 function DataTable({ title, description, icon: Icon, children }: { title: string; description: string; icon: React.ComponentType<{ size?: number; className?: string }>; children: React.ReactNode }) {
   return (
-    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '24px', padding: '20px', display: 'grid', gap: '16px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div className="rounded border border-[#dadce0] bg-white p-4 shadow-sm">
+      <div className="mb-5 flex items-center justify-between">
         <div>
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>{title}</h2>
-          <p style={{ fontSize: '0.8rem', color: 'var(--muted)', margin: '2px 0 0 0' }}>{description}</p>
+          <h2 className="text-base font-medium text-[#202124]">{title}</h2>
+          <p className="text-sm text-[#5f6368]">{description}</p>
         </div>
-        <Icon className="text-indigo-500" size={20} />
+        <Icon className="text-[#1a73e8]" size={20} />
       </div>
       {children}
     </div>
@@ -210,9 +210,14 @@ export function AdminUserDetailPage() {
   }, [])
 
   useEffect(() => {
-    void initialLoad()
+    const timer = setTimeout(() => {
+      void initialLoad()
+    }, 0)
     startPolling()
-    return () => stopPolling()
+    return () => {
+      clearTimeout(timer)
+      stopPolling()
+    }
   }, [initialLoad, startPolling, stopPolling])
 
   const updateUserRole = async (isPro: boolean, isAdmin: boolean) => {
@@ -233,32 +238,40 @@ export function AdminUserDetailPage() {
 
   const latestPayment = useMemo(() => data?.payments[0] ?? null, [data])
   const eventsTotalPages = Math.max(Math.ceil((data?.events.length ?? 0) / tablePageSize), 1)
+  const activeEventsPage = Math.min(eventsPage, eventsTotalPages)
   const pagedEvents = useMemo(() => {
     if (!data) return []
-    const start = (eventsPage - 1) * tablePageSize
+    const start = (activeEventsPage - 1) * tablePageSize
     return data.events.slice(start, start + tablePageSize)
-  }, [data, eventsPage])
-
-  useEffect(() => {
-    if (eventsPage > eventsTotalPages) setEventsPage(eventsTotalPages)
-  }, [eventsPage, eventsTotalPages])
+  }, [data, activeEventsPage])
 
   if (loading && !data) {
     return (
-      <div style={{ display: 'flex', height: '300px', alignItems: 'center', justifyContent: 'center' }}>
-        <Loader2 className="animate-spin text-[#1a73e8]" size={36} />
+      <div className="h-full w-full flex items-center justify-center">
+        <Loader2 className="animate-spin text-indigo-500" size={48} />
       </div>
     )
   }
 
   if (error && !data) {
     return (
-      <div style={{ border: '1px solid var(--border)', background: 'var(--card)', borderRadius: '24px', padding: '40px', textAlign: 'center' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>Không tải được user</h1>
-        <p style={{ color: 'var(--muted)', marginTop: '8px' }}>{error}</p>
-        <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'center', gap: '12px' }}>
-          <Link to="/admin/users" className="portal-button-ghost" style={{ border: '1px solid var(--border)', padding: '10px 16px', borderRadius: '12px', fontWeight: 600, display: 'inline-flex', alignItems: 'center' }}>Quay lại</Link>
-          <button type="button" onClick={() => void loadUser()} className="portal-button" style={{ padding: '10px 16px', borderRadius: '12px', fontWeight: 600 }}>Thử lại</button>
+      <div className="rounded border border-[#dadce0] bg-white p-8 text-center shadow-sm">
+        <h1 className="text-2xl font-medium text-[#202124]">Không tải được user</h1>
+        <p className="mt-2 text-[#5f6368]">{error}</p>
+        <div className="mt-6 flex justify-center gap-3">
+          <Link
+            to="/admin/users"
+            className="rounded border border-[#dadce0] bg-white px-5 py-3 font-medium text-[#3c4043] inline-flex items-center justify-center"
+          >
+            Quay lại
+          </Link>
+          <button
+            type="button"
+            onClick={() => void loadUser()}
+            className="rounded bg-[#1a73e8] px-5 py-3 font-medium text-white cursor-pointer"
+          >
+            Thử lại
+          </button>
         </div>
       </div>
     )
@@ -267,43 +280,25 @@ export function AdminUserDetailPage() {
   if (!data) return null
 
   return (
-    <div className="space-y-6">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <Link 
-            to="/admin/users" 
-            className="portal-button-ghost" 
-            style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center', 
-              padding: '10px', 
-              borderRadius: '12px', 
-              border: '1px solid var(--border)' 
-            }}
+    <div className="space-y-6 bg-[#f8f9fa] font-sans text-[#202124]">
+      <div className="flex items-center justify-between gap-4 border-b border-[#dadce0] pb-4">
+        <div className="flex items-center gap-4">
+          <Link
+            to="/admin/users"
+            className="rounded border border-[#dadce0] bg-white p-3 text-[#5f6368] hover:bg-[#f8f9fa] hover:text-[#1a73e8] transition-colors"
           >
             <ArrowLeft size={20} />
           </Link>
           <div>
-            <h1 style={{ fontSize: '1.75rem', fontWeight: 700, margin: 0 }}>{data.user.name || 'Người dùng không tên'}</h1>
-            <p style={{ color: 'var(--muted)', fontSize: '0.9rem', margin: '4px 0 0 0' }}>{data.user.email || 'Không có email'}</p>
+            <h1 className="text-3xl font-medium tracking-tight text-[#202124]">{data.user.name || 'Người dùng không tên'}</h1>
+            <p className="mt-1 text-sm text-[#5f6368]">{data.user.email || 'Không có email'}</p>
           </div>
         </div>
-        <button 
+        <button
           type="button"
-          onClick={() => void loadUser()} 
-          disabled={loading || updating} 
-          className="portal-button"
-          style={{ 
-            display: 'inline-flex', 
-            alignItems: 'center', 
-            gap: '6px',
-            padding: '10px 16px',
-            borderRadius: '12px',
-            fontWeight: 600,
-            fontSize: '0.9rem',
-            cursor: 'pointer'
-          }}
+          onClick={() => void loadUser()}
+          disabled={loading || updating}
+          className="inline-flex items-center gap-2 rounded border border-[#dadce0] bg-white px-4 py-2 text-sm font-medium text-[#1a73e8] hover:bg-[#f8f9fa] transition-colors disabled:opacity-60 cursor-pointer"
         >
           <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
           Làm mới
@@ -311,50 +306,50 @@ export function AdminUserDetailPage() {
       </div>
 
       {error && (
-        <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', color: '#ef4444', padding: '12px 16px', borderRadius: '12px', fontSize: '0.9rem' }}>
+        <div className="rounded border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-700">
           {error}
         </div>
       )}
 
-      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '24px', padding: '24px' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-            <div style={{ display: 'flex', height: '80px', width: '80px', alignItems: 'center', justifyContent: 'center', borderRadius: '8px', background: 'rgba(56, 189, 248, 0.1)', fontSize: '2.5rem', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase' }} className="h-20 w-20">
+      <div className="rounded border border-[#dadce0] bg-white p-6 shadow-sm">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-5">
+            <div className="flex h-20 w-20 items-center justify-center rounded bg-[#e8f0fe] text-3xl font-medium uppercase text-[#1967d2]">
               {data.user.name?.[0] || data.user.email?.[0] || '?'}
             </div>
             <div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                <span className={`admin-pill ${data.user.isPro ? 'admin-pill-blue' : 'admin-pill-gray'}`}>{data.user.isPro ? 'Pro' : 'Miễn phí'}</span>
+              <div className="flex flex-wrap gap-2">
+                <span className={`admin-pill ${data.user.isPro ? 'admin-pill-blue' : 'admin-pill-gray'}`}>{data.user.isPro ? 'Pro' : 'Free'}</span>
                 <span className={`admin-pill ${data.user.isAdmin ? 'admin-pill-yellow' : 'admin-pill-gray'}`}>{data.user.isAdmin ? 'Admin' : 'User'}</span>
               </div>
-              <p style={{ color: 'var(--muted)', fontSize: '0.85rem', margin: '12px 0 0 0' }}>Tham gia {formatDate(data.user.createdAt)} · cập nhật {formatDateTime(data.user.updatedAt)}</p>
-              <p style={{ color: 'var(--muted)', fontSize: '0.85rem', margin: '4px 0 0 0' }}>Hoạt động gần nhất: <span style={{ color: 'var(--foreground)', fontWeight: 600 }}>{formatDateTime(data.summary.lastSeenAt)}</span></p>
+              <p className="mt-3 text-sm text-[#5f6368]">Tham gia {formatDate(data.user.createdAt)} · cập nhật {formatDateTime(data.user.updatedAt)}</p>
+              <p className="mt-1 text-sm text-[#5f6368]">Hoạt động gần nhất: <span className="font-medium text-[#202124]">{formatDateTime(data.summary.lastSeenAt)}</span></p>
             </div>
           </div>
 
-          <div style={{ border: '1px solid var(--border)', background: 'rgba(255,255,255,0.02)', borderRadius: '16px', padding: '16px', fontSize: '0.9rem', color: 'var(--muted)', display: 'grid', gap: '8px' }}>
-            <p style={{ margin: 0, color: 'var(--foreground)', fontWeight: 600 }}>Tài khoản {data.summary.accountAgeDays} ngày tuổi</p>
-            <p style={{ margin: 0 }}>{data.summary.activeSessionCount} phiên đang hoạt động · {data.summary.trustedDeviceCount} thiết bị tin cậy</p>
+          <div className="rounded border border-[#e8eaed] bg-[#f8f9fa] p-4 text-sm text-[#5f6368]">
+            <p className="font-medium text-[#202124]">Tài khoản {data.summary.accountAgeDays} ngày tuổi</p>
+            <p className="mt-1">{data.summary.activeSessionCount} phiên đang hoạt động · {data.summary.trustedDeviceCount} thiết bị tin cậy</p>
             
             {/* Role Switches */}
-            <div style={{ display: 'flex', gap: '16px', marginTop: '8px', borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem', color: 'var(--foreground)' }}>
+            <div className="flex gap-4 mt-3 border-t border-[#dadce0] pt-3">
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-[#5f6368] hover:text-[#202124]">
                 <input 
                   type="checkbox" 
                   checked={data.user.isPro} 
                   disabled={updating}
                   onChange={e => void updateUserRole(e.target.checked, data.user.isAdmin)}
-                  style={{ cursor: 'pointer' }}
+                  className="cursor-pointer"
                 />
                 Kích hoạt Pro
               </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem', color: 'var(--foreground)' }}>
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-[#5f6368] hover:text-[#202124]">
                 <input 
                   type="checkbox" 
                   checked={data.user.isAdmin} 
                   disabled={updating}
                   onChange={e => void updateUserRole(data.user.isPro, e.target.checked)}
-                  style={{ cursor: 'pointer' }}
+                  className="cursor-pointer"
                 />
                 Quyền Admin
               </label>
@@ -363,59 +358,59 @@ export function AdminUserDetailPage() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <InfoCard title="Active sessions" value={data.summary.activeSessionCount} note={`${data.summary.expiredSessionCount} expired · ${data.summary.revokedSessionCount} revoked`} icon={Laptop} />
         <InfoCard title="Trusted devices" value={data.summary.trustedDeviceCount} note="Dựa trên trustedAt" icon={ShieldCheck} />
         <InfoCard title="Paid revenue" value={formatCurrency(data.summary.totalPaidRevenue)} note={`${data.summary.paidPaymentCount} paid payments`} icon={CreditCard} />
         <InfoCard title="Failure/rejected events" value={data.summary.recentFailureEventCount} note="50 event gần nhất" icon={Database} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '24px' }}>
-        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '24px', padding: '20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <h2 style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}>Thiết bị & phiên đăng nhập</h2>
-            <Laptop className="text-indigo-500" size={20} />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 rounded border border-[#dadce0] bg-white p-4 shadow-sm">
+          <div className="mb-5 flex items-center justify-between">
+            <h2 className="text-base font-medium text-[#202124]">Thiết bị & phiên đăng nhập</h2>
+            <Laptop className="text-[#1a73e8]" size={20} />
           </div>
           {data.sessions.length === 0 ? <EmptyState text="User chưa có session nào." /> : (
-            <div style={{ display: 'grid', gap: '12px' }}>
+            <div className="space-y-3">
               {data.sessions.slice(0, 5).map(session => (
-                <div key={session.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.01)', padding: '12px', borderRadius: '12px' }}>
-                  <div style={{ minWidth: 0 }}>
-                    <p className="truncate" style={{ margin: 0, fontWeight: 600, fontSize: '0.9rem' }}>{session.deviceName || 'Thiết bị chưa đặt tên'}</p>
-                    <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: 'var(--muted)' }}>{session.platform || 'Không rõ nền tảng'} · Hoạt động {formatDateTime(session.lastSeenAt)}</p>
+                <div key={session.id} className="flex items-center justify-between gap-4 rounded border border-[#e8eaed] bg-[#f8f9fa] p-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-[#202124]">{session.deviceName || 'Thiết bị chưa đặt tên'}</p>
+                    <p className="mt-1 text-xs text-[#5f6368]">{session.platform || 'Không rõ nền tảng'} · Hoạt động {formatDateTime(session.lastSeenAt)}</p>
                   </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', justifyContent: 'flex-end', flexShrink: 0 }}>
+                  <div className="flex flex-wrap justify-end gap-2">
                     <span className={`admin-pill ${statusClass(session.status)}`}>{humanSessionStatus(session.status)}</span>
                     {session.trustedAt && <span className="admin-pill admin-pill-blue">Tin cậy</span>}
                   </div>
                 </div>
               ))}
-              {data.sessions.length > 5 && <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--muted)' }}>Còn {data.sessions.length - 5} phiên cũ hơn được ẩn để dễ đọc.</p>}
+              {data.sessions.length > 5 && <p className="text-xs text-[#5f6368]">Còn {data.sessions.length - 5} phiên cũ hơn được ẩn để dễ đọc.</p>}
             </div>
           )}
         </div>
 
-        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '24px', padding: '20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <div className="rounded border border-[#dadce0] bg-white p-4 shadow-sm">
+          <div className="mb-5 flex items-center justify-between">
             <div>
-              <h2 style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}>Event phổ biến</h2>
-              <p style={{ fontSize: '0.75rem', color: 'var(--muted)', margin: '2px 0 0 0' }}>Từ hoạt động gần đây.</p>
+              <h2 className="text-base font-medium text-[#202124]">Event phổ biến</h2>
+              <p className="text-sm text-[#5f6368]">Từ hoạt động gần đây.</p>
             </div>
             <UserRound className="text-indigo-500" size={24} />
           </div>
-          <div style={{ display: 'grid', gap: '12px' }}>
+          <div className="space-y-3">
             {data.summary.topEventTypes.length === 0 ? <EmptyState text="Chưa có event." /> : data.summary.topEventTypes.map(event => (
-              <div key={event.eventType} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.01)', padding: '12px', borderRadius: '12px' }}>
-                <span className="truncate" style={{ fontSize: '0.85rem', fontWeight: 600 }}>{event.eventType}</span>
-                <span style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '99px', padding: '2px 8px', fontSize: '0.75rem', fontWeight: 700 }}>{event.count}</span>
+              <div key={event.eventType} className="flex items-center justify-between rounded border border-[#e8eaed] bg-[#f8f9fa] p-3">
+                <span className="truncate text-sm font-bold text-slate-800">{event.eventType}</span>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{event.count}</span>
               </div>
             ))}
           </div>
           {latestPayment && (
-            <div style={{ marginTop: '24px', border: '1px solid rgba(16, 185, 129, 0.2)', background: 'rgba(16, 185, 129, 0.05)', padding: '16px', borderRadius: '16px' }}>
-              <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: '#10b981', letterSpacing: '0.05em' }}>Payment mới nhất</p>
-              <p style={{ margin: '8px 0 4px 0', fontSize: '1.25rem', fontWeight: 800 }}>{formatCurrency(latestPayment.amount, latestPayment.currency)}</p>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--muted)' }}>{latestPayment.provider} · {latestPayment.status} · {formatDateTime(latestPayment.createdAt)}</p>
+            <div className="mt-6 rounded border border-[#ceead6] bg-[#e6f4ea] p-4">
+              <p className="text-xs font-bold uppercase tracking-wider text-emerald-600">Payment mới nhất</p>
+              <p className="mt-2 font-bold text-slate-900">{formatCurrency(latestPayment.amount, latestPayment.currency)}</p>
+              <p className="text-sm text-slate-500">{latestPayment.provider} · {latestPayment.status} · {formatDateTime(latestPayment.createdAt)}</p>
             </div>
           )}
         </div>
@@ -423,7 +418,7 @@ export function AdminUserDetailPage() {
 
       <DataTable title="Payments" icon={CreditCard} description="Lịch sử thanh toán của người dùng này.">
         {data.payments.length === 0 ? <EmptyState text="User chưa có payment nào." /> : (
-          <div className="overflow-x-auto" style={{ border: '1px solid var(--border)', borderRadius: '16px' }}>
+          <div className="overflow-x-auto rounded border border-[#dadce0] bg-white">
             <table className="admin-console-table min-w-[900px]">
               <thead>
                 <tr>
@@ -434,14 +429,14 @@ export function AdminUserDetailPage() {
                   <th>Nội dung</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-200">
                 {data.payments.map(payment => (
-                  <tr key={payment.id}>
+                  <tr key={payment.id} className="text-sm odd:bg-white even:bg-slate-50/70 hover:bg-indigo-50/70">
                     <td>{formatDateTime(payment.paidAt ?? payment.createdAt)}</td>
-                    <td style={{ fontWeight: 600 }}>{payment.provider.toUpperCase()}</td>
+                    <td className="font-medium text-[#202124]">{payment.provider.toUpperCase()}</td>
                     <td><span className={`admin-pill ${statusClass(payment.status)}`}>{humanPaymentStatus(payment.status)}</span></td>
-                    <td style={{ fontWeight: 600, color: '#10b981' }}>{formatCurrency(payment.amount, payment.currency)}</td>
-                    <td style={{ color: 'var(--muted)' }}>{payment.orderInfo}</td>
+                    <td className="font-medium text-[#137333]">{formatCurrency(payment.amount, payment.currency)}</td>
+                    <td className="text-[#5f6368]">{payment.orderInfo}</td>
                   </tr>
                 ))}
               </tbody>
@@ -453,7 +448,7 @@ export function AdminUserDetailPage() {
       <DataTable title="Recent events" icon={CalendarDays} description="Nhật ký hoạt động gần đây của tài khoản này.">
         {data.events.length === 0 ? <EmptyState text="User chưa có AppEvent nào." /> : (
           <>
-            <div className="overflow-x-auto" style={{ border: '1px solid var(--border)', borderRadius: '16px' }}>
+            <div className="overflow-x-auto rounded border border-[#dadce0] bg-white">
               <table className="admin-console-table min-w-[1100px]">
                 <thead>
                   <tr>
@@ -462,11 +457,11 @@ export function AdminUserDetailPage() {
                     <th>Kết quả</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-slate-200">
                   {pagedEvents.map(event => (
-                    <tr key={event.id} className="align-top">
-                      <td style={{ whiteSpace: 'nowrap', color: 'var(--muted)' }}>{formatDateTime(event.createdAt)}</td>
-                      <td style={{ fontWeight: 600 }}>{humanEventName(event.eventType)}</td>
+                    <tr key={event.id} className="align-top hover:bg-[#f8fafd]">
+                      <td className="whitespace-nowrap text-[#3c4043]">{formatDateTime(event.createdAt)}</td>
+                      <td className="font-medium text-[#202124]">{humanEventName(event.eventType)}</td>
                       <td>
                         <span className={`admin-pill ${statusClass(event.outcome)}`}>
                           {event.statusCode ? `${humanOutcome(event.outcome)} · Code ${event.statusCode}` : humanOutcome(event.outcome)}
@@ -478,48 +473,26 @@ export function AdminUserDetailPage() {
               </table>
             </div>
             {data.events.length > tablePageSize && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: '16px', gap: '12px' }}>
-                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--muted)' }}>Trang {eventsPage} / {eventsTotalPages} · {data.events.length} event gần đây</p>
-                <div style={{ display: 'flex', gap: '8px' }}>
+              <div className="mt-4 flex flex-col gap-3 border-t border-[#dadce0] pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-[#5f6368]">Trang {activeEventsPage} / {eventsTotalPages} · {data.events.length} event gần đây</p>
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setEventsPage(current => Math.max(current - 1, 1))}
-                    disabled={eventsPage <= 1 || loading}
-                    className="portal-button-ghost"
-                    style={{ 
-                      display: 'inline-flex', 
-                      alignItems: 'center', 
-                      gap: '6px',
-                      padding: '8px 14px',
-                      borderRadius: '10px',
-                      border: '1px solid var(--border)',
-                      fontSize: '0.85rem',
-                      fontWeight: 600,
-                      cursor: 'pointer'
-                    }}
+                    disabled={activeEventsPage <= 1 || loading}
+                    className="inline-flex items-center gap-2 rounded border border-[#dadce0] bg-white px-3 py-2 text-sm font-medium text-[#3c4043] hover:bg-[#f8f9fa] disabled:opacity-40 cursor-pointer"
                   >
-                    <ChevronLeft size={14} />
+                    <ChevronLeft size={16} />
                     Trước
                   </button>
                   <button
                     type="button"
                     onClick={() => setEventsPage(current => Math.min(current + 1, eventsTotalPages))}
-                    disabled={eventsPage >= eventsTotalPages || loading}
-                    className="portal-button-ghost"
-                    style={{ 
-                      display: 'inline-flex', 
-                      alignItems: 'center', 
-                      gap: '6px',
-                      padding: '8px 14px',
-                      borderRadius: '10px',
-                      border: '1px solid var(--border)',
-                      fontSize: '0.85rem',
-                      fontWeight: 600,
-                      cursor: 'pointer'
-                    }}
+                    disabled={activeEventsPage >= eventsTotalPages || loading}
+                    className="inline-flex items-center gap-2 rounded border border-[#dadce0] bg-white px-3 py-2 text-sm font-medium text-[#3c4043] hover:bg-[#f8f9fa] disabled:opacity-40 cursor-pointer"
                   >
                     Sau
-                    <ChevronRight size={14} />
+                    <ChevronRight size={16} />
                   </button>
                 </div>
               </div>

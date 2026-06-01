@@ -21,6 +21,7 @@ type fakeHandoffRecord struct {
 	ExpiresIn     *int
 	ExpiresAt     time.Time
 	CreatedAt     time.Time
+	ConsumedAt    *time.Time
 }
 
 type fakeSessionRepo struct {
@@ -192,6 +193,54 @@ func (r *fakeSessionRepo) RevokeDeviceSessions(_ context.Context, userID string,
 			s.RevokedReason = &reason
 		}
 	}
+	return nil
+}
+func (r *fakeSessionRepo) CreateOAuthAuthorizationCode(_ context.Context, code *OAuthAuthorizationCode) error {
+	return nil
+}
+func (r *fakeSessionRepo) FindOAuthAuthorizationCode(_ context.Context, codeHash string) (*OAuthAuthorizationCode, error) {
+	return nil, nil
+}
+func (r *fakeSessionRepo) ConsumeOAuthAuthorizationCode(_ context.Context, id string, consumedAt time.Time) error {
+	return nil
+}
+func (r *fakeSessionRepo) FindGoogleDriveAuthHandoff(_ context.Context, tokenHash string) (*GoogleDriveAuthHandoff, error) {
+	for i := range r.handoffs {
+		if r.handoffs[i].TokenHash == tokenHash {
+			return &GoogleDriveAuthHandoff{
+				ID:            r.handoffs[i].ID,
+				TokenHash:     r.handoffs[i].TokenHash,
+				CodeChallenge: r.handoffs[i].CodeChallenge,
+				AccessToken:   r.handoffs[i].AccessToken,
+				RefreshToken:  r.handoffs[i].RefreshToken,
+				ExpiresIn:     r.handoffs[i].ExpiresIn,
+				ExpiresAt:     r.handoffs[i].ExpiresAt,
+				CreatedAt:     r.handoffs[i].CreatedAt,
+				ConsumedAt:    r.handoffs[i].ConsumedAt,
+			}, nil
+		}
+	}
+	return nil, nil
+}
+func (r *fakeSessionRepo) ConsumeGoogleDriveAuthHandoff(_ context.Context, handoffID string, consumedAt time.Time) error {
+	for i := range r.handoffs {
+		if r.handoffs[i].ID == handoffID {
+			r.handoffs[i].ConsumedAt = &consumedAt
+			r.handoffs[i].AccessToken = ""
+			r.handoffs[i].RefreshToken = nil
+			return nil
+		}
+	}
+	return nil
+}
+func (r *fakeSessionRepo) DeleteExpiredGoogleDriveAuthHandoffs(_ context.Context, maxExpiresAt time.Time) error {
+	var filtered []fakeHandoffRecord
+	for _, h := range r.handoffs {
+		if h.ExpiresAt.After(maxExpiresAt) {
+			filtered = append(filtered, h)
+		}
+	}
+	r.handoffs = filtered
 	return nil
 }
 

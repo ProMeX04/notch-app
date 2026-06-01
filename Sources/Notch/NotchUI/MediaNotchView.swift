@@ -23,6 +23,7 @@ struct MediaNotchView: View {
     @ObservedObject var learningStats: LearningStatsStore
     @ObservedObject var presentationModel: NotchPresentationModel
     @ObservedObject var entitlementStore: NotchEntitlementStore
+    @ObservedObject var focusCloudSync: FocusCloudSyncCoordinator
     let screenID: NotchScreenID
 
     @Namespace private var albumArtNamespace
@@ -46,6 +47,7 @@ struct MediaNotchView: View {
         learningStats: LearningStatsStore,
         presentationModel: NotchPresentationModel,
         entitlementStore: NotchEntitlementStore,
+        focusCloudSync: FocusCloudSyncCoordinator,
         screenID: NotchScreenID
     ) {
         self.playback = playback
@@ -56,6 +58,7 @@ struct MediaNotchView: View {
         self.learningStats = learningStats
         self.presentationModel = presentationModel
         self.entitlementStore = entitlementStore
+        self.focusCloudSync = focusCloudSync
         self.screenID = screenID
     }
     @State private var didAutoRevealForShelfDrop = false
@@ -318,6 +321,7 @@ struct MediaNotchView: View {
                 gemini: gemini,
                 shelf: shelf,
                 learningStats: learningStats,
+                focusCloudSync: focusCloudSync,
                 presentationModel: presentationModel,
                 entitlementStore: entitlementStore,
                 talkHeaderAccessoryController: talkHeaderAccessoryController,

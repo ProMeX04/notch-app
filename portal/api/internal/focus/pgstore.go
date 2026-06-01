@@ -115,11 +115,13 @@ func (r *PgxRepository) ReadFocusLeaderboard(ctx context.Context, window string,
 				COALESCE(u."displayName", u."name", 'Notch user'),
 				COALESCE(u."email", ''),
 				SUM(s."focusSeconds") as total_seconds,
-				SUM(s."sessionCount") as total_sessions
+				SUM(s."sessionCount") as total_sessions,
+				u."leaderboardOptIn",
+				u."avatarUrl"
 			FROM "FocusDailyStat" s
 			JOIN "User" u ON u."id" = s."userId"
-			WHERE u."leaderboardOptIn" = true AND s."date" >= $1
-			GROUP BY s."userId", u."displayName", u."name", u."email"
+			WHERE s."date" >= $1
+			GROUP BY s."userId", u."displayName", u."name", u."email", u."leaderboardOptIn", u."avatarUrl"
 			ORDER BY total_seconds DESC
 			LIMIT $2
 		`, weekStart, limit)
@@ -130,13 +132,14 @@ func (r *PgxRepository) ReadFocusLeaderboard(ctx context.Context, window string,
 				COALESCE(u."displayName", u."name", 'Notch user'),
 				COALESCE(u."email", ''),
 				SUM(s."focusSeconds") as total_seconds,
-				SUM(s."sessionCount") as total_sessions
+				SUM(s."sessionCount") as total_sessions,
+				u."leaderboardOptIn",
+				u."avatarUrl"
 			FROM "FocusDailyStat" s
 			JOIN "User" u ON u."id" = s."userId"
-			WHERE u."leaderboardOptIn" = true
-			GROUP BY s."userId", u."displayName", u."name", u."email"
+			GROUP BY s."userId", u."displayName", u."name", u."email", u."leaderboardOptIn", u."avatarUrl"
 			ORDER BY total_seconds DESC
-			LIMIT $2
+			LIMIT $1
 		`, limit)
 	}
 
@@ -151,12 +154,20 @@ func (r *PgxRepository) ReadFocusLeaderboard(ctx context.Context, window string,
 		var entry LeaderboardEntry
 		var email string
 		var displayName *string
-		err := rows.Scan(&entry.UserID, &displayName, &email, &entry.FocusSeconds, &entry.SessionCount)
+		var optIn bool
+		var avatarURL *string
+		err := rows.Scan(&entry.UserID, &displayName, &email, &entry.FocusSeconds, &entry.SessionCount, &optIn, &avatarURL)
 		if err != nil {
 			return nil, err
 		}
 		entry.Rank = rank
-		entry.DisplayName = resolvePublicName(displayName, email)
+		if optIn {
+			entry.DisplayName = resolvePublicName(displayName, email)
+			entry.AvatarURL = avatarURL
+		} else {
+			entry.DisplayName = "Ẩn danh"
+			entry.AvatarURL = nil
+		}
 		entries = append(entries, entry)
 		rank++
 	}
@@ -189,13 +200,25 @@ func (r *PgxRepository) UpdateLeaderboardProfile(ctx context.Context, userID str
 	var profile UserFocusProfile
 	profile.User.ID = userID
 
+	var scanDisp *string
+	var scanName *string
 	err := r.db.QueryRow(ctx, `
 		UPDATE "User"
 		SET "displayName" = $2, "leaderboardOptIn" = $3, "updatedAt" = NOW()
 		WHERE "id" = $1
-		RETURNING "displayName", "leaderboardOptIn"
-	`, userID, displayName, optIn).Scan(&profile.User.DisplayName, &profile.User.LeaderboardOptIn)
-	return profile, err
+		RETURNING "displayName", "leaderboardOptIn", "name"
+	`, userID, displayName, optIn).Scan(&scanDisp, &profile.User.LeaderboardOptIn, &scanName)
+	if err != nil {
+		return profile, err
+	}
+
+	if scanDisp != nil && *scanDisp != "" {
+		profile.User.DisplayName = *scanDisp
+	} else if scanName != nil {
+		profile.User.DisplayName = *scanName
+	}
+
+	return profile, nil
 }
 
 func resolvePublicName(displayName *string, email string) string {
@@ -220,4 +243,51 @@ func resolvePublicName(displayName *string, email string) string {
 		mask = "***"
 	}
 	return fmt.Sprintf("%s%s@%s", visible, mask, parts[1])
+}
+
+func (r *PgxRepository) ReadUserWeeklyRankAndStreak(ctx context.Context, userID string, weekStart time.Time) (int, int, error) {
+	// 1. Get weekly rank
+	var rank int
+	err := r.db.QueryRow(ctx, `
+		WITH WeeklyRanking AS (
+			SELECT
+				s."userId",
+				ROW_NUMBER() OVER (ORDER BY SUM(s."focusSeconds") DESC) as rank
+			FROM "FocusDailyStat" s
+			JOIN "User" u ON u."id" = s."userId"
+			WHERE s."date" >= $1
+			GROUP BY s."userId"
+		)
+		SELECT rank FROM WeeklyRanking WHERE "userId" = $2;
+	`, weekStart, userID).Scan(&rank)
+	if err != nil && err != pgx.ErrNoRows {
+		return 0, 0, err
+	}
+
+	// 2. Get active focus streak in days
+	var streak int
+	err = r.db.QueryRow(ctx, `
+		WITH DistinctDays AS (
+			SELECT DISTINCT date_trunc('day', "date")::date as active_date
+			FROM "FocusDailyStat"
+			WHERE "userId" = $1 AND "focusSeconds" > 0
+		),
+		NumberedDays AS (
+			SELECT active_date, active_date - ROW_NUMBER() OVER (ORDER BY active_date)::int as grp
+			FROM DistinctDays
+		),
+		Runs AS (
+			SELECT grp, COUNT(*) as run_length, MAX(active_date) as last_active_date
+			FROM NumberedDays
+			GROUP BY grp
+		)
+		SELECT COALESCE(MAX(run_length), 0)
+		FROM Runs
+		WHERE last_active_date >= (CURRENT_DATE - INTERVAL '1 day')::date;
+	`, userID).Scan(&streak)
+	if err != nil && err != pgx.ErrNoRows {
+		return rank, 0, err
+	}
+
+	return rank, streak, nil
 }

@@ -1,4 +1,4 @@
-name: Deploy Portal to Vercel
+name: Deploy Portal
 
 on:
   push:
@@ -9,8 +9,30 @@ on:
       - '.github/workflows/deploy-portal.yml'
 
 jobs:
-  deploy:
-    name: Deploy to Vercel
+  deploy-backend:
+    name: Deploy Backend to Google Cloud Run
+    runs-on: self-hosted
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy notch-portal-api \
+            --source portal/api \
+            --region asia-southeast1 \
+            --quiet
+
+  deploy-frontend:
+    name: Deploy Frontend to Vercel
     runs-on: self-hosted
     env:
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -24,23 +46,24 @@ jobs:
         with:
           node-version: 22
           cache: 'npm'
-          cache-dependency-path: 'portal/package-lock.json'
+          cache-dependency-path: 'portal/web/package-lock.json'
 
       - name: Install Dependencies
         run: npm ci
-        working-directory: portal
+        working-directory: portal/web
 
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
       - name: Pull Vercel Environment Information
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
-        working-directory: portal
+        working-directory: portal/web
 
       - name: Build Project Artifacts
         run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
-        working-directory: portal
+        working-directory: portal/web
 
       - name: Deploy Project Artifacts to Vercel
         run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
-        working-directory: portal
+        working-directory: portal/web
+

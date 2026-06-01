@@ -13,23 +13,51 @@ on:
       - '.github/workflows/portal-verification.yml'
 
 jobs:
-  portal:
-    name: Portal verification
+  verify-api:
+    name: Verify Go Backend API
     runs-on: self-hosted
-    env:
-      DATABASE_URL: postgresql://notch:notch@127.0.0.1:5432/notch?schema=public
     defaults:
       run:
-        working-directory: portal
+        working-directory: portal/api
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache-dependency-path: portal/api/go.sum
+
+      - name: Run Tests
+        run: go test -v ./...
+
+  verify-web:
+    name: Verify Vite React Web
+    runs-on: self-hosted
+    defaults:
+      run:
+        working-directory: portal/web
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: portal/package-lock.json
-      - run: npm ci
-      - run: npm run test:focus
-      - run: npm run test:gemini-live
-      - run: npm run lint
-      - run: npm run build
+          cache: 'npm'
+          cache-dependency-path: 'portal/web/package-lock.json'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Linter
+        run: npm run lint
+
+      - name: Run Tests
+        run: npm run test
+
+      - name: Verify Build Compilation
+        run: npm run build
+

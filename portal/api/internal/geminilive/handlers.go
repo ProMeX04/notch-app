@@ -3,6 +3,7 @@ package geminilive
 import (
 	"bytes"
 	"encoding/json"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -16,16 +17,34 @@ import (
 )
 
 type Handler struct {
-	DB     *pgxpool.Pool
-	Logger *events.Logger
-	APIKey string
+	DB         *pgxpool.Pool
+	Logger     *events.Logger
+	APIKey     string
+	HTTPClient *http.Client
 }
 
 func NewHandler(db *pgxpool.Pool, logger *events.Logger, apiKey string) *Handler {
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   5 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   100,
+		IdleConnTimeout:       15 * time.Second,
+		TLSHandshakeTimeout:   5 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+
 	return &Handler{
 		DB:     db,
 		Logger: logger,
 		APIKey: apiKey,
+		HTTPClient: &http.Client{
+			Transport: transport,
+			Timeout:   10 * time.Second,
+		},
 	}
 }
 
@@ -292,8 +311,11 @@ func (h *Handler) CreateSessionToken(w http.ResponseWriter, r *http.Request) {
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-goog-api-key", h.APIKey)
 
-	httpClient := &http.Client{Timeout: 10 * time.Second}
-	resp, err := httpClient.Do(httpReq)
+	client := h.HTTPClient
+	if client == nil {
+		client = http.DefaultClient
+	}
+	resp, err := client.Do(httpReq)
 	if err != nil {
 		h.logAppEvent(r, "gemini_live.session_token_failed", "failure", http.StatusInternalServerError, map[string]any{"errorName": "HTTPCallError"})
 		httpjson.Detail(w, http.StatusInternalServerError, "Failed to connect to Google API.")

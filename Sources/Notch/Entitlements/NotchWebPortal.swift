@@ -26,6 +26,16 @@ enum NotchWebPortal {
             return URL(string: env.webOriginURL)!
         }
 
+        // Check if the API matches any of our known environments, and if so, use the respective webOriginURL
+        let apiString = api.absoluteString.lowercased()
+        for env in NotchEnvironment.allCases {
+            if apiString.hasPrefix(env.portalURL.lowercased()) {
+                if let webURL = URL(string: env.webOriginURL) {
+                    return webURL
+                }
+            }
+        }
+
         if let trimmedAPI = trimmedPortalOrigin(from: api) {
             return trimmedAPI
         }

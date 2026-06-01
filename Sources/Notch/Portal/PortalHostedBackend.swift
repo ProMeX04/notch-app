@@ -18,9 +18,9 @@ enum NotchEnvironment: String, CaseIterable, Identifiable {
     var portalURL: String {
         switch self {
         case .production:
-            return "https://notch-portal-web.vercel.app/api"
+            return "https://notch-portal-api-657193756037.asia-southeast1.run.app/api"
         case .development:
-            return "http://localhost:3000/api"
+            return "http://localhost:8080/api"
         }
     }
 
@@ -29,7 +29,7 @@ enum NotchEnvironment: String, CaseIterable, Identifiable {
         case .production:
             return "https://notch-portal-web.vercel.app"
         case .development:
-            return "http://localhost:3000"
+            return "http://localhost:5173"
         }
     }
 }

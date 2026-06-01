@@ -551,9 +551,16 @@ enum NotchShelfViewModelTests {
     static func gdrive_expiredCredentialWithoutRefreshStartsDisconnected() throws {
         let dir = try makeTempDirectory(label: "ShelfVM")
         defer { cleanupDirectory(dir) }
+        let credentialsURL = dir.appendingPathComponent("credentials.json")
+        setenv("NOTCH_DEV_GDRIVE_FILE_STORAGE", "1", 1)
+        setenv("NOTCH_GDRIVE_DEVELOPMENT_CREDENTIALS_FILE", credentialsURL.path, 1)
+        defer {
+            NotchGoogleDriveService.shared.clearCredentials()
+            setenv("NOTCH_DEV_GDRIVE_FILE_STORAGE", "0", 1)
+            unsetenv("NOTCH_GDRIVE_DEVELOPMENT_CREDENTIALS_FILE")
+        }
         let service = NotchGoogleDriveService.shared
         service.clearCredentials()
-        defer { service.clearCredentials() }
 
         try expect(service.storeCredentials(
             accessToken: "expired_access",
@@ -828,9 +835,16 @@ enum NotchShelfViewModelTests {
     static func gdrive_shareWithExpiredCredentialAllowsRelink() async throws {
         let dir = try makeTempDirectory(label: "ShelfVM")
         defer { cleanupDirectory(dir) }
+        let credentialsURL = dir.appendingPathComponent("credentials.json")
+        setenv("NOTCH_DEV_GDRIVE_FILE_STORAGE", "1", 1)
+        setenv("NOTCH_GDRIVE_DEVELOPMENT_CREDENTIALS_FILE", credentialsURL.path, 1)
+        defer {
+            NotchGoogleDriveService.shared.clearCredentials()
+            setenv("NOTCH_DEV_GDRIVE_FILE_STORAGE", "0", 1)
+            unsetenv("NOTCH_GDRIVE_DEVELOPMENT_CREDENTIALS_FILE")
+        }
         let service = NotchGoogleDriveService.shared
         service.clearCredentials()
-        defer { service.clearCredentials() }
 
         try expect(service.storeCredentials(
             accessToken: "initially_valid_access",

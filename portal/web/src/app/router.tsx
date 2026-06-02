@@ -7,6 +7,7 @@ import {
 
 import { HomePage } from '@/pages/HomePage'
 import { AccountPage } from '@/pages/AccountPage'
+import { LeaderboardPage } from '@/pages/LeaderboardPage'
 import { OAuthAuthorizePage } from '@/pages/OAuthAuthorizePage'
 import { VNPayReturnPage } from '@/pages/VNPayReturnPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
@@ -26,6 +27,7 @@ const rootRoute = createRootRoute({
 
 const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: '/', component: HomePage })
 const accountRoute = createRoute({ getParentRoute: () => rootRoute, path: '/account', component: AccountPage })
+const leaderboardRoute = createRoute({ getParentRoute: () => rootRoute, path: '/leaderboard', component: LeaderboardPage })
 const oauthAuthorizeRoute = createRoute({ getParentRoute: () => rootRoute, path: '/oauth/authorize', component: OAuthAuthorizePage })
 const billingVNPayReturnRoute = createRoute({ getParentRoute: () => rootRoute, path: '/billing/vnpay/return', component: VNPayReturnPage })
 
@@ -40,6 +42,7 @@ const adminSettingsRoute = createRoute({ getParentRoute: () => adminRoute, path:
 const routeTree = rootRoute.addChildren([
   indexRoute,
   accountRoute,
+  leaderboardRoute,
   oauthAuthorizeRoute,
   billingVNPayReturnRoute,
   adminRoute.addChildren([

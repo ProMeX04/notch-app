@@ -45,7 +45,7 @@ export function PageShell({
 
   const isHomeActive = pathname === '/' && (!activeHash || activeHash === 'hero')
   const isFeaturesActive = pathname === '/' && activeHash === 'features'
-  const isLeaderboardActive = pathname === '/' && activeHash === 'leaderboard'
+  const isLeaderboardActive = pathname === '/leaderboard'
   const isDownloadsActive = pathname === '/' && activeHash === 'download'
   const isPricingActive = pathname === '/' && activeHash === 'pricing'
   const isHelpActive = pathname === '/' && activeHash === 'help'
@@ -100,7 +100,7 @@ export function PageShell({
               <Link to="/" hash="features" style={linkStyle(isFeaturesActive)} className="portal-text-link">
                 Tính năng
               </Link>
-              <Link to="/" hash="leaderboard" style={linkStyle(isLeaderboardActive)} className="portal-text-link">
+              <Link to="/leaderboard" style={linkStyle(isLeaderboardActive)} className="portal-text-link">
                 Xếp hạng
               </Link>
               <Link to="/" hash="download" style={linkStyle(isDownloadsActive)} className="portal-text-link">
@@ -207,7 +207,7 @@ export function PageShell({
               <Link to="/" hash="features" onClick={() => setMobileMenuOpen(false)} style={linkStyle(isFeaturesActive)}>
                 Tính năng
               </Link>
-              <Link to="/" hash="leaderboard" onClick={() => setMobileMenuOpen(false)} style={linkStyle(isLeaderboardActive)}>
+              <Link to="/leaderboard" onClick={() => setMobileMenuOpen(false)} style={linkStyle(isLeaderboardActive)}>
                 Xếp hạng
               </Link>
               <Link to="/" hash="download" onClick={() => setMobileMenuOpen(false)} style={linkStyle(isDownloadsActive)}>

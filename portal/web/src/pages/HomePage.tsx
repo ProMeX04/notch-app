@@ -1,4 +1,4 @@
-// v1.0.1
+// v1.0.2
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { PageShell } from '@/components/ui/PageShell'

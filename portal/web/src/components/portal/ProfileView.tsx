@@ -230,7 +230,7 @@ export function ProfileView() {
     if (!file) return
 
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://xyhhtghehlzzzpitfveu.supabase.co'
-    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_mXbBCCIKj0Sf0JGFK_4qSA_h8rVZA1j'
 
     if (!supabaseAnonKey) {
       const manualUrl = prompt(

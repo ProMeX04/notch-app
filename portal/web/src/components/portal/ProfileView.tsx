@@ -159,6 +159,13 @@ export function ProfileView() {
     }
   }
 
+  const handleAvatarClick = () => {
+    const newUrl = prompt('Nhập đường dẫn URL ảnh đại diện mới của bạn:', avatarUrl)
+    if (newUrl !== null) {
+      setAvatarUrl(newUrl.trim())
+    }
+  }
+
   if (status === 'booting') {
     return (
       <div
@@ -243,6 +250,41 @@ export function ProfileView() {
             gap: 48px;
           }
         }
+        .avatar-container {
+          position: relative;
+          width: 100px;
+          height: 100px;
+          border-radius: 50%;
+          overflow: hidden;
+          background: #e9edff;
+          border: 2px solid rgba(0, 63, 177, 0.12);
+          display: flex;
+          align-items: center;
+          justifyContent: center;
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .avatar-container:hover {
+          transform: scale(1.04);
+          border-color: #003fb1;
+        }
+        .avatar-overlay {
+          position: absolute;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.5);
+          color: #ffffff;
+          display: flex;
+          align-items: center;
+          justifyContent: center;
+          font-size: 0.75rem;
+          font-weight: 700;
+          opacity: 0;
+          transition: opacity 0.25s ease;
+        }
+        .avatar-container:hover .avatar-overlay {
+          opacity: 1;
+        }
       `}</style>
 
       <div 
@@ -318,18 +360,9 @@ export function ProfileView() {
           {/* Avatar Preview & URL Input */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
             <div 
-              style={{
-                width: '100px',
-                height: '100px',
-                borderRadius: '50%',
-                overflow: 'hidden',
-                background: '#e9edff',
-                border: '2px solid rgba(0, 63, 177, 0.12)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.05)',
-              }}
+              className="avatar-container"
+              onClick={handleAvatarClick}
+              title="Click để đổi ảnh đại diện"
             >
               {avatarUrl.trim() ? (
                 <img 
@@ -343,6 +376,9 @@ export function ProfileView() {
               ) : (
                 <User size={40} style={{ color: '#003fb1' }} />
               )}
+              <div className="avatar-overlay">
+                <span>Đổi ảnh</span>
+              </div>
             </div>
             
             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '6px' }}>

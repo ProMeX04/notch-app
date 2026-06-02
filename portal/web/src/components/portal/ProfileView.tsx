@@ -217,9 +217,17 @@ export function ProfileView() {
   return (
     <>
       <style>{`
+        :root {
+          --background: #f9f9ff !important;
+          --foreground: #141b2b !important;
+          color-scheme: light !important;
+        }
         body {
           background-color: #f9f9ff !important;
           color: #141b2b !important;
+        }
+        body::before {
+          display: none !important;
         }
         .profile-input {
           width: 100%;
@@ -302,7 +310,7 @@ export function ProfileView() {
         {/* Header Section */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(0, 0, 0, 0.06)', paddingBottom: '20px' }}>
           <div>
-            <h1 style={{ fontSize: '1.75rem', fontWeight: 850, letterSpacing: '-0.04em', margin: 0 }}>
+            <h1 style={{ fontSize: '1.75rem', fontWeight: 850, letterSpacing: '-0.04em', margin: 0, color: '#141b2b' }}>
               Hồ sơ cá nhân
             </h1>
             <p style={{ fontSize: '0.88rem', color: '#434654', margin: '4px 0 0' }}>
@@ -490,7 +498,7 @@ export function ProfileView() {
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2 style={{ fontSize: '1.1rem', fontWeight: 800, margin: 0 }}>
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 800, margin: 0, color: '#141b2b' }}>
               Thiết bị hoạt động
             </h2>
             <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#434654' }}>

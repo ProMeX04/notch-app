@@ -236,24 +236,48 @@ private struct RankMedalView: View {
     let rank: Int
     @Environment(\.colorScheme) private var colorScheme
 
+    private var goldGradient: LinearGradient {
+        LinearGradient(
+            colors: [Color(red: 1.0, green: 0.88, blue: 0.45), Color(red: 1.0, green: 0.72, blue: 0.08)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    private var silverGradient: LinearGradient {
+        LinearGradient(
+            colors: [Color(red: 0.94, green: 0.94, blue: 0.96), Color(red: 0.65, green: 0.65, blue: 0.70)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    private var bronzeGradient: LinearGradient {
+        LinearGradient(
+            colors: [Color(red: 0.88, green: 0.64, blue: 0.49), Color(red: 0.54, green: 0.31, blue: 0.16)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
     var body: some View {
         ZStack {
             if rank == 1 {
                 Image(systemName: "crown.fill")
-                    .foregroundStyle(.yellow)
+                    .foregroundStyle(goldGradient)
                     .font(.system(size: 14))
             } else if rank == 2 {
                 Text("2")
                     .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color(red: 0.2, green: 0.2, blue: 0.25))
                     .frame(width: 18, height: 18)
-                    .background(Circle().fill(Color.gray.opacity(0.55)))
+                    .background(Circle().fill(silverGradient))
             } else if rank == 3 {
                 Text("3")
                     .font(.system(size: 10, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .frame(width: 18, height: 18)
-                    .background(Circle().fill(Color.brown.opacity(0.55)))
+                    .background(Circle().fill(bronzeGradient))
             } else {
                 Text("\(rank)")
                     .font(.system(size: 11, weight: .semibold, design: .rounded))

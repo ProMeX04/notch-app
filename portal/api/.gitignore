@@ -1,0 +1,25 @@
+# Build output
+/notch-portal-api
+/bin/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Air (hot reload)
+tmp/
+
+# macOS
+.DS_Store
+
+# Test output
+*.test
+coverage.out
+coverage.html
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

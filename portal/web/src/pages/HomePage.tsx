@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { PageShell } from '@/components/ui/PageShell'
+import { getIsProgrammaticScroll, setIsProgrammaticScroll } from '@/components/ui/scrollState'
 import { usePortalAuth } from '@/auth/usePortalAuth'
 import { apiClient } from '@/api/client'
 import { HelpCircle, Mail, MessageSquare, ChevronDown } from 'lucide-react'
@@ -159,6 +160,11 @@ export function HomePage() {
 
     const observer = new IntersectionObserver(
       (entries) => {
+        // Skip updating URL if we are in the middle of a programmatic scroll to prevent aborting it
+        if (getIsProgrammaticScroll()) {
+          return
+        }
+
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
             const id = entry.target.id
@@ -178,11 +184,15 @@ export function HomePage() {
     // Handle initial hash scrolling smoothly on load
     const hash = window.location.hash.replace('#', '')
     if (hash) {
+      setIsProgrammaticScroll(true)
       setTimeout(() => {
         const el = document.getElementById(hash)
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'start' })
         }
+        setTimeout(() => {
+          setIsProgrammaticScroll(false)
+        }, 1000)
       }, 100)
     }
 
@@ -255,7 +265,20 @@ export function HomePage() {
   const scrollToSection = (id: string) => {
     const el = document.getElementById(id)
     if (el) {
+      setIsProgrammaticScroll(true)
+      window.history.replaceState(null, '', `#${id}`)
+      window.dispatchEvent(new Event('activesectionchange'))
       el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+      const clearFlag = () => {
+        setIsProgrammaticScroll(false)
+        window.removeEventListener('scrollend', clearFlag)
+      }
+      window.addEventListener('scrollend', clearFlag)
+
+      setTimeout(() => {
+        setIsProgrammaticScroll(false)
+      }, 1000)
     }
   }
 

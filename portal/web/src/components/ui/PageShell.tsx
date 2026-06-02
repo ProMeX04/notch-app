@@ -4,6 +4,7 @@ import { User, Menu, X } from 'lucide-react'
 
 import { usePortalAuth } from '@/auth/usePortalAuth'
 import { PortalLogo } from '@/components/portal/PortalLogo'
+import { setIsProgrammaticScroll } from './scrollState'
 
 export function PageShell({
   children,
@@ -60,6 +61,48 @@ export function PageShell({
     textDecoration: 'none',
   })
 
+  const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, targetId: string) => {
+    if (pathname === '/') {
+      e.preventDefault()
+      const el = document.getElementById(targetId)
+      if (el) {
+        setIsProgrammaticScroll(true)
+        setActiveHash(targetId)
+        window.history.replaceState(null, '', `#${targetId}`)
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+        const clearFlag = () => {
+          setIsProgrammaticScroll(false)
+          window.removeEventListener('scrollend', clearFlag)
+        }
+        window.addEventListener('scrollend', clearFlag)
+
+        setTimeout(() => {
+          setIsProgrammaticScroll(false)
+        }, 1000)
+      }
+    }
+  }
+
+  const renderNavLink = (id: string, label: string, isActive: boolean, isMobile = false) => {
+    const href = pathname === '/' ? `#${id}` : `/#${id}`
+    return (
+      <a
+        href={href}
+        onClick={(e) => {
+          if (isMobile) {
+            setMobileMenuOpen(false)
+          }
+          handleNavClick(e, id)
+        }}
+        style={linkStyle(isActive)}
+        className={isMobile ? '' : 'portal-text-link'}
+      >
+        {label}
+      </a>
+    )
+  }
+
   return (
     <main className="portal-page">
       {!noHeader && (
@@ -95,24 +138,12 @@ export function PageShell({
 
             {/* Desktop Links */}
             <div className="nav-links" style={{ display: 'flex', gap: '28px', alignItems: 'center' }}>
-              <a href="#hero" style={linkStyle(isHomeActive)} className="portal-text-link">
-                Giới thiệu
-              </a>
-              <a href="#features" style={linkStyle(isFeaturesActive)} className="portal-text-link">
-                Tính năng
-              </a>
-              <a href="#leaderboard" style={linkStyle(isLeaderboardActive)} className="portal-text-link">
-                Xếp hạng
-              </a>
-              <a href="#download" style={linkStyle(isDownloadsActive)} className="portal-text-link">
-                Tải xuống
-              </a>
-              <a href="#pricing" style={linkStyle(isPricingActive)} className="portal-text-link">
-                Mức giá
-              </a>
-              <a href="#help" style={linkStyle(isHelpActive)} className="portal-text-link">
-                Hỗ trợ
-              </a>
+              {renderNavLink('hero', 'Giới thiệu', isHomeActive)}
+              {renderNavLink('features', 'Tính năng', isFeaturesActive)}
+              {renderNavLink('leaderboard', 'Xếp hạng', isLeaderboardActive)}
+              {renderNavLink('download', 'Tải xuống', isDownloadsActive)}
+              {renderNavLink('pricing', 'Mức giá', isPricingActive)}
+              {renderNavLink('help', 'Hỗ trợ', isHelpActive)}
 
               {status !== 'booting' && (
                 <>
@@ -202,24 +233,12 @@ export function PageShell({
                 marginTop: '12px',
               }}
             >
-              <a href="#hero" onClick={() => setMobileMenuOpen(false)} style={linkStyle(isHomeActive)}>
-                Giới thiệu
-              </a>
-              <a href="#features" onClick={() => setMobileMenuOpen(false)} style={linkStyle(isFeaturesActive)}>
-                Tính năng
-              </a>
-              <a href="#leaderboard" onClick={() => setMobileMenuOpen(false)} style={linkStyle(isLeaderboardActive)}>
-                Xếp hạng
-              </a>
-              <a href="#download" onClick={() => setMobileMenuOpen(false)} style={linkStyle(isDownloadsActive)}>
-                Tải xuống
-              </a>
-              <a href="#pricing" onClick={() => setMobileMenuOpen(false)} style={linkStyle(isPricingActive)}>
-                Mức giá
-              </a>
-              <a href="#help" onClick={() => setMobileMenuOpen(false)} style={linkStyle(isHelpActive)}>
-                Hỗ trợ
-              </a>
+              {renderNavLink('hero', 'Giới thiệu', isHomeActive, true)}
+              {renderNavLink('features', 'Tính năng', isFeaturesActive, true)}
+              {renderNavLink('leaderboard', 'Xếp hạng', isLeaderboardActive, true)}
+              {renderNavLink('download', 'Tải xuống', isDownloadsActive, true)}
+              {renderNavLink('pricing', 'Mức giá', isPricingActive, true)}
+              {renderNavLink('help', 'Hỗ trợ', isHelpActive, true)}
 
               {status !== 'booting' && (
                 <div

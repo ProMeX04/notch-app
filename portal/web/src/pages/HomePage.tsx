@@ -155,29 +155,15 @@ export function HomePage() {
   useEffect(() => {
     document.documentElement.classList.add('homepage-snap')
 
-    if (window.innerWidth < 1024) {
-      return () => {
-        document.documentElement.classList.remove('homepage-snap')
-      }
-    }
-
     const sections = ['hero', 'features', 'leaderboard', 'download', 'pricing', 'help']
-    const initialHash = window.location.hash.replace('#', '') || 'hero'
-    const initialIdx = sections.indexOf(initialHash)
-    let currentIdx = initialIdx !== -1 ? initialIdx : 0
-    let isTransitioning = false
 
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
             const id = entry.target.id
-            const idx = sections.indexOf(id)
-            if (idx !== -1) {
-              currentIdx = idx
-              window.history.replaceState(null, '', `#${id}`)
-              window.dispatchEvent(new Event('activesectionchange'))
-            }
+            window.history.replaceState(null, '', `#${id}`)
+            window.dispatchEvent(new Event('activesectionchange'))
           }
         })
       },
@@ -189,120 +175,20 @@ export function HomePage() {
       if (el) observer.observe(el)
     })
 
-    const handleWheel = (e: WheelEvent) => {
-      e.preventDefault()
-
-      if (Math.abs(e.deltaY) < 5 || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return
-
-      if (isTransitioning) return
-
-      const direction = e.deltaY > 0 ? 1 : -1
-      const nextIdx = currentIdx + direction
-
-      if (nextIdx >= 0 && nextIdx < sections.length) {
-        const nextId = sections[nextIdx]
-        const targetEl = document.getElementById(nextId)
-        if (targetEl) {
-          isTransitioning = true
-          currentIdx = nextIdx
-          targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' })
-          
-          setTimeout(() => {
-            isTransitioning = false
-          }, 500)
+    // Handle initial hash scrolling smoothly on load
+    const hash = window.location.hash.replace('#', '')
+    if (hash) {
+      setTimeout(() => {
+        const el = document.getElementById(hash)
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' })
         }
-      }
+      }, 100)
     }
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const keysToBlock = ['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', ' ', 'Home', 'End']
-      if (!keysToBlock.includes(e.key)) return
-
-      e.preventDefault()
-
-      if (isTransitioning) return
-
-      let direction = 0
-      if (['ArrowDown', 'PageDown', ' '].includes(e.key)) {
-        direction = 1
-      } else if (['ArrowUp', 'PageUp'].includes(e.key)) {
-        direction = -1
-      } else if (e.key === 'Home') {
-        direction = -currentIdx
-      } else if (e.key === 'End') {
-        direction = sections.length - 1 - currentIdx
-      }
-
-      if (direction !== 0) {
-        const nextIdx = currentIdx + direction
-        if (nextIdx >= 0 && nextIdx < sections.length) {
-          const nextId = sections[nextIdx]
-          const targetEl = document.getElementById(nextId)
-          if (targetEl) {
-            isTransitioning = true
-            currentIdx = nextIdx
-            targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' })
-            setTimeout(() => {
-              isTransitioning = false
-            }, 500)
-          }
-        }
-      }
-    }
-
-    const handleHashNavigation = (e: Event) => {
-      const customEvt = e as CustomEvent
-      const hash = customEvt.detail?.hash || 'hero'
-      const idx = sections.indexOf(hash)
-      console.log('[HashNav] Received navigation event:', hash, 'index:', idx, 'currentIdx:', currentIdx)
-      if (idx !== -1 && idx !== currentIdx) {
-        currentIdx = idx
-        isTransitioning = true
-        const targetEl = document.getElementById(hash)
-        if (targetEl) {
-          console.log('[HashNav] Scrolling to element:', hash)
-          targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' })
-        }
-        setTimeout(() => {
-          isTransitioning = false
-          console.log('[HashNav] Transition lock released')
-        }, 800)
-      }
-    }
-
-    const handleWindowClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement
-      const anchor = target.closest('a')
-      if (anchor) {
-        console.log('[HashNav] Clicked anchor:', anchor.href)
-        try {
-          const url = new URL(anchor.href)
-          const normalizePath = (p: string) => p.replace(/\/$/, '') || '/'
-          if (normalizePath(url.pathname) === normalizePath(window.location.pathname)) {
-            const hash = url.hash.replace('#', '') || 'hero'
-            console.log('[HashNav] Matched path, target hash:', hash)
-            if (sections.includes(hash)) {
-              window.dispatchEvent(new CustomEvent('hashnavigation', { detail: { hash } }))
-            }
-          }
-        } catch (err) {
-          console.error('[HashNav] Error parsing URL:', err)
-        }
-      }
-    }
-
-    window.addEventListener('wheel', handleWheel, { passive: false })
-    window.addEventListener('keydown', handleKeyDown, { passive: false })
-    window.addEventListener('hashnavigation', handleHashNavigation)
-    window.addEventListener('click', handleWindowClick, { capture: true })
 
     return () => {
       document.documentElement.classList.remove('homepage-snap')
       observer.disconnect()
-      window.removeEventListener('wheel', handleWheel)
-      window.removeEventListener('keydown', handleKeyDown)
-      window.removeEventListener('hashnavigation', handleHashNavigation)
-      window.removeEventListener('click', handleWindowClick, { capture: true })
     }
   }, [])
 
@@ -367,13 +253,9 @@ export function HomePage() {
   const proFeatures = capabilities.filter(c => c.isEnabled && c.isProOnly)
 
   const scrollToSection = (id: string) => {
-    if (window.location.hash === `#${id}`) {
-      const el = document.getElementById(id)
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }
-    } else {
-      window.location.hash = id
+    const el = document.getElementById(id)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
   }
 

@@ -72,6 +72,57 @@ const getDeviceIcon = (platform: string, deviceName: string) => {
   return <MonitorSmartphone size={18} />
 }
 
+function compressImage(file: File, maxWidth = 400, maxHeight = 400, quality = 0.8): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.readAsDataURL(file)
+    reader.onload = (event) => {
+      const img = new Image()
+      img.src = event.target?.result as string
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let width = img.width
+        let height = img.height
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width)
+            width = maxWidth
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height)
+            height = maxHeight
+          }
+        }
+
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          resolve(file)
+          return
+        }
+
+        ctx.drawImage(img, 0, 0, width, height)
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve(blob)
+            } else {
+              resolve(file)
+            }
+          },
+          'image/jpeg',
+          quality
+        )
+      }
+      img.onerror = (err) => reject(err)
+    }
+    reader.onerror = (err) => reject(err)
+  })
+}
+
 export function ProfileView() {
   const { status, user, signOut, refreshAuthState } = usePortalAuth()
   
@@ -195,9 +246,14 @@ export function ProfileView() {
     setIsUploadingAvatar(true)
     setMsg(null)
 
+    const oldAvatarUrl = avatarUrl
+
     try {
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${user?.id || 'avatar'}-${Date.now()}.${fileExt}`
+      // Compress the image before uploading
+      const compressedBlob = await compressImage(file, 400, 400, 0.8)
+
+      // We'll upload as a .jpg since compressImage outputs JPEG
+      const fileName = `${user?.id || 'avatar'}-${Date.now()}.jpg`
       const bucketName = 'avatars'
       const uploadUrl = `${supabaseUrl}/storage/v1/object/${bucketName}/${fileName}`
 
@@ -206,9 +262,9 @@ export function ProfileView() {
         headers: {
           'apikey': supabaseAnonKey,
           'Authorization': `Bearer ${supabaseAnonKey}`,
-          'Content-Type': file.type,
+          'Content-Type': 'image/jpeg',
         },
-        body: file,
+        body: compressedBlob,
       })
 
       if (!res.ok) {
@@ -222,6 +278,30 @@ export function ProfileView() {
         type: 'ok',
         text: 'Tải ảnh đại diện lên thành công. Hãy nhấn Lưu hồ sơ để hoàn tất!',
       })
+
+      // Clean up the old avatar file from Supabase storage if it exists
+      if (oldAvatarUrl && oldAvatarUrl.includes(`/storage/v1/object/public/${bucketName}/`)) {
+        const parts = oldAvatarUrl.split(`/storage/v1/object/public/${bucketName}/`)
+        if (parts.length > 1) {
+          const oldFileName = parts[1]
+          if (oldFileName !== fileName) {
+            const deleteUrl = `${supabaseUrl}/storage/v1/object/${bucketName}`
+            try {
+              await fetch(deleteUrl, {
+                method: 'DELETE',
+                headers: {
+                  'apikey': supabaseAnonKey,
+                  'Authorization': `Bearer ${supabaseAnonKey}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ prefixes: [oldFileName] }),
+              })
+            } catch (deleteError) {
+              console.error('Failed to delete old avatar:', deleteError)
+            }
+          }
+        }
+      }
     } catch (error) {
       setMsg({
         type: 'err',

@@ -1,6 +1,6 @@
 // v1.0.2
 import { useEffect, useState } from 'react'
-import { Link } from '@tanstack/react-router'
+import { Link, useLocation } from '@tanstack/react-router'
 import { PageShell } from '@/components/ui/PageShell'
 import { usePortalAuth } from '@/auth/usePortalAuth'
 import { apiClient } from '@/api/client'
@@ -113,11 +113,18 @@ function initials(displayName: string): string {
 
 export function HomePage() {
   const { isAuthenticated, user } = usePortalAuth()
+  const location = useLocation()
   const [capabilities, setCapabilities] = useState<PortalCapability[]>(defaultCapabilities)
   const [windowState, setWindowState] = useState<FocusWindow>('week')
   const [limit, setLimit] = useState(6)
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
+
+  const rawHash = window.location.hash.replace('#', '') || 'hero'
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('hashnavigation', { detail: { hash: rawHash } }))
+  }, [location, rawHash])
   
   const faqs = [
     {
@@ -250,8 +257,9 @@ export function HomePage() {
       }
     }
 
-    const handleHashChange = () => {
-      const hash = window.location.hash.replace('#', '') || 'hero'
+    const handleHashNavigation = (e: Event) => {
+      const customEvt = e as CustomEvent
+      const hash = customEvt.detail?.hash || 'hero'
       const idx = sections.indexOf(hash)
       if (idx !== -1 && idx !== currentIdx) {
         currentIdx = idx
@@ -268,14 +276,14 @@ export function HomePage() {
 
     window.addEventListener('wheel', handleWheel, { passive: false })
     window.addEventListener('keydown', handleKeyDown, { passive: false })
-    window.addEventListener('hashchange', handleHashChange)
+    window.addEventListener('hashnavigation', handleHashNavigation)
 
     return () => {
       document.documentElement.classList.remove('homepage-snap')
       observer.disconnect()
       window.removeEventListener('wheel', handleWheel)
       window.removeEventListener('keydown', handleKeyDown)
-      window.removeEventListener('hashchange', handleHashChange)
+      window.removeEventListener('hashnavigation', handleHashNavigation)
     }
   }, [])
 

@@ -75,58 +75,64 @@ export function LeaderboardPage() {
         }
         
         /* Premium Podium CSS Grid */
-        .podium-grid {
-          display: grid;
-          grid-template-columns: 1fr 1.1fr 1fr;
-          gap: 28px;
-          align-items: end;
-          margin-top: 12px;
-        }
-        .podium-card {
+        /* Premium Podium CSS Grid */
+        .podium-container {
           background: #ffffff;
           border: 1px solid rgba(0, 0, 0, 0.05);
-          border-radius: 16px;
-          padding: 12px;
-          text-align: center;
+          border-radius: 24px;
+          padding: 16px 24px;
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.02);
+          display: grid;
+          grid-template-columns: 1fr 1.2fr 1fr;
+          align-items: center;
+          gap: 12px;
+        }
+        .podium-col {
           display: flex;
           flex-direction: column;
           align-items: center;
-          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.02);
+          text-align: center;
+          padding: 16px 8px;
           transition: all 0.3s ease;
-          position: relative;
         }
-        .podium-card:hover {
-          transform: translateY(-4px);
-          box-shadow: 0 16px 40px rgba(0, 0, 0, 0.04);
-        }
-        .podium-card.gold {
+        .podium-col.gold {
           order: 2;
-          border-top: 4px solid #f59e0b;
-          background: linear-gradient(180deg, rgba(251, 191, 36, 0.03) 0%, #ffffff 100%);
-          box-shadow: 0 12px 36px rgba(245, 158, 11, 0.06);
+          background: linear-gradient(180deg, rgba(251, 191, 36, 0.04) 0%, rgba(251, 191, 36, 0.01) 100%);
+          border: 1px solid rgba(251, 191, 36, 0.18);
+          border-radius: 18px;
+          padding: 24px 12px;
+          box-shadow: 0 8px 24px rgba(245, 158, 11, 0.03);
         }
-        .podium-card.silver {
+        .podium-col.silver {
           order: 1;
-          border-top: 4px solid #9ca3af;
+          border-right: 1px solid rgba(0, 0, 0, 0.04);
         }
-        .podium-card.bronze {
+        .podium-col.bronze {
           order: 3;
-          border-top: 4px solid #ea580c;
+          border-left: 1px solid rgba(0, 0, 0, 0.04);
         }
         
-        @media (max-width: 800px) {
-          .podium-grid {
+        @media (max-width: 768px) {
+          .podium-container {
             grid-template-columns: 1fr;
-            gap: 28px;
+            gap: 16px;
+            padding: 16px;
           }
-          .podium-card.gold {
-            order: 1;
-          }
-          .podium-card.silver {
+          .podium-col.silver {
             order: 2;
+            border-right: none;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+            padding-bottom: 16px;
           }
-          .podium-card.bronze {
+          .podium-col.gold {
+            order: 1;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+            padding-bottom: 16px;
+          }
+          .podium-col.bronze {
             order: 3;
+            border-left: none;
+            padding-top: 16px;
           }
         }
       `}</style>
@@ -248,11 +254,11 @@ export function LeaderboardPage() {
             
             {/* Podium (Top 3) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div className="podium-grid">
+              <div className="podium-container">
                 
                 {/* Silver - Rank 2 */}
                 {top2 && (
-                  <div className="podium-card silver">
+                  <div className="podium-col silver">
                     <div style={{ position: 'relative', width: '56px', height: '56px' }}>
                       <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: '#e9edff', border: '2px solid #cbd5e1', padding: '1px', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.05)' }}>
                         {top2.avatar_url ? (
@@ -286,7 +292,7 @@ export function LeaderboardPage() {
 
                 {/* Gold - Rank 1 */}
                 {top1 && (
-                  <div className="podium-card gold">
+                  <div className="podium-col gold">
                     <div style={{ position: 'relative', width: '68px', height: '68px' }}>
                       <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: '#fef3c7', border: '2.5px solid #fbbf24', padding: '1px', boxShadow: '0 4px 12px rgba(245,158,11,0.15)' }}>
                         {top1.avatar_url ? (
@@ -320,7 +326,7 @@ export function LeaderboardPage() {
 
                 {/* Bronze - Rank 3 */}
                 {top3 && (
-                  <div className="podium-card bronze">
+                  <div className="podium-col bronze">
                     <div style={{ position: 'relative', width: '56px', height: '56px' }}>
                       <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: '#e9edff', border: '2px solid #f97316', padding: '1px', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.05)' }}>
                         {top3.avatar_url ? (

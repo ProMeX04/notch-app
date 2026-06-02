@@ -69,7 +69,7 @@ final class FocusCloudSyncCoordinator: ObservableObject {
         retryTask = nil
     }
 
-    func scheduleSync(delay: Duration = .seconds(2)) {
+    func scheduleSync(delay: Duration = .seconds(0.5)) {
         syncTask?.cancel()
         syncTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -99,7 +99,9 @@ final class FocusCloudSyncCoordinator: ObservableObject {
             state = .idle
             isOffline = false
             Task { [weak self] in
-                await self?.refreshProfile()
+                guard let self else { return }
+                await self.refreshProfile()
+                await self.fetchLeaderboard(window: self.leaderboardWindow)
             }
             if !repository.pendingDateKeys.isEmpty { scheduleSync(delay: .zero) }
         } catch PortalAPIError.unauthorized {

@@ -162,7 +162,9 @@ export function HomePage() {
     }
 
     const sections = ['hero', 'features', 'leaderboard', 'download', 'pricing', 'help']
-    let currentIdx = 0
+    const initialHash = window.location.hash.replace('#', '') || 'hero'
+    const initialIdx = sections.indexOf(initialHash)
+    let currentIdx = initialIdx !== -1 ? initialIdx : 0
     let isTransitioning = false
 
     const observer = new IntersectionObserver(
@@ -248,14 +250,32 @@ export function HomePage() {
       }
     }
 
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '') || 'hero'
+      const idx = sections.indexOf(hash)
+      if (idx !== -1 && idx !== currentIdx) {
+        currentIdx = idx
+        isTransitioning = true
+        const targetEl = document.getElementById(hash)
+        if (targetEl) {
+          targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+        setTimeout(() => {
+          isTransitioning = false
+        }, 800)
+      }
+    }
+
     window.addEventListener('wheel', handleWheel, { passive: false })
     window.addEventListener('keydown', handleKeyDown, { passive: false })
+    window.addEventListener('hashchange', handleHashChange)
 
     return () => {
       document.documentElement.classList.remove('homepage-snap')
       observer.disconnect()
       window.removeEventListener('wheel', handleWheel)
       window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('hashchange', handleHashChange)
     }
   }, [])
 
@@ -320,9 +340,13 @@ export function HomePage() {
   const proFeatures = capabilities.filter(c => c.isEnabled && c.isProOnly)
 
   const scrollToSection = (id: string) => {
-    const el = document.getElementById(id)
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    if (window.location.hash === `#${id}`) {
+      const el = document.getElementById(id)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+    } else {
+      window.location.hash = id
     }
   }
 

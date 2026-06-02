@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from 'react'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { LogOut, Loader2, Save, User, ShieldCheck, Apple, Globe, Laptop, Terminal, MonitorSmartphone } from 'lucide-react'
 import { apiClient } from '@/api/client'
 import { usePortalAuth } from '@/auth/usePortalAuth'
@@ -125,6 +125,7 @@ function compressImage(file: File, maxWidth = 400, maxHeight = 400, quality = 0.
 
 export function ProfileView() {
   const { status, user, signOut, refreshAuthState } = usePortalAuth()
+  const navigate = useNavigate()
   
   const [name, setName] = useState(user?.name || '')
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || '')
@@ -466,7 +467,10 @@ export function ProfileView() {
           
           <button
             type="button"
-            onClick={() => void signOut()}
+            onClick={async () => {
+              void navigate({ to: '/' })
+              await signOut()
+            }}
             style={{
               display: 'inline-flex',
               alignItems: 'center',

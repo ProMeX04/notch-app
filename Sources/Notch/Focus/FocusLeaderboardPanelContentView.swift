@@ -50,20 +50,28 @@ struct FocusLeaderboardPanelContentView: View {
 
                     Spacer()
 
-                    // Refresh Button
-                    Button {
-                        Task {
-                            await focusCloudSync.fetchLeaderboard(window: selectedWindow)
+                    // Refresh Button / Loading Indicator
+                    if focusCloudSync.isFetchingLeaderboard {
+                        ProgressView()
+                            .controlSize(.small)
+                            .scaleEffect(0.8)
+                            .frame(width: 24, height: 24)
+                            .padding(2)
+                    } else {
+                        Button {
+                            Task {
+                                await focusCloudSync.fetchLeaderboard(window: selectedWindow)
+                            }
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(colorScheme == .light ? .black.opacity(0.55) : .white.opacity(0.65))
+                                .padding(6)
+                                .background(Circle().fill(colorScheme == .light ? Color.black.opacity(0.06) : Color.white.opacity(0.12)))
                         }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(colorScheme == .light ? .black.opacity(0.55) : .white.opacity(0.65))
-                            .padding(6)
-                            .background(Circle().fill(colorScheme == .light ? Color.black.opacity(0.06) : Color.white.opacity(0.12)))
+                        .buttonStyle(.plain)
+                        .help(appLanguage == "Tiếng Việt" ? "Tải lại" : "Refresh")
                     }
-                    .buttonStyle(.plain)
-                    .help(appLanguage == "Tiếng Việt" ? "Tải lại" : "Refresh")
 
                     // Close Button
                     Button(action: onClose) {

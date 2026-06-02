@@ -113,7 +113,7 @@ function compressImage(file: File, maxWidth = 400, maxHeight = 400, quality = 0.
               resolve(file)
             }
           },
-          'image/jpeg',
+          'image/webp',
           quality
         )
       }
@@ -252,8 +252,8 @@ export function ProfileView() {
       // Compress the image before uploading
       const compressedBlob = await compressImage(file, 400, 400, 0.8)
 
-      // We'll upload as a .jpg since compressImage outputs JPEG
-      const fileName = `${user?.id || 'avatar'}-${Date.now()}.jpg`
+      // We'll upload as a .webp since compressImage outputs WebP
+      const fileName = `${user?.id || 'avatar'}-${Date.now()}.webp`
       const bucketName = 'avatars'
       const uploadUrl = `${supabaseUrl}/storage/v1/object/${bucketName}/${fileName}`
 
@@ -262,7 +262,7 @@ export function ProfileView() {
         headers: {
           'apikey': supabaseAnonKey,
           'Authorization': `Bearer ${supabaseAnonKey}`,
-          'Content-Type': 'image/jpeg',
+          'Content-Type': 'image/webp',
         },
         body: compressedBlob,
       })

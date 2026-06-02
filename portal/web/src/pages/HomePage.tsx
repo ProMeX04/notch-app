@@ -175,6 +175,30 @@ export function HomePage() {
       if (el) observer.observe(el)
     })
 
+    const handleWindowClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      const anchor = target.closest('a')
+      if (anchor) {
+        const href = anchor.getAttribute('href')
+        if (href?.startsWith('/#') || href?.startsWith('#')) {
+          const hash = href.split('#')[1]
+          if (hash && sections.includes(hash)) {
+            const el = document.getElementById(hash)
+            if (el) {
+              el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            }
+          }
+        } else if (href === '/') {
+          const el = document.getElementById('hero')
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }
+        }
+      }
+    }
+
+    window.addEventListener('click', handleWindowClick, { capture: true })
+
     // Handle initial hash scrolling smoothly on load
     const hash = window.location.hash.replace('#', '')
     if (hash) {
@@ -189,6 +213,7 @@ export function HomePage() {
     return () => {
       document.documentElement.classList.remove('homepage-snap')
       observer.disconnect()
+      window.removeEventListener('click', handleWindowClick, { capture: true })
     }
   }, [])
 

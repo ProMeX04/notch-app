@@ -267,17 +267,13 @@ private struct RankMedalView: View {
                     .foregroundStyle(goldGradient)
                     .font(.system(size: 14))
             } else if rank == 2 {
-                Text("2")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color(red: 0.2, green: 0.2, blue: 0.25))
-                    .frame(width: 18, height: 18)
-                    .background(Circle().fill(silverGradient))
+                Image(systemName: "medal.fill")
+                    .foregroundStyle(silverGradient)
+                    .font(.system(size: 14))
             } else if rank == 3 {
-                Text("3")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .frame(width: 18, height: 18)
-                    .background(Circle().fill(bronzeGradient))
+                Image(systemName: "medal.fill")
+                    .foregroundStyle(bronzeGradient)
+                    .font(.system(size: 14))
             } else {
                 Text("\(rank)")
                     .font(.system(size: 11, weight: .semibold, design: .rounded))

@@ -54,9 +54,7 @@ export function LeaderboardPage() {
   }, [windowState])
 
   const top1 = leaderboard.find(e => e.rank === 1)
-  const top2 = leaderboard.find(e => e.rank === 2)
-  const top3 = leaderboard.find(e => e.rank === 3)
-  const restList = leaderboard.filter(e => e.rank > 3)
+  const restList = leaderboard.filter(e => e.rank > 1)
 
   return (
     <PageShell noShell={true} noHeader={true}>
@@ -74,66 +72,13 @@ export function LeaderboardPage() {
           display: none !important;
         }
         
-        /* Premium Podium CSS Grid */
-        /* Premium Podium CSS Grid */
-        .podium-container {
-          background: #ffffff;
-          border: 1px solid rgba(0, 0, 0, 0.05);
-          border-radius: 24px;
-          padding: 16px 24px;
-          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.02);
-          display: grid;
-          grid-template-columns: 1fr 1.2fr 1fr;
-          align-items: center;
-          gap: 12px;
+        /* Champion Circle Card Hover Styles */
+        .champion-circle-card {
+          transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .podium-col {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          text-align: center;
-          padding: 16px 8px;
-          transition: all 0.3s ease;
-        }
-        .podium-col.gold {
-          order: 2;
-          background: linear-gradient(180deg, rgba(251, 191, 36, 0.04) 0%, rgba(251, 191, 36, 0.01) 100%);
-          border: 1px solid rgba(251, 191, 36, 0.18);
-          border-radius: 18px;
-          padding: 24px 12px;
-          box-shadow: 0 8px 24px rgba(245, 158, 11, 0.03);
-        }
-        .podium-col.silver {
-          order: 1;
-          border-right: 1px solid rgba(0, 0, 0, 0.04);
-        }
-        .podium-col.bronze {
-          order: 3;
-          border-left: 1px solid rgba(0, 0, 0, 0.04);
-        }
-        
-        @media (max-width: 768px) {
-          .podium-container {
-            grid-template-columns: 1fr;
-            gap: 16px;
-            padding: 16px;
-          }
-          .podium-col.silver {
-            order: 2;
-            border-right: none;
-            border-bottom: 1px solid rgba(0, 0, 0, 0.04);
-            padding-bottom: 16px;
-          }
-          .podium-col.gold {
-            order: 1;
-            border-bottom: 1px solid rgba(0, 0, 0, 0.04);
-            padding-bottom: 16px;
-          }
-          .podium-col.bronze {
-            order: 3;
-            border-left: none;
-            padding-top: 16px;
-          }
+        .champion-circle-card:hover {
+          transform: translateY(-4px);
+          box-shadow: 0 16px 48px rgba(245, 158, 11, 0.12) !important;
         }
       `}</style>
 
@@ -252,113 +197,63 @@ export function LeaderboardPage() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
             
-            {/* Podium (Top 3) */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div className="podium-container">
-                
-                {/* Silver - Rank 2 */}
-                {top2 && (
-                  <div className="podium-col silver">
-                    <div style={{ position: 'relative', width: '56px', height: '56px' }}>
-                      <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: '#e9edff', border: '2px solid #cbd5e1', padding: '1px', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.05)' }}>
-                        {top2.avatar_url ? (
-                          <img src={top2.avatar_url} alt={top2.display_name || 'Ẩn danh'} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
-                        ) : (
-                          <div style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#9ca3af' }}>
-                            <User size={20} />
-                          </div>
-                        )}
-                      </div>
-                      <div style={{ background: '#9ca3af', color: '#ffffff', width: '18px', height: '18px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '0.68rem', border: '1.5px solid #ffffff', position: 'absolute', bottom: '-2px', right: '-2px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
-                        2
-                      </div>
-                    </div>
-                    
-                    <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', width: '100%' }}>
-                      <span style={{ fontWeight: 800, fontSize: '0.88rem', color: '#141b2b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
-                        {top2.display_name || 'Ẩn danh'}
-                      </span>
-                      {user && top2.user_id === user.id && (
-                        <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#003fb1', background: 'rgba(0, 63, 177, 0.08)', padding: '0 4px', borderRadius: '2px' }}>Bạn</span>
-                      )}
-                    </div>
-
-                    <div style={{ marginTop: '8px', width: '100%' }}>
-                      <div style={{ fontSize: '1.05rem', fontWeight: 850, color: '#003fb1' }}>{formatFocusTime(top2.focus_seconds)}</div>
-                      <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, marginTop: '1px' }}>{top2.session_count} phiên</div>
-                    </div>
+            {/* Top 1 - Champion Circular Card */}
+            {top1 && (
+              <div style={{ display: 'flex', justifyContent: 'center', margin: '12px 0 24px' }}>
+                <div 
+                  className="champion-circle-card"
+                  style={{
+                    width: '240px',
+                    height: '240px',
+                    borderRadius: '50%',
+                    background: '#ffffff',
+                    border: '3px solid #fbbf24',
+                    boxShadow: '0 12px 40px rgba(245, 158, 11, 0.08)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '20px',
+                    position: 'relative',
+                    textAlign: 'center',
+                  }}
+                >
+                  {/* Floating Trophy on Top-Right */}
+                  <div style={{ background: '#fef3c7', color: '#d97706', width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #ffffff', boxShadow: '0 4px 10px rgba(217,119,6,0.15)', position: 'absolute', top: '10px', right: '10px' }}>
+                    <Trophy size={16} style={{ fill: '#d97706' }} />
                   </div>
-                )}
-
-                {/* Gold - Rank 1 */}
-                {top1 && (
-                  <div className="podium-col gold">
-                    <div style={{ position: 'relative', width: '68px', height: '68px' }}>
-                      <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: '#fef3c7', border: '2.5px solid #fbbf24', padding: '1px', boxShadow: '0 4px 12px rgba(245,158,11,0.15)' }}>
-                        {top1.avatar_url ? (
-                          <img src={top1.avatar_url} alt={top1.display_name || 'Ẩn danh'} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
-                        ) : (
-                          <div style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fef3c7', color: '#d97706' }}>
-                            <User size={26} />
-                          </div>
-                        )}
+                  
+                  {/* Champion Avatar */}
+                  <div style={{ width: '72px', height: '72px', borderRadius: '50%', overflow: 'hidden', background: '#fef3c7', border: '2px solid #fbbf24', padding: '1px' }}>
+                    {top1.avatar_url ? (
+                      <img src={top1.avatar_url} alt={top1.display_name || 'Ẩn danh'} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                    ) : (
+                      <div style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fef3c7', color: '#d97706' }}>
+                        <User size={28} />
                       </div>
-                      <div style={{ background: '#f59e0b', color: '#ffffff', width: '22px', height: '22px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #ffffff', position: 'absolute', bottom: '-3px', right: '-3px', boxShadow: '0 2px 6px rgba(217,119,6,0.2)', zIndex: 2 }}>
-                        <Trophy size={11} style={{ fill: '#ffffff', stroke: 'none' }} />
-                      </div>
-                    </div>
-                    
-                    <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', width: '100%' }}>
-                      <span style={{ fontWeight: 900, fontSize: '0.98rem', color: '#141b2b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
+                    )}
+                  </div>
+                  
+                  {/* Champion Name */}
+                  <div style={{ marginTop: '10px', width: '100%', padding: '0 12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                      <span style={{ fontWeight: 900, fontSize: '1rem', color: '#141b2b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }}>
                         {top1.display_name || 'Ẩn danh'}
                       </span>
                       {user && top1.user_id === user.id && (
                         <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#003fb1', background: 'rgba(0, 63, 177, 0.08)', padding: '0 4px', borderRadius: '2px' }}>Bạn</span>
                       )}
                     </div>
-
-                    <div style={{ marginTop: '8px', width: '100%' }}>
-                      <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#b45309' }}>{formatFocusTime(top1.focus_seconds)}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#b45309', fontWeight: 700, marginTop: '1px' }}>{top1.session_count} phiên</div>
-                    </div>
                   </div>
-                )}
 
-                {/* Bronze - Rank 3 */}
-                {top3 && (
-                  <div className="podium-col bronze">
-                    <div style={{ position: 'relative', width: '56px', height: '56px' }}>
-                      <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: '#e9edff', border: '2px solid #f97316', padding: '1px', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.05)' }}>
-                        {top3.avatar_url ? (
-                          <img src={top3.avatar_url} alt={top3.display_name || 'Ẩn danh'} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
-                        ) : (
-                          <div style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#ffedd5', color: '#ea580c' }}>
-                            <User size={20} />
-                          </div>
-                        )}
-                      </div>
-                      <div style={{ background: '#ea580c', color: '#ffffff', width: '18px', height: '18px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '0.68rem', border: '1.5px solid #ffffff', position: 'absolute', bottom: '-2px', right: '-2px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
-                        3
-                      </div>
-                    </div>
-                    
-                    <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', width: '100%' }}>
-                      <span style={{ fontWeight: 800, fontSize: '0.88rem', color: '#141b2b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
-                        {top3.display_name || 'Ẩn danh'}
-                      </span>
-                      {user && top3.user_id === user.id && (
-                        <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#003fb1', background: 'rgba(0, 63, 177, 0.08)', padding: '0 4px', borderRadius: '2px' }}>Bạn</span>
-                      )}
-                    </div>
-
-                    <div style={{ marginTop: '8px', width: '100%' }}>
-                      <div style={{ fontSize: '1.05rem', fontWeight: 850, color: '#c2410c' }}>{formatFocusTime(top3.focus_seconds)}</div>
-                      <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, marginTop: '1px' }}>{top3.session_count} phiên</div>
-                    </div>
+                  {/* Champion Stats */}
+                  <div style={{ marginTop: '10px' }}>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#b45309', lineHeight: 1.1 }}>{formatFocusTime(top1.focus_seconds)}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#b45309', fontWeight: 700, marginTop: '2px' }}>{top1.session_count} phiên</div>
                   </div>
-                )}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* List rankings table (4th onwards) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>

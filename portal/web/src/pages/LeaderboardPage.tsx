@@ -260,8 +260,8 @@ export function LeaderboardPage() {
               {top2 && (
                 <div className="podium-circle-card silver">
                   {/* Floating Rank Badge */}
-                  <div style={{ background: '#f1f5f9', color: '#475569', width: '22px', height: '22px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '0.75rem', border: '1.5px solid #ffffff', boxShadow: '0 2px 5px rgba(0,0,0,0.08)', position: 'absolute', top: '8px', right: '8px' }}>
-                    2
+                  <div style={{ background: '#f1f5f9', color: '#9ca3af', width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #ffffff', boxShadow: '0 2px 5px rgba(0,0,0,0.08)', position: 'absolute', top: '8px', right: '8px' }}>
+                    <Trophy size={18} style={{ fill: '#cbd5e1', stroke: '#9ca3af' }} />
                   </div>
                   
                   {/* Avatar */}
@@ -299,8 +299,8 @@ export function LeaderboardPage() {
               {top1 && (
                 <div className="podium-circle-card gold">
                   {/* Floating Rank Badge */}
-                  <div style={{ background: '#fef3c7', color: '#d97706', width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #ffffff', boxShadow: '0 4px 10px rgba(217,119,6,0.15)', position: 'absolute', top: '10px', right: '10px', zIndex: 2 }}>
-                    <Trophy size={14} style={{ fill: '#d97706' }} />
+                  <div style={{ background: '#fef3c7', color: '#d97706', width: '36px', height: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #ffffff', boxShadow: '0 4px 10px rgba(217,119,6,0.15)', position: 'absolute', top: '10px', right: '10px', zIndex: 2 }}>
+                    <Trophy size={20} style={{ fill: '#fbbf24', stroke: '#d97706' }} />
                   </div>
                   
                   {/* Avatar */}
@@ -338,8 +338,8 @@ export function LeaderboardPage() {
               {top3 && (
                 <div className="podium-circle-card bronze">
                   {/* Floating Rank Badge */}
-                  <div style={{ background: '#ffedd5', color: '#c2410c', width: '22px', height: '22px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '0.75rem', border: '1.5px solid #ffffff', boxShadow: '0 2px 5px rgba(0,0,0,0.08)', position: 'absolute', top: '8px', right: '8px' }}>
-                    3
+                  <div style={{ background: '#ffedd5', color: '#ea580c', width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #ffffff', boxShadow: '0 2px 5px rgba(0,0,0,0.08)', position: 'absolute', top: '8px', right: '8px' }}>
+                    <Trophy size={18} style={{ fill: '#f97316', stroke: '#ea580c' }} />
                   </div>
                   
                   {/* Avatar */}

@@ -230,14 +230,27 @@ export function ProfileView() {
           border-color: #003fb1;
           box-shadow: 0 0 0 4px rgba(0, 63, 177, 0.1);
         }
+        .profile-grid {
+          display: grid;
+          grid-template-columns: 1.1fr 0.9fr;
+          gap: 64px;
+          align-items: start;
+          margin-top: 8px;
+        }
+        @media (max-width: 800px) {
+          .profile-grid {
+            grid-template-columns: 1fr;
+            gap: 48px;
+          }
+        }
       `}</style>
 
       <div 
         style={{
-          maxWidth: '480px',
+          maxWidth: '1000px',
           width: '100%',
           margin: '0 auto',
-          padding: '6rem 1rem 4rem',
+          padding: '6rem 2rem 4rem',
           display: 'flex',
           flexDirection: 'column',
           gap: '32px',
@@ -245,7 +258,7 @@ export function ProfileView() {
         }}
       >
         {/* Header Section */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(0, 0, 0, 0.06)', paddingBottom: '20px' }}>
           <div>
             <h1 style={{ fontSize: '1.75rem', fontWeight: 850, letterSpacing: '-0.04em', margin: 0 }}>
               Hồ sơ cá nhân
@@ -297,8 +310,10 @@ export function ProfileView() {
           </div>
         )}
 
-        {/* Profile Update Form */}
-        <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <div className="profile-grid">
+          {/* Left Column: Profile Form */}
+          <div>
+            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           
           {/* Avatar Preview & URL Input */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
@@ -427,13 +442,12 @@ export function ProfileView() {
             Lưu thay đổi
           </button>
         </form>
+      </div>
 
-        {/* Device Management Section */}
+      {/* Right Column: Device Management Section */}
+      <div>
         <div 
           style={{ 
-            borderTop: '1px solid rgba(0, 0, 0, 0.08)', 
-            paddingTop: '24px', 
-            marginTop: '8px',
             display: 'flex',
             flexDirection: 'column',
             gap: '16px'
@@ -533,8 +547,10 @@ export function ProfileView() {
             </div>
           )}
         </div>
+      </div>
+    </div>
         
-        {/* Back Link */}
+    {/* Back Link */}
         <div style={{ textAlign: 'center', marginTop: '-8px' }}>
           <Link
             to="/"

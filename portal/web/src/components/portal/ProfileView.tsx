@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { Link } from '@tanstack/react-router'
 import { LogOut, Loader2, Save, User, ShieldCheck, Apple, Globe, Laptop, Terminal, MonitorSmartphone } from 'lucide-react'
 import { apiClient } from '@/api/client'
@@ -80,6 +80,9 @@ export function ProfileView() {
   const [isSaving, setIsSaving] = useState(false)
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
 
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
+
   const [deviceLimit, setDeviceLimit] = useState(0)
   const [devices, setDevices] = useState<AccountDevice[]>([])
   const [isDevicesLoading, setIsDevicesLoading] = useState(true)
@@ -160,9 +163,67 @@ export function ProfileView() {
   }
 
   const handleAvatarClick = () => {
-    const newUrl = prompt('Nhập đường dẫn URL ảnh đại diện mới của bạn:', avatarUrl)
-    if (newUrl !== null) {
-      setAvatarUrl(newUrl.trim())
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://xyhhtghehlzzzpitfveu.supabase.co'
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+
+    if (!supabaseAnonKey) {
+      const manualUrl = prompt(
+        'Bạn chưa cấu hình API Key lưu ảnh trong file .env (VITE_SUPABASE_ANON_KEY).\n\nVui lòng dán trực tiếp đường dẫn URL ảnh đại diện vào đây:',
+        avatarUrl
+      )
+      if (manualUrl !== null) {
+        setAvatarUrl(manualUrl.trim())
+      }
+      return
+    }
+
+    setIsUploadingAvatar(true)
+    setMsg(null)
+
+    try {
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${user?.id || 'avatar'}-${Date.now()}.${fileExt}`
+      const bucketName = 'avatars'
+      const uploadUrl = `${supabaseUrl}/storage/v1/object/${bucketName}/${fileName}`
+
+      const res = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+          'apikey': supabaseAnonKey,
+          'Authorization': `Bearer ${supabaseAnonKey}`,
+          'Content-Type': file.type,
+        },
+        body: file,
+      })
+
+      if (!res.ok) {
+        const errText = await res.text()
+        throw new Error(errText || 'Lỗi kết nối máy chủ lưu trữ.')
+      }
+
+      const publicUrl = `${supabaseUrl}/storage/v1/object/public/${bucketName}/${fileName}`
+      setAvatarUrl(publicUrl)
+      setMsg({
+        type: 'ok',
+        text: 'Tải ảnh đại diện lên thành công. Hãy nhấn Lưu hồ sơ để hoàn tất!',
+      })
+    } catch (error) {
+      setMsg({
+        type: 'err',
+        text: error instanceof Error ? `Lỗi tải ảnh: ${error.message}` : 'Không thể tải ảnh đại diện lên.',
+      })
+    } finally {
+      setIsUploadingAvatar(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
     }
   }
 
@@ -369,10 +430,11 @@ export function ProfileView() {
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
             <div 
               className="avatar-container"
-              onClick={handleAvatarClick}
-              title="Click để đổi ảnh đại diện"
+              onClick={isUploadingAvatar ? undefined : handleAvatarClick}
+              title="Click để tải ảnh đại diện lên"
+              style={{ cursor: isUploadingAvatar ? 'not-allowed' : 'pointer' }}
             >
-              {avatarUrl.trim() ? (
+              {avatarUrl.trim() && !isUploadingAvatar ? (
                 <img 
                   src={avatarUrl} 
                   alt="Avatar" 
@@ -381,24 +443,35 @@ export function ProfileView() {
                     e.currentTarget.style.display = 'none'
                   }}
                 />
+              ) : isUploadingAvatar ? (
+                <Loader2 className="animate-spin" size={40} style={{ color: '#003fb1' }} />
               ) : (
                 <User size={40} style={{ color: '#003fb1' }} />
               )}
               <div className="avatar-overlay">
-                <span>Đổi ảnh</span>
+                <span>{isUploadingAvatar ? 'Đang tải...' : 'Tải ảnh'}</span>
               </div>
             </div>
+
+            <input
+              type="file"
+              ref={fileInputRef}
+              style={{ display: 'none' }}
+              onChange={handleFileChange}
+              accept="image/*"
+            />
             
             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <label style={{ fontSize: '0.88rem', fontWeight: 700, color: '#141b2b' }}>
-                Ảnh đại diện (URL)
+                Ảnh đại diện (URL hoặc Tải lên)
               </label>
               <input
                 type="url"
                 value={avatarUrl}
                 onChange={(e) => setAvatarUrl(e.target.value)}
-                placeholder="Nhập đường dẫn URL ảnh của bạn"
+                placeholder="Click vòng tròn để tải lên hoặc dán URL ảnh trực tiếp"
                 className="profile-input"
+                disabled={isUploadingAvatar}
               />
             </div>
           </div>

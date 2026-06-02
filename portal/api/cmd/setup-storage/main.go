@@ -15,10 +15,11 @@ const (
 )
 
 const sqlQueries = `
---// Create avatars bucket if not exists
+--// Create or update avatars bucket with size limit (200KB) and WebP only
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-VALUES ('avatars', 'avatars', true, null, null)
-ON CONFLICT (id) DO NOTHING;
+VALUES ('avatars', 'avatars', true, 204800, ARRAY['image/webp'])
+ON CONFLICT (id) DO UPDATE 
+SET file_size_limit = 204800, allowed_mime_types = ARRAY['image/webp'];
 
 -- 1. SELECT (View avatars)
 DO $$

@@ -18,7 +18,6 @@ final class NotchWindowManager {
     private var controllers: [NotchScreenID: NotchWindowController] = [:]
     private var cancellables = Set<AnyCancellable>()
     private let liveChatInputPanel = GeminiLiveChatInputWindowController()
-    private let leaderboardPanel = NotchLeaderboardWindowController()
 
     private(set) var isVisible = true
     let visibilityDidChange = PassthroughSubject<Bool, Never>()
@@ -47,7 +46,6 @@ final class NotchWindowManager {
         syncControllers(repositionSingleToCursor: true)
         observeSharedState()
         liveChatInputPanel.observe(gemini: geminiLiveViewModel)
-        leaderboardPanel.observe(focusCloudSync: focusCloudSyncService)
         updateOverlayScreen()
     }
 
@@ -91,7 +89,6 @@ final class NotchWindowManager {
     func shutdown() {
         hide()
         liveChatInputPanel.stopObserving()
-        leaderboardPanel.stopObserving()
         controllers.values.forEach { $0.shutdown(shutdownSharedModels: false) }
         controllers.removeAll()
         shelfViewModel.shutdown()
@@ -205,7 +202,6 @@ final class NotchWindowManager {
     private func updateOverlayScreen() {
         let screen = activeController()?.screen ?? preferredController()?.screen ?? NotchMetrics.preferredScreen()
         liveChatInputPanel.setPreferredScreen(screen)
-        leaderboardPanel.setPreferredScreen(screen)
     }
 
 }

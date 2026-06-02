@@ -65,6 +65,11 @@ enum NotchWebPortal {
         pathURL(apiBaseURL: apiBaseURL, processInfo: processInfo, path: "pro")
     }
 
+    /// Leaderboard page on the web portal.
+    static func leaderboardURL(apiBaseURL: URL? = nil, processInfo: ProcessInfo = .processInfo) -> URL {
+        pathURL(apiBaseURL: apiBaseURL, processInfo: processInfo, path: "leaderboard")
+    }
+
     static func googleDriveAuthURL(
         apiBaseURL: URL? = nil,
         state: String? = nil,

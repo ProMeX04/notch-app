@@ -76,7 +76,7 @@ struct PomodoroSimpleFocusPanel: View {
                         .foregroundStyle(.white.opacity(0.18))
 
                     Button {
-                        NotificationCenter.default.post(name: Notification.Name("ToggleLeaderboardPanel"), object: nil)
+                        NotchWebPortal.openInBrowser(NotchWebPortal.leaderboardURL())
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "trophy.fill")

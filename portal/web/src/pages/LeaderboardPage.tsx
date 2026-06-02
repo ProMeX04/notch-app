@@ -54,7 +54,9 @@ export function LeaderboardPage() {
   }, [windowState])
 
   const top1 = leaderboard.find(e => e.rank === 1)
-  const restList = leaderboard.filter(e => e.rank > 1)
+  const top2 = leaderboard.find(e => e.rank === 2)
+  const top3 = leaderboard.find(e => e.rank === 3)
+  const restList = leaderboard.filter(e => e.rank > 3)
 
   return (
     <PageShell noShell={true} noHeader={true}>
@@ -72,13 +74,67 @@ export function LeaderboardPage() {
           display: none !important;
         }
         
-        /* Champion Circle Card Hover Styles */
-        .champion-circle-card {
-          transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        /* Premium Podium CSS Flex Container & Circular Cards */
+        .podium-flex-container {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          gap: 24px;
+          margin-top: 16px;
         }
-        .champion-circle-card:hover {
+        .podium-circle-card {
+          border-radius: 50%;
+          background: #ffffff;
+          border: 1px solid rgba(0, 0, 0, 0.05);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.02);
+          transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+          position: relative;
+          text-align: center;
+          padding: 12px;
+        }
+        .podium-circle-card:hover {
           transform: translateY(-4px);
-          box-shadow: 0 16px 48px rgba(245, 158, 11, 0.12) !important;
+          box-shadow: 0 16px 40px rgba(0, 0, 0, 0.04);
+        }
+        .podium-circle-card.gold {
+          order: 2;
+          width: 200px;
+          height: 200px;
+          border: 2px solid #fbbf24;
+          background: linear-gradient(180deg, rgba(251, 191, 36, 0.03) 0%, #ffffff 100%);
+          box-shadow: 0 12px 36px rgba(245, 158, 11, 0.06);
+        }
+        .podium-circle-card.silver {
+          order: 1;
+          width: 170px;
+          height: 170px;
+          border: 1.5px solid #cbd5e1;
+        }
+        .podium-circle-card.bronze {
+          order: 3;
+          width: 170px;
+          height: 170px;
+          border: 1.5px solid #f97316;
+        }
+        
+        @media (max-width: 768px) {
+          .podium-flex-container {
+            flex-direction: column;
+            gap: 20px;
+          }
+          .podium-circle-card.gold {
+            order: 1;
+          }
+          .podium-circle-card.silver {
+            order: 2;
+          }
+          .podium-circle-card.bronze {
+            order: 3;
+          }
         }
       `}</style>
 
@@ -197,63 +253,127 @@ export function LeaderboardPage() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
             
-            {/* Top 1 - Champion Circular Card */}
-            {top1 && (
-              <div style={{ display: 'flex', justifyContent: 'center', margin: '12px 0 24px' }}>
-                <div 
-                  className="champion-circle-card"
-                  style={{
-                    width: '240px',
-                    height: '240px',
-                    borderRadius: '50%',
-                    background: '#ffffff',
-                    border: '3px solid #fbbf24',
-                    boxShadow: '0 12px 40px rgba(245, 158, 11, 0.08)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '20px',
-                    position: 'relative',
-                    textAlign: 'center',
-                  }}
-                >
-                  {/* Floating Trophy on Top-Right */}
-                  <div style={{ background: '#fef3c7', color: '#d97706', width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #ffffff', boxShadow: '0 4px 10px rgba(217,119,6,0.15)', position: 'absolute', top: '10px', right: '10px' }}>
-                    <Trophy size={16} style={{ fill: '#d97706' }} />
+            {/* Podium (Top 3 circular cards) */}
+            <div className="podium-flex-container">
+              
+              {/* Silver - Rank 2 */}
+              {top2 && (
+                <div className="podium-circle-card silver">
+                  {/* Floating Rank Badge */}
+                  <div style={{ background: '#f1f5f9', color: '#475569', width: '22px', height: '22px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '0.75rem', border: '1.5px solid #ffffff', boxShadow: '0 2px 5px rgba(0,0,0,0.08)', position: 'absolute', top: '8px', right: '8px' }}>
+                    2
                   </div>
                   
-                  {/* Champion Avatar */}
-                  <div style={{ width: '72px', height: '72px', borderRadius: '50%', overflow: 'hidden', background: '#fef3c7', border: '2px solid #fbbf24', padding: '1px' }}>
-                    {top1.avatar_url ? (
-                      <img src={top1.avatar_url} alt={top1.display_name || 'Ẩn danh'} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                  {/* Avatar */}
+                  <div style={{ width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden', background: '#e9edff', border: '1.5px solid #cbd5e1', padding: '1px' }}>
+                    {top2.avatar_url ? (
+                      <img src={top2.avatar_url} alt={top2.display_name || 'Ẩn danh'} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
                     ) : (
-                      <div style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fef3c7', color: '#d97706' }}>
-                        <User size={28} />
+                      <div style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#9ca3af' }}>
+                        <User size={18} />
                       </div>
                     )}
                   </div>
                   
-                  {/* Champion Name */}
-                  <div style={{ marginTop: '10px', width: '100%', padding: '0 12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                      <span style={{ fontWeight: 900, fontSize: '1rem', color: '#141b2b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }}>
-                        {top1.display_name || 'Ẩn danh'}
+                  {/* Name */}
+                  <div style={{ marginTop: '6px', width: '100%', padding: '0 8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}>
+                      <span style={{ fontWeight: 800, fontSize: '0.82rem', color: '#141b2b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '90px' }}>
+                        {top2.display_name || 'Ẩn danh'}
                       </span>
-                      {user && top1.user_id === user.id && (
-                        <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#003fb1', background: 'rgba(0, 63, 177, 0.08)', padding: '0 4px', borderRadius: '2px' }}>Bạn</span>
+                      {user && top2.user_id === user.id && (
+                        <span style={{ fontSize: '0.58rem', fontWeight: 700, color: '#003fb1', background: 'rgba(0, 63, 177, 0.08)', padding: '0 3px', borderRadius: '1.5px' }}>Bạn</span>
                       )}
                     </div>
                   </div>
 
-                  {/* Champion Stats */}
-                  <div style={{ marginTop: '10px' }}>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#b45309', lineHeight: 1.1 }}>{formatFocusTime(top1.focus_seconds)}</div>
-                    <div style={{ fontSize: '0.75rem', color: '#b45309', fontWeight: 700, marginTop: '2px' }}>{top1.session_count} phiên</div>
+                  {/* Stats */}
+                  <div style={{ marginTop: '4px' }}>
+                    <div style={{ fontSize: '0.98rem', fontWeight: 850, color: '#003fb1', lineHeight: 1.1 }}>{formatFocusTime(top2.focus_seconds)}</div>
+                    <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, marginTop: '1px' }}>{top2.session_count} phiên</div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+
+              {/* Gold - Rank 1 */}
+              {top1 && (
+                <div className="podium-circle-card gold">
+                  {/* Floating Rank Badge */}
+                  <div style={{ background: '#fef3c7', color: '#d97706', width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #ffffff', boxShadow: '0 4px 10px rgba(217,119,6,0.15)', position: 'absolute', top: '10px', right: '10px', zIndex: 2 }}>
+                    <Trophy size={14} style={{ fill: '#d97706' }} />
+                  </div>
+                  
+                  {/* Avatar */}
+                  <div style={{ width: '60px', height: '60px', borderRadius: '50%', overflow: 'hidden', background: '#fef3c7', border: '2px solid #fbbf24', padding: '1px' }}>
+                    {top1.avatar_url ? (
+                      <img src={top1.avatar_url} alt={top1.display_name || 'Ẩn danh'} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                    ) : (
+                      <div style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fef3c7', color: '#d97706' }}>
+                        <User size={24} />
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Name */}
+                  <div style={{ marginTop: '8px', width: '100%', padding: '0 10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                      <span style={{ fontWeight: 900, fontSize: '0.92rem', color: '#141b2b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '110px' }}>
+                        {top1.display_name || 'Ẩn danh'}
+                      </span>
+                      {user && top1.user_id === user.id && (
+                        <span style={{ fontSize: '0.58rem', fontWeight: 700, color: '#003fb1', background: 'rgba(0, 63, 177, 0.08)', padding: '0 3.5px', borderRadius: '2px' }}>Bạn</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Stats */}
+                  <div style={{ marginTop: '6px' }}>
+                    <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#b45309', lineHeight: 1.1 }}>{formatFocusTime(top1.focus_seconds)}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#b45309', fontWeight: 700, marginTop: '1.5px' }}>{top1.session_count} phiên</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Bronze - Rank 3 */}
+              {top3 && (
+                <div className="podium-circle-card bronze">
+                  {/* Floating Rank Badge */}
+                  <div style={{ background: '#ffedd5', color: '#c2410c', width: '22px', height: '22px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '0.75rem', border: '1.5px solid #ffffff', boxShadow: '0 2px 5px rgba(0,0,0,0.08)', position: 'absolute', top: '8px', right: '8px' }}>
+                    3
+                  </div>
+                  
+                  {/* Avatar */}
+                  <div style={{ width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden', background: '#e9edff', border: '1.5px solid #f97316', padding: '1px' }}>
+                    {top3.avatar_url ? (
+                      <img src={top3.avatar_url} alt={top3.display_name || 'Ẩn danh'} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                    ) : (
+                      <div style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#ffedd5', color: '#ea580c' }}>
+                        <User size={18} />
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Name */}
+                  <div style={{ marginTop: '6px', width: '100%', padding: '0 8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}>
+                      <span style={{ fontWeight: 800, fontSize: '0.82rem', color: '#141b2b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '90px' }}>
+                        {top3.display_name || 'Ẩn danh'}
+                      </span>
+                      {user && top3.user_id === user.id && (
+                        <span style={{ fontSize: '0.58rem', fontWeight: 700, color: '#003fb1', background: 'rgba(0, 63, 177, 0.08)', padding: '0 3px', borderRadius: '1.5px' }}>Bạn</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Stats */}
+                  <div style={{ marginTop: '4px' }}>
+                    <div style={{ fontSize: '0.98rem', fontWeight: 850, color: '#c2410c', lineHeight: 1.1 }}>{formatFocusTime(top3.focus_seconds)}</div>
+                    <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, marginTop: '1px' }}>{top3.session_count} phiên</div>
+                  </div>
+                </div>
+              )}
+
+            </div>
 
             {/* List rankings table (4th onwards) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>

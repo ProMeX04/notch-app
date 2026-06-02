@@ -150,8 +150,8 @@ export function PageShell({
                       </Link>
                     </div>
                   ) : (
-                    <Link
-                      to="/login"
+                    <a
+                      href="/api/auth/google"
                       className="portal-button"
                       style={{
                         height: '38px',
@@ -167,10 +167,11 @@ export function PageShell({
                         justifyContent: 'center',
                         boxShadow: 'rgba(0, 63, 177, 0.15) 0px 4px 12px 0px',
                         border: 'none',
+                        textDecoration: 'none',
                       }}
                     >
                       Đăng nhập
-                    </Link>
+                    </a>
                   )}
                 </>
               )}
@@ -259,8 +260,8 @@ export function PageShell({
                       Tài khoản cá nhân
                     </Link>
                   ) : (
-                    <Link
-                      to="/login"
+                    <a
+                      href="/api/auth/google"
                       onClick={() => setMobileMenuOpen(false)}
                       className="portal-button"
                       style={{
@@ -271,10 +272,11 @@ export function PageShell({
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
+                        textDecoration: 'none',
                       }}
                     >
                       Đăng nhập
-                    </Link>
+                    </a>
                   )}
                 </div>
               )}

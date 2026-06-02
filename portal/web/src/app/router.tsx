@@ -6,7 +6,6 @@ import {
 } from '@tanstack/react-router'
 
 import { HomePage } from '@/pages/HomePage'
-import { LoginPage } from '@/pages/LoginPage'
 import { AccountPage } from '@/pages/AccountPage'
 import { OAuthAuthorizePage } from '@/pages/OAuthAuthorizePage'
 import { VNPayReturnPage } from '@/pages/VNPayReturnPage'
@@ -26,7 +25,6 @@ const rootRoute = createRootRoute({
 })
 
 const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: '/', component: HomePage })
-const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: '/login', component: LoginPage })
 const accountRoute = createRoute({ getParentRoute: () => rootRoute, path: '/account', component: AccountPage })
 const oauthAuthorizeRoute = createRoute({ getParentRoute: () => rootRoute, path: '/oauth/authorize', component: OAuthAuthorizePage })
 const billingVNPayReturnRoute = createRoute({ getParentRoute: () => rootRoute, path: '/billing/vnpay/return', component: VNPayReturnPage })
@@ -41,7 +39,6 @@ const adminSettingsRoute = createRoute({ getParentRoute: () => adminRoute, path:
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
-  loginRoute,
   accountRoute,
   oauthAuthorizeRoute,
   billingVNPayReturnRoute,

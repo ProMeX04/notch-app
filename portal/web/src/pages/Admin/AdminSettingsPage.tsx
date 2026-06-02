@@ -74,7 +74,7 @@ export function AdminSettingsPage() {
     setLogoutError(null)
     try {
       await apiClient.post('/api/auth/logout')
-      window.location.href = '/login'
+      window.location.href = '/'
     } catch {
       setLogoutError('Không thể đăng xuất. Vui lòng thử lại.')
       setLoggingOut(false)

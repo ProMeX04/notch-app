@@ -8,12 +8,8 @@ import {
 import { HomePage } from '@/pages/HomePage'
 import { LoginPage } from '@/pages/LoginPage'
 import { AccountPage } from '@/pages/AccountPage'
-import { LeaderboardPage } from '@/pages/LeaderboardPage'
-import { UpgradePage } from '@/pages/UpgradePage'
 import { OAuthAuthorizePage } from '@/pages/OAuthAuthorizePage'
 import { VNPayReturnPage } from '@/pages/VNPayReturnPage'
-import { DownloadsPage } from '@/pages/DownloadsPage'
-import { HelpPage } from '@/pages/HelpPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { AdminLayout } from '@/pages/Admin/AdminLayout'
 import { AdminDashboardPage } from '@/pages/Admin/AdminDashboardPage'
@@ -32,12 +28,8 @@ const rootRoute = createRootRoute({
 const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: '/', component: HomePage })
 const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: '/login', component: LoginPage })
 const accountRoute = createRoute({ getParentRoute: () => rootRoute, path: '/account', component: AccountPage })
-const leaderboardRoute = createRoute({ getParentRoute: () => rootRoute, path: '/leaderboard', component: LeaderboardPage })
-const upgradeRoute = createRoute({ getParentRoute: () => rootRoute, path: '/upgrade', component: UpgradePage })
 const oauthAuthorizeRoute = createRoute({ getParentRoute: () => rootRoute, path: '/oauth/authorize', component: OAuthAuthorizePage })
 const billingVNPayReturnRoute = createRoute({ getParentRoute: () => rootRoute, path: '/billing/vnpay/return', component: VNPayReturnPage })
-const downloadsRoute = createRoute({ getParentRoute: () => rootRoute, path: '/downloads', component: DownloadsPage })
-const helpRoute = createRoute({ getParentRoute: () => rootRoute, path: '/help', component: HelpPage })
 
 const adminRoute = createRoute({ getParentRoute: () => rootRoute, path: '/admin', component: AdminLayout })
 const adminIndexRoute = createRoute({ getParentRoute: () => adminRoute, path: '/', component: AdminDashboardPage })
@@ -51,12 +43,8 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   accountRoute,
-  leaderboardRoute,
-  upgradeRoute,
   oauthAuthorizeRoute,
   billingVNPayReturnRoute,
-  downloadsRoute,
-  helpRoute,
   adminRoute.addChildren([
     adminIndexRoute,
     adminUsersRoute,

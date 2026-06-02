@@ -18,7 +18,9 @@ vi.mock('@/auth/portal-oauth-client', () => ({
 
 // Mock @tanstack/react-router
 vi.mock('@tanstack/react-router', () => ({
-  Link: ({ children, to }: { children: React.ReactNode; to: string }) => <a href={to}>{children}</a>,
+  Link: ({ children, to, hash }: { children: React.ReactNode; to: string; hash?: string }) => (
+    <a href={`${to}${hash ? '#' + hash : ''}`}>{children}</a>
+  ),
 }))
 
 describe('VNPayReturnPage', () => {

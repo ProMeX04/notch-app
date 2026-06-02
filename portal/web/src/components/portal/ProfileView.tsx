@@ -232,383 +232,216 @@ export function ProfileView() {
   }
 
   return (
-    <div className="dashboard-container" style={{ paddingTop: '100px', paddingBottom: '100px' }}>
-      <section
-        className="dashboard-hero"
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: '24px',
-          paddingBottom: '32px',
-          borderBottom: '1px solid var(--border)',
-          marginBottom: '40px',
-        }}
-      >
-        <div className="dashboard-hero-content">
-          <div className="dashboard-user-info">
-            <h1 style={{ fontSize: '2rem', fontWeight: 800, marginBottom: '8px' }}>
+    <>
+      <style>{`
+        body {
+          background-color: #f9f9ff;
+          color: #141b2b;
+        }
+        .glass-panel {
+          background-color: rgba(255, 255, 255, 0.85);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border: 1px solid rgba(0, 0, 0, 0.05);
+          box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.04);
+        }
+        .ambient-bg {
+          background: radial-gradient(circle at 50% -20%, rgba(26, 86, 219, 0.05) 0%, transparent 70%);
+        }
+      `}</style>
+
+      <div className="max-w-5xl mx-auto px-6 pt-24 pb-32 relative overflow-x-hidden ambient-bg">
+        
+        {/* Welcome Section */}
+        <section className="glass-panel rounded-3xl p-8 mb-8 flex flex-wrap justify-between items-center gap-6">
+          <div className="space-y-2">
+            <h1 className="text-2xl md:text-3xl font-extrabold text-[#141b2b] tracking-tight">
               Chào quay lại, {accountName}
             </h1>
-            <div
-              className="dashboard-user-meta"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                flexWrap: 'wrap',
-                color: 'var(--muted)',
-              }}
-            >
+            <div className="flex items-center gap-3 flex-wrap text-sm text-[#434654] font-medium">
               <span>{accountEmail}</span>
+              <span className="w-1 h-1 rounded-full bg-gray-300" />
               <span
-                className="meta-dot"
-                style={{
-                  width: '4px',
-                  height: '4px',
-                  background: 'var(--border-strong)',
-                  borderRadius: '50%',
-                }}
-              />
-              <span
-                className={`plan-badge ${accountPlan === 'pro' ? 'is-pro' : ''}`}
-                style={{
-                  background:
-                    accountPlan === 'pro'
-                      ? 'linear-gradient(135deg, rgba(249, 115, 22, 0.15), rgba(168, 85, 247, 0.15))'
-                      : 'rgba(255,255,255,0.06)',
-                  border:
-                    accountPlan === 'pro'
-                      ? '1px solid rgba(249, 115, 22, 0.3)'
-                      : '1px solid var(--border)',
-                  color: accountPlan === 'pro' ? 'var(--warm)' : 'var(--muted-strong)',
-                  padding: '4px 12px',
-                  borderRadius: '999px',
-                  fontSize: '0.8rem',
-                  fontWeight: 600,
-                }}
+                className={`px-3 py-1 rounded-full text-xs font-bold ${
+                  accountPlan === 'pro'
+                    ? 'bg-[#facc15]/10 text-yellow-600 border border-[#facc15]/20'
+                    : 'bg-gray-100 text-gray-600 border border-gray-200'
+                }`}
               >
                 {accountPlan === 'pro' ? 'Gói Pro' : 'Gói Miễn phí'}
               </span>
             </div>
           </div>
-        </div>
 
-        <div
-          className="dashboard-hero-actions"
-          style={{ display: 'flex', gap: '12px', alignItems: 'center' }}
-        >
           <button
-            className="portal-button-ghost"
+            type="button"
             onClick={() => void signOut()}
-            style={{
-              height: '42px',
-              padding: '0 20px',
-              fontSize: '0.85rem',
-              borderRadius: '999px',
-              border: '1px solid rgba(239, 68, 68, 0.25)',
-              color: 'var(--red)',
-              background: 'rgba(239, 68, 68, 0.05)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-            }}
+            className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 rounded-full px-5 py-2 font-semibold text-xs transition-all active:scale-95 flex items-center gap-1.5"
           >
-            <LogOut size={15} />
+            <LogOut size={14} />
             <span>Đăng xuất</span>
           </button>
-        </div>
-      </section>
+        </section>
 
-      {msg && (
-        <div
-          className={`dashboard-alert ${msg.type === 'ok' ? 'is-success' : 'is-error'}`}
-          style={{
-            padding: '16px',
-            borderRadius: 'var(--radius-md)',
-            marginBottom: '24px',
-            fontSize: '0.9rem',
-            border: '1px solid',
-            borderColor: msg.type === 'ok' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-            background:
-              msg.type === 'ok' ? 'rgba(16, 185, 129, 0.05)' : 'rgba(239, 68, 68, 0.05)',
-            color: msg.type === 'ok' ? 'var(--green)' : 'var(--red)',
-          }}
-        >
-          {msg.text}
-        </div>
-      )}
+        {msg && (
+          <div
+            className={`p-4 rounded-xl mb-6 text-sm border font-semibold ${
+              msg.type === 'ok' 
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-600' 
+                : 'bg-red-50 border-red-200 text-red-600'
+            }`}
+          >
+            {msg.text}
+          </div>
+        )}
 
-      <div
-        className="dashboard-grid"
-        style={{ display: 'grid', gap: '32px', alignItems: 'start' }}
-      >
-        {/* Main Content Area */}
-        <div className="dashboard-main-col">
-          <section style={{ display: 'flex', flexDirection: 'column', marginBottom: '32px' }}>
-            <div
-              className="section-header"
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                borderBottom: '1px solid var(--border)',
-                paddingBottom: '16px',
-                marginBottom: '20px',
-              }}
-            >
-              <div
-                className="section-title"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  color: 'var(--foreground)',
-                }}
-              >
-                <MonitorSmartphone
-                  size={20}
-                  className="text-accent"
-                  style={{ color: 'var(--accent)' }}
-                />
-                <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Thiết bị của bạn</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+          
+          {/* Main Column: Devices */}
+          <div className="lg:col-span-2">
+            <section className="glass-panel rounded-3xl p-8 space-y-6">
+              
+              <div className="flex justify-between items-center border-b border-black/5 pb-4">
+                <div className="flex items-center gap-2.5 text-gray-900 font-bold">
+                  <MonitorSmartphone size={20} className="text-[#003fb1]" />
+                  <h2 className="text-lg font-bold">Thiết bị của bạn</h2>
+                </div>
+                <span className="bg-[#003fb1]/10 text-[#003fb1] border border-[#003fb1]/20 text-xs font-bold px-2.5 py-0.5 rounded-full">
+                  {activeDeviceCount}/{deviceLimit || '∞'}
+                </span>
               </div>
-              <span
-                className="section-badge"
-                style={{
-                  fontSize: '0.85rem',
-                  color: 'var(--muted)',
-                  background: 'rgba(255,255,255,0.06)',
-                  padding: '2px 10px',
-                  borderRadius: '999px',
-                }}
-              >
-                {activeDeviceCount}/{deviceLimit || '∞'}
-              </span>
-            </div>
 
-            {isDevicesLoading ? (
-              <div
-                className="dashboard-loading-state"
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '40px 0',
-                }}
-              >
-                <Loader2
-                  size={24}
-                  className="portal-spinner animate-spin"
-                  style={{ color: 'var(--accent)' }}
-                />
-                <p style={{ color: 'var(--muted)', fontSize: '0.9rem' }}>Đang đồng bộ thiết bị...</p>
-              </div>
-            ) : (
-              <div
-                className="device-list-premium"
-                style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}
-              >
-                {devices.map((device) => (
-                  <div
-                    key={device.device_id}
-                    className={`device-card-premium ${device.current ? 'is-current' : ''}`}
-                    style={{
-                      display: 'flex',
-                      flexWrap: 'wrap',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: '16px',
-                      padding: '16px',
-                      borderRadius: 'var(--radius-md)',
-                      background: device.current
-                        ? 'rgba(56, 189, 248, 0.04)'
-                        : 'rgba(255,255,255,0.01)',
-                      border: device.current
-                        ? '1px solid rgba(56, 189, 248, 0.2)'
-                        : '1px solid var(--border)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                      <div
-                        className="device-icon"
-                        style={{
-                          width: '40px',
-                          height: '40px',
-                          borderRadius: '50%',
-                          background: 'rgba(255,255,255,0.04)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: device.current ? 'var(--accent)' : 'var(--muted)',
-                        }}
-                      >
-                        {getDeviceIcon(device.platform, device.device_name)}
-                      </div>
-                      <div className="device-info">
+              {isDevicesLoading ? (
+                <div className="flex flex-col items-center gap-3 py-12">
+                  <Loader2 size={24} className="text-[#003fb1] animate-spin" />
+                  <p className="text-sm text-gray-500">Đang đồng bộ thiết bị...</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {devices.map((device) => (
+                    <div
+                      key={device.device_id}
+                      className={`flex flex-wrap items-center justify-between gap-4 p-5 rounded-2xl border transition-all duration-300 ${
+                        device.current
+                          ? 'bg-[#003fb1]/5 border-[#003fb1]/20 shadow-sm'
+                          : 'bg-white/60 border-black/5 hover:-translate-y-0.5'
+                      }`}
+                    >
+                      <div className="flex items-center gap-4">
                         <div
-                          className="device-name-row"
-                          style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                          className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                            device.current ? 'bg-[#003fb1] text-white shadow-sm' : 'bg-gray-100 text-gray-500'
+                          }`}
                         >
-                          <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>
-                            {device.device_name}
-                          </h3>
-                          {device.current && (
-                            <span
-                              className="current-pill"
-                              style={{
-                                fontSize: '0.75rem',
-                                padding: '2px 8px',
-                                borderRadius: '999px',
-                                background: 'rgba(56, 189, 248, 0.15)',
-                                color: 'var(--accent)',
-                                fontWeight: 600,
-                              }}
-                            >
-                              Hiện tại
-                            </span>
-                          )}
-                          {device.trusted_at && (
-                            <ShieldCheck
-                              size={16}
-                              className="trusted-icon"
-                              style={{ color: 'var(--green)' }}
-                            />
-                          )}
+                          {getDeviceIcon(device.platform, device.device_name)}
                         </div>
-                        <p style={{ color: 'var(--muted)', fontSize: '0.85rem', marginTop: '4px' }}>
-                          {device.platform} • Lần cuối: {formatDate(device.last_seen_at)}
-                        </p>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-bold text-sm text-gray-900">{device.device_name}</h3>
+                            {device.current && (
+                              <span className="bg-[#003fb1]/10 text-[#003fb1] text-[9px] font-bold px-2 py-0.5 rounded-full border border-[#003fb1]/20">
+                                Hiện tại
+                              </span>
+                            )}
+                            {device.trusted_at && (
+                              <ShieldCheck size={15} className="text-emerald-500" />
+                            )}
+                          </div>
+                          <p className="text-xs text-[#434654]">
+                            {device.platform} • Lần cuối: {formatDate(device.last_seen_at)}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        {!device.current && device.active && (
+                          <button
+                            type="button"
+                            disabled={activeDeviceAction === device.device_id}
+                            onClick={() => void mutateDevice('revoke', device.device_id)}
+                            className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 rounded-full px-4 py-1.5 font-semibold text-xs transition-all active:scale-95"
+                          >
+                            Đăng xuất
+                          </button>
+                        )}
                       </div>
                     </div>
-                    <div className="device-actions" style={{ display: 'flex', gap: '10px' }}>
-                      {!device.current && device.active && (
-                        <button
-                          type="button"
-                          className="portal-button-ghost"
-                          disabled={activeDeviceAction === device.device_id}
-                          onClick={() => void mutateDevice('revoke', device.device_id)}
-                          style={{
-                            height: '32px',
-                            padding: '0 12px',
-                            fontSize: '0.8rem',
-                            borderRadius: '999px',
-                            border: '1px solid rgba(239, 68, 68, 0.2)',
-                            color: 'var(--red)',
-                            background: 'rgba(239, 68, 68, 0.05)',
-                          }}
-                        >
-                          Đăng xuất
-                        </button>
-                      )}
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+
+          {/* Sidebar Column: Info & Upgrades */}
+          <div className="lg:col-span-1 space-y-6">
+            <section className="glass-panel rounded-3xl p-8 space-y-6">
+              
+              <div className="flex items-center gap-2 border-b border-black/5 pb-4 text-gray-900 font-bold">
+                <ShieldCheck size={18} className="text-emerald-500" />
+                <h2 className="text-base font-bold">Trạng thái tài khoản</h2>
+              </div>
+
+              <div className="space-y-4 text-xs font-semibold">
+                <div className="flex justify-between items-center border-b border-black/5 pb-3">
+                  <span className="text-[#434654]">Xác thực</span>
+                  <strong className="text-emerald-600">Đã liên kết Google</strong>
+                </div>
+                <div className="flex justify-between items-center border-b border-black/5 pb-3">
+                  <span className="text-[#434654]">Ngày tham gia</span>
+                  <strong className="text-gray-900">{formatDate(user.created_at, { month: 'short', year: 'numeric' })}</strong>
+                </div>
+                <div className="flex justify-between items-center pb-1">
+                  <span className="text-[#434654]">Gói hiện tại</span>
+                  <strong
+                    className={accountPlan === 'pro' ? 'text-yellow-600' : 'text-gray-600'}
+                  >
+                    {accountPlan === 'pro' ? 'Gói Pro' : 'Gói Miễn phí'}
+                  </strong>
+                </div>
+              </div>
+
+              {accountPlan !== 'pro' && (
+                <>
+                  <div className="border-t border-black/5 pt-4 space-y-3">
+                    <div className="flex items-center gap-2 text-xs font-medium text-[#434654]">
+                      <span className="text-[#003fb1] font-bold">✓</span>
+                      <span>Không giới hạn thời gian Focus</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs font-medium text-[#434654]">
+                      <span className="text-[#003fb1] font-bold">✓</span>
+                      <span>Mở khóa Jarvis & Gemini Live</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs font-medium text-[#434654]">
+                      <span className="text-[#003fb1] font-bold">✓</span>
+                      <span>Đồng bộ Cloud & Shelf không giới hạn</span>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </section>
-        </div>
 
-        {/* Sidebar Info Area */}
-        <div className="dashboard-side-col" style={{ display: 'grid', gap: '24px' }}>
-          <section className="profile-mini-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div
-              className="section-title"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                borderBottom: '1px solid var(--border)',
-                paddingBottom: '12px',
-                marginBottom: '16px',
-                color: 'var(--foreground)',
-              }}
-            >
-              <ShieldCheck size={18} style={{ color: 'var(--green)' }} />
-              <h2 style={{ fontSize: '1.05rem', fontWeight: 700 }}>Trạng thái tài khoản</h2>
-            </div>
-            <div
-              className="security-status"
-              style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.9rem' }}
-            >
-              <div className="status-item" style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--muted)' }}>Xác thực</span>
-                <strong style={{ color: 'var(--green)' }}>Đã liên kết Google</strong>
-              </div>
-              <div className="status-item" style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--muted)' }}>Ngày tham gia</span>
-                <strong>{formatDate(user.created_at, { month: 'short', year: 'numeric' })}</strong>
-              </div>
-              <div className="status-item" style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--muted)' }}>Gói hiện tại</span>
-                <strong
-                  style={{
-                    color: accountPlan === 'pro' ? 'var(--warm)' : 'var(--muted-strong)',
-                  }}
-                >
-                  {accountPlan === 'pro' ? 'Gói Pro' : 'Gói Miễn phí'}
-                </strong>
-              </div>
-            </div>
-
-            {accountPlan !== 'pro' && (
-              <>
-                <div style={{ height: '1px', background: 'var(--border)', margin: '8px 0' }} />
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <div
-                      style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' }}
-                    >
-                      <span style={{ color: 'var(--accent)', fontWeight: 'bold' }}>✓</span>
-                      <span style={{ color: 'var(--foreground)' }}>Không giới hạn thời gian Focus</span>
-                    </div>
-                    <div
-                      style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' }}
-                    >
-                      <span style={{ color: 'var(--accent)', fontWeight: 'bold' }}>✓</span>
-                      <span style={{ color: 'var(--foreground)' }}>Mở khóa Jarvis & Gemini Live</span>
-                    </div>
-                    <div
-                      style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' }}
-                    >
-                      <span style={{ color: 'var(--accent)', fontWeight: 'bold' }}>✓</span>
-                      <span style={{ color: 'var(--foreground)' }}>
-                        Đồng bộ Cloud & Shelf không giới hạn
-                      </span>
-                    </div>
-                  </div>
                   <button
-                    className="dashboard-upgrade-cta portal-button"
+                    type="button"
                     onClick={() => void handleSubscribe()}
                     disabled={isCheckoutLoading}
-                    style={{
-                      background: 'linear-gradient(135deg, var(--accent) 0%, #a855f7 100%)',
-                      color: 'white',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px',
-                      width: '100%',
-                      padding: '12px',
-                      borderRadius: 'var(--radius-md)',
-                      fontWeight: 600,
-                      border: 'none',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      boxShadow: '0 4px 12px rgba(56, 189, 248, 0.15)',
-                    }}
+                    className="w-full py-3.5 rounded-xl bg-[#facc15] font-semibold text-xs text-[#241a00] hover:bg-yellow-500 active:scale-95 transition-all shadow-md flex items-center justify-center gap-2 border-none cursor-pointer"
                   >
-                    <Sparkles size={15} />
-                    <span>Nâng cấp Pro ngay</span>
+                    {isCheckoutLoading ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        Đang kết nối VNPAY...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={14} />
+                        <span>Nâng cấp Pro ngay</span>
+                      </>
+                    )}
                   </button>
-                </div>
-              </>
-            )}
-          </section>
+                </>
+              )}
+            </section>
+          </div>
+
         </div>
       </div>
-    </div>
+    </>
   )
 }

@@ -162,7 +162,8 @@ export function VNPayReturnPage() {
               ) : (
                 <>
                   <Link
-                    to="/upgrade"
+                    to="/"
+                    hash="pricing"
                     className="portal-button-primary-large"
                   >
                     Thử thanh toán lại

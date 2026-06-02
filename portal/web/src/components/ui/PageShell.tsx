@@ -8,9 +8,11 @@ import { PortalLogo } from '@/components/portal/PortalLogo'
 export function PageShell({
   children,
   noShell = false,
+  noHeader = false,
 }: Readonly<{
   children: React.ReactNode
   noShell?: boolean
+  noHeader?: boolean
 }>) {
   const { status, isAuthenticated, user } = usePortalAuth()
   const location = useLocation()
@@ -18,72 +20,96 @@ export function PageShell({
 
   const [scrolled, setScrolled] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [activeHash, setActiveHash] = useState(() => {
+    return window.location.hash.replace('#', '') || 'hero'
+  })
 
   useEffect(() => {
     const handleScroll = () => {
       setScrolled(window.scrollY > 20)
     }
+    const handleHashChange = () => {
+      setActiveHash(window.location.hash.replace('#', '') || 'hero')
+    }
+
     window.addEventListener('scroll', handleScroll)
-    return () => window.removeEventListener('scroll', handleScroll)
+    window.addEventListener('hashchange', handleHashChange)
+    window.addEventListener('activesectionchange', handleHashChange)
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+      window.removeEventListener('hashchange', handleHashChange)
+      window.removeEventListener('activesectionchange', handleHashChange)
+    }
   }, [])
 
-  const isHomeActive = pathname === '/'
+  const isHomeActive = pathname === '/' && (!activeHash || activeHash === 'hero')
+  const isFeaturesActive = pathname === '/' && activeHash === 'features'
+  const isLeaderboardActive = pathname === '/' && activeHash === 'leaderboard'
+  const isDownloadsActive = pathname === '/' && activeHash === 'download'
+  const isPricingActive = pathname === '/' && activeHash === 'pricing'
+  const isHelpActive = pathname === '/' && activeHash === 'help'
   const isProfileActive = pathname === '/account'
-  const isLeaderboardActive = pathname === '/leaderboard'
-  const isDownloadsActive = pathname === '/downloads'
-  const isHelpActive = pathname === '/help'
 
   const linkStyle = (isActive: boolean) => ({
-    fontSize: '0.95rem',
-    fontWeight: 500,
-    color: isActive ? 'var(--foreground)' : 'var(--muted-strong)',
+    fontSize: '0.9rem',
+    fontWeight: 600,
+    color: isActive ? '#003fb1' : '#434654',
     transition: 'all 0.2s ease',
-    opacity: isActive ? 1 : 0.7,
+    opacity: isActive ? 1 : 0.8,
   })
 
   return (
     <main className="portal-page">
-      <nav
-        className={`landing-nav ${scrolled ? 'scrolled' : ''}`}
-        style={{
-          position: 'fixed',
-          top: scrolled ? '12px' : '20px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          zIndex: 1000,
-          width: scrolled ? 'min(1000px, calc(100% - 40px))' : 'min(1100px, calc(100% - 40px))',
-          transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-        }}
-      >
+      {!noHeader && (
+        <nav
+          className={`landing-nav ${scrolled ? 'scrolled' : ''}`}
+          style={{
+            position: 'fixed',
+            top: scrolled ? '16px' : '28px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 1000,
+            width: scrolled ? 'min(1400px, calc(100% - 40px))' : 'min(1440px, calc(100% - 40px))',
+            transition: 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+          }}
+        >
         <div
           className="glass"
           style={{
             display: 'flex',
             flexDirection: 'column',
-            padding: '12px 24px',
-            borderRadius: scrolled ? '24px' : 'var(--radius-full)',
-            boxShadow: scrolled ? 'var(--shadow-lg)' : 'none',
-            border: scrolled ? '1px solid var(--border-strong)' : '1px solid var(--border)',
-            background: scrolled ? 'rgba(0,0,0,0.85)' : 'rgba(0,0,0,0.4)',
-            backdropFilter: 'blur(20px)',
-            transition: 'all 0.3s ease',
+            padding: scrolled ? '10px 24px' : '14px 28px',
+            borderRadius: scrolled ? '20px' : 'var(--radius-xl)',
+            boxShadow: scrolled ? '0 10px 30px rgba(0, 0, 0, 0.05)' : 'none',
+            border: scrolled ? '1px solid rgba(0, 0, 0, 0.08)' : '1px solid rgba(0, 0, 0, 0.04)',
+            background: scrolled ? 'rgba(255, 255, 255, 0.85)' : 'rgba(255, 255, 255, 0.6)',
+            backdropFilter: 'blur(24px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+            transition: 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
             <PortalLogo />
 
             {/* Desktop Links */}
-            <div className="nav-links" style={{ gap: '28px', alignItems: 'center' }}>
-              <Link to="/" style={linkStyle(isHomeActive)} className="portal-text-link">
+            <div className="nav-links" style={{ display: 'flex', gap: '28px', alignItems: 'center' }}>
+              <Link to="/" hash="hero" style={linkStyle(isHomeActive)} className="portal-text-link">
                 Giới thiệu
               </Link>
-              <Link to="/downloads" style={linkStyle(isDownloadsActive)} className="portal-text-link">
-                Tải về
+              <Link to="/" hash="features" style={linkStyle(isFeaturesActive)} className="portal-text-link">
+                Tính năng
               </Link>
-              <Link to="/leaderboard" style={linkStyle(isLeaderboardActive)} className="portal-text-link">
+              <Link to="/" hash="leaderboard" style={linkStyle(isLeaderboardActive)} className="portal-text-link">
                 Xếp hạng
               </Link>
-              <Link to="/help" style={linkStyle(isHelpActive)} className="portal-text-link">
+              <Link to="/" hash="download" style={linkStyle(isDownloadsActive)} className="portal-text-link">
+                Tải xuống
+              </Link>
+              <Link to="/" hash="pricing" style={linkStyle(isPricingActive)} className="portal-text-link">
+                Mức giá
+              </Link>
+              <Link to="/" hash="help" style={linkStyle(isHelpActive)} className="portal-text-link">
                 Hỗ trợ
               </Link>
 
@@ -97,11 +123,11 @@ export function PageShell({
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          background: isProfileActive ? 'var(--card-strong)' : 'transparent',
+                          background: isProfileActive ? '#e9edff' : 'transparent',
                           width: '36px',
                           height: '36px',
                           borderRadius: '50%',
-                          border: '1px solid var(--border)',
+                          border: isProfileActive ? '1px solid rgba(0, 63, 177, 0.2)' : '1px solid rgba(0, 0, 0, 0.1)',
                           transition: 'all 0.2s ease',
                         }}
                         title="Tài khoản"
@@ -119,7 +145,7 @@ export function PageShell({
                             }}
                           />
                         ) : (
-                          <User size={16} style={{ color: 'var(--foreground)' }} />
+                          <User size={16} style={{ color: '#434654' }} />
                         )}
                       </Link>
                     </div>
@@ -131,9 +157,16 @@ export function PageShell({
                         height: '38px',
                         padding: '0 18px',
                         fontSize: '0.85rem',
-                        background: 'white',
-                        color: 'black',
+                        background: '#003fb1',
+                        color: 'white',
                         marginLeft: '12px',
+                        fontWeight: 600,
+                        borderRadius: '999px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: 'rgba(0, 63, 177, 0.15) 0px 4px 12px 0px',
+                        border: 'none',
                       }}
                     >
                       Đăng nhập
@@ -147,7 +180,7 @@ export function PageShell({
             <button
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              style={{ color: 'white', background: 'none', border: 'none', cursor: 'pointer' }}
+              style={{ color: '#434654', background: 'none', border: 'none', cursor: 'pointer' }}
               className="mobile-menu-btn"
             >
               {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
@@ -170,13 +203,19 @@ export function PageShell({
               <Link to="/" onClick={() => setMobileMenuOpen(false)} style={linkStyle(isHomeActive)}>
                 Giới thiệu
               </Link>
-              <Link to="/downloads" onClick={() => setMobileMenuOpen(false)} style={linkStyle(isDownloadsActive)}>
-                Tải về
+              <Link to="/" hash="features" onClick={() => setMobileMenuOpen(false)} style={linkStyle(isFeaturesActive)}>
+                Tính năng
               </Link>
-              <Link to="/leaderboard" onClick={() => setMobileMenuOpen(false)} style={linkStyle(isLeaderboardActive)}>
+              <Link to="/" hash="leaderboard" onClick={() => setMobileMenuOpen(false)} style={linkStyle(isLeaderboardActive)}>
                 Xếp hạng
               </Link>
-              <Link to="/help" onClick={() => setMobileMenuOpen(false)} style={linkStyle(isHelpActive)}>
+              <Link to="/" hash="download" onClick={() => setMobileMenuOpen(false)} style={linkStyle(isDownloadsActive)}>
+                Tải xuống
+              </Link>
+              <Link to="/" hash="pricing" onClick={() => setMobileMenuOpen(false)} style={linkStyle(isPricingActive)}>
+                Mức giá
+              </Link>
+              <Link to="/" hash="help" onClick={() => setMobileMenuOpen(false)} style={linkStyle(isHelpActive)}>
                 Hỗ trợ
               </Link>
 
@@ -243,6 +282,7 @@ export function PageShell({
           )}
         </div>
       </nav>
+      )}
       {noShell ? (
         children
       ) : (

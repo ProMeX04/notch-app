@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { Trophy, Loader2, ArrowLeft } from 'lucide-react'
+import { Trophy, Loader2, ArrowLeft, User } from 'lucide-react'
 import { PageShell } from '@/components/ui/PageShell'
 import { apiClient } from '@/api/client'
 import { usePortalAuth } from '@/auth/usePortalAuth'
@@ -14,45 +14,12 @@ type LeaderboardEntry = {
   session_count: number
 }
 
-const occupations = [
-  'Software Engineer',
-  'Product Designer',
-  'Writer',
-  'Data Analyst',
-  'Researcher',
-  'Developer',
-  'Student'
-]
 
-function getOccupation(userId: string, rank: number): string {
-  if (rank === 1) return 'Software Engineer'
-  if (rank === 2) return 'Product Designer'
-  if (rank === 3) return 'Writer'
-  if (rank === 4) return 'Data Analyst'
-  if (rank === 5) return 'Researcher'
-  if (rank === 6) return 'Developer'
-  
-  let hash = 0
-  for (let i = 0; i < userId.length; i++) {
-    hash = userId.charCodeAt(i) + ((hash << 5) - hash)
-  }
-  const index = Math.abs(hash) % occupations.length
-  return occupations[index]
-}
 
 function formatFocusTime(seconds: number): string {
   const hrs = Math.floor(seconds / 3600)
   const mins = Math.floor((seconds % 3600) / 60)
   return `${hrs}h ${String(mins).padStart(2, '0')}m`
-}
-
-function initials(displayName: string): string {
-  const words = displayName.trim().split(/\s+/).filter(Boolean)
-  if (!words.length) return 'N'
-  return words
-    .slice(-2)
-    .map((word) => word.charAt(0).toUpperCase())
-    .join('')
 }
 
 export function LeaderboardPage() {
@@ -118,8 +85,8 @@ export function LeaderboardPage() {
         .podium-card {
           background: #ffffff;
           border: 1px solid rgba(0, 0, 0, 0.05);
-          border-radius: 24px;
-          padding: 32px 24px;
+          border-radius: 20px;
+          padding: 20px 16px;
           text-align: center;
           display: flex;
           flex-direction: column;
@@ -134,19 +101,16 @@ export function LeaderboardPage() {
         }
         .podium-card.gold {
           order: 2;
-          min-height: 380px;
           border-top: 4px solid #f59e0b;
           background: linear-gradient(180deg, rgba(251, 191, 36, 0.03) 0%, #ffffff 100%);
           box-shadow: 0 12px 36px rgba(245, 158, 11, 0.06);
         }
         .podium-card.silver {
           order: 1;
-          min-height: 330px;
           border-top: 4px solid #9ca3af;
         }
         .podium-card.bronze {
           order: 3;
-          min-height: 300px;
           border-top: 4px solid #ea580c;
         }
         
@@ -157,15 +121,12 @@ export function LeaderboardPage() {
           }
           .podium-card.gold {
             order: 1;
-            min-height: auto;
           }
           .podium-card.silver {
             order: 2;
-            min-height: auto;
           }
           .podium-card.bronze {
             order: 3;
-            min-height: auto;
           }
         }
       `}</style>
@@ -283,7 +244,7 @@ export function LeaderboardPage() {
             </p>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '48px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
             
             {/* Podium (Top 3) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -292,32 +253,30 @@ export function LeaderboardPage() {
                 {/* Silver - Rank 2 */}
                 {top2 && (
                   <div className="podium-card silver">
-                    <div style={{ background: '#f1f5f9', color: '#475569', width: '38px', height: '38px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 850, fontSize: '0.9rem', border: '2px solid #ffffff', boxShadow: '0 4px 10px rgba(0,0,0,0.05)', position: 'absolute', top: '-18px' }}>
+                    <div style={{ background: '#f1f5f9', color: '#475569', width: '30px', height: '30px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 850, fontSize: '0.85rem', border: '2px solid #ffffff', boxShadow: '0 4px 10px rgba(0,0,0,0.05)', position: 'absolute', top: '-15px' }}>
                       2
                     </div>
                     
-                    <div style={{ width: '84px', height: '84px', borderRadius: '50%', overflow: 'hidden', background: '#e9edff', border: '2px solid #cbd5e1', padding: '2px', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.05)' }}>
+                    <div style={{ width: '64px', height: '64px', borderRadius: '50%', overflow: 'hidden', background: '#e9edff', border: '2px solid #cbd5e1', padding: '2px', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.05)' }}>
                       {top2.avatar_url ? (
-                        <img src={top2.avatar_url} alt={top2.display_name} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                        <img src={top2.avatar_url} alt={top2.display_name || 'Ẩn danh'} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
                       ) : (
-                        <div style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 850, color: '#003fb1', fontSize: '1.25rem' }}>
-                          {initials(top2.display_name)}
+                        <div style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#9ca3af' }}>
+                          <User size={22} />
                         </div>
                       )}
                     </div>
                     
-                    <div style={{ marginTop: '16px' }}>
+                    <div style={{ marginTop: '10px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                        <span style={{ fontWeight: 800, fontSize: '1rem', color: '#141b2b' }}>{top2.display_name}</span>
-                        {user && top2.user_id === user.id && <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#003fb1', background: 'rgba(0, 63, 177, 0.08)', padding: '1px 5px', borderRadius: '4px' }}>Bạn</span>}
+                        <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#141b2b' }}>{top2.display_name || 'Ẩn danh'}</span>
+                        {user && top2.user_id === user.id && <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#003fb1', background: 'rgba(0, 63, 177, 0.08)', padding: '1px 4px', borderRadius: '3px' }}>Bạn</span>}
                       </div>
-                      <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>{getOccupation(top2.user_id, 2)}</span>
                     </div>
 
-                    <div style={{ marginTop: '24px', width: '100%' }}>
-                      <div style={{ fontSize: '1.25rem', fontWeight: 850, color: '#003fb1' }}>{formatFocusTime(top2.focus_seconds)}</div>
-                      <div style={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '2px' }}>Thời gian</div>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, marginTop: '8px' }}>{top2.session_count} phiên làm việc</div>
+                    <div style={{ marginTop: '12px', width: '100%' }}>
+                      <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#003fb1' }}>{formatFocusTime(top2.focus_seconds)}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, marginTop: '2px' }}>{top2.session_count} phiên</div>
                     </div>
                   </div>
                 )}
@@ -325,32 +284,30 @@ export function LeaderboardPage() {
                 {/* Gold - Rank 1 */}
                 {top1 && (
                   <div className="podium-card gold">
-                    <div style={{ background: '#fef3c7', color: '#d97706', width: '44px', height: '44px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #ffffff', boxShadow: '0 6px 15px rgba(217,119,6,0.15)', position: 'absolute', top: '-22px' }}>
-                      <Trophy size={20} style={{ fill: '#d97706' }} />
+                    <div style={{ background: '#fef3c7', color: '#d97706', width: '36px', height: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #ffffff', boxShadow: '0 6px 15px rgba(217,119,6,0.15)', position: 'absolute', top: '-18px' }}>
+                      <Trophy size={16} style={{ fill: '#d97706' }} />
                     </div>
                     
-                    <div style={{ width: '100px', height: '100px', borderRadius: '50%', overflow: 'hidden', background: '#fef3c7', border: '3px solid #fbbf24', padding: '2px', boxShadow: '0 6px 20px rgba(245,158,11,0.15)' }}>
+                    <div style={{ width: '80px', height: '80px', borderRadius: '50%', overflow: 'hidden', background: '#fef3c7', border: '3px solid #fbbf24', padding: '2px', boxShadow: '0 6px 20px rgba(245,158,11,0.15)' }}>
                       {top1.avatar_url ? (
-                        <img src={top1.avatar_url} alt={top1.display_name} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                        <img src={top1.avatar_url} alt={top1.display_name || 'Ẩn danh'} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
                       ) : (
-                        <div style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, color: '#b45309', fontSize: '1.5rem' }}>
-                          {initials(top1.display_name)}
+                        <div style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fef3c7', color: '#d97706' }}>
+                          <User size={30} />
                         </div>
                       )}
                     </div>
                     
-                    <div style={{ marginTop: '16px' }}>
+                    <div style={{ marginTop: '12px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                        <span style={{ fontWeight: 900, fontSize: '1.15rem', color: '#141b2b' }}>{top1.display_name}</span>
-                        {user && top1.user_id === user.id && <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#003fb1', background: 'rgba(0, 63, 177, 0.08)', padding: '1px 5px', borderRadius: '4px' }}>Bạn</span>}
+                        <span style={{ fontWeight: 900, fontSize: '1.05rem', color: '#141b2b' }}>{top1.display_name || 'Ẩn danh'}</span>
+                        {user && top1.user_id === user.id && <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#003fb1', background: 'rgba(0, 63, 177, 0.08)', padding: '1px 4px', borderRadius: '3px' }}>Bạn</span>}
                       </div>
-                      <span style={{ fontSize: '0.75rem', color: '#b45309', fontWeight: 700 }}>{getOccupation(top1.user_id, 1)}</span>
                     </div>
 
-                    <div style={{ marginTop: '28px', width: '100%' }}>
-                      <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#b45309' }}>{formatFocusTime(top1.focus_seconds)}</div>
-                      <div style={{ fontSize: '0.68rem', color: '#d97706', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '2px' }}>Thời gian tập trung</div>
-                      <div style={{ fontSize: '0.75rem', color: '#b45309', fontWeight: 700, marginTop: '8px' }}>{top1.session_count} phiên làm việc</div>
+                    <div style={{ marginTop: '14px', width: '100%' }}>
+                      <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#b45309' }}>{formatFocusTime(top1.focus_seconds)}</div>
+                      <div style={{ fontSize: '0.8rem', color: '#b45309', fontWeight: 700, marginTop: '2px' }}>{top1.session_count} phiên</div>
                     </div>
                   </div>
                 )}
@@ -358,32 +315,30 @@ export function LeaderboardPage() {
                 {/* Bronze - Rank 3 */}
                 {top3 && (
                   <div className="podium-card bronze">
-                    <div style={{ background: '#ffedd5', color: '#c2410c', width: '38px', height: '38px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 850, fontSize: '0.9rem', border: '2px solid #ffffff', boxShadow: '0 4px 10px rgba(0,0,0,0.05)', position: 'absolute', top: '-18px' }}>
+                    <div style={{ background: '#ffedd5', color: '#c2410c', width: '30px', height: '30px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 850, fontSize: '0.85rem', border: '2px solid #ffffff', boxShadow: '0 4px 10px rgba(0,0,0,0.05)', position: 'absolute', top: '-15px' }}>
                       3
                     </div>
                     
-                    <div style={{ width: '80px', height: '80px', borderRadius: '50%', overflow: 'hidden', background: '#e9edff', border: '2px solid #f97316', padding: '2px', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.05)' }}>
+                    <div style={{ width: '64px', height: '64px', borderRadius: '50%', overflow: 'hidden', background: '#e9edff', border: '2px solid #f97316', padding: '2px', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.05)' }}>
                       {top3.avatar_url ? (
-                        <img src={top3.avatar_url} alt={top3.display_name} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                        <img src={top3.avatar_url} alt={top3.display_name || 'Ẩn danh'} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
                       ) : (
-                        <div style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 850, color: '#003fb1', fontSize: '1.2rem' }}>
-                          {initials(top3.display_name)}
+                        <div style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#ffedd5', color: '#ea580c' }}>
+                          <User size={22} />
                         </div>
                       )}
                     </div>
                     
-                    <div style={{ marginTop: '16px' }}>
+                    <div style={{ marginTop: '10px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                        <span style={{ fontWeight: 800, fontSize: '1rem', color: '#141b2b' }}>{top3.display_name}</span>
-                        {user && top3.user_id === user.id && <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#003fb1', background: 'rgba(0, 63, 177, 0.08)', padding: '1px 5px', borderRadius: '4px' }}>Bạn</span>}
+                        <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#141b2b' }}>{top3.display_name || 'Ẩn danh'}</span>
+                        {user && top3.user_id === user.id && <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#003fb1', background: 'rgba(0, 63, 177, 0.08)', padding: '1px 4px', borderRadius: '3px' }}>Bạn</span>}
                       </div>
-                      <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>{getOccupation(top3.user_id, 3)}</span>
                     </div>
 
-                    <div style={{ marginTop: '24px', width: '100%' }}>
-                      <div style={{ fontSize: '1.25rem', fontWeight: 850, color: '#c2410c' }}>{formatFocusTime(top3.focus_seconds)}</div>
-                      <div style={{ fontSize: '0.68rem', color: '#e056fd', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '2px' }}>Thời gian</div>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, marginTop: '8px' }}>{top3.session_count} phiên làm việc</div>
+                    <div style={{ marginTop: '12px', width: '100%' }}>
+                      <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#c2410c' }}>{formatFocusTime(top3.focus_seconds)}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, marginTop: '2px' }}>{top3.session_count} phiên</div>
                     </div>
                   </div>
                 )}
@@ -437,19 +392,18 @@ export function LeaderboardPage() {
                               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                 <div style={{ width: '32px', height: '32px', borderRadius: '50%', overflow: 'hidden', background: '#e9edff' }}>
                                   {entry.avatar_url ? (
-                                    <img src={entry.avatar_url} alt={entry.display_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    <img src={entry.avatar_url} alt={entry.display_name || 'Ẩn danh'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                   ) : (
-                                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 850, color: '#003fb1', fontSize: '0.8rem' }}>
-                                      {initials(entry.display_name)}
+                                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#9ca3af' }}>
+                                      <User size={16} />
                                     </div>
                                   )}
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                                   <span style={{ fontSize: '0.9rem', color: '#141b2b', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                    {entry.display_name}
+                                    {entry.display_name || 'Ẩn danh'}
                                     {isMe && <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#003fb1', background: 'rgba(0, 63, 177, 0.08)', padding: '1px 4px', borderRadius: '3px' }}>Bạn</span>}
                                   </span>
-                                  <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{getOccupation(entry.user_id, entry.rank)}</span>
                                 </div>
                               </div>
                             </td>

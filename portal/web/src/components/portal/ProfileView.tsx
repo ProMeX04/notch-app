@@ -345,7 +345,7 @@ export function ProfileView() {
           color: #ffffff;
           display: flex;
           align-items: center;
-          justifyContent: center;
+          justify-content: center;
           font-size: 0.75rem;
           font-weight: 700;
           opacity: 0;

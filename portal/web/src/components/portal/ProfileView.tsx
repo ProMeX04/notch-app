@@ -230,16 +230,13 @@ export function ProfileView() {
     if (!file) return
 
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://xyhhtghehlzzzpitfveu.supabase.co'
-    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_mXbBCCIKj0Sf0JGFK_4qSA_h8rVZA1j'
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
 
     if (!supabaseAnonKey) {
-      const manualUrl = prompt(
-        'Bạn chưa cấu hình API Key lưu ảnh trong file .env (VITE_SUPABASE_ANON_KEY).\n\nVui lòng dán trực tiếp đường dẫn URL ảnh đại diện vào đây:',
-        avatarUrl
-      )
-      if (manualUrl !== null) {
-        setAvatarUrl(manualUrl.trim())
-      }
+      setMsg({
+        type: 'err',
+        text: 'Cấu hình máy chủ lưu trữ ảnh đại diện chưa hoàn tất.',
+      })
       return
     }
 

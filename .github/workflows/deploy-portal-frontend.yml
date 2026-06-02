@@ -41,6 +41,10 @@ jobs:
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
         working-directory: portal/web
 
+      - name: Link Vercel env to Vite root
+        run: cp .vercel/.env.production.local .env.production.local
+        working-directory: portal/web
+
       - name: Build Project Artifacts
         run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
         working-directory: portal/web

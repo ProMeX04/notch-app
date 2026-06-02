@@ -169,6 +169,11 @@ func (r *fakeSessionRepo) UpdateUserAvatar(_ context.Context, id string, avatarU
 		r.updatedAvatars = make(map[string]*string)
 	}
 	r.updatedAvatars[id] = avatarURL
+	for _, u := range r.usersByEmail {
+		if u.ID == id {
+			u.AvatarURL = avatarURL
+		}
+	}
 	return nil
 }
 func (r *fakeSessionRepo) SetTrustedDevice(_ context.Context, userID string, deviceID string, trusted bool) error {

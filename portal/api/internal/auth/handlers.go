@@ -1122,3 +1122,62 @@ func (h Handler) getPermissionPolicy(ctx context.Context, isPro bool) Permission
 		UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	}
 }
+
+func (h Handler) UpdateProfile(w http.ResponseWriter, req *http.Request) {
+	noStore(w)
+	authCtx, err := h.Authenticator.AuthenticateRequest(req.Context(), req)
+	if err != nil {
+		httpjson.Detail(w, http.StatusUnauthorized, "Invalid or expired session token.")
+		return
+	}
+
+	type ProfileUpdateRequest struct {
+		Name      *string `json:"name"`
+		AvatarURL *string `json:"avatar_url"`
+	}
+
+	var body ProfileUpdateRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		httpjson.Error(w, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+
+	// Update avatar if provided
+	if body.AvatarURL != nil {
+		var avatarVal *string
+		if strings.TrimSpace(*body.AvatarURL) != "" {
+			avatarVal = body.AvatarURL
+		}
+		err = h.Repo.UpdateUserAvatar(req.Context(), authCtx.User.ID, avatarVal)
+		if err != nil {
+			httpjson.Error(w, http.StatusInternalServerError, "Failed to update avatar")
+			return
+		}
+	}
+
+	// Update name if provided
+	if body.Name != nil {
+		_, err = h.Repo.UpdateUserPasswordAndName(req.Context(), authCtx.User.ID, *body.Name, "", time.Now())
+		if err != nil {
+			httpjson.Error(w, http.StatusInternalServerError, "Failed to update name")
+			return
+		}
+		// Also update displayName so they are kept in sync
+		pgxRepo, ok := h.Repo.(*PgxSessionRepository)
+		if ok && pgxRepo != nil && pgxRepo.db != nil {
+			_, _ = pgxRepo.db.Exec(req.Context(), `UPDATE "User" SET "displayName" = $2, "updatedAt" = NOW() WHERE "id" = $1`, authCtx.User.ID, *body.Name)
+		}
+	}
+
+	// Fetch updated user
+	user, err := h.Repo.FindUserByID(req.Context(), authCtx.User.ID)
+	if err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch updated user")
+		return
+	}
+
+	sessionID := authCtx.SessionID
+	policy := h.getPermissionPolicy(req.Context(), user.IsPro)
+	httpjson.JSON(w, http.StatusOK, BuildUserResponse(*user, &sessionID, h.MaxActiveDevices, policy))
+}
+

@@ -134,6 +134,7 @@ func (s *Server) mount(r chi.Router) {
 		api.Post("/auth/login", authHandler.Login)
 		api.Post("/auth/register", authHandler.Register)
 		api.Post("/auth/logout", authHandler.Logout)
+		api.Patch("/auth/profile", authHandler.UpdateProfile)
 		api.Get("/auth/sessions", authHandler.ListSessions)
 		api.Delete("/auth/sessions/{id}", authHandler.RevokeSession)
 		api.Patch("/auth/sessions", authHandler.PatchSessions)

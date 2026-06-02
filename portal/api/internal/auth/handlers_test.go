@@ -1117,3 +1117,93 @@ func TestHandlerGoogleDriveRefresh(t *testing.T) {
 	}
 }
 
+func TestHandlerUpdateProfile(t *testing.T) {
+	now := time.Now()
+	email := "user@example.com"
+	user := &User{
+		ID:        "user_1",
+		Email:     &email,
+		Name:      ptrStr("Old Name"),
+		AvatarURL: ptrStr("https://old-avatar.com/pic.png"),
+		CreatedAt: now,
+	}
+
+	accessToken, _ := token.SignJWT(token.JWTPayload{
+		UserID:    "user_1",
+		SessionID: "session_1",
+	}, "testsecret", time.Hour, now)
+	accessTokenHash := token.HashToken(accessToken)
+
+	session := &Session{
+		ID:              "session_1",
+		TokenHash:       token.HashToken("refresh-token"),
+		AccessTokenHash: &accessTokenHash,
+		ExpiresAt:       now.Add(24 * time.Hour),
+		AccessExpiresAt: ptrTime(now.Add(time.Hour)),
+		UserID:          "user_1",
+		User:            *user,
+	}
+
+	repo := &fakeSessionRepo{
+		byID: map[string]*Session{
+			"session_1": session,
+		},
+		usersByEmail: map[string]*User{
+			"user@example.com": user,
+		},
+	}
+
+	handler := Handler{
+		Repo: repo,
+		Authenticator: Authenticator{
+			Repo:      repo,
+			JWTSecret: "testsecret",
+		},
+		MaxActiveDevices: 3,
+	}
+
+	t.Run("succeeds updating profile", func(t *testing.T) {
+		reqBody := `{"name": "New Name", "avatar_url": "https://new-avatar.com/pic.png"}`
+		req := httptest.NewRequest(http.MethodPatch, "/api/auth/profile", strings.NewReader(reqBody))
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+		rec := httptest.NewRecorder()
+
+		handler.UpdateProfile(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+
+		var resp UserResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("failed to parse response: %v", err)
+		}
+
+		if resp.Name == nil || *resp.Name != "New Name" {
+			t.Errorf("expected updated name 'New Name', got %v", resp.Name)
+		}
+
+		if resp.AvatarURL == nil || *resp.AvatarURL != "https://new-avatar.com/pic.png" {
+			t.Errorf("expected updated avatar_url 'https://new-avatar.com/pic.png', got %v", resp.AvatarURL)
+		}
+
+		// Check database state
+		updatedUser, _ := repo.FindUserByID(context.Background(), "user_1")
+		if updatedUser == nil || *updatedUser.Name != "New Name" || updatedUser.AvatarURL == nil || *updatedUser.AvatarURL != "https://new-avatar.com/pic.png" {
+			t.Errorf("user in repo was not updated correctly: name=%v avatar=%v", updatedUser.Name, updatedUser.AvatarURL)
+		}
+	})
+
+	t.Run("fails unauthorized", func(t *testing.T) {
+		reqBody := `{"name": "Some Name"}`
+		req := httptest.NewRequest(http.MethodPatch, "/api/auth/profile", strings.NewReader(reqBody))
+		rec := httptest.NewRecorder()
+
+		handler.UpdateProfile(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("expected status 401, got %d", rec.Code)
+		}
+	})
+}
+

@@ -1,213 +1,20 @@
-import { useEffect, useMemo, useState } from 'react'
-import {
-  Apple,
-  Globe,
-  Laptop,
-  Loader2,
-  LogOut,
-  MonitorSmartphone,
-  ShieldCheck,
-  Sparkles,
-  Terminal,
-} from 'lucide-react'
-
+import { useState } from 'react'
+import { Link } from '@tanstack/react-router'
+import { LogOut, Loader2, Save, User, ShieldCheck } from 'lucide-react'
 import { apiClient } from '@/api/client'
 import { usePortalAuth } from '@/auth/usePortalAuth'
 
-type AccountDevice = {
-  device_id: string
-  device_name: string
-  platform: string
-  trusted_at: string | null
-  created_at: string
-  last_seen_at: string
-  revoked_at: string | null
-  revoked_reason: string | null
-  active: boolean
-  current: boolean
-  active_session_count: number
-}
-
-type AccountDevicesResponse = {
-  max_active_devices: number
-  devices: AccountDevice[]
-}
-
-function formatDate(value: string | null, options?: Intl.DateTimeFormatOptions) {
-  if (!value) return 'Chưa có'
-
-  const parsed = Date.parse(value)
-  if (Number.isNaN(parsed)) return 'Chưa có'
-
-  return new Intl.DateTimeFormat(
-    'vi-VN',
-    options ?? {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    },
-  ).format(new Date(parsed))
-}
-
-const getDeviceIcon = (platform: string, deviceName: string) => {
-  const p = platform.toLowerCase()
-  const n = deviceName.toLowerCase()
-
-  if (
-    p.includes('mac') ||
-    p.includes('apple') ||
-    p.includes('darwin') ||
-    n.includes('mac') ||
-    n.includes('imac') ||
-    n.includes('macbook')
-  ) {
-    return <Apple size={20} />
-  }
-  if (
-    p.includes('web') ||
-    p.includes('browser') ||
-    p.includes('chrome') ||
-    p.includes('safari') ||
-    p.includes('firefox') ||
-    n.includes('browser') ||
-    n.includes('chrome')
-  ) {
-    return <Globe size={20} />
-  }
-  if (p.includes('win') || n.includes('windows') || n.includes('win')) {
-    return <Laptop size={20} />
-  }
-  if (p.includes('linux') || n.includes('linux') || n.includes('ubuntu')) {
-    return <Terminal size={20} />
-  }
-  return <MonitorSmartphone size={20} />
-}
-
 export function ProfileView() {
-  const { status, user, signOut } = usePortalAuth()
-  const [isCheckoutLoading, setIsCheckoutLoading] = useState(false)
-  const [deviceLimit, setDeviceLimit] = useState(0)
-  const [devices, setDevices] = useState<AccountDevice[]>([])
-  const [isDevicesLoading, setIsDevicesLoading] = useState(true)
-  const [activeDeviceAction, setActiveDeviceAction] = useState<string | null>(null)
+  const { status, user, signOut, refreshAuthState } = usePortalAuth()
+  
+  const [name, setName] = useState(user?.name || '')
+  const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || '')
+  const [isSaving, setIsSaving] = useState(false)
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
-
-  const [prevStatus, setPrevStatus] = useState(status)
-  if (status !== prevStatus) {
-    setPrevStatus(status)
-    if (status === 'authenticated') {
-      setIsDevicesLoading(true)
-    }
-  }
-
-  useEffect(() => {
-    if (status !== 'authenticated') return
-
-    let ignore = false
-
-    const hydrateDevices = async () => {
-      try {
-        const response = await apiClient.get<AccountDevicesResponse>('/api/auth/sessions')
-        const data = response.data
-        if (ignore) return
-        setDeviceLimit(data.max_active_devices)
-        setDevices(data.devices)
-      } catch {
-        if (!ignore) {
-          setDevices([])
-        }
-      } finally {
-        if (!ignore) {
-          setIsDevicesLoading(false)
-        }
-      }
-    }
-
-    void hydrateDevices()
-
-    return () => {
-      ignore = true
-    }
-  }, [status])
-
-  const accountName = user?.name?.trim() || 'Notch User'
-  const accountEmail = user?.email?.trim() || 'Chưa có email'
-  const accountPlan = user?.is_pro ? 'pro' : 'free'
-  const isWebDevice = (device: AccountDevice) => {
-    return (
-      device.platform.toLowerCase() === 'web' ||
-      device.device_name.toLowerCase().includes('browser')
-    )
-  }
-
-  const activeDeviceCount = useMemo(
-    () => devices.filter((device) => device.active && !isWebDevice(device)).length,
-    [devices],
-  )
-
-  const mutateDevice = async (action: 'trust' | 'untrust' | 'revoke', deviceId: string) => {
-    setActiveDeviceAction(deviceId)
-    setMsg(null)
-
-    try {
-      const response = await apiClient.patch<AccountDevicesResponse>('/api/auth/sessions', {
-        action,
-        device_id: deviceId,
-      })
-
-      const data = response.data
-
-      if (!data || !('devices' in data)) {
-        throw new Error('Không thể cập nhật thiết bị.')
-      }
-
-      setDeviceLimit(data.max_active_devices)
-      setDevices(data.devices)
-      setMsg({
-        type: 'ok',
-        text:
-          action === 'revoke'
-            ? 'Thiết bị đã được đăng xuất.'
-            : action === 'trust'
-              ? 'Thiết bị đã được đánh dấu tin cậy.'
-              : 'Thiết bị đã bị bỏ tin cậy.',
-      })
-    } catch (error) {
-      setMsg({
-        type: 'err',
-        text: error instanceof Error ? error.message : 'Không thể cập nhật thiết bị.',
-      })
-    } finally {
-      setActiveDeviceAction(null)
-    }
-  }
-
-  const handleSubscribe = async () => {
-    setIsCheckoutLoading(true)
-    setMsg(null)
-
-    try {
-      const response = await apiClient.post<{ pay_url?: string; detail?: string }>(
-        '/api/payments/vnpay/create',
-      )
-      const data = response.data
-      if (!data.pay_url) {
-        throw new Error(data.detail || 'Không thể tạo phiên thanh toán VNPAY.')
-      }
-
-      window.location.href = data.pay_url
-    } catch (error) {
-      setMsg({
-        type: 'err',
-        text: error instanceof Error ? error.message : 'Không thể tạo phiên thanh toán VNPAY.',
-      })
-      setIsCheckoutLoading(false)
-    }
-  }
 
   if (status === 'booting') {
     return (
       <div
-        className="dashboard-loading-full"
         style={{
           minHeight: '60vh',
           display: 'flex',
@@ -215,13 +22,13 @@ export function ProfileView() {
           justifyContent: 'center',
         }}
       >
-        <div className="loading-branding">
+        <div style={{ textAlign: 'center' }}>
           <Loader2
             size={32}
             className="portal-spinner animate-spin"
-            style={{ margin: '0 auto 16px' }}
+            style={{ margin: '0 auto 16px', color: '#003fb1' }}
           />
-          <p style={{ color: 'var(--muted)' }}>Đang đồng bộ dữ liệu tài khoản...</p>
+          <p style={{ color: '#434654' }}>Đang đồng bộ dữ liệu tài khoản...</p>
         </div>
       </div>
     )
@@ -231,217 +38,271 @@ export function ProfileView() {
     return null
   }
 
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsSaving(true)
+    setMsg(null)
+
+    try {
+      await apiClient.patch('/api/auth/profile', {
+        name: name.trim() || null,
+        avatar_url: avatarUrl.trim() || null,
+      })
+      await refreshAuthState()
+      setMsg({ type: 'ok', text: 'Cập nhật tài khoản thành công!' })
+    } catch (error) {
+      setMsg({
+        type: 'err',
+        text: error instanceof Error ? error.message : 'Không thể cập nhật tài khoản.',
+      })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   return (
     <>
       <style>{`
         body {
-          background-color: #f9f9ff;
+          background-color: #f9f9ff !important;
+          color: #141b2b !important;
+        }
+        .profile-input {
+          width: 100%;
+          height: 46px;
+          padding: 0 16px;
+          border-radius: 12px;
+          background: #ffffff;
+          border: 1px solid rgba(0, 0, 0, 0.12);
           color: #141b2b;
+          font-size: 0.95rem;
+          transition: all 150ms ease;
         }
-        .glass-panel {
-          background-color: rgba(255, 255, 255, 0.85);
-          backdrop-filter: blur(20px);
-          -webkit-backdrop-filter: blur(20px);
-          border: 1px solid rgba(0, 0, 0, 0.05);
-          box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.04);
-        }
-        .ambient-bg {
-          background: radial-gradient(circle at 50% -20%, rgba(26, 86, 219, 0.05) 0%, transparent 70%);
+        .profile-input:focus {
+          outline: none;
+          border-color: #003fb1;
+          box-shadow: 0 0 0 4px rgba(0, 63, 177, 0.1);
         }
       `}</style>
 
-      <div className="max-w-5xl mx-auto px-6 pt-24 pb-32 relative overflow-x-hidden ambient-bg">
-        
-        {/* Welcome Section */}
-        <section className="glass-panel rounded-3xl p-8 mb-8 flex flex-wrap justify-between items-center gap-6">
-          <div className="space-y-2">
-            <h1 className="text-2xl md:text-3xl font-extrabold text-[#141b2b] tracking-tight">
-              Chào quay lại, {accountName}
+      <div 
+        style={{
+          maxWidth: '480px',
+          width: '100%',
+          margin: '0 auto',
+          padding: '6rem 1rem 4rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '32px',
+          animation: 'portalRise 0.6s cubic-bezier(0.16, 1, 0.3, 1) both',
+        }}
+      >
+        {/* Header Section */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h1 style={{ fontSize: '1.75rem', fontWeight: 850, letterSpacing: '-0.04em', margin: 0 }}>
+              Hồ sơ cá nhân
             </h1>
-            <div className="flex items-center gap-3 flex-wrap text-sm text-[#434654] font-medium">
-              <span>{accountEmail}</span>
-              <span className="w-1 h-1 rounded-full bg-gray-300" />
-              <span
-                className={`px-3 py-1 rounded-full text-xs font-bold ${
-                  accountPlan === 'pro'
-                    ? 'bg-[#facc15]/10 text-yellow-600 border border-[#facc15]/20'
-                    : 'bg-gray-100 text-gray-600 border border-gray-200'
-                }`}
-              >
-                {accountPlan === 'pro' ? 'Gói Pro' : 'Gói Miễn phí'}
-              </span>
-            </div>
+            <p style={{ fontSize: '0.88rem', color: '#434654', margin: '4px 0 0' }}>
+              {user.email}
+            </p>
           </div>
-
+          
           <button
             type="button"
             onClick={() => void signOut()}
-            className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 rounded-full px-5 py-2 font-semibold text-xs transition-all active:scale-95 flex items-center gap-1.5"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              height: '38px',
+              padding: '0 16px',
+              borderRadius: '999px',
+              background: 'rgba(239, 68, 68, 0.08)',
+              color: '#ef4444',
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              border: '1px solid rgba(239, 68, 68, 0.12)',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+            }}
           >
             <LogOut size={14} />
-            <span>Đăng xuất</span>
+            Đăng xuất
           </button>
-        </section>
+        </div>
 
         {msg && (
           <div
-            className={`p-4 rounded-xl mb-6 text-sm border font-semibold ${
-              msg.type === 'ok' 
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-600' 
-                : 'bg-red-50 border-red-200 text-red-600'
-            }`}
+            style={{
+              padding: '14px 18px',
+              borderRadius: '12px',
+              fontSize: '0.9rem',
+              fontWeight: 600,
+              border: '1px solid',
+              background: msg.type === 'ok' ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)',
+              borderColor: msg.type === 'ok' ? 'rgba(16, 185, 129, 0.16)' : 'rgba(239, 68, 68, 0.16)',
+              color: msg.type === 'ok' ? '#10b981' : '#ef4444',
+            }}
           >
             {msg.text}
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+        {/* Profile Update Form */}
+        <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           
-          {/* Main Column: Devices */}
-          <div className="lg:col-span-2">
-            <section className="glass-panel rounded-3xl p-8 space-y-6">
-              
-              <div className="flex justify-between items-center border-b border-black/5 pb-4">
-                <div className="flex items-center gap-2.5 text-gray-900 font-bold">
-                  <MonitorSmartphone size={20} className="text-[#003fb1]" />
-                  <h2 className="text-lg font-bold">Thiết bị của bạn</h2>
-                </div>
-                <span className="bg-[#003fb1]/10 text-[#003fb1] border border-[#003fb1]/20 text-xs font-bold px-2.5 py-0.5 rounded-full">
-                  {activeDeviceCount}/{deviceLimit || '∞'}
-                </span>
-              </div>
-
-              {isDevicesLoading ? (
-                <div className="flex flex-col items-center gap-3 py-12">
-                  <Loader2 size={24} className="text-[#003fb1] animate-spin" />
-                  <p className="text-sm text-gray-500">Đang đồng bộ thiết bị...</p>
-                </div>
+          {/* Avatar Preview & URL Input */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+            <div 
+              style={{
+                width: '100px',
+                height: '100px',
+                borderRadius: '50%',
+                overflow: 'hidden',
+                background: '#e9edff',
+                border: '2px solid rgba(0, 63, 177, 0.12)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.05)',
+              }}
+            >
+              {avatarUrl.trim() ? (
+                <img 
+                  src={avatarUrl} 
+                  alt="Avatar" 
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none'
+                  }}
+                />
               ) : (
-                <div className="space-y-4">
-                  {devices.map((device) => (
-                    <div
-                      key={device.device_id}
-                      className={`flex flex-wrap items-center justify-between gap-4 p-5 rounded-2xl border transition-all duration-300 ${
-                        device.current
-                          ? 'bg-[#003fb1]/5 border-[#003fb1]/20 shadow-sm'
-                          : 'bg-white/60 border-black/5 hover:-translate-y-0.5'
-                      }`}
-                    >
-                      <div className="flex items-center gap-4">
-                        <div
-                          className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                            device.current ? 'bg-[#003fb1] text-white shadow-sm' : 'bg-gray-100 text-gray-500'
-                          }`}
-                        >
-                          {getDeviceIcon(device.platform, device.device_name)}
-                        </div>
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="font-bold text-sm text-gray-900">{device.device_name}</h3>
-                            {device.current && (
-                              <span className="bg-[#003fb1]/10 text-[#003fb1] text-[9px] font-bold px-2 py-0.5 rounded-full border border-[#003fb1]/20">
-                                Hiện tại
-                              </span>
-                            )}
-                            {device.trusted_at && (
-                              <ShieldCheck size={15} className="text-emerald-500" />
-                            )}
-                          </div>
-                          <p className="text-xs text-[#434654]">
-                            {device.platform} • Lần cuối: {formatDate(device.last_seen_at)}
-                          </p>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-2">
-                        {!device.current && device.active && (
-                          <button
-                            type="button"
-                            disabled={activeDeviceAction === device.device_id}
-                            onClick={() => void mutateDevice('revoke', device.device_id)}
-                            className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 rounded-full px-4 py-1.5 font-semibold text-xs transition-all active:scale-95"
-                          >
-                            Đăng xuất
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <User size={40} style={{ color: '#003fb1' }} />
               )}
-            </section>
+            </div>
+            
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '0.88rem', fontWeight: 700, color: '#141b2b' }}>
+                Ảnh đại diện (URL)
+              </label>
+              <input
+                type="url"
+                value={avatarUrl}
+                onChange={(e) => setAvatarUrl(e.target.value)}
+                placeholder="Nhập đường dẫn URL ảnh của bạn"
+                className="profile-input"
+              />
+            </div>
           </div>
 
-          {/* Sidebar Column: Info & Upgrades */}
-          <div className="lg:col-span-1 space-y-6">
-            <section className="glass-panel rounded-3xl p-8 space-y-6">
-              
-              <div className="flex items-center gap-2 border-b border-black/5 pb-4 text-gray-900 font-bold">
-                <ShieldCheck size={18} className="text-emerald-500" />
-                <h2 className="text-base font-bold">Trạng thái tài khoản</h2>
-              </div>
+          {/* Name Input */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '0.88rem', fontWeight: 700, color: '#141b2b' }}>
+              Tên hiển thị
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Nhập tên hiển thị"
+              required
+              className="profile-input"
+            />
+          </div>
 
-              <div className="space-y-4 text-xs font-semibold">
-                <div className="flex justify-between items-center border-b border-black/5 pb-3">
-                  <span className="text-[#434654]">Xác thực</span>
-                  <strong className="text-emerald-600">Đã liên kết Google</strong>
-                </div>
-                <div className="flex justify-between items-center border-b border-black/5 pb-3">
-                  <span className="text-[#434654]">Ngày tham gia</span>
-                  <strong className="text-gray-900">{formatDate(user.created_at, { month: 'short', year: 'numeric' })}</strong>
-                </div>
-                <div className="flex justify-between items-center pb-1">
-                  <span className="text-[#434654]">Gói hiện tại</span>
-                  <strong
-                    className={accountPlan === 'pro' ? 'text-yellow-600' : 'text-gray-600'}
-                  >
-                    {accountPlan === 'pro' ? 'Gói Pro' : 'Gói Miễn phí'}
-                  </strong>
-                </div>
-              </div>
-
-              {accountPlan !== 'pro' && (
+          {/* Plan Info Status */}
+          <div 
+            style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              padding: '16px 4px',
+              borderTop: '1px solid rgba(0, 0, 0, 0.06)',
+              borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
+              marginTop: '8px'
+            }}
+          >
+            <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#434654' }}>Gói tài khoản</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {user.is_pro ? (
                 <>
-                  <div className="border-t border-black/5 pt-4 space-y-3">
-                    <div className="flex items-center gap-2 text-xs font-medium text-[#434654]">
-                      <span className="text-[#003fb1] font-bold">✓</span>
-                      <span>Không giới hạn thời gian Focus</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs font-medium text-[#434654]">
-                      <span className="text-[#003fb1] font-bold">✓</span>
-                      <span>Mở khóa Jarvis & Gemini Live</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs font-medium text-[#434654]">
-                      <span className="text-[#003fb1] font-bold">✓</span>
-                      <span>Đồng bộ Cloud & Shelf không giới hạn</span>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => void handleSubscribe()}
-                    disabled={isCheckoutLoading}
-                    className="w-full py-3.5 rounded-xl bg-[#facc15] font-semibold text-xs text-[#241a00] hover:bg-yellow-500 active:scale-95 transition-all shadow-md flex items-center justify-center gap-2 border-none cursor-pointer"
-                  >
-                    {isCheckoutLoading ? (
-                      <>
-                        <Loader2 size={14} className="animate-spin" />
-                        Đang kết nối VNPAY...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles size={14} />
-                        <span>Nâng cấp Pro ngay</span>
-                      </>
-                    )}
-                  </button>
+                  <ShieldCheck size={16} style={{ color: '#f97316' }} />
+                  <span style={{ fontSize: '0.9rem', fontWeight: 750, color: '#f97316' }}>Notch Pro</span>
                 </>
+              ) : (
+                <span style={{ fontSize: '0.9rem', fontWeight: 750, color: '#434654' }}>Miễn phí</span>
               )}
-            </section>
+            </div>
           </div>
 
+          {/* Submit Button */}
+          <button
+            type="submit"
+            disabled={isSaving}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              minHeight: '3rem',
+              padding: '0 2rem',
+              borderRadius: '999px',
+              background: '#003fb1',
+              color: '#ffffff',
+              fontWeight: 700,
+              fontSize: '0.95rem',
+              boxShadow: 'rgba(0, 63, 177, 0.15) 0px 4px 12px 0px',
+              border: 'none',
+              transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+              cursor: 'pointer',
+              marginTop: '12px',
+            }}
+            onMouseEnter={(e) => {
+              if (!isSaving) {
+                e.currentTarget.style.transform = 'translateY(-2px)'
+                e.currentTarget.style.boxShadow = 'rgba(0, 63, 177, 0.25) 0px 8px 20px 0px'
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isSaving) {
+                e.currentTarget.style.transform = 'translateY(0)'
+                e.currentTarget.style.boxShadow = 'rgba(0, 63, 177, 0.15) 0px 4px 12px 0px'
+              }
+            }}
+          >
+            {isSaving ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : (
+              <Save size={18} />
+            )}
+            Lưu thay đổi
+          </button>
+        </form>
+        
+        {/* Back Link */}
+        <div style={{ textAlign: 'center', marginTop: '-8px' }}>
+          <Link
+            to="/"
+            style={{
+              fontSize: '0.88rem',
+              fontWeight: 600,
+              color: '#434654',
+              transition: 'color 0.2s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = '#003fb1'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = '#434654'
+            }}
+          >
+            Quay lại trang chủ
+          </Link>
         </div>
       </div>
     </>
   )
 }
+

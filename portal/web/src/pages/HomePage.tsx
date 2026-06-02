@@ -254,15 +254,18 @@ export function HomePage() {
       const customEvt = e as CustomEvent
       const hash = customEvt.detail?.hash || 'hero'
       const idx = sections.indexOf(hash)
+      console.log('[HashNav] Received navigation event:', hash, 'index:', idx, 'currentIdx:', currentIdx)
       if (idx !== -1 && idx !== currentIdx) {
         currentIdx = idx
         isTransitioning = true
         const targetEl = document.getElementById(hash)
         if (targetEl) {
+          console.log('[HashNav] Scrolling to element:', hash)
           targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' })
         }
         setTimeout(() => {
           isTransitioning = false
+          console.log('[HashNav] Transition lock released')
         }, 800)
       }
     }
@@ -271,14 +274,19 @@ export function HomePage() {
       const target = e.target as HTMLElement
       const anchor = target.closest('a')
       if (anchor) {
-        const href = anchor.getAttribute('href')
-        if (href?.startsWith('/#') || href?.startsWith('#')) {
-          const hash = href.split('#')[1]
-          if (hash && sections.includes(hash)) {
-            window.dispatchEvent(new CustomEvent('hashnavigation', { detail: { hash } }))
+        console.log('[HashNav] Clicked anchor:', anchor.href)
+        try {
+          const url = new URL(anchor.href)
+          const normalizePath = (p: string) => p.replace(/\/$/, '') || '/'
+          if (normalizePath(url.pathname) === normalizePath(window.location.pathname)) {
+            const hash = url.hash.replace('#', '') || 'hero'
+            console.log('[HashNav] Matched path, target hash:', hash)
+            if (sections.includes(hash)) {
+              window.dispatchEvent(new CustomEvent('hashnavigation', { detail: { hash } }))
+            }
           }
-        } else if (href === '/') {
-          window.dispatchEvent(new CustomEvent('hashnavigation', { detail: { hash: 'hero' } }))
+        } catch (err) {
+          console.error('[HashNav] Error parsing URL:', err)
         }
       }
     }

@@ -135,12 +135,12 @@ export function ProfileView() {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
 
   // Sync local form state once user data is loaded from auth (after boot)
-  useEffect(() => {
-    if (user) {
-      setName(user.name || '')
-      setAvatarUrl(user.avatar_url || '')
-    }
-  }, [user?.id])
+  const [prevUserId, setPrevUserId] = useState(user?.id)
+  if (user?.id !== prevUserId) {
+    setPrevUserId(user?.id)
+    setName(user?.name || '')
+    setAvatarUrl(user?.avatar_url || '')
+  }
 
   const [deviceLimit, setDeviceLimit] = useState(0)
   const [devices, setDevices] = useState<AccountDevice[]>([])

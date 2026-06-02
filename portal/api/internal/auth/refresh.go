@@ -40,7 +40,18 @@ func (s RefreshService) RefreshWithToken(ctx context.Context, req *http.Request,
 	now := s.now()
 	session, err := s.Repo.FindSessionByRefreshTokenHash(ctx, token.HashToken(trimmed))
 	if err != nil || session == nil {
-		return empty, ErrRefreshInvalid
+		// Grace-period fallback: a concurrent /api/auth/me may have already rotated
+		// this refresh token in the last 30 seconds. If this device has a fresh active
+		// session, rotate it again instead of clearing cookies with a 401.
+		if deviceID := strings.TrimSpace(req.Header.Get("x-notch-device-id")); deviceID != "" {
+			graceSince := now.Add(-30 * time.Second)
+			if recent, ferr := s.Repo.FindActiveSessionByDeviceID(ctx, deviceID, graceSince); ferr == nil && recent != nil {
+				session = recent
+			}
+		}
+		if session == nil {
+			return empty, ErrRefreshInvalid
+		}
 	}
 	if session.RevokedAt != nil {
 		return empty, ErrRefreshInvalid

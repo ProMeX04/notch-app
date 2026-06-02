@@ -59,6 +59,10 @@ type OAuthAuthorizationCode struct {
 type SessionRepository interface {
 	FindSessionByID(ctx context.Context, sessionID string) (*Session, error)
 	FindSessionByRefreshTokenHash(ctx context.Context, tokenHash string) (*Session, error)
+	// FindActiveSessionByDeviceID finds the most-recently-seen active session for a
+	// device that was rotated at or after `since`. Used as a grace-period fallback
+	// when a concurrent refresh has already rotated the token.
+	FindActiveSessionByDeviceID(ctx context.Context, deviceID string, since time.Time) (*Session, error)
 	RotateSession(ctx context.Context, sessionID string, accessTokenHash string, refreshTokenHash string, accessExpiresAt time.Time, refreshExpiresAt time.Time, device NormalizedDevice, trustedAt *time.Time, now time.Time) (RotatedSession, error)
 	UpdateLastSeen(ctx context.Context, sessionID string, seenAt time.Time) error
 	MarkSessionExpired(ctx context.Context, sessionID string, expiredAt time.Time) error

@@ -1,8 +1,76 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { LogOut, Loader2, Save, User, ShieldCheck } from 'lucide-react'
+import { LogOut, Loader2, Save, User, ShieldCheck, Apple, Globe, Laptop, Terminal, MonitorSmartphone } from 'lucide-react'
 import { apiClient } from '@/api/client'
 import { usePortalAuth } from '@/auth/usePortalAuth'
+
+type AccountDevice = {
+  device_id: string
+  device_name: string
+  platform: string
+  trusted_at: string | null
+  created_at: string
+  last_seen_at: string
+  revoked_at: string | null
+  revoked_reason: string | null
+  active: boolean
+  current: boolean
+  active_session_count: number
+}
+
+type AccountDevicesResponse = {
+  max_active_devices: number
+  devices: AccountDevice[]
+}
+
+function formatDate(value: string | null, options?: Intl.DateTimeFormatOptions) {
+  if (!value) return 'Chưa có'
+
+  const parsed = Date.parse(value)
+  if (Number.isNaN(parsed)) return 'Chưa có'
+
+  return new Intl.DateTimeFormat(
+    'vi-VN',
+    options ?? {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    },
+  ).format(new Date(parsed))
+}
+
+const getDeviceIcon = (platform: string, deviceName: string) => {
+  const p = platform.toLowerCase()
+  const n = deviceName.toLowerCase()
+
+  if (
+    p.includes('mac') ||
+    p.includes('apple') ||
+    p.includes('darwin') ||
+    n.includes('mac') ||
+    n.includes('imac') ||
+    n.includes('macbook')
+  ) {
+    return <Apple size={18} />
+  }
+  if (
+    p.includes('web') ||
+    p.includes('browser') ||
+    p.includes('chrome') ||
+    p.includes('safari') ||
+    p.includes('firefox') ||
+    n.includes('browser') ||
+    n.includes('chrome')
+  ) {
+    return <Globe size={18} />
+  }
+  if (p.includes('win') || n.includes('windows') || n.includes('win')) {
+    return <Laptop size={18} />
+  }
+  if (p.includes('linux') || n.includes('linux') || n.includes('ubuntu')) {
+    return <Terminal size={18} />
+  }
+  return <MonitorSmartphone size={18} />
+}
 
 export function ProfileView() {
   const { status, user, signOut, refreshAuthState } = usePortalAuth()
@@ -11,6 +79,85 @@ export function ProfileView() {
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || '')
   const [isSaving, setIsSaving] = useState(false)
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+
+  const [deviceLimit, setDeviceLimit] = useState(0)
+  const [devices, setDevices] = useState<AccountDevice[]>([])
+  const [isDevicesLoading, setIsDevicesLoading] = useState(true)
+  const [activeDeviceAction, setActiveDeviceAction] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (status !== 'authenticated') return
+
+    let ignore = false
+
+    const hydrateDevices = async () => {
+      try {
+        const response = await apiClient.get<AccountDevicesResponse>('/api/auth/sessions')
+        const data = response.data
+        if (ignore) return
+        setDeviceLimit(data.max_active_devices)
+        setDevices(data.devices)
+      } catch {
+        if (!ignore) {
+          setDevices([])
+        }
+      } finally {
+        if (!ignore) {
+          setIsDevicesLoading(false)
+        }
+      }
+    }
+
+    void hydrateDevices()
+
+    return () => {
+      ignore = true
+    }
+  }, [status])
+
+  const isWebDevice = (device: AccountDevice) => {
+    return (
+      device.platform.toLowerCase() === 'web' ||
+      device.device_name.toLowerCase().includes('browser')
+    )
+  }
+
+  const activeDeviceCount = useMemo(
+    () => devices.filter((device) => device.active && !isWebDevice(device)).length,
+    [devices],
+  )
+
+  const mutateDevice = async (action: 'trust' | 'untrust' | 'revoke', deviceId: string) => {
+    setActiveDeviceAction(deviceId)
+    setMsg(null)
+
+    try {
+      const response = await apiClient.patch<AccountDevicesResponse>('/api/auth/sessions', {
+        action,
+        device_id: deviceId,
+      })
+
+      const data = response.data
+
+      if (!data || !('devices' in data)) {
+        throw new Error('Không thể cập nhật thiết bị.')
+      }
+
+      setDeviceLimit(data.max_active_devices)
+      setDevices(data.devices)
+      setMsg({
+        type: 'ok',
+        text: 'Thiết bị đã được đăng xuất.',
+      })
+    } catch (error) {
+      setMsg({
+        type: 'err',
+        text: error instanceof Error ? error.message : 'Không thể cập nhật thiết bị.',
+      })
+    } finally {
+      setActiveDeviceAction(null)
+    }
+  }
 
   if (status === 'booting') {
     return (
@@ -280,6 +427,112 @@ export function ProfileView() {
             Lưu thay đổi
           </button>
         </form>
+
+        {/* Device Management Section */}
+        <div 
+          style={{ 
+            borderTop: '1px solid rgba(0, 0, 0, 0.08)', 
+            paddingTop: '24px', 
+            marginTop: '8px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px'
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 800, margin: 0 }}>
+              Thiết bị hoạt động
+            </h2>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#434654' }}>
+              {activeDeviceCount}/{deviceLimit || '∞'} thiết bị
+            </span>
+          </div>
+
+          {isDevicesLoading ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 0' }}>
+              <Loader2 size={16} className="animate-spin style-spinner" style={{ color: '#003fb1' }} />
+              <span style={{ fontSize: '0.88rem', color: '#434654' }}>Đang tải thiết bị...</span>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {devices.map((device) => (
+                <div 
+                  key={device.device_id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '12px 0',
+                    borderBottom: '1px solid rgba(0, 0, 0, 0.04)'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div 
+                      style={{ 
+                        width: '36px', 
+                        height: '36px', 
+                        borderRadius: '50%', 
+                        background: device.current ? 'rgba(0, 63, 177, 0.08)' : 'rgba(0, 0, 0, 0.04)',
+                        color: device.current ? '#003fb1' : '#434654',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                    >
+                      {getDeviceIcon(device.platform, device.device_name)}
+                    </div>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#141b2b' }}>
+                          {device.device_name}
+                        </span>
+                        {device.current && (
+                          <span style={{ fontSize: '0.75rem', fontWeight: 750, color: '#003fb1', background: 'rgba(0, 63, 177, 0.08)', padding: '2px 6px', borderRadius: '4px' }}>
+                            Hiện tại
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#434654', marginTop: '2px' }}>
+                        {device.platform} • Hoạt động: {formatDate(device.last_seen_at)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {!device.current && device.active && (
+                    <button
+                      type="button"
+                      disabled={activeDeviceAction === device.device_id}
+                      onClick={() => void mutateDevice('revoke', device.device_id)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#ef4444',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        padding: '4px 8px',
+                        borderRadius: '6px',
+                        transition: 'background-color 0.2s',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.08)'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent'
+                      }}
+                    >
+                      {activeDeviceAction === device.device_id ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        'Đăng xuất'
+                      )}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         
         {/* Back Link */}
         <div style={{ textAlign: 'center', marginTop: '-8px' }}>

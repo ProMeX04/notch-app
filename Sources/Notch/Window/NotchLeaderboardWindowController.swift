@@ -60,6 +60,10 @@ final class NotchLeaderboardWindowController {
         guard let focusCloudSync else { return }
         ensurePanel(focusCloudSync: focusCloudSync)
         panel?.orderFrontRegardless()
+        
+        Task {
+            await focusCloudSync.fetchLeaderboard(window: focusCloudSync.leaderboardWindow)
+        }
     }
 
     func hide() {

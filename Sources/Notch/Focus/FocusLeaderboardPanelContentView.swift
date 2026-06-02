@@ -4,9 +4,15 @@ struct FocusLeaderboardPanelContentView: View {
     @ObservedObject var focusCloudSync: FocusCloudSyncCoordinator
     var onClose: () -> Void
 
-    @State private var selectedWindow: String = "week"
+    @State private var selectedWindow: String
     @AppStorage("app_language") private var appLanguage: String = "English"
     @Environment(\.colorScheme) private var colorScheme
+
+    init(focusCloudSync: FocusCloudSyncCoordinator, onClose: @escaping () -> Void) {
+        self.focusCloudSync = focusCloudSync
+        self.onClose = onClose
+        self._selectedWindow = State(initialValue: focusCloudSync.leaderboardWindow)
+    }
 
     private var titleText: String {
         appLanguage == "Tiếng Việt" ? "Bảng xếp hạng" : "Leaderboard"

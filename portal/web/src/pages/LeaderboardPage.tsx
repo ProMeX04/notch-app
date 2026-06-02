@@ -85,8 +85,8 @@ export function LeaderboardPage() {
         .podium-card {
           background: #ffffff;
           border: 1px solid rgba(0, 0, 0, 0.05);
-          border-radius: 20px;
-          padding: 20px 16px;
+          border-radius: 16px;
+          padding: 12px;
           text-align: center;
           display: flex;
           flex-direction: column;
@@ -253,30 +253,33 @@ export function LeaderboardPage() {
                 {/* Silver - Rank 2 */}
                 {top2 && (
                   <div className="podium-card silver">
-                    <div style={{ background: '#f1f5f9', color: '#475569', width: '30px', height: '30px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 850, fontSize: '0.85rem', border: '2px solid #ffffff', boxShadow: '0 4px 10px rgba(0,0,0,0.05)', position: 'absolute', top: '-15px' }}>
-                      2
-                    </div>
-                    
-                    <div style={{ width: '64px', height: '64px', borderRadius: '50%', overflow: 'hidden', background: '#e9edff', border: '2px solid #cbd5e1', padding: '2px', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.05)' }}>
-                      {top2.avatar_url ? (
-                        <img src={top2.avatar_url} alt={top2.display_name || 'Ẩn danh'} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
-                      ) : (
-                        <div style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#9ca3af' }}>
-                          <User size={22} />
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div style={{ marginTop: '10px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                        <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#141b2b' }}>{top2.display_name || 'Ẩn danh'}</span>
-                        {user && top2.user_id === user.id && <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#003fb1', background: 'rgba(0, 63, 177, 0.08)', padding: '1px 4px', borderRadius: '3px' }}>Bạn</span>}
+                    <div style={{ position: 'relative', width: '56px', height: '56px' }}>
+                      <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: '#e9edff', border: '2px solid #cbd5e1', padding: '1px', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.05)' }}>
+                        {top2.avatar_url ? (
+                          <img src={top2.avatar_url} alt={top2.display_name || 'Ẩn danh'} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                        ) : (
+                          <div style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#9ca3af' }}>
+                            <User size={20} />
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ background: '#9ca3af', color: '#ffffff', width: '18px', height: '18px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '0.68rem', border: '1.5px solid #ffffff', position: 'absolute', bottom: '-2px', right: '-2px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
+                        2
                       </div>
                     </div>
+                    
+                    <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', width: '100%' }}>
+                      <span style={{ fontWeight: 800, fontSize: '0.88rem', color: '#141b2b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
+                        {top2.display_name || 'Ẩn danh'}
+                      </span>
+                      {user && top2.user_id === user.id && (
+                        <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#003fb1', background: 'rgba(0, 63, 177, 0.08)', padding: '0 4px', borderRadius: '2px' }}>Bạn</span>
+                      )}
+                    </div>
 
-                    <div style={{ marginTop: '12px', width: '100%' }}>
-                      <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#003fb1' }}>{formatFocusTime(top2.focus_seconds)}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, marginTop: '2px' }}>{top2.session_count} phiên</div>
+                    <div style={{ marginTop: '8px', width: '100%' }}>
+                      <div style={{ fontSize: '1.05rem', fontWeight: 850, color: '#003fb1' }}>{formatFocusTime(top2.focus_seconds)}</div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, marginTop: '1px' }}>{top2.session_count} phiên</div>
                     </div>
                   </div>
                 )}
@@ -284,30 +287,33 @@ export function LeaderboardPage() {
                 {/* Gold - Rank 1 */}
                 {top1 && (
                   <div className="podium-card gold">
-                    <div style={{ background: '#fef3c7', color: '#d97706', width: '36px', height: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #ffffff', boxShadow: '0 6px 15px rgba(217,119,6,0.15)', position: 'absolute', top: '-18px' }}>
-                      <Trophy size={16} style={{ fill: '#d97706' }} />
-                    </div>
-                    
-                    <div style={{ width: '80px', height: '80px', borderRadius: '50%', overflow: 'hidden', background: '#fef3c7', border: '3px solid #fbbf24', padding: '2px', boxShadow: '0 6px 20px rgba(245,158,11,0.15)' }}>
-                      {top1.avatar_url ? (
-                        <img src={top1.avatar_url} alt={top1.display_name || 'Ẩn danh'} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
-                      ) : (
-                        <div style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fef3c7', color: '#d97706' }}>
-                          <User size={30} />
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div style={{ marginTop: '12px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                        <span style={{ fontWeight: 900, fontSize: '1.05rem', color: '#141b2b' }}>{top1.display_name || 'Ẩn danh'}</span>
-                        {user && top1.user_id === user.id && <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#003fb1', background: 'rgba(0, 63, 177, 0.08)', padding: '1px 4px', borderRadius: '3px' }}>Bạn</span>}
+                    <div style={{ position: 'relative', width: '68px', height: '68px' }}>
+                      <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: '#fef3c7', border: '2.5px solid #fbbf24', padding: '1px', boxShadow: '0 4px 12px rgba(245,158,11,0.15)' }}>
+                        {top1.avatar_url ? (
+                          <img src={top1.avatar_url} alt={top1.display_name || 'Ẩn danh'} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                        ) : (
+                          <div style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fef3c7', color: '#d97706' }}>
+                            <User size={26} />
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ background: '#f59e0b', color: '#ffffff', width: '22px', height: '22px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #ffffff', position: 'absolute', bottom: '-3px', right: '-3px', boxShadow: '0 2px 6px rgba(217,119,6,0.2)', zIndex: 2 }}>
+                        <Trophy size={11} style={{ fill: '#ffffff', stroke: 'none' }} />
                       </div>
                     </div>
+                    
+                    <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', width: '100%' }}>
+                      <span style={{ fontWeight: 900, fontSize: '0.98rem', color: '#141b2b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
+                        {top1.display_name || 'Ẩn danh'}
+                      </span>
+                      {user && top1.user_id === user.id && (
+                        <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#003fb1', background: 'rgba(0, 63, 177, 0.08)', padding: '0 4px', borderRadius: '2px' }}>Bạn</span>
+                      )}
+                    </div>
 
-                    <div style={{ marginTop: '14px', width: '100%' }}>
-                      <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#b45309' }}>{formatFocusTime(top1.focus_seconds)}</div>
-                      <div style={{ fontSize: '0.8rem', color: '#b45309', fontWeight: 700, marginTop: '2px' }}>{top1.session_count} phiên</div>
+                    <div style={{ marginTop: '8px', width: '100%' }}>
+                      <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#b45309' }}>{formatFocusTime(top1.focus_seconds)}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#b45309', fontWeight: 700, marginTop: '1px' }}>{top1.session_count} phiên</div>
                     </div>
                   </div>
                 )}
@@ -315,30 +321,33 @@ export function LeaderboardPage() {
                 {/* Bronze - Rank 3 */}
                 {top3 && (
                   <div className="podium-card bronze">
-                    <div style={{ background: '#ffedd5', color: '#c2410c', width: '30px', height: '30px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 850, fontSize: '0.85rem', border: '2px solid #ffffff', boxShadow: '0 4px 10px rgba(0,0,0,0.05)', position: 'absolute', top: '-15px' }}>
-                      3
-                    </div>
-                    
-                    <div style={{ width: '64px', height: '64px', borderRadius: '50%', overflow: 'hidden', background: '#e9edff', border: '2px solid #f97316', padding: '2px', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.05)' }}>
-                      {top3.avatar_url ? (
-                        <img src={top3.avatar_url} alt={top3.display_name || 'Ẩn danh'} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
-                      ) : (
-                        <div style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#ffedd5', color: '#ea580c' }}>
-                          <User size={22} />
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div style={{ marginTop: '10px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                        <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#141b2b' }}>{top3.display_name || 'Ẩn danh'}</span>
-                        {user && top3.user_id === user.id && <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#003fb1', background: 'rgba(0, 63, 177, 0.08)', padding: '1px 4px', borderRadius: '3px' }}>Bạn</span>}
+                    <div style={{ position: 'relative', width: '56px', height: '56px' }}>
+                      <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: '#e9edff', border: '2px solid #f97316', padding: '1px', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.05)' }}>
+                        {top3.avatar_url ? (
+                          <img src={top3.avatar_url} alt={top3.display_name || 'Ẩn danh'} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                        ) : (
+                          <div style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#ffedd5', color: '#ea580c' }}>
+                            <User size={20} />
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ background: '#ea580c', color: '#ffffff', width: '18px', height: '18px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '0.68rem', border: '1.5px solid #ffffff', position: 'absolute', bottom: '-2px', right: '-2px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
+                        3
                       </div>
                     </div>
+                    
+                    <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', width: '100%' }}>
+                      <span style={{ fontWeight: 800, fontSize: '0.88rem', color: '#141b2b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
+                        {top3.display_name || 'Ẩn danh'}
+                      </span>
+                      {user && top3.user_id === user.id && (
+                        <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#003fb1', background: 'rgba(0, 63, 177, 0.08)', padding: '0 4px', borderRadius: '2px' }}>Bạn</span>
+                      )}
+                    </div>
 
-                    <div style={{ marginTop: '12px', width: '100%' }}>
-                      <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#c2410c' }}>{formatFocusTime(top3.focus_seconds)}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, marginTop: '2px' }}>{top3.session_count} phiên</div>
+                    <div style={{ marginTop: '8px', width: '100%' }}>
+                      <div style={{ fontSize: '1.05rem', fontWeight: 850, color: '#c2410c' }}>{formatFocusTime(top3.focus_seconds)}</div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, marginTop: '1px' }}>{top3.session_count} phiên</div>
                     </div>
                   </div>
                 )}

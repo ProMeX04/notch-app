@@ -57,19 +57,8 @@ export function PageShell({
     color: isActive ? '#003fb1' : '#434654',
     transition: 'all 0.2s ease',
     opacity: isActive ? 1 : 0.8,
+    textDecoration: 'none',
   })
-
-  const scrollToHash = (hash: string, e: React.MouseEvent) => {
-    if (pathname === '/') {
-      e.preventDefault()
-      const el = document.getElementById(hash)
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }
-      window.history.replaceState(null, '', `#${hash}`)
-      window.dispatchEvent(new Event('activesectionchange'))
-    }
-  }
 
   return (
     <main className="portal-page">
@@ -106,24 +95,24 @@ export function PageShell({
 
             {/* Desktop Links */}
             <div className="nav-links" style={{ display: 'flex', gap: '28px', alignItems: 'center' }}>
-              <Link to="/" hash="hero" onClick={(e) => scrollToHash('hero', e)} style={linkStyle(isHomeActive)} className="portal-text-link">
+              <a href="#hero" style={linkStyle(isHomeActive)} className="portal-text-link">
                 Giới thiệu
-              </Link>
-              <Link to="/" hash="features" onClick={(e) => scrollToHash('features', e)} style={linkStyle(isFeaturesActive)} className="portal-text-link">
+              </a>
+              <a href="#features" style={linkStyle(isFeaturesActive)} className="portal-text-link">
                 Tính năng
-              </Link>
-              <Link to="/" hash="leaderboard" onClick={(e) => scrollToHash('leaderboard', e)} style={linkStyle(isLeaderboardActive)} className="portal-text-link">
+              </a>
+              <a href="#leaderboard" style={linkStyle(isLeaderboardActive)} className="portal-text-link">
                 Xếp hạng
-              </Link>
-              <Link to="/" hash="download" onClick={(e) => scrollToHash('download', e)} style={linkStyle(isDownloadsActive)} className="portal-text-link">
+              </a>
+              <a href="#download" style={linkStyle(isDownloadsActive)} className="portal-text-link">
                 Tải xuống
-              </Link>
-              <Link to="/" hash="pricing" onClick={(e) => scrollToHash('pricing', e)} style={linkStyle(isPricingActive)} className="portal-text-link">
+              </a>
+              <a href="#pricing" style={linkStyle(isPricingActive)} className="portal-text-link">
                 Mức giá
-              </Link>
-              <Link to="/" hash="help" onClick={(e) => scrollToHash('help', e)} style={linkStyle(isHelpActive)} className="portal-text-link">
+              </a>
+              <a href="#help" style={linkStyle(isHelpActive)} className="portal-text-link">
                 Hỗ trợ
-              </Link>
+              </a>
 
               {status !== 'booting' && (
                 <>
@@ -213,24 +202,24 @@ export function PageShell({
                 marginTop: '12px',
               }}
             >
-              <Link to="/" onClick={(e) => { scrollToHash('hero', e); setMobileMenuOpen(false) }} style={linkStyle(isHomeActive)}>
+              <a href="#hero" onClick={() => setMobileMenuOpen(false)} style={linkStyle(isHomeActive)}>
                 Giới thiệu
-              </Link>
-              <Link to="/" hash="features" onClick={(e) => { scrollToHash('features', e); setMobileMenuOpen(false) }} style={linkStyle(isFeaturesActive)}>
+              </a>
+              <a href="#features" onClick={() => setMobileMenuOpen(false)} style={linkStyle(isFeaturesActive)}>
                 Tính năng
-              </Link>
-              <Link to="/" hash="leaderboard" onClick={(e) => { scrollToHash('leaderboard', e); setMobileMenuOpen(false) }} style={linkStyle(isLeaderboardActive)}>
+              </a>
+              <a href="#leaderboard" onClick={() => setMobileMenuOpen(false)} style={linkStyle(isLeaderboardActive)}>
                 Xếp hạng
-              </Link>
-              <Link to="/" hash="download" onClick={(e) => { scrollToHash('download', e); setMobileMenuOpen(false) }} style={linkStyle(isDownloadsActive)}>
+              </a>
+              <a href="#download" onClick={() => setMobileMenuOpen(false)} style={linkStyle(isDownloadsActive)}>
                 Tải xuống
-              </Link>
-              <Link to="/" hash="pricing" onClick={(e) => { scrollToHash('pricing', e); setMobileMenuOpen(false) }} style={linkStyle(isPricingActive)}>
+              </a>
+              <a href="#pricing" onClick={() => setMobileMenuOpen(false)} style={linkStyle(isPricingActive)}>
                 Mức giá
-              </Link>
-              <Link to="/" hash="help" onClick={(e) => { scrollToHash('help', e); setMobileMenuOpen(false) }} style={linkStyle(isHelpActive)}>
+              </a>
+              <a href="#help" onClick={() => setMobileMenuOpen(false)} style={linkStyle(isHelpActive)}>
                 Hỗ trợ
-              </Link>
+              </a>
 
               {status !== 'booting' && (
                 <div

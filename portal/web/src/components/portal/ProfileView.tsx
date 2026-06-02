@@ -329,7 +329,7 @@ export function ProfileView() {
           border: 2px solid rgba(0, 63, 177, 0.12);
           display: flex;
           align-items: center;
-          justifyContent: center;
+          justify-content: center;
           box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
           cursor: pointer;
           transition: all 0.2s ease;
@@ -460,20 +460,6 @@ export function ProfileView() {
               onChange={handleFileChange}
               accept="image/*"
             />
-            
-            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ fontSize: '0.88rem', fontWeight: 700, color: '#141b2b' }}>
-                Ảnh đại diện (URL hoặc Tải lên)
-              </label>
-              <input
-                type="url"
-                value={avatarUrl}
-                onChange={(e) => setAvatarUrl(e.target.value)}
-                placeholder="Click vòng tròn để tải lên hoặc dán URL ảnh trực tiếp"
-                className="profile-input"
-                disabled={isUploadingAvatar}
-              />
-            </div>
           </div>
 
           {/* Name Input */}

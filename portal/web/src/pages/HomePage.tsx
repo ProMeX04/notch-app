@@ -1,6 +1,6 @@
 // v1.0.2
 import { useEffect, useState } from 'react'
-import { Link, useLocation } from '@tanstack/react-router'
+import { Link } from '@tanstack/react-router'
 import { PageShell } from '@/components/ui/PageShell'
 import { usePortalAuth } from '@/auth/usePortalAuth'
 import { apiClient } from '@/api/client'
@@ -113,18 +113,11 @@ function initials(displayName: string): string {
 
 export function HomePage() {
   const { isAuthenticated, user } = usePortalAuth()
-  const location = useLocation()
   const [capabilities, setCapabilities] = useState<PortalCapability[]>(defaultCapabilities)
   const [windowState, setWindowState] = useState<FocusWindow>('week')
   const [limit, setLimit] = useState(6)
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
-
-  const rawHash = window.location.hash.replace('#', '') || 'hero'
-
-  useEffect(() => {
-    window.dispatchEvent(new CustomEvent('hashnavigation', { detail: { hash: rawHash } }))
-  }, [location, rawHash])
   
   const faqs = [
     {
@@ -274,9 +267,26 @@ export function HomePage() {
       }
     }
 
+    const handleWindowClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      const anchor = target.closest('a')
+      if (anchor) {
+        const href = anchor.getAttribute('href')
+        if (href?.startsWith('/#') || href?.startsWith('#')) {
+          const hash = href.split('#')[1]
+          if (hash && sections.includes(hash)) {
+            window.dispatchEvent(new CustomEvent('hashnavigation', { detail: { hash } }))
+          }
+        } else if (href === '/') {
+          window.dispatchEvent(new CustomEvent('hashnavigation', { detail: { hash: 'hero' } }))
+        }
+      }
+    }
+
     window.addEventListener('wheel', handleWheel, { passive: false })
     window.addEventListener('keydown', handleKeyDown, { passive: false })
     window.addEventListener('hashnavigation', handleHashNavigation)
+    window.addEventListener('click', handleWindowClick, { capture: true })
 
     return () => {
       document.documentElement.classList.remove('homepage-snap')
@@ -284,6 +294,7 @@ export function HomePage() {
       window.removeEventListener('wheel', handleWheel)
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('hashnavigation', handleHashNavigation)
+      window.removeEventListener('click', handleWindowClick, { capture: true })
     }
   }, [])
 

@@ -83,6 +83,14 @@ export function ProfileView() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
 
+  // Sync local form state once user data is loaded from auth (after boot)
+  useEffect(() => {
+    if (user) {
+      setName(user.name || '')
+      setAvatarUrl(user.avatar_url || '')
+    }
+  }, [user?.id])
+
   const [deviceLimit, setDeviceLimit] = useState(0)
   const [devices, setDevices] = useState<AccountDevice[]>([])
   const [isDevicesLoading, setIsDevicesLoading] = useState(true)

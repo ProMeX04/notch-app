@@ -8,7 +8,7 @@ export type BrowserDevicePayload = {
   trust_device: boolean
 }
 
-type AuthSessionChangeHandler = () => void
+type AuthSessionChangeHandler = (detail?: { expired?: boolean }) => void
 
 function readOrCreateDeviceId() {
   const existing = window.localStorage.getItem(DEVICE_ID_STORAGE_KEY)?.trim()
@@ -44,13 +44,22 @@ export function buildBrowserAuthDevicePayload(trustDevice = false): BrowserDevic
 }
 
 export function onPortalAuthSessionChange(handler: AuthSessionChangeHandler) {
-  window.addEventListener(AUTH_SESSION_CHANGED_EVENT, handler)
+  const listener = (e: Event) => {
+    const customEvent = e as CustomEvent<{ expired?: boolean }>
+    handler(customEvent.detail)
+  }
+  window.addEventListener(AUTH_SESSION_CHANGED_EVENT, listener)
 
   return () => {
-    window.removeEventListener(AUTH_SESSION_CHANGED_EVENT, handler)
+    window.removeEventListener(AUTH_SESSION_CHANGED_EVENT, listener)
   }
 }
 
-export function notifyPortalAuthSessionChange() {
-  window.dispatchEvent(new Event(AUTH_SESSION_CHANGED_EVENT))
+export function notifyPortalAuthSessionChange(options?: { expired?: boolean }) {
+  window.dispatchEvent(new CustomEvent(AUTH_SESSION_CHANGED_EVENT, { detail: options }))
+}
+
+export function getGoogleLoginUrl(): string {
+  const { device_id, device_name, platform } = buildBrowserAuthDevicePayload()
+  return `/api/auth/google?device_id=${encodeURIComponent(device_id)}&device_name=${encodeURIComponent(device_name)}&platform=${encodeURIComponent(platform)}`
 }

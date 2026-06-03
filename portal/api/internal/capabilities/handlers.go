@@ -1,7 +1,9 @@
 package capabilities
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"notch/portal/api/internal/auth"
@@ -28,6 +30,9 @@ func NewHandler(repo Repository, dbPool *pgxpool.Pool, logger *events.Logger) *H
 func (h *Handler) GetCapabilities(w http.ResponseWriter, req *http.Request) {
 	policy, err := GetRemotePermissionPolicy(req.Context(), h.Repo)
 	if err != nil {
+		if req.Context().Err() != nil || errors.Is(err, context.Canceled) {
+			return
+		}
 		httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch capabilities")
 		return
 	}

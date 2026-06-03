@@ -61,7 +61,44 @@ type ObservabilityConfig struct {
 	EventLogIPSalt string
 }
 
+func loadEnv() {
+	paths := []string{".env", "../.env", "../../.env"}
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			content, err := os.ReadFile(p)
+			if err != nil {
+				continue
+			}
+			lines := strings.Split(string(content), "\n")
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				if line == "" || strings.HasPrefix(line, "#") {
+					continue
+				}
+				parts := strings.SplitN(line, "=", 2)
+				if len(parts) != 2 {
+					continue
+				}
+				key := strings.TrimSpace(parts[0])
+				val := strings.TrimSpace(parts[1])
+				if (strings.HasPrefix(val, "\"") && strings.HasSuffix(val, "\"")) ||
+					(strings.HasPrefix(val, "'") && strings.HasSuffix(val, "'")) {
+					if len(val) >= 2 {
+						val = val[1 : len(val)-1]
+					}
+				}
+				if os.Getenv(key) == "" {
+					os.Setenv(key, val)
+				}
+			}
+			break
+		}
+	}
+}
+
 func Load() (Config, error) {
+	loadEnv()
+
 	cfg := Config{
 		HTTP: HTTPConfig{
 			Addr:              env("PORTAL_API_ADDR", fmt.Sprintf(":%s", env("PORT", "8080"))),

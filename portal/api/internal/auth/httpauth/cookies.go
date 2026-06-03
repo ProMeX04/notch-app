@@ -43,7 +43,7 @@ func ReadRefreshTokenCookie(req *http.Request) string {
 
 func setAuthCookie(w http.ResponseWriter, req *http.Request, cfg CookieConfig, name string, value string, expires time.Time) {
 	cookie := &http.Cookie{Name: name, Value: value, Path: "/", Expires: expires, HttpOnly: true, Secure: secureCookie(req, cfg), SameSite: http.SameSiteLaxMode}
-	if cfg.Domain != "" {
+	if cfg.Domain != "" && cfg.Domain != "localhost" && cfg.Domain != "127.0.0.1" && !strings.HasPrefix(cfg.Domain, "[") {
 		cookie.Domain = cfg.Domain
 	}
 	http.SetCookie(w, cookie)

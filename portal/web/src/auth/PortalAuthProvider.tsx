@@ -60,8 +60,12 @@ function AuthSessionChangeSubscription() {
   const queryClient = useQueryClient()
 
   useEffect(() => {
-    return onPortalAuthSessionChange(() => {
-      void queryClient.invalidateQueries({ queryKey: AUTH_ME_QUERY_KEY })
+    return onPortalAuthSessionChange((detail) => {
+      if (detail?.expired) {
+        queryClient.setQueryData(AUTH_ME_QUERY_KEY, null)
+      } else {
+        void queryClient.invalidateQueries({ queryKey: AUTH_ME_QUERY_KEY })
+      }
     })
   }, [queryClient])
 

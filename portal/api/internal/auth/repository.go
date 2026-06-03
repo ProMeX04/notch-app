@@ -25,37 +25,6 @@ func (r *PgxSessionRepository) FindSessionByRefreshTokenHash(ctx context.Context
 	return r.findSession(ctx, `s."tokenHash" = $1`, tokenHash)
 }
 
-// FindActiveSessionByDeviceID returns the most-recently-seen active session for a
-// given device that has been updated at or after `since`. It is used as a
-// grace-period fallback when a concurrent /api/auth/me request already rotated
-// the refresh token: the old token hash is gone, but a fresh session exists.
-func (r *PgxSessionRepository) FindActiveSessionByDeviceID(ctx context.Context, deviceID string, since time.Time) (*Session, error) {
-	if r == nil || r.db == nil {
-		return nil, nil
-	}
-	row := r.db.QueryRow(ctx, `
-		SELECT
-			s."id", s."tokenHash", s."accessTokenHash", s."deviceId", s."deviceName", s."platform",
-			s."expiresAt", s."accessExpiresAt", s."createdAt", s."lastSeenAt", s."trustedAt",
-			s."revokedAt", s."revokedReason", s."userId",
-			u."id", u."email", u."name", u."displayName", u."avatarUrl", u."createdAt",
-			u."isPro", u."isAdmin", u."leaderboardOptIn"
-		FROM "AuthSession" s
-		JOIN "User" u ON u."id" = s."userId"
-		WHERE s."deviceId" = $1
-		  AND s."revokedAt" IS NULL
-		  AND s."expiresAt" > $2
-		  AND s."lastSeenAt" >= $3
-		ORDER BY s."lastSeenAt" DESC
-		LIMIT 1
-	`, deviceID, since, since)
-	session, err := scanSession(row)
-	if err != nil {
-		return nil, err
-	}
-	return session, nil
-}
-
 func (r *PgxSessionRepository) RotateSession(ctx context.Context, sessionID string, accessTokenHash string, refreshTokenHash string, accessExpiresAt time.Time, refreshExpiresAt time.Time, device NormalizedDevice, trustedAt *time.Time, now time.Time) (RotatedSession, error) {
 	var rotated RotatedSession
 	if r == nil || r.db == nil {

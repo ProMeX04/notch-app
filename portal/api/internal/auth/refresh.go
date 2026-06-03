@@ -38,20 +38,11 @@ func (s RefreshService) RefreshWithToken(ctx context.Context, req *http.Request,
 		return empty, ErrRefreshInvalid
 	}
 	now := s.now()
-	session, err := s.Repo.FindSessionByRefreshTokenHash(ctx, token.HashToken(trimmed))
+
+	tokenHash := token.HashToken(trimmed)
+	session, err := s.Repo.FindSessionByRefreshTokenHash(ctx, tokenHash)
 	if err != nil || session == nil {
-		// Grace-period fallback: a concurrent /api/auth/me may have already rotated
-		// this refresh token in the last 30 seconds. If this device has a fresh active
-		// session, rotate it again instead of clearing cookies with a 401.
-		if deviceID := strings.TrimSpace(req.Header.Get("x-notch-device-id")); deviceID != "" {
-			graceSince := now.Add(-30 * time.Second)
-			if recent, ferr := s.Repo.FindActiveSessionByDeviceID(ctx, deviceID, graceSince); ferr == nil && recent != nil {
-				session = recent
-			}
-		}
-		if session == nil {
-			return empty, ErrRefreshInvalid
-		}
+		return empty, ErrRefreshInvalid
 	}
 	if session.RevokedAt != nil {
 		return empty, ErrRefreshInvalid
@@ -93,7 +84,9 @@ func (s RefreshService) RefreshWithToken(ctx context.Context, req *http.Request,
 		return empty, err
 	}
 	policy := s.getPermissionPolicy(ctx, session.User.IsPro)
-	return BuildAuthPayload(session.User, rotated, accessToken, accessExpiresAt, newRefreshToken, refreshExpiresAt, s.maxDevices(), policy), nil
+	payload := BuildAuthPayload(session.User, rotated, accessToken, accessExpiresAt, newRefreshToken, refreshExpiresAt, s.maxDevices(), policy)
+
+	return payload, nil
 }
 
 func ParseRefreshRequest(req *http.Request) (RefreshRequestBody, DeviceInput) {

@@ -88,28 +88,12 @@ func (h Handler) Me(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	payload, refreshErr := h.RefreshService.RefreshWithToken(req.Context(), req, httpauth.ReadRefreshTokenCookie(req), DeviceInputFromRefreshRequest(req))
-	if refreshErr != nil {
-		httpauth.ClearAuthCookies(w, req, h.CookieConfig)
-		httpjson.Detail(w, http.StatusUnauthorized, "Invalid or expired session token.")
+	if req.Context().Err() != nil || errors.Is(err, context.Canceled) {
 		return
 	}
-	applyPayloadCookies(w, req, h.CookieConfig, payload)
-	sessionID := payload.Session.ID
-	httpjson.JSON(w, http.StatusOK, UserResponse{
-		ID:               payload.User.ID,
-		Email:            payload.User.Email,
-		Name:             payload.User.Name,
-		DisplayName:      payload.User.DisplayName,
-		AvatarURL:        payload.User.AvatarURL,
-		CreatedAt:        payload.User.CreatedAt,
-		IsPro:            payload.User.IsPro,
-		IsAdmin:          payload.User.IsAdmin,
-		LeaderboardOptIn: payload.User.LeaderboardOptIn,
-		PermissionPolicy: payload.User.PermissionPolicy,
-		CurrentSessionID: &sessionID,
-		MaxActiveDevices: payload.MaxActiveDevices,
-	})
+
+	httpauth.ClearAuthCookies(w, req, h.CookieConfig)
+	httpjson.Detail(w, http.StatusUnauthorized, "Invalid or expired session token.")
 }
 
 func (h Handler) Refresh(w http.ResponseWriter, req *http.Request) {
@@ -413,6 +397,9 @@ func (h Handler) ListSessions(w http.ResponseWriter, req *http.Request) {
 
 	sessions, err := h.Repo.FindAllSessionsByUserID(req.Context(), authCtx.User.ID)
 	if err != nil {
+		if req.Context().Err() != nil || errors.Is(err, context.Canceled) {
+			return
+		}
 		httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch sessions")
 		return
 	}
@@ -1028,10 +1015,23 @@ func (h Handler) GoogleCallback(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// 4. Create Session
+	deviceID := stateParams.Get("device_id")
+	if deviceID == "" {
+		deviceID = "google-oauth"
+	}
+	deviceName := stateParams.Get("device_name")
+	if deviceName == "" {
+		deviceName = "Browser"
+	}
+	platform := stateParams.Get("platform")
+	if platform == "" {
+		platform = "Web"
+	}
+
 	deviceInput := DeviceInput{
-		DeviceID:   "google-oauth",
-		DeviceName: "Browser",
-		Platform:   "Web",
+		DeviceID:   deviceID,
+		DeviceName: deviceName,
+		Platform:   platform,
 	}
 
 	_, err = h.createSessionAndTokens(req.Context(), w, req, *user, deviceInput, now)

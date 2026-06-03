@@ -99,10 +99,6 @@ func (r *refreshRepo) ConsumeGoogleDriveAuthHandoff(_ context.Context, _ string,
 func (r *refreshRepo) DeleteExpiredGoogleDriveAuthHandoffs(_ context.Context, _ time.Time) error {
 	return nil
 }
-func (r *refreshRepo) FindActiveSessionByDeviceID(_ context.Context, _ string, _ time.Time) (*Session, error) {
-	return nil, nil
-}
-
 
 func TestRefreshServiceRotatesValidRefreshToken(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
@@ -167,3 +163,5 @@ func TestRefreshServiceRejectsExpiredAndMarksSession(t *testing.T) {
 }
 
 func ptr(value string) *string { return &value }
+
+

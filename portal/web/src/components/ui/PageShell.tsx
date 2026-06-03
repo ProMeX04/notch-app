@@ -3,6 +3,7 @@ import { Link, useLocation } from '@tanstack/react-router'
 import { User, Menu, X } from 'lucide-react'
 
 import { usePortalAuth } from '@/auth/usePortalAuth'
+import { getGoogleLoginUrl } from '@/auth/portal-auth-client'
 import { PortalLogo } from '@/components/portal/PortalLogo'
 import { setIsProgrammaticScroll } from './scrollState'
 
@@ -183,7 +184,7 @@ export function PageShell({
                     </div>
                   ) : (
                     <a
-                      href="/api/auth/google"
+                      href={getGoogleLoginUrl()}
                       className="portal-button"
                       style={{
                         height: '38px',
@@ -281,7 +282,7 @@ export function PageShell({
                     </Link>
                   ) : (
                     <a
-                      href="/api/auth/google"
+                      href={getGoogleLoginUrl()}
                       onClick={() => setMobileMenuOpen(false)}
                       className="portal-button"
                       style={{

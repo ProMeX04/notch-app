@@ -54,8 +54,7 @@ apiClient.interceptors.response.use(
     const url = originalRequest.url ?? ''
     const isAuthLifecycleRequest =
       url === '/api/auth/refresh' ||
-      url === '/api/auth/logout' ||
-      url.includes('/api/auth/me')
+      url === '/api/auth/logout'
 
     if (isUnauthorized && !originalRequest._retry && !isAuthLifecycleRequest) {
       if (isRefreshing) {
@@ -85,7 +84,7 @@ apiClient.interceptors.response.use(
         window.clearTimeout(refreshTimeout)
         isRefreshing = false
         processQueue(refreshError as Error)
-        notifyPortalAuthSessionChange()
+        notifyPortalAuthSessionChange({ expired: true })
         return Promise.reject(refreshError)
       }
     }

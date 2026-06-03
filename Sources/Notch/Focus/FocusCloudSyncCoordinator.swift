@@ -117,6 +117,7 @@ final class FocusCloudSyncCoordinator: ObservableObject {
 
     func refreshProfile() async {
         guard let configuration = await portalAccount.freshConfiguredPortalUserConfiguration(forceRefresh: false) else {
+            clearUserData()
             state = .signedOut
             return
         }
@@ -183,5 +184,12 @@ final class FocusCloudSyncCoordinator: ObservableObject {
             try? await Task.sleep(for: delay)
             await self?.syncPendingFocusStats()
         }
+    }
+
+    private func clearUserData() {
+        weeklyRank = 0
+        displayName = ""
+        streakDays = 0
+        leaderboardEntries = []
     }
 }

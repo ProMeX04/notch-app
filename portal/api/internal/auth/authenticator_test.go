@@ -248,18 +248,6 @@ func (r *fakeSessionRepo) DeleteExpiredGoogleDriveAuthHandoffs(_ context.Context
 	r.handoffs = filtered
 	return nil
 }
-func (r *fakeSessionRepo) FindActiveSessionByDeviceID(_ context.Context, deviceID string, since time.Time) (*Session, error) {
-	for _, s := range r.byID {
-		if s.DeviceID != nil && *s.DeviceID == deviceID &&
-			s.RevokedAt == nil &&
-			s.ExpiresAt.After(since) &&
-			!s.LastSeenAt.Before(since) {
-			return s, nil
-		}
-	}
-	return nil, nil
-}
-
 
 func TestAuthenticatorAcceptsSessionBoundJWT(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()

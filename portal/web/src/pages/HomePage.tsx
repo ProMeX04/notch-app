@@ -4,6 +4,7 @@ import { Link } from '@tanstack/react-router'
 import { PageShell } from '@/components/ui/PageShell'
 import { getIsProgrammaticScroll, setIsProgrammaticScroll } from '@/components/ui/scrollState'
 import { usePortalAuth } from '@/auth/usePortalAuth'
+import { getGoogleLoginUrl } from '@/auth/portal-auth-client'
 import { apiClient } from '@/api/client'
 import { HelpCircle, Mail, MessageSquare, ChevronDown } from 'lucide-react'
 
@@ -139,7 +140,7 @@ export function HomePage() {
 
   const handleUpgrade = async () => {
     if (!isAuthenticated) {
-      window.location.href = '/api/auth/google'
+      window.location.href = getGoogleLoginUrl()
       return
     }
     setIsCheckoutLoading(true)

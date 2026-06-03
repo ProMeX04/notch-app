@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { AlertCircle, Loader2 } from 'lucide-react'
 import { PageShell } from '@/components/ui/PageShell'
 import { usePortalAuth } from '@/auth/usePortalAuth'
+import { getGoogleLoginUrl } from '@/auth/portal-auth-client'
 import { PortalSuccessEffect } from '@/components/portal/PortalSuccessEffect'
 import {
   buildPortalOAuthSearch,
@@ -25,6 +26,11 @@ export function OAuthAuthorizePage() {
   const oauthRequest = useMemo(() => readPortalOAuthAuthorizeRequest(searchParams), [searchParams])
   const oauthSearch = useMemo(() => buildPortalOAuthSearch(oauthRequest), [oauthRequest])
   const isHandoffState = Boolean(oauthRequest && isAuthenticated && (isRedirecting || hasOpenedApp))
+
+  const googleLoginUrl = useMemo(() => {
+    const base = getGoogleLoginUrl()
+    return oauthSearch ? `${base}&${oauthSearch.slice(1)}` : base
+  }, [oauthSearch])
 
   const handoffToApp = (redirectTo: string) => {
     setLastRedirectTo(redirectTo)
@@ -118,7 +124,7 @@ export function OAuthAuthorizePage() {
             {oauthRequest && !isAuthenticated && status !== 'booting' ? (
               <div style={{ display: 'grid', gap: '12px' }}>
                 <a 
-                  href={`/api/auth/google${oauthSearch}`} 
+                  href={googleLoginUrl} 
                   className="portal-button" 
                   style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'white', color: 'black', height: '42px', fontWeight: 600 }}
                 >

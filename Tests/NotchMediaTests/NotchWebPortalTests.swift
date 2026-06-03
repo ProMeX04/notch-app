@@ -21,7 +21,7 @@ final class NotchWebPortalTests: XCTestCase {
     }
 
     func testDevelopmentURLMapping() {
-        let devAPI = URL(string: "http://localhost:8080/api")!
+        let devAPI = URL(string: "http://localhost:3000/api")!
         let signup = NotchWebPortal.signupURL(apiBaseURL: devAPI)
         XCTAssertEqual(signup.absoluteString, "http://localhost:5173/signup")
     }

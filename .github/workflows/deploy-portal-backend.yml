@@ -9,6 +9,7 @@ on:
       - 'portal/prisma/**'
       - 'portal/contracts/**'
       - '.github/workflows/deploy-portal-backend.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read

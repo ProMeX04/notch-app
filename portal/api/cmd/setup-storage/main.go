@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	devDbURL  = "postgresql://postgres.jtsshqvahplbjuljtmld:%40Mingw401072@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres?sslmode=require"
-	prodDbURL = "postgresql://postgres.xyhhtghehlzzzpitfveu:%40Mingw401072@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres?sslmode=require"
+	devDbURL  = "postgresql://postgres.xyhhtghehlzzzpitfveu:%40Mingw401072@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres?sslmode=require"
+	prodDbURL = "postgresql://postgres.jtsshqvahplbjuljtmld:%40Mingw401072@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres?sslmode=require"
 )
 
 const sqlQueries = `
@@ -91,7 +91,7 @@ func setupProject(name, dbURL string) {
 }
 
 func main() {
-	setupProject("Dev (jtsshqvahplbjuljtmld)", devDbURL)
-	setupProject("Prod (xyhhtghehlzzzpitfveu)", prodDbURL)
+	setupProject("Dev (xyhhtghehlzzzpitfveu)", devDbURL)
+	setupProject("Prod (jtsshqvahplbjuljtmld)", prodDbURL)
 	fmt.Println("\n✨ Go Storage Setup Tool Complete!")
 }

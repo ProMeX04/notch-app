@@ -1002,7 +1002,7 @@ func (h Handler) GoogleCallback(w http.ResponseWriter, req *http.Request) {
 			_ = h.Repo.UpdateUserAvatar(req.Context(), user.ID, avatarURL)
 			user.AvatarURL = avatarURL
 		}
-	} else if (avatarURL != nil && user.AvatarURL == nil) || (avatarURL != nil && user.AvatarURL != nil && *avatarURL != *user.AvatarURL) {
+	} else if avatarURL != nil && (user.AvatarURL == nil || (normalizedGoogleAvatarURL(*user.AvatarURL) != nil && *avatarURL != *user.AvatarURL)) {
 		err = h.Repo.UpdateUserAvatar(req.Context(), user.ID, avatarURL)
 		if err == nil {
 			user.AvatarURL = avatarURL

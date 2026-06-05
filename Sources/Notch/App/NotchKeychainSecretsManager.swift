@@ -4,7 +4,11 @@ import Security
 final class NotchKeychainSecretsManager: @unchecked Sendable {
     static let shared = NotchKeychainSecretsManager()
     
-    private let service = "dev.notch"
+    #if DEBUG
+    private let service = "dev.notch.debug"
+    #else
+    private let service = "dev.notch.release"
+    #endif
     private let account = "app-secrets"
     private let lock = NSLock()
     

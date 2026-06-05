@@ -22,7 +22,6 @@ import (
 	"notch/portal/api/internal/httpjson"
 
 	"github.com/go-chi/chi/v5"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type Handler struct {
@@ -59,25 +58,6 @@ type SessionsResponse struct {
 	Devices          []DeviceSummary `json:"devices"`
 }
 
-type LoginRequest struct {
-	Email       string `json:"email"`
-	Password    string `json:"password"`
-	DeviceID    string `json:"device_id"`
-	DeviceName  string `json:"device_name"`
-	Platform    string `json:"platform"`
-	TrustDevice any    `json:"trust_device"`
-}
-
-type RegisterRequest struct {
-	Email       string `json:"email"`
-	Password    string `json:"password"`
-	Name        string `json:"name"`
-	DeviceID    string `json:"device_id"`
-	DeviceName  string `json:"device_name"`
-	Platform    string `json:"platform"`
-	TrustDevice any    `json:"trust_device"`
-}
-
 func (h Handler) Me(w http.ResponseWriter, req *http.Request) {
 	noStore(w)
 	auth, err := h.Authenticator.AuthenticateRequest(req.Context(), req)
@@ -108,131 +88,6 @@ func (h Handler) Refresh(w http.ResponseWriter, req *http.Request) {
 	httpjson.JSON(w, http.StatusOK, payload)
 }
 
-func (h Handler) Login(w http.ResponseWriter, req *http.Request) {
-	noStore(w)
-	var body LoginRequest
-	if req.Body != nil {
-		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-			httpjson.Error(w, http.StatusBadRequest, "Invalid request body")
-			return
-		}
-	}
-
-	email := normalizeEmail(body.Email)
-	password := body.Password
-
-	if email == "" || password == "" {
-		httpjson.Error(w, http.StatusBadRequest, "Vui lòng nhập email và mật khẩu")
-		return
-	}
-
-	if !isValidEmail(email) {
-		httpjson.Error(w, http.StatusBadRequest, "Email không hợp lệ")
-		return
-	}
-
-	user, err := h.Repo.FindUserByEmail(req.Context(), email)
-	if err != nil {
-		httpjson.Error(w, http.StatusInternalServerError, "Internal server error")
-		return
-	}
-
-	if user == nil || user.Password == nil {
-		httpjson.Error(w, http.StatusUnauthorized, "Email hoặc mật khẩu không chính xác")
-		return
-	}
-
-	err = bcrypt.CompareHashAndPassword([]byte(*user.Password), []byte(password))
-	if err != nil {
-		httpjson.Error(w, http.StatusUnauthorized, "Email hoặc mật khẩu không chính xác")
-		return
-	}
-
-	deviceInput := deviceInputFromRequest(req, body.DeviceID, body.DeviceName, body.Platform, parseTrustDevice(body.TrustDevice))
-
-	now := time.Now()
-	sessionID, err := h.createSessionAndTokens(req.Context(), w, req, *user, deviceInput, now)
-	if err != nil {
-		httpjson.Error(w, http.StatusInternalServerError, "Failed to create session")
-		return
-	}
-
-	policy := h.getPermissionPolicy(req.Context(), user.IsPro)
-	httpjson.JSON(w, http.StatusOK, BuildUserResponse(*user, sessionID, h.MaxActiveDevices, policy))
-}
-
-func (h Handler) Register(w http.ResponseWriter, req *http.Request) {
-	noStore(w)
-	var body RegisterRequest
-	if req.Body != nil {
-		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-			httpjson.Error(w, http.StatusBadRequest, "Invalid request body")
-			return
-		}
-	}
-
-	email := normalizeEmail(body.Email)
-	password := body.Password
-	name := strings.TrimSpace(body.Name)
-
-	if email == "" || password == "" {
-		httpjson.Error(w, http.StatusBadRequest, "Vui lòng nhập đầy đủ email và mật khẩu")
-		return
-	}
-
-	if !isValidEmail(email) {
-		httpjson.Error(w, http.StatusBadRequest, "Email không hợp lệ")
-		return
-	}
-
-	existingUser, err := h.Repo.FindUserByEmail(req.Context(), email)
-	if err != nil {
-		httpjson.Error(w, http.StatusInternalServerError, "Internal server error")
-		return
-	}
-
-	if existingUser != nil && existingUser.Password != nil && *existingUser.Password != "" {
-		httpjson.Error(w, http.StatusBadRequest, "Email này đã được sử dụng")
-		return
-	}
-
-	hashedBytes, err := bcrypt.GenerateFromPassword([]byte(password), 10)
-	if err != nil {
-		httpjson.Error(w, http.StatusInternalServerError, "Internal server error")
-		return
-	}
-	hashedPassword := string(hashedBytes)
-
-	now := time.Now()
-	var user *User
-
-	if existingUser != nil {
-		user, err = h.Repo.UpdateUserPasswordAndName(req.Context(), existingUser.ID, name, hashedPassword, now)
-	} else {
-		userID := generateUUID()
-		if name == "" {
-			name = strings.Split(email, "@")[0]
-		}
-		user, err = h.Repo.CreateUser(req.Context(), userID, email, name, hashedPassword, now)
-	}
-
-	if err != nil || user == nil {
-		httpjson.Error(w, http.StatusInternalServerError, "Failed to save user")
-		return
-	}
-
-	deviceInput := deviceInputFromRequest(req, body.DeviceID, body.DeviceName, body.Platform, parseTrustDevice(body.TrustDevice))
-
-	sessionID, err := h.createSessionAndTokens(req.Context(), w, req, *user, deviceInput, now)
-	if err != nil {
-		httpjson.Error(w, http.StatusInternalServerError, "Failed to create session")
-		return
-	}
-
-	policy := h.getPermissionPolicy(req.Context(), user.IsPro)
-	httpjson.JSON(w, http.StatusCreated, BuildUserResponse(*user, sessionID, h.MaxActiveDevices, policy))
-}
-
 func (h Handler) Logout(w http.ResponseWriter, req *http.Request) {
 	noStore(w)
 	var sessionID string
@@ -256,14 +111,10 @@ func (h Handler) Logout(w http.ResponseWriter, req *http.Request) {
 		sessionID = session.ID
 	}
 
-	if sessionID == "" {
-		httpauth.ClearAuthCookies(w, req, h.CookieConfig)
-		httpjson.Detail(w, http.StatusBadRequest, "Missing session token.")
-		return
+	if sessionID != "" {
+		now := time.Now()
+		_ = h.Repo.RevokeSession(req.Context(), sessionID, now, "logout")
 	}
-
-	now := time.Now()
-	_ = h.Repo.RevokeSession(req.Context(), sessionID, now, "logout")
 
 	httpauth.ClearAuthCookies(w, req, h.CookieConfig)
 	w.WriteHeader(http.StatusNoContent)
@@ -413,7 +264,7 @@ func (h Handler) ListSessions(w http.ResponseWriter, req *http.Request) {
 			key = *s.DeviceID
 		}
 
-		active := s.RevokedAt == nil && s.ExpiresAt.After(now)
+		active := s.RevokedAt == nil && s.RefreshTokenExpiresAt.After(now)
 		existing, found := devicesMap[key]
 
 		if !found {

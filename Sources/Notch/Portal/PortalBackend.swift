@@ -194,43 +194,6 @@ private final class PortalDeviceIDStore {
     }
 }
 
-private struct PortalAuthRequest: Encodable, Sendable {
-    let email: String
-    let password: String
-    let deviceID: String
-    let deviceName: String
-    let platform: String
-    let trustDevice: Bool
-
-    enum CodingKeys: String, CodingKey {
-        case email
-        case password
-        case deviceID = "device_id"
-        case deviceName = "device_name"
-        case platform
-        case trustDevice = "trust_device"
-    }
-}
-
-private struct PortalSignupRequest: Encodable, Sendable {
-    let email: String
-    let password: String
-    let name: String?
-    let deviceID: String
-    let deviceName: String
-    let platform: String
-    let trustDevice: Bool
-
-    enum CodingKeys: String, CodingKey {
-        case email
-        case password
-        case name
-        case deviceID = "device_id"
-        case deviceName = "device_name"
-        case platform
-        case trustDevice = "trust_device"
-    }
-}
 
 private struct PortalRefreshRequest: Encodable, Sendable {
     let refreshToken: String
@@ -547,47 +510,7 @@ final class PortalAPIClient: @unchecked Sendable {
         self.urlSession = urlSession
     }
 
-    func signup(
-        configuration: PortalBackendConfiguration,
-        email: String,
-        password: String,
-        name: String?,
-        device: PortalDeviceContext = .currentMac()
-    ) async throws -> PortalAuthSession {
-        try await authenticate(
-            configuration: configuration,
-            path: "auth/register",
-            body: PortalSignupRequest(
-                email: email,
-                password: password,
-                name: normalizedValue(name),
-                deviceID: device.deviceID,
-                deviceName: device.deviceName,
-                platform: device.platform,
-                trustDevice: device.trustDevice
-            )
-        )
-    }
 
-    func login(
-        configuration: PortalBackendConfiguration,
-        email: String,
-        password: String,
-        device: PortalDeviceContext = .currentMac()
-    ) async throws -> PortalAuthSession {
-        try await authenticate(
-            configuration: configuration,
-            path: "auth/login",
-            body: PortalAuthRequest(
-                email: email,
-                password: password,
-                deviceID: device.deviceID,
-                deviceName: device.deviceName,
-                platform: device.platform,
-                trustDevice: device.trustDevice
-            )
-        )
-    }
 
     func refresh(
         configuration: PortalBackendConfiguration,

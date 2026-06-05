@@ -44,12 +44,14 @@ func (r *fakeSessionRepo) FindSessionByRefreshTokenHash(_ context.Context, token
 	}
 	return nil, nil
 }
-func (r *fakeSessionRepo) RotateSession(_ context.Context, sessionID string, accessTokenHash string, refreshTokenHash string, accessExpiresAt time.Time, refreshExpiresAt time.Time, device NormalizedDevice, trustedAt *time.Time, _ time.Time) (RotatedSession, error) {
+func (r *fakeSessionRepo) RotateSession(_ context.Context, sessionID string, oldTokenHash string, tokenRotatedAt time.Time, accessTokenHash string, refreshTokenHash string, accessExpiresAt time.Time, refreshExpiresAt time.Time, device NormalizedDevice, trustedAt *time.Time, _ time.Time) (RotatedSession, error) {
 	if s, ok := r.byID[sessionID]; ok {
 		s.TokenHash = refreshTokenHash
+		s.OldTokenHash = &oldTokenHash
+		s.TokenRotatedAt = &tokenRotatedAt
 		s.AccessTokenHash = &accessTokenHash
-		s.AccessExpiresAt = &accessExpiresAt
-		s.ExpiresAt = refreshExpiresAt
+		s.AccessTokenExpiresAt = &accessExpiresAt
+		s.RefreshTokenExpiresAt = refreshExpiresAt
 		s.DeviceID = &device.DeviceID
 		s.Platform = &device.Platform
 		s.TrustedAt = trustedAt
@@ -80,14 +82,14 @@ func (r *fakeSessionRepo) FindUserByEmail(_ context.Context, email string) (*Use
 }
 func (r *fakeSessionRepo) CreateSession(_ context.Context, sessionID string, userID string, tokenHash string, accessTokenHash *string, device NormalizedDevice, expiresAt time.Time, accessExpiresAt *time.Time, trustedAt *time.Time, now time.Time) error {
 	s := &Session{
-		ID:              sessionID,
-		TokenHash:       tokenHash,
-		AccessTokenHash: accessTokenHash,
-		DeviceID:        &device.DeviceID,
-		ExpiresAt:       expiresAt,
-		AccessExpiresAt: accessExpiresAt,
-		UserID:          userID,
-		CreatedAt:       now,
+		ID:                    sessionID,
+		TokenHash:             tokenHash,
+		AccessTokenHash:       accessTokenHash,
+		DeviceID:              &device.DeviceID,
+		RefreshTokenExpiresAt: expiresAt,
+		AccessTokenExpiresAt:  accessExpiresAt,
+		UserID:                userID,
+		CreatedAt:             now,
 	}
 	if r.byID == nil {
 		r.byID = make(map[string]*Session)
@@ -121,6 +123,16 @@ func (r *fakeSessionRepo) RevokeSession(_ context.Context, sessionID string, rev
 	if s, ok := r.byID[sessionID]; ok {
 		s.RevokedAt = &revokedAt
 		s.RevokedReason = &reason
+	}
+	return nil
+}
+func (r *fakeSessionRepo) RevokeAllSessionsByUserID(_ context.Context, userID string, reason string) error {
+	for _, s := range r.byID {
+		if s.UserID == userID {
+			now := time.Now()
+			s.RevokedAt = &now
+			s.RevokedReason = &reason
+		}
 	}
 	return nil
 }
@@ -206,8 +218,8 @@ func (r *fakeSessionRepo) CreateOAuthAuthorizationCode(_ context.Context, code *
 func (r *fakeSessionRepo) FindOAuthAuthorizationCode(_ context.Context, codeHash string) (*OAuthAuthorizationCode, error) {
 	return nil, nil
 }
-func (r *fakeSessionRepo) ConsumeOAuthAuthorizationCode(_ context.Context, id string, consumedAt time.Time) error {
-	return nil
+func (r *fakeSessionRepo) ConsumeOAuthAuthorizationCode(_ context.Context, id string, consumedAt time.Time) (int64, error) {
+	return 1, nil
 }
 func (r *fakeSessionRepo) FindGoogleDriveAuthHandoff(_ context.Context, tokenHash string) (*GoogleDriveAuthHandoff, error) {
 	for i := range r.handoffs {
@@ -227,16 +239,16 @@ func (r *fakeSessionRepo) FindGoogleDriveAuthHandoff(_ context.Context, tokenHas
 	}
 	return nil, nil
 }
-func (r *fakeSessionRepo) ConsumeGoogleDriveAuthHandoff(_ context.Context, handoffID string, consumedAt time.Time) error {
+func (r *fakeSessionRepo) ConsumeGoogleDriveAuthHandoff(_ context.Context, handoffID string, consumedAt time.Time) (int64, error) {
 	for i := range r.handoffs {
 		if r.handoffs[i].ID == handoffID {
 			r.handoffs[i].ConsumedAt = &consumedAt
 			r.handoffs[i].AccessToken = ""
 			r.handoffs[i].RefreshToken = nil
-			return nil
+			return 1, nil
 		}
 	}
-	return nil
+	return 0, nil
 }
 func (r *fakeSessionRepo) DeleteExpiredGoogleDriveAuthHandoffs(_ context.Context, maxExpiresAt time.Time) error {
 	var filtered []fakeHandoffRecord
@@ -268,6 +280,8 @@ func TestAuthenticatorAcceptsSessionBoundJWT(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AuthenticateAccessToken() error = %v", err)
 	}
+	// Yield/sleep briefly to let the async UpdateLastSeen goroutine run
+	time.Sleep(10 * time.Millisecond)
 	if ctx.User.ID != user.ID || ctx.SessionID != "session_1" || repo.lastSeenID != "session_1" {
 		t.Fatalf("unexpected auth context/repo: %#v repo=%#v", ctx, repo)
 	}
@@ -295,7 +309,7 @@ func TestAuthenticatorRejectsRevokedJWTSession(t *testing.T) {
 	}
 }
 
-func TestAuthenticatorRejectsJWTAccessHashMismatch(t *testing.T) {
+func TestAuthenticatorAcceptsJWTAccessHashMismatchStatelessly(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
 	jwtToken, _ := token.SignJWT(token.JWTPayload{UserID: "user_1", SessionID: "session_1"}, "secret", time.Hour, now)
 	wrongHash := token.HashToken("other-token")
@@ -303,8 +317,8 @@ func TestAuthenticatorRejectsJWTAccessHashMismatch(t *testing.T) {
 		"session_1": sessionFixture(User{ID: "user_1"}, "session_1", &wrongHash, nil, now.Add(time.Hour)),
 	}}, JWTSecret: "secret", Now: func() time.Time { return now }}
 
-	if _, err := authenticator.AuthenticateAccessToken(context.Background(), jwtToken, nil); err == nil {
-		t.Fatal("expected hash mismatch to reject")
+	if _, err := authenticator.AuthenticateAccessToken(context.Background(), jwtToken, nil); err != nil {
+		t.Fatalf("expected hash mismatch in DB to be ignored statelessly: %v", err)
 	}
 }
 
@@ -314,8 +328,11 @@ func TestAuthenticatorRejectsDeviceMismatch(t *testing.T) {
 	requestDeviceID := "device_2"
 	jwtToken, _ := token.SignJWT(token.JWTPayload{UserID: "user_1", SessionID: "session_1", DeviceID: &deviceID}, "secret", time.Hour, now)
 	accessHash := token.HashToken(jwtToken)
+	session := sessionFixture(User{ID: "user_1"}, "session_1", &accessHash, &deviceID, now.Add(time.Hour))
+	platform := "macOS"
+	session.Platform = &platform
 	authenticator := Authenticator{Repo: &fakeSessionRepo{byID: map[string]*Session{
-		"session_1": sessionFixture(User{ID: "user_1"}, "session_1", &accessHash, &deviceID, now.Add(time.Hour)),
+		"session_1": session,
 	}}, JWTSecret: "secret", Now: func() time.Time { return now }}
 
 	if _, err := authenticator.AuthenticateAccessToken(context.Background(), jwtToken, &requestDeviceID); err == nil {
@@ -349,13 +366,13 @@ func TestAuthenticatorReadsBearerBeforeCookie(t *testing.T) {
 
 func sessionFixture(user User, id string, accessHash *string, deviceID *string, accessExpiresAt time.Time) *Session {
 	return &Session{
-		ID:              id,
-		TokenHash:       "refresh_hash",
-		AccessTokenHash: accessHash,
-		DeviceID:        deviceID,
-		ExpiresAt:       accessExpiresAt.Add(24 * time.Hour),
-		AccessExpiresAt: &accessExpiresAt,
-		UserID:          user.ID,
-		User:            user,
+		ID:                    id,
+		TokenHash:             "refresh_hash",
+		AccessTokenHash:       accessHash,
+		DeviceID:              deviceID,
+		RefreshTokenExpiresAt: accessExpiresAt.Add(24 * time.Hour),
+		AccessTokenExpiresAt:  &accessExpiresAt,
+		UserID:                user.ID,
+		User:                  user,
 	}
 }

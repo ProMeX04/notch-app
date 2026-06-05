@@ -22,10 +22,10 @@ func (r *PgxSessionRepository) FindSessionByID(ctx context.Context, sessionID st
 }
 
 func (r *PgxSessionRepository) FindSessionByRefreshTokenHash(ctx context.Context, tokenHash string) (*Session, error) {
-	return r.findSession(ctx, `s."tokenHash" = $1`, tokenHash)
+	return r.findSession(ctx, `s."tokenHash" = $1 OR s."oldTokenHash" = $1`, tokenHash)
 }
 
-func (r *PgxSessionRepository) RotateSession(ctx context.Context, sessionID string, accessTokenHash string, refreshTokenHash string, accessExpiresAt time.Time, refreshExpiresAt time.Time, device NormalizedDevice, trustedAt *time.Time, now time.Time) (RotatedSession, error) {
+func (r *PgxSessionRepository) RotateSession(ctx context.Context, sessionID string, oldTokenHash string, tokenRotatedAt time.Time, accessTokenHash string, refreshTokenHash string, accessExpiresAt time.Time, refreshExpiresAt time.Time, device NormalizedDevice, trustedAt *time.Time, now time.Time) (RotatedSession, error) {
 	var rotated RotatedSession
 	if r == nil || r.db == nil {
 		return rotated, pgx.ErrNoRows
@@ -35,18 +35,20 @@ func (r *PgxSessionRepository) RotateSession(ctx context.Context, sessionID stri
 		SET
 			"tokenHash" = $2,
 			"accessTokenHash" = $3,
-			"expiresAt" = $4,
-			"accessExpiresAt" = $5,
+			"refreshTokenExpiresAt" = $4,
+			"accessTokenExpiresAt" = $5,
 			"lastSeenAt" = $6,
 			"trustedAt" = $7,
 			"deviceId" = $8,
 			"deviceName" = $9,
 			"platform" = $10,
 			"revokedAt" = NULL,
-			"revokedReason" = NULL
+			"revokedReason" = NULL,
+			"oldTokenHash" = $11,
+			"tokenRotatedAt" = $12
 		WHERE "id" = $1
 		RETURNING "id", "deviceId", "deviceName", "platform", "trustedAt"
-	`, sessionID, refreshTokenHash, accessTokenHash, refreshExpiresAt, accessExpiresAt, now, trustedAt, device.DeviceID, device.DeviceName, device.Platform).
+	`, sessionID, refreshTokenHash, accessTokenHash, refreshExpiresAt, accessExpiresAt, now, trustedAt, device.DeviceID, device.DeviceName, device.Platform, oldTokenHash, tokenRotatedAt).
 		Scan(&rotated.ID, &rotated.DeviceID, &rotated.DeviceName, &rotated.Platform, &rotated.TrustedAt)
 	return rotated, err
 }
@@ -90,12 +92,14 @@ func scanSession(row sessionScanner) (*Session, error) {
 	err := row.Scan(
 		&session.ID,
 		&session.TokenHash,
+		&session.OldTokenHash,
+		&session.TokenRotatedAt,
 		&session.AccessTokenHash,
 		&session.DeviceID,
 		&session.DeviceName,
 		&session.Platform,
-		&session.ExpiresAt,
-		&session.AccessExpiresAt,
+		&session.RefreshTokenExpiresAt,
+		&session.AccessTokenExpiresAt,
 		&session.CreatedAt,
 		&session.LastSeenAt,
 		&session.TrustedAt,
@@ -125,8 +129,8 @@ func scanSession(row sessionScanner) (*Session, error) {
 func sessionSelectSQL(where string) string {
 	return `
 		SELECT
-			s."id", s."tokenHash", s."accessTokenHash", s."deviceId", s."deviceName", s."platform",
-			s."expiresAt", s."accessExpiresAt", s."createdAt", s."lastSeenAt", s."trustedAt",
+			s."id", s."tokenHash", s."oldTokenHash", s."tokenRotatedAt", s."accessTokenHash", s."deviceId", s."deviceName", s."platform",
+			s."refreshTokenExpiresAt", s."accessTokenExpiresAt", s."createdAt", s."lastSeenAt", s."trustedAt",
 			s."revokedAt", s."revokedReason", s."userId",
 			u."id", u."email", u."name", u."displayName", u."avatarUrl", u."createdAt",
 			u."isPro", u."isAdmin", u."leaderboardOptIn"
@@ -226,7 +230,7 @@ func (r *PgxSessionRepository) CreateSession(ctx context.Context, sessionID stri
 	_, err := r.db.Exec(ctx, `
 		INSERT INTO "AuthSession" (
 			"id", "tokenHash", "accessTokenHash", "deviceId", "deviceName", "platform",
-			"expiresAt", "accessExpiresAt", "createdAt", "lastSeenAt", "trustedAt", "updatedAt", "userId"
+			"refreshTokenExpiresAt", "accessTokenExpiresAt", "createdAt", "lastSeenAt", "trustedAt", "updatedAt", "userId"
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
 		)
@@ -285,20 +289,32 @@ func (r *PgxSessionRepository) RevokeSession(ctx context.Context, sessionID stri
 	return err
 }
 
+func (r *PgxSessionRepository) RevokeAllSessionsByUserID(ctx context.Context, userID string, reason string) error {
+	if r == nil || r.db == nil {
+		return pgx.ErrNoRows
+	}
+	_, err := r.db.Exec(ctx, `
+		UPDATE "AuthSession"
+		SET "revokedAt" = NOW(), "revokedReason" = $2
+		WHERE "userId" = $1 AND "revokedAt" IS NULL
+	`, userID, reason)
+	return err
+}
+
 func (r *PgxSessionRepository) FindActiveSessionsByUserID(ctx context.Context, userID string) ([]*Session, error) {
 	if r == nil || r.db == nil {
 		return nil, pgx.ErrNoRows
 	}
 	rows, err := r.db.Query(ctx, `
 		SELECT
-			s."id", s."tokenHash", s."accessTokenHash", s."deviceId", s."deviceName", s."platform",
-			s."expiresAt", s."accessExpiresAt", s."createdAt", s."lastSeenAt", s."trustedAt",
+			s."id", s."tokenHash", s."oldTokenHash", s."tokenRotatedAt", s."accessTokenHash", s."deviceId", s."deviceName", s."platform",
+			s."refreshTokenExpiresAt", s."accessTokenExpiresAt", s."createdAt", s."lastSeenAt", s."trustedAt",
 			s."revokedAt", s."revokedReason", s."userId",
 			u."id", u."email", u."name", u."displayName", u."avatarUrl", u."createdAt",
 			u."isPro", u."isAdmin", u."leaderboardOptIn"
 		FROM "AuthSession" s
 		JOIN "User" u ON u."id" = s."userId"
-		WHERE s."userId" = $1 AND s."revokedAt" IS NULL AND s."expiresAt" > $2
+		WHERE s."userId" = $1 AND s."revokedAt" IS NULL AND s."refreshTokenExpiresAt" > $2
 		ORDER BY s."lastSeenAt" DESC
 	`, userID, time.Now())
 	if err != nil {
@@ -315,12 +331,14 @@ func (r *PgxSessionRepository) FindActiveSessionsByUserID(ctx context.Context, u
 		err := rows.Scan(
 			&s.ID,
 			&s.TokenHash,
+			&s.OldTokenHash,
+			&s.TokenRotatedAt,
 			&s.AccessTokenHash,
 			&s.DeviceID,
 			&s.DeviceName,
 			&s.Platform,
-			&s.ExpiresAt,
-			&s.AccessExpiresAt,
+			&s.RefreshTokenExpiresAt,
+			&s.AccessTokenExpiresAt,
 			&s.CreatedAt,
 			&s.LastSeenAt,
 			&s.TrustedAt,
@@ -354,8 +372,8 @@ func (r *PgxSessionRepository) FindAllSessionsByUserID(ctx context.Context, user
 	}
 	rows, err := r.db.Query(ctx, `
 		SELECT
-			s."id", s."tokenHash", s."accessTokenHash", s."deviceId", s."deviceName", s."platform",
-			s."expiresAt", s."accessExpiresAt", s."createdAt", s."lastSeenAt", s."trustedAt",
+			s."id", s."tokenHash", s."oldTokenHash", s."tokenRotatedAt", s."accessTokenHash", s."deviceId", s."deviceName", s."platform",
+			s."refreshTokenExpiresAt", s."accessTokenExpiresAt", s."createdAt", s."lastSeenAt", s."trustedAt",
 			s."revokedAt", s."revokedReason", s."userId",
 			u."id", u."email", u."name", u."displayName", u."avatarUrl", u."createdAt",
 			u."isPro", u."isAdmin", u."leaderboardOptIn"
@@ -378,12 +396,14 @@ func (r *PgxSessionRepository) FindAllSessionsByUserID(ctx context.Context, user
 		err := rows.Scan(
 			&s.ID,
 			&s.TokenHash,
+			&s.OldTokenHash,
+			&s.TokenRotatedAt,
 			&s.AccessTokenHash,
 			&s.DeviceID,
 			&s.DeviceName,
 			&s.Platform,
-			&s.ExpiresAt,
-			&s.AccessExpiresAt,
+			&s.RefreshTokenExpiresAt,
+			&s.AccessTokenExpiresAt,
 			&s.CreatedAt,
 			&s.LastSeenAt,
 			&s.TrustedAt,
@@ -521,16 +541,19 @@ func (r *PgxSessionRepository) FindOAuthAuthorizationCode(ctx context.Context, c
 	return &c, nil
 }
 
-func (r *PgxSessionRepository) ConsumeOAuthAuthorizationCode(ctx context.Context, id string, consumedAt time.Time) error {
+func (r *PgxSessionRepository) ConsumeOAuthAuthorizationCode(ctx context.Context, id string, consumedAt time.Time) (int64, error) {
 	if r == nil || r.db == nil {
-		return pgx.ErrNoRows
+		return 0, pgx.ErrNoRows
 	}
-	_, err := r.db.Exec(ctx, `
+	res, err := r.db.Exec(ctx, `
 		UPDATE "OAuthAuthorizationCode"
 		SET "consumedAt" = $2
 		WHERE "id" = $1 AND "consumedAt" IS NULL
 	`, id, consumedAt)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected(), nil
 }
 
 func (r *PgxSessionRepository) FindGoogleDriveAuthHandoff(ctx context.Context, tokenHash string) (*GoogleDriveAuthHandoff, error) {
@@ -553,16 +576,19 @@ func (r *PgxSessionRepository) FindGoogleDriveAuthHandoff(ctx context.Context, t
 	return &h, nil
 }
 
-func (r *PgxSessionRepository) ConsumeGoogleDriveAuthHandoff(ctx context.Context, handoffID string, consumedAt time.Time) error {
+func (r *PgxSessionRepository) ConsumeGoogleDriveAuthHandoff(ctx context.Context, handoffID string, consumedAt time.Time) (int64, error) {
 	if r == nil || r.db == nil {
-		return pgx.ErrNoRows
+		return 0, pgx.ErrNoRows
 	}
-	_, err := r.db.Exec(ctx, `
+	res, err := r.db.Exec(ctx, `
 		UPDATE "GoogleDriveAuthHandoff"
 		SET "consumedAt" = $2, "accessToken" = '', "refreshToken" = NULL
 		WHERE "id" = $1 AND "consumedAt" IS NULL
 	`, handoffID, consumedAt)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected(), nil
 }
 
 func (r *PgxSessionRepository) DeleteExpiredGoogleDriveAuthHandoffs(ctx context.Context, maxExpiresAt time.Time) error {

@@ -210,7 +210,13 @@ func (h Handler) OAuthToken(w http.ResponseWriter, req *http.Request) {
 		}
 
 		now := time.Now()
-		if authCode == nil || authCode.ConsumedAt != nil || authCode.ExpiresAt.Before(now) {
+		if authCode == nil || authCode.ExpiresAt.Before(now) {
+			httpjson.Detail(w, http.StatusUnauthorized, "OAuth code or token is invalid or expired.")
+			return
+		}
+
+		if authCode.ConsumedAt != nil {
+			_ = h.Repo.RevokeAllSessionsByUserID(req.Context(), authCode.UserID, "oauth_code_reuse")
 			httpjson.Detail(w, http.StatusUnauthorized, "OAuth code or token is invalid or expired.")
 			return
 		}
@@ -227,9 +233,14 @@ func (h Handler) OAuthToken(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		err = h.Repo.ConsumeOAuthAuthorizationCode(req.Context(), authCode.ID, now)
+		rowsAffected, err := h.Repo.ConsumeOAuthAuthorizationCode(req.Context(), authCode.ID, now)
 		if err != nil {
 			httpjson.Error(w, http.StatusInternalServerError, "Internal server error")
+			return
+		}
+		if rowsAffected == 0 {
+			_ = h.Repo.RevokeAllSessionsByUserID(req.Context(), authCode.UserID, "oauth_code_reuse")
+			httpjson.Detail(w, http.StatusUnauthorized, "OAuth code or token is invalid or expired.")
 			return
 		}
 

@@ -32,7 +32,7 @@ func (r *refreshRepo) FindSessionByRefreshTokenHash(_ context.Context, tokenHash
 	}
 	return nil, nil
 }
-func (r *refreshRepo) RotateSession(_ context.Context, sessionID string, _ string, _ string, _ time.Time, _ time.Time, device NormalizedDevice, trustedAt *time.Time, _ time.Time) (RotatedSession, error) {
+func (r *refreshRepo) RotateSession(_ context.Context, sessionID string, oldTokenHash string, tokenRotatedAt time.Time, accessTokenHash string, refreshTokenHash string, accessExpiresAt time.Time, refreshExpiresAt time.Time, device NormalizedDevice, trustedAt *time.Time, now time.Time) (RotatedSession, error) {
 	r.rotatedDevice = device
 	r.rotated = RotatedSession{ID: sessionID, DeviceID: device.DeviceID, DeviceName: device.DeviceName, Platform: device.Platform, TrustedAt: trustedAt}
 	return r.rotated, nil
@@ -58,6 +58,9 @@ func (r *refreshRepo) FindUserByID(_ context.Context, id string) (*User, error) 
 	return nil, nil
 }
 func (r *refreshRepo) RevokeSession(_ context.Context, sessionID string, revokedAt time.Time, reason string) error {
+	return nil
+}
+func (r *refreshRepo) RevokeAllSessionsByUserID(_ context.Context, userID string, reason string) error {
 	return nil
 }
 func (r *refreshRepo) FindActiveSessionsByUserID(_ context.Context, userID string) ([]*Session, error) {
@@ -87,14 +90,14 @@ func (r *refreshRepo) CreateOAuthAuthorizationCode(_ context.Context, _ *OAuthAu
 func (r *refreshRepo) FindOAuthAuthorizationCode(_ context.Context, _ string) (*OAuthAuthorizationCode, error) {
 	return nil, nil
 }
-func (r *refreshRepo) ConsumeOAuthAuthorizationCode(_ context.Context, _ string, _ time.Time) error {
-	return nil
+func (r *refreshRepo) ConsumeOAuthAuthorizationCode(_ context.Context, _ string, _ time.Time) (int64, error) {
+	return 1, nil
 }
 func (r *refreshRepo) FindGoogleDriveAuthHandoff(_ context.Context, _ string) (*GoogleDriveAuthHandoff, error) {
 	return nil, nil
 }
-func (r *refreshRepo) ConsumeGoogleDriveAuthHandoff(_ context.Context, _ string, _ time.Time) error {
-	return nil
+func (r *refreshRepo) ConsumeGoogleDriveAuthHandoff(_ context.Context, _ string, _ time.Time) (int64, error) {
+	return 1, nil
 }
 func (r *refreshRepo) DeleteExpiredGoogleDriveAuthHandoffs(_ context.Context, _ time.Time) error {
 	return nil
@@ -106,11 +109,11 @@ func TestRefreshServiceRotatesValidRefreshToken(t *testing.T) {
 	deviceID := "browser-device"
 	email := "user@example.com"
 	repo := &refreshRepo{session: &Session{
-		ID:        "session_1",
-		TokenHash: token.HashToken(refreshToken),
-		DeviceID:  ptr("old-device"),
-		ExpiresAt: now.Add(24 * time.Hour),
-		UserID:    "user_1",
+		ID:                    "session_1",
+		TokenHash:             token.HashToken(refreshToken),
+		DeviceID:              ptr("old-device"),
+		RefreshTokenExpiresAt: now.Add(24 * time.Hour),
+		UserID:                "user_1",
 		User: User{
 			ID:        "user_1",
 			Email:     &email,
@@ -146,11 +149,11 @@ func TestRefreshServiceRejectsExpiredAndMarksSession(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
 	refreshToken := "refresh-token"
 	repo := &refreshRepo{session: &Session{
-		ID:        "session_1",
-		TokenHash: token.HashToken(refreshToken),
-		ExpiresAt: now.Add(-time.Second),
-		UserID:    "user_1",
-		User:      User{ID: "user_1", CreatedAt: now},
+		ID:                    "session_1",
+		TokenHash:             token.HashToken(refreshToken),
+		RefreshTokenExpiresAt: now.Add(-time.Second),
+		UserID:                "user_1",
+		User:                  User{ID: "user_1", CreatedAt: now},
 	}}
 	service := RefreshService{Repo: repo, JWTSecret: "secret", Now: func() time.Time { return now }}
 

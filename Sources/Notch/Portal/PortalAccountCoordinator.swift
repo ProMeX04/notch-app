@@ -41,7 +41,7 @@ final class PortalAccountCoordinator: ObservableObject {
     private var storedAuthSession: PortalAuthSession?
     private var authRefreshTask: Task<PortalAuthSession, Error>?
     private var logoutRetryTask: Task<Void, Never>?
-    private var pendingOAuthFlow: PendingOAuthFlow?
+    private var pendingOAuthFlows: [String: PendingOAuthFlow] = [:]
 
     var onAuthChanged: (@MainActor () -> Void)?
     var onProChanged: (@MainActor (Bool) -> Void)?
@@ -211,8 +211,7 @@ final class PortalAccountCoordinator: ObservableObject {
 
             let device = PortalDeviceContext.currentMac()
             let oauthFlow = Self.makePendingOAuthFlow(device: device)
-            cancelPendingOAuthLogin()
-            pendingOAuthFlow = oauthFlow
+            pendingOAuthFlows[oauthFlow.authorizationRequest.state] = oauthFlow
             setSaving(true)
             setAuthPhase(.signingIn)
             setLastError(nil)
@@ -237,19 +236,6 @@ final class PortalAccountCoordinator: ObservableObject {
 
     func handleOAuthCallbackURL(_ url: URL) {
         Task {
-            guard let activeOAuthFlow = pendingOAuthFlow else {
-                setLastError("Browser sign-in expired. Please try again.")
-                setStatus("Browser sign-in expired. Try again.")
-                return
-            }
-
-            guard let configuration = await ensureResolvedConfigurationForAuth() else {
-                cancelPendingOAuthLogin()
-                setLastError("Gemini Live server URL is missing.")
-                setStatus("Check the connection and try again.")
-                return
-            }
-
             guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
                 cancelPendingOAuthLogin()
                 applyAuthFailure(message: "Invalid OAuth callback.")
@@ -263,25 +249,34 @@ final class PortalAccountCoordinator: ObservableObject {
                 }
             }
 
+            let returnedState = queryItems["state"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard let activeOAuthFlow = pendingOAuthFlows[returnedState] else {
+                setLastError("Browser sign-in expired. Please try again.")
+                setStatus("Browser sign-in expired. Try again.")
+                return
+            }
+
+            guard let configuration = await ensureResolvedConfigurationForAuth() else {
+                pendingOAuthFlows.removeValue(forKey: returnedState)
+                if pendingOAuthFlows.isEmpty { setSaving(false) }
+                setLastError("Gemini Live server URL is missing.")
+                setStatus("Check the connection and try again.")
+                return
+            }
+
             if let error = queryItems["error"]?.trimmingCharacters(in: .whitespacesAndNewlines), !error.isEmpty {
-                cancelPendingOAuthLogin()
+                pendingOAuthFlows.removeValue(forKey: returnedState)
+                if pendingOAuthFlows.isEmpty { setSaving(false) }
                 let description = queryItems["error_description"]?.trimmingCharacters(in: .whitespacesAndNewlines)
                 applyAuthFailure(message: description?.isEmpty == false ? description! : "Browser sign-in was cancelled.")
                 setStatus("Browser sign-in was cancelled.")
                 return
             }
 
-            let returnedState = queryItems["state"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            guard returnedState == activeOAuthFlow.authorizationRequest.state else {
-                cancelPendingOAuthLogin()
-                applyAuthFailure(message: "Invalid OAuth state.")
-                setStatus("Couldn't verify browser sign-in.")
-                return
-            }
-
             let code = queryItems["code"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !code.isEmpty else {
-                cancelPendingOAuthLogin()
+                pendingOAuthFlows.removeValue(forKey: returnedState)
+                if pendingOAuthFlows.isEmpty { setSaving(false) }
                 applyAuthFailure(message: "Missing OAuth authorization code.")
                 setStatus("Couldn't finish browser sign-in.")
                 return
@@ -301,17 +296,19 @@ final class PortalAccountCoordinator: ObservableObject {
                     authorizationRequest: activeOAuthFlow.authorizationRequest,
                     device: activeOAuthFlow.device
                 )
-                pendingOAuthFlow = nil
+                pendingOAuthFlows.removeValue(forKey: returnedState)
                 storeBackendAuthSession(session)
                 await refreshSubscriptionStatus()
                 setStatus(nil)
             } catch {
-                cancelPendingOAuthLogin()
+                pendingOAuthFlows.removeValue(forKey: returnedState)
                 applyAuthFailure(error)
                 setStatus("Couldn't finish browser sign-in.")
             }
 
-            setSaving(false)
+            if pendingOAuthFlows.isEmpty {
+                setSaving(false)
+            }
         }
     }
 
@@ -699,7 +696,7 @@ final class PortalAccountCoordinator: ObservableObject {
     }
 
     private func cancelPendingOAuthLogin(resetSaving: Bool = true) {
-        pendingOAuthFlow = nil
+        pendingOAuthFlows.removeAll()
         if resetSaving { setSaving(false) }
     }
 

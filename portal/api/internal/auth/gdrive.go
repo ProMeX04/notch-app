@@ -98,9 +98,13 @@ func (h Handler) GoogleDriveExchange(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	err = h.Repo.ConsumeGoogleDriveAuthHandoff(req.Context(), handoff.ID, now)
+	rowsAffected, err := h.Repo.ConsumeGoogleDriveAuthHandoff(req.Context(), handoff.ID, now)
 	if err != nil {
 		httpjson.Error(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	if rowsAffected == 0 {
+		httpjson.Error(w, http.StatusBadRequest, "Invalid or expired handoff token")
 		return
 	}
 

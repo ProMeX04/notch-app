@@ -9,6 +9,8 @@ import (
 
 	"notch/portal/api/internal/auth/httpauth"
 	"notch/portal/api/internal/auth/token"
+
+	"github.com/jackc/pgx/v5"
 )
 
 var ErrUnauthenticated = errors.New("unauthenticated")
@@ -41,25 +43,77 @@ func (a Authenticator) AuthenticateAccessToken(ctx context.Context, rawToken str
 }
 
 func (a Authenticator) authenticateJWT(ctx context.Context, rawToken string, payload *token.JWTPayload, requestDeviceID *string, now time.Time) (*AuthContext, error) {
-	if payload.DeviceID != nil && !sameStringPtr(payload.DeviceID, requestDeviceID) {
+	var revokedAt *time.Time
+	var lastSeenAt time.Time
+	var platform *string
+	var deviceID *string
+	var isFallback = true
+
+	if pgxRepo, ok := a.Repo.(*PgxSessionRepository); ok && pgxRepo != nil && pgxRepo.db != nil {
+		err := pgxRepo.db.QueryRow(ctx, `
+			SELECT "revokedAt", "lastSeenAt", "platform", "deviceId"
+			FROM "AuthSession"
+			WHERE "id" = $1
+			LIMIT 1
+		`, payload.SessionID).Scan(&revokedAt, &lastSeenAt, &platform, &deviceID)
+		if err == pgx.ErrNoRows {
+			return nil, ErrUnauthenticated
+		}
+		if err != nil {
+			return nil, ErrUnauthenticated
+		}
+		isFallback = false
+	}
+
+	if isFallback {
+		session, err := a.Repo.FindSessionByID(ctx, payload.SessionID)
+		if err != nil || session == nil {
+			return nil, ErrUnauthenticated
+		}
+		revokedAt = session.RevokedAt
+		lastSeenAt = session.LastSeenAt
+		platform = session.Platform
+		deviceID = session.DeviceID
+	}
+
+	if revokedAt != nil {
 		return nil, ErrUnauthenticated
 	}
-	session, err := a.Repo.FindSessionByID(ctx, payload.SessionID)
-	if err != nil {
-		return nil, ErrUnauthenticated
+
+	// Device check: Enforce DeviceID matching strictly for macOS App sessions
+	if platform != nil && *platform == "macOS" {
+		if deviceID != nil && !sameStringPtr(deviceID, requestDeviceID) {
+			return nil, ErrUnauthenticated
+		}
 	}
-	if session == nil {
-		return nil, ErrUnauthenticated
+
+	// Throttle lastSeenAt updates to at most once per 15 minutes
+	if now.Sub(lastSeenAt) > 15*time.Minute {
+		go func(id string) {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			_ = a.Repo.UpdateLastSeen(ctx, id, now)
+		}(payload.SessionID)
 	}
-	if session.UserID != payload.UserID {
-		return nil, ErrUnauthenticated
+
+	userCreatedAt, _ := time.Parse(time.RFC3339Nano, payload.UserCreatedAt)
+	user := User{
+		ID:               payload.UserID,
+		Email:            payload.Email,
+		Name:             payload.Name,
+		DisplayName:      payload.DisplayName,
+		AvatarURL:        payload.AvatarURL,
+		IsPro:            payload.IsPro,
+		IsAdmin:          payload.IsAdmin,
+		LeaderboardOptIn: payload.LeaderboardOptIn,
+		CreatedAt:        userCreatedAt,
 	}
-	accessHash := token.HashToken(rawToken)
-	if err := validateSession(session, accessHash, requestDeviceID, now, true); err != nil {
-		return nil, err
-	}
-	_ = a.Repo.UpdateLastSeen(ctx, session.ID, now)
-	return &AuthContext{SessionID: session.ID, DeviceID: session.DeviceID, User: session.User}, nil
+
+	return &AuthContext{
+		SessionID: payload.SessionID,
+		DeviceID:  deviceID,
+		User:      user,
+	}, nil
 }
 
 func validateSession(session *Session, tokenHash string, requestDeviceID *string, now time.Time, requireAccessHash bool) error {
@@ -84,10 +138,10 @@ func validateSession(session *Session, tokenHash string, requestDeviceID *string
 }
 
 func accessExpiry(session *Session) time.Time {
-	if session.AccessExpiresAt != nil {
-		return *session.AccessExpiresAt
+	if session.AccessTokenExpiresAt != nil {
+		return *session.AccessTokenExpiresAt
 	}
-	return session.ExpiresAt
+	return session.RefreshTokenExpiresAt
 }
 
 func (a Authenticator) now() time.Time {

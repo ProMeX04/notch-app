@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -19,236 +18,7 @@ import (
 	"notch/portal/api/internal/auth/token"
 
 	"github.com/go-chi/chi/v5"
-	"golang.org/x/crypto/bcrypt"
 )
-
-func TestHandlerRegisterSucceeds(t *testing.T) {
-	repo := &fakeSessionRepo{
-		byID:         make(map[string]*Session),
-		usersByEmail: make(map[string]*User),
-	}
-	handler := Handler{
-		Repo: repo,
-		Authenticator: Authenticator{
-			Repo:      repo,
-			JWTSecret: "testsecret",
-		},
-		RefreshService: RefreshService{
-			Repo:            repo,
-			JWTSecret:       "testsecret",
-			AccessTokenTTL:  time.Hour,
-			RefreshTokenTTL: 24 * time.Hour,
-		},
-		CookieConfig: httpauth.CookieConfig{
-			Secure: false,
-			Domain: "localhost",
-		},
-		MaxActiveDevices: 3,
-	}
-
-	reqBody := RegisterRequest{
-		Email:      "newuser@example.com",
-		Password:   "password123",
-		Name:       "New User",
-		DeviceID:   "device_1",
-		DeviceName: "Test Device",
-		Platform:   "macOS",
-	}
-	bodyBytes, _ := json.Marshal(reqBody)
-
-	req := httptest.NewRequest(http.MethodPost, "/api/auth/register", bytes.NewReader(bodyBytes))
-	rec := httptest.NewRecorder()
-
-	handler.Register(rec, req)
-
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected status 201, got %d. Body: %s", rec.Code, rec.Body.String())
-	}
-
-	var resp UserResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("failed to parse response: %v", err)
-	}
-
-	if resp.Email != "newuser@example.com" {
-		t.Errorf("expected email %q, got %q", "newuser@example.com", resp.Email)
-	}
-
-	if resp.CurrentSessionID == nil || *resp.CurrentSessionID == "" {
-		t.Error("expected session ID to be returned")
-	}
-
-	// Verify user is in repo
-	user, err := repo.FindUserByEmail(context.Background(), "newuser@example.com")
-	if err != nil || user == nil {
-		t.Fatalf("user was not saved in repo")
-	}
-
-	// Verify session is in repo
-	session, err := repo.FindSessionByID(context.Background(), *resp.CurrentSessionID)
-	if err != nil || session == nil {
-		t.Fatalf("session was not created in repo")
-	}
-
-	// Check cookies are set
-	cookies := rec.Result().Cookies()
-	var hasAccess, hasRefresh bool
-	for _, c := range cookies {
-		if c.Name == httpauth.AccessCookieName {
-			hasAccess = true
-		}
-		if c.Name == httpauth.RefreshCookieName {
-			hasRefresh = true
-		}
-	}
-	if !hasAccess || !hasRefresh {
-		t.Errorf("cookies not set properly: access=%t, refresh=%t", hasAccess, hasRefresh)
-	}
-}
-
-func TestHandlerRegisterFailsEmailInUse(t *testing.T) {
-	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), 10)
-	email := "existing@example.com"
-	existingUser := &User{
-		ID:        "user_1",
-		Email:     &email,
-		Password:  ptrStr(string(hashedPassword)),
-		CreatedAt: time.Now(),
-	}
-
-	repo := &fakeSessionRepo{
-		byID: make(map[string]*Session),
-		usersByEmail: map[string]*User{
-			"existing@example.com": existingUser,
-		},
-	}
-	handler := Handler{
-		Repo: repo,
-	}
-
-	reqBody := RegisterRequest{
-		Email:    "existing@example.com",
-		Password: "password123",
-	}
-	bodyBytes, _ := json.Marshal(reqBody)
-
-	req := httptest.NewRequest(http.MethodPost, "/api/auth/register", bytes.NewReader(bodyBytes))
-	rec := httptest.NewRecorder()
-
-	handler.Register(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected status 400, got %d. Body: %s", rec.Code, rec.Body.String())
-	}
-
-	if !strings.Contains(rec.Body.String(), "Email này đã được sử dụng") {
-		t.Errorf("expected error message for email in use, got: %s", rec.Body.String())
-	}
-}
-
-func TestHandlerLoginSucceeds(t *testing.T) {
-	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), 10)
-	email := "user@example.com"
-	existingUser := &User{
-		ID:        "user_1",
-		Email:     &email,
-		Password:  ptrStr(string(hashedPassword)),
-		CreatedAt: time.Now(),
-	}
-
-	repo := &fakeSessionRepo{
-		byID: make(map[string]*Session),
-		usersByEmail: map[string]*User{
-			"user@example.com": existingUser,
-		},
-	}
-	handler := Handler{
-		Repo: repo,
-		Authenticator: Authenticator{
-			Repo:      repo,
-			JWTSecret: "testsecret",
-		},
-		RefreshService: RefreshService{
-			Repo:            repo,
-			JWTSecret:       "testsecret",
-			AccessTokenTTL:  time.Hour,
-			RefreshTokenTTL: 24 * time.Hour,
-		},
-		CookieConfig: httpauth.CookieConfig{
-			Secure: false,
-			Domain: "localhost",
-		},
-		MaxActiveDevices: 3,
-	}
-
-	reqBody := LoginRequest{
-		Email:    "user@example.com",
-		Password: "password123",
-	}
-	bodyBytes, _ := json.Marshal(reqBody)
-
-	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(bodyBytes))
-	rec := httptest.NewRecorder()
-
-	handler.Login(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d. Body: %s", rec.Code, rec.Body.String())
-	}
-
-	var resp UserResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("failed to parse response: %v", err)
-	}
-
-	if resp.Email != "user@example.com" {
-		t.Errorf("expected email %q, got %q", "user@example.com", resp.Email)
-	}
-
-	if resp.CurrentSessionID == nil || *resp.CurrentSessionID == "" {
-		t.Error("expected session ID to be returned")
-	}
-}
-
-func TestHandlerLoginFailsIncorrectPassword(t *testing.T) {
-	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), 10)
-	email := "user@example.com"
-	existingUser := &User{
-		ID:        "user_1",
-		Email:     &email,
-		Password:  ptrStr(string(hashedPassword)),
-		CreatedAt: time.Now(),
-	}
-
-	repo := &fakeSessionRepo{
-		byID: make(map[string]*Session),
-		usersByEmail: map[string]*User{
-			"user@example.com": existingUser,
-		},
-	}
-	handler := Handler{
-		Repo: repo,
-	}
-
-	reqBody := LoginRequest{
-		Email:    "user@example.com",
-		Password: "wrongpassword",
-	}
-	bodyBytes, _ := json.Marshal(reqBody)
-
-	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(bodyBytes))
-	rec := httptest.NewRecorder()
-
-	handler.Login(rec, req)
-
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("expected status 401, got %d. Body: %s", rec.Code, rec.Body.String())
-	}
-
-	if !strings.Contains(rec.Body.String(), "Email hoặc mật khẩu không chính xác") {
-		t.Errorf("expected error message for invalid credentials, got: %s", rec.Body.String())
-	}
-}
 
 func TestHandlerLogout(t *testing.T) {
 	now := time.Now()
@@ -261,13 +31,13 @@ func TestHandlerLogout(t *testing.T) {
 	accessTokenHash := token.HashToken(accessToken)
 
 	session := &Session{
-		ID:              "session_1",
-		TokenHash:       token.HashToken("refresh-token"),
-		AccessTokenHash: &accessTokenHash,
-		ExpiresAt:       now.Add(24 * time.Hour),
-		AccessExpiresAt: ptrTime(now.Add(time.Hour)),
-		UserID:          "user_1",
-		User:            user,
+		ID:                    "session_1",
+		TokenHash:             token.HashToken("refresh-token"),
+		AccessTokenHash:       &accessTokenHash,
+		RefreshTokenExpiresAt: now.Add(24 * time.Hour),
+		AccessTokenExpiresAt:  ptrTime(now.Add(time.Hour)),
+		UserID:                "user_1",
+		User:                  user,
 	}
 
 	repo := &fakeSessionRepo{
@@ -336,30 +106,30 @@ func TestHandlerListSessions(t *testing.T) {
 	accessTokenHash := token.HashToken(accessToken)
 
 	session1 := &Session{
-		ID:              "session_1",
-		TokenHash:       token.HashToken("refresh-token-1"),
-		AccessTokenHash: &accessTokenHash,
-		ExpiresAt:       now.Add(24 * time.Hour),
-		AccessExpiresAt: ptrTime(now.Add(time.Hour)),
-		UserID:          "user_1",
-		User:            user,
-		DeviceID:        ptrStr("device_mac"),
-		DeviceName:      ptrStr("Macbook Pro"),
-		Platform:        ptrStr("macOS"),
-		CreatedAt:       now,
-		LastSeenAt:      now,
+		ID:                    "session_1",
+		TokenHash:             token.HashToken("refresh-token-1"),
+		AccessTokenHash:       &accessTokenHash,
+		RefreshTokenExpiresAt: now.Add(24 * time.Hour),
+		AccessTokenExpiresAt:  ptrTime(now.Add(time.Hour)),
+		UserID:                "user_1",
+		User:                  user,
+		DeviceID:              ptrStr("device_mac"),
+		DeviceName:            ptrStr("Macbook Pro"),
+		Platform:              ptrStr("macOS"),
+		CreatedAt:             now,
+		LastSeenAt:            now,
 	}
 	session2 := &Session{
-		ID:         "session_2",
-		TokenHash:  token.HashToken("refresh-token-2"),
-		ExpiresAt:  now.Add(-time.Hour),
-		UserID:     "user_1",
-		User:       user,
-		DeviceID:   ptrStr("device_phone"),
-		DeviceName: ptrStr("iPhone"),
-		Platform:   ptrStr("iOS"),
-		CreatedAt:  now.Add(-24 * time.Hour),
-		LastSeenAt: now.Add(-time.Hour),
+		ID:                    "session_2",
+		TokenHash:             token.HashToken("refresh-token-2"),
+		RefreshTokenExpiresAt: now.Add(-time.Hour),
+		UserID:                "user_1",
+		User:                  user,
+		DeviceID:              ptrStr("device_phone"),
+		DeviceName:            ptrStr("iPhone"),
+		Platform:              ptrStr("iOS"),
+		CreatedAt:             now.Add(-24 * time.Hour),
+		LastSeenAt:            now.Add(-time.Hour),
 	}
 
 	repo := &fakeSessionRepo{
@@ -422,24 +192,24 @@ func TestHandlerRevokeSession(t *testing.T) {
 	accessTokenHash := token.HashToken(accessToken)
 
 	session1 := &Session{
-		ID:              "session_1",
-		TokenHash:       token.HashToken("refresh-token-1"),
-		AccessTokenHash: &accessTokenHash,
-		ExpiresAt:       now.Add(24 * time.Hour),
-		AccessExpiresAt: ptrTime(now.Add(time.Hour)),
-		UserID:          "user_1",
-		User:            user,
-		CreatedAt:       now,
-		LastSeenAt:      now,
+		ID:                    "session_1",
+		TokenHash:             token.HashToken("refresh-token-1"),
+		AccessTokenHash:       &accessTokenHash,
+		RefreshTokenExpiresAt: now.Add(24 * time.Hour),
+		AccessTokenExpiresAt:  ptrTime(now.Add(time.Hour)),
+		UserID:                "user_1",
+		User:                  user,
+		CreatedAt:             now,
+		LastSeenAt:            now,
 	}
 	session2 := &Session{
-		ID:         "session_2",
-		TokenHash:  token.HashToken("refresh-token-2"),
-		ExpiresAt:  now.Add(24 * time.Hour),
-		UserID:     "user_1",
-		User:       user,
-		CreatedAt:  now,
-		LastSeenAt: now,
+		ID:                    "session_2",
+		TokenHash:             token.HashToken("refresh-token-2"),
+		RefreshTokenExpiresAt: now.Add(24 * time.Hour),
+		UserID:                "user_1",
+		User:                  user,
+		CreatedAt:             now,
+		LastSeenAt:            now,
 	}
 
 	repo := &fakeSessionRepo{
@@ -846,12 +616,12 @@ func TestHandlerPatchSessions(t *testing.T) {
 	accessTokenHash := token.HashToken(accessToken)
 
 	session1 := &Session{
-		ID:              "session_1",
-		TokenHash:       token.HashToken("refresh-token-1"),
-		AccessTokenHash: &accessTokenHash,
-		ExpiresAt:       now.Add(24 * time.Hour),
-		AccessExpiresAt: ptrTime(now.Add(time.Hour)),
-		UserID:          "user_1",
+		ID:                    "session_1",
+		TokenHash:             token.HashToken("refresh-token-1"),
+		AccessTokenHash:       &accessTokenHash,
+		RefreshTokenExpiresAt: now.Add(24 * time.Hour),
+		AccessTokenExpiresAt:  ptrTime(now.Add(time.Hour)),
+		UserID:                "user_1",
 		User:            user,
 		DeviceID:        ptrStr("device_mac"),
 		DeviceName:      ptrStr("Macbook Pro"),
@@ -860,11 +630,11 @@ func TestHandlerPatchSessions(t *testing.T) {
 		LastSeenAt:      now,
 	}
 	session2 := &Session{
-		ID:              "session_2",
-		TokenHash:       token.HashToken("refresh-token-2"),
-		ExpiresAt:       now.Add(24 * time.Hour),
-		AccessExpiresAt: ptrTime(now.Add(time.Hour)),
-		UserID:          "user_1",
+		ID:                    "session_2",
+		TokenHash:             token.HashToken("refresh-token-2"),
+		RefreshTokenExpiresAt: now.Add(24 * time.Hour),
+		AccessTokenExpiresAt:  ptrTime(now.Add(time.Hour)),
+		UserID:                "user_1",
 		User:            user,
 		DeviceID:        ptrStr("device_phone"),
 		DeviceName:      ptrStr("iPhone"),
@@ -1135,12 +905,12 @@ func TestHandlerUpdateProfile(t *testing.T) {
 	accessTokenHash := token.HashToken(accessToken)
 
 	session := &Session{
-		ID:              "session_1",
-		TokenHash:       token.HashToken("refresh-token"),
-		AccessTokenHash: &accessTokenHash,
-		ExpiresAt:       now.Add(24 * time.Hour),
-		AccessExpiresAt: ptrTime(now.Add(time.Hour)),
-		UserID:          "user_1",
+		ID:                    "session_1",
+		TokenHash:             token.HashToken("refresh-token"),
+		AccessTokenHash:       &accessTokenHash,
+		RefreshTokenExpiresAt: now.Add(24 * time.Hour),
+		AccessTokenExpiresAt:  ptrTime(now.Add(time.Hour)),
+		UserID:                "user_1",
 		User:            *user,
 	}
 

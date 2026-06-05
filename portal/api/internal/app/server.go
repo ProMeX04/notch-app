@@ -131,8 +131,6 @@ func (s *Server) mount(r chi.Router) {
 		api.Get("/healthz", s.health)
 		api.Get("/auth/me", authHandler.Me)
 		api.Post("/auth/refresh", authHandler.Refresh)
-		api.Post("/auth/login", authHandler.Login)
-		api.Post("/auth/register", authHandler.Register)
 		api.Post("/auth/logout", authHandler.Logout)
 		api.Patch("/auth/profile", authHandler.UpdateProfile)
 		api.Get("/auth/sessions", authHandler.ListSessions)
@@ -142,7 +140,11 @@ func (s *Server) mount(r chi.Router) {
 		api.Get("/auth/google/callback", authHandler.GoogleCallback)
 		api.Get("/auth/google-drive", authHandler.GoogleDriveAuth)
 		api.Post("/auth/google-drive/exchange", authHandler.GoogleDriveExchange)
-		api.Post("/auth/google-drive/refresh", authHandler.GoogleDriveRefresh)
+
+		api.Route("/auth/google-drive", func(gd chi.Router) {
+			gd.Use(authHandler.Authenticator.Authenticate)
+			gd.Post("/refresh", authHandler.GoogleDriveRefresh)
+		})
 		api.Post("/oauth/authorize", authHandler.OAuthAuthorize)
 		api.Post("/oauth/token", authHandler.OAuthToken)
 

@@ -71,30 +71,32 @@ model GeminiLiveModelConfig {
 }
 
 model AuthSession {
-  id              String    @id @default(cuid())
-  tokenHash       String    @unique
-  accessTokenHash String?   @unique
-  deviceId        String?
-  deviceName      String?
-  platform        String?
-  expiresAt       DateTime
-  accessExpiresAt DateTime?
-  createdAt       DateTime  @default(now())
-  lastSeenAt      DateTime  @default(now())
-  trustedAt       DateTime?
-  updatedAt       DateTime  @updatedAt
-  revokedAt       DateTime?
-  revokedReason   String?
-  userId          String
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                    String    @id @default(cuid())
+  tokenHash             String    @unique
+  oldTokenHash          String?
+  tokenRotatedAt        DateTime?
+  accessTokenHash       String?   @unique
+  deviceId              String?
+  deviceName            String?
+  platform              String?
+  refreshTokenExpiresAt DateTime
+  accessTokenExpiresAt  DateTime?
+  createdAt             DateTime  @default(now())
+  lastSeenAt            DateTime  @default(now())
+  trustedAt             DateTime?
+  updatedAt             DateTime  @updatedAt
+  revokedAt             DateTime?
+  revokedReason         String?
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([userId, deviceId])
-  @@index([expiresAt])
-  @@index([accessExpiresAt])
-  @@index([lastSeenAt])
+  @@index([refreshTokenExpiresAt])
+  @@index([accessTokenExpiresAt])
   @@index([trustedAt])
   @@index([revokedAt])
+  @@index([userId, revokedAt])
 }
 
 model AuthBridgeToken {

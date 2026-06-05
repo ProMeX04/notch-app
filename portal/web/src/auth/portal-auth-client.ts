@@ -10,16 +10,29 @@ export type BrowserDevicePayload = {
 
 type AuthSessionChangeHandler = (detail?: { expired?: boolean }) => void
 
+let memoryDeviceId: string | null = null
+
 function readOrCreateDeviceId() {
-  const existing = window.localStorage.getItem(DEVICE_ID_STORAGE_KEY)?.trim()
-  if (existing) return existing
+  try {
+    const existing = window.localStorage.getItem(DEVICE_ID_STORAGE_KEY)?.trim()
+    if (existing) return existing
+  } catch (e) {
+    // Ignore storage read errors in private/incognito modes
+  }
+
+  if (memoryDeviceId) return memoryDeviceId
 
   const generated =
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
       : `web_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`
 
-  window.localStorage.setItem(DEVICE_ID_STORAGE_KEY, generated)
+  try {
+    window.localStorage.setItem(DEVICE_ID_STORAGE_KEY, generated)
+  } catch (e) {
+    // Fallback to in-memory ID if localStorage write is blocked
+    memoryDeviceId = generated
+  }
   return generated
 }
 

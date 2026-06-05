@@ -47,9 +47,23 @@ func (s RefreshService) RefreshWithToken(ctx context.Context, req *http.Request,
 	if session.RevokedAt != nil {
 		return empty, ErrRefreshInvalid
 	}
-	if !session.ExpiresAt.After(now) {
+	if !session.RefreshTokenExpiresAt.After(now) {
 		_ = s.Repo.MarkSessionExpired(ctx, session.ID, now)
 		return empty, ErrRefreshInvalid
+	}
+
+	// Check if this is a rotated token inside the Grace Window (15 seconds)
+	if session.TokenHash != tokenHash {
+		if session.TokenRotatedAt != nil && now.Sub(*session.TokenRotatedAt) <= 15*time.Second {
+			device := NormalizeDevice(req, deviceInput, session.User.ID+":"+session.ID, session)
+			if session.DeviceID != nil && *session.DeviceID != device.DeviceID {
+				return empty, ErrRefreshInvalid
+			}
+		} else {
+			// Outside grace window -> Replay Attack detected! Revoke all sessions.
+			_ = s.Repo.RevokeAllSessionsByUserID(ctx, session.User.ID, "replay_attack")
+			return empty, ErrRefreshInvalid
+		}
 	}
 
 	device := NormalizeDevice(req, deviceInput, session.User.ID+":"+session.ID, session)
@@ -79,7 +93,7 @@ func (s RefreshService) RefreshWithToken(ctx context.Context, req *http.Request,
 	if err != nil {
 		return empty, err
 	}
-	rotated, err := s.Repo.RotateSession(ctx, session.ID, token.HashToken(accessToken), token.HashToken(newRefreshToken), accessExpiresAt, refreshExpiresAt, device, trustedAt, now)
+	rotated, err := s.Repo.RotateSession(ctx, session.ID, tokenHash, now, token.HashToken(accessToken), token.HashToken(newRefreshToken), accessExpiresAt, refreshExpiresAt, device, trustedAt, now)
 	if err != nil {
 		return empty, err
 	}

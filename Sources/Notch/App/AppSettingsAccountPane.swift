@@ -138,7 +138,8 @@ struct AppAccountSettingsPane: View {
                                     title: Localization.get("Log in", lang: appLanguage),
                                     icon: "person.crop.circle.badge.checkmark",
                                     tint: tint,
-                                    variant: .primary
+                                    variant: .primary,
+                                    isDisabled: portalAccount.authPhase == .signingIn
                                 ) {
                                     portalAccount.openWebAccountLogin()
                                 }

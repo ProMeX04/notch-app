@@ -19,21 +19,23 @@ type User struct {
 }
 
 type Session struct {
-	ID              string
-	TokenHash       string
-	AccessTokenHash *string
-	DeviceID        *string
-	DeviceName      *string
-	Platform        *string
-	ExpiresAt       time.Time
-	AccessExpiresAt *time.Time
-	CreatedAt       time.Time
-	LastSeenAt      time.Time
-	TrustedAt       *time.Time
-	RevokedAt       *time.Time
-	RevokedReason   *string
-	UserID          string
-	User            User
+	ID                    string
+	TokenHash             string
+	OldTokenHash          *string
+	TokenRotatedAt        *time.Time
+	AccessTokenHash       *string
+	DeviceID              *string
+	DeviceName            *string
+	Platform              *string
+	RefreshTokenExpiresAt time.Time
+	AccessTokenExpiresAt  *time.Time
+	CreatedAt             time.Time
+	LastSeenAt            time.Time
+	TrustedAt             *time.Time
+	RevokedAt             *time.Time
+	RevokedReason         *string
+	UserID                string
+	User                  User
 }
 
 type AuthContext struct {
@@ -59,7 +61,7 @@ type OAuthAuthorizationCode struct {
 type SessionRepository interface {
 	FindSessionByID(ctx context.Context, sessionID string) (*Session, error)
 	FindSessionByRefreshTokenHash(ctx context.Context, tokenHash string) (*Session, error)
-	RotateSession(ctx context.Context, sessionID string, accessTokenHash string, refreshTokenHash string, accessExpiresAt time.Time, refreshExpiresAt time.Time, device NormalizedDevice, trustedAt *time.Time, now time.Time) (RotatedSession, error)
+	RotateSession(ctx context.Context, sessionID string, oldTokenHash string, tokenRotatedAt time.Time, accessTokenHash string, refreshTokenHash string, accessExpiresAt time.Time, refreshExpiresAt time.Time, device NormalizedDevice, trustedAt *time.Time, now time.Time) (RotatedSession, error)
 	UpdateLastSeen(ctx context.Context, sessionID string, seenAt time.Time) error
 	MarkSessionExpired(ctx context.Context, sessionID string, expiredAt time.Time) error
 	CreateUser(ctx context.Context, id string, email string, name string, hashedPassword string, now time.Time) (*User, error)
@@ -68,6 +70,7 @@ type SessionRepository interface {
 	UpdateUserPasswordAndName(ctx context.Context, id string, name string, hashedPassword string, now time.Time) (*User, error)
 	FindUserByID(ctx context.Context, id string) (*User, error)
 	RevokeSession(ctx context.Context, sessionID string, revokedAt time.Time, reason string) error
+	RevokeAllSessionsByUserID(ctx context.Context, userID string, reason string) error
 	FindActiveSessionsByUserID(ctx context.Context, userID string) ([]*Session, error)
 	FindAllSessionsByUserID(ctx context.Context, userID string) ([]*Session, error)
 	RevokeSessionByID(ctx context.Context, sessionID string, userID string) error
@@ -78,10 +81,10 @@ type SessionRepository interface {
 
 	CreateOAuthAuthorizationCode(ctx context.Context, code *OAuthAuthorizationCode) error
 	FindOAuthAuthorizationCode(ctx context.Context, codeHash string) (*OAuthAuthorizationCode, error)
-	ConsumeOAuthAuthorizationCode(ctx context.Context, id string, consumedAt time.Time) error
+	ConsumeOAuthAuthorizationCode(ctx context.Context, id string, consumedAt time.Time) (int64, error)
 
 	FindGoogleDriveAuthHandoff(ctx context.Context, tokenHash string) (*GoogleDriveAuthHandoff, error)
-	ConsumeGoogleDriveAuthHandoff(ctx context.Context, handoffID string, consumedAt time.Time) error
+	ConsumeGoogleDriveAuthHandoff(ctx context.Context, handoffID string, consumedAt time.Time) (int64, error)
 	DeleteExpiredGoogleDriveAuthHandoffs(ctx context.Context, maxExpiresAt time.Time) error
 }
 

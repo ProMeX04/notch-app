@@ -129,7 +129,7 @@ func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
 		httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch stats")
 		return
 	}
-	if err := h.DB.QueryRow(ctx, `SELECT COUNT(*) FROM "AuthSession" WHERE "revokedAt" IS NULL AND "expiresAt" > $1`, now).Scan(&overview.ActiveSessions); err != nil {
+	if err := h.DB.QueryRow(ctx, `SELECT COUNT(*) FROM "AuthSession" WHERE "revokedAt" IS NULL AND "refreshTokenExpiresAt" > $1`, now).Scan(&overview.ActiveSessions); err != nil {
 		httpjson.Error(w, http.StatusInternalServerError, "Failed to fetch stats")
 		return
 	}
@@ -392,7 +392,7 @@ func (h *Handler) GetUsers(w http.ResponseWriter, r *http.Request) {
 			u."updatedAt",
 			(SELECT s."lastSeenAt" FROM "AuthSession" s WHERE s."userId" = u.id ORDER BY s."lastSeenAt" DESC LIMIT 1) AS lastSeenAt,
 			(SELECT MAX(COALESCE(p."paidAt", p."createdAt")) FROM "PaymentTransaction" p WHERE p."userId" = u.id) AS latestPaymentAt,
-			(SELECT COUNT(*) FROM "AuthSession" s WHERE s."userId" = u.id AND s."revokedAt" IS NULL AND s."expiresAt" > NOW()) AS activeSessionCount,
+			(SELECT COUNT(*) FROM "AuthSession" s WHERE s."userId" = u.id AND s."revokedAt" IS NULL AND s."refreshTokenExpiresAt" > NOW()) AS activeSessionCount,
 			(SELECT COUNT(*) FROM "AuthSession" s WHERE s."userId" = u.id) AS totalSessionCount,
 			(SELECT COUNT(DISTINCT s."deviceId") FROM "AuthSession" s WHERE s."userId" = u.id AND s."trustedAt" IS NOT NULL AND s."deviceId" IS NOT NULL) AS trustedDeviceCount,
 			(SELECT COUNT(*) FROM "PaymentTransaction" p WHERE p."userId" = u.id AND p.status = 'paid') AS paidPaymentCount,
@@ -554,7 +554,7 @@ func (h *Handler) GetUserDetail(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch sessions
 	sRows, err := h.DB.Query(ctx, `
-		SELECT id, "deviceId", "deviceName", platform, "expiresAt", "accessExpiresAt", "createdAt", "lastSeenAt", "trustedAt", "updatedAt", "revokedAt", "revokedReason"
+		SELECT id, "deviceId", "deviceName", platform, "refreshTokenExpiresAt", "accessTokenExpiresAt", "createdAt", "lastSeenAt", "trustedAt", "updatedAt", "revokedAt", "revokedReason"
 		FROM "AuthSession"
 		WHERE "userId" = $1
 		ORDER BY "lastSeenAt" DESC

@@ -253,6 +253,8 @@ extension GeminiLiveViewModel {
         return message ?? command.map { "Ran: \($0)" } ?? "Command executed"
     }
 
+
+
     private nonisolated func appleMailToolActionLabel(args: [String: Any], result: [String: Any]) -> String {
         switch stringValue(args, "action") {
         case "read_content":

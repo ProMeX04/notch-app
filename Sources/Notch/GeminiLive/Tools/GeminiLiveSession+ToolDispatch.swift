@@ -561,6 +561,8 @@ extension GeminiLiveSession {
         }
         onSkillWriterApprovalRequested?(SkillWriterApprovalRequest(toolCallID: id, summary: summary, preview: previewBody))
     }
+
+
 }
 
 struct SendableToolArgs: @unchecked Sendable {

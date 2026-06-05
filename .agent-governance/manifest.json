@@ -29,6 +29,12 @@
       "displayName": "Notch Verification And Release",
       "shortDescription": "Verify and deliver Notch changes",
       "defaultPrompt": "Use $notch-verification-release to verify or deliver a Notch change."
+    },
+    {
+      "name": "notch-cicd-deployer",
+      "displayName": "Notch CI/CD and Deployer",
+      "shortDescription": "Manage, configure, and verify CI/CD pipelines and deployments",
+      "defaultPrompt": "Use $notch-cicd-deployer to manage, configure, or troubleshoot CI/CD pipelines and deployments."
     }
   ],
   "rules": {

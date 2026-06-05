@@ -173,6 +173,7 @@ struct AppTalkSettingsPane: View {
                 }
             }
 
+
             AppSettingsCard(
                 title: Localization.get("Context Files", lang: appLanguage)
             ) {
@@ -305,6 +306,7 @@ struct AppTalkSettingsPane: View {
         } message: {
             Text(Localization.get("This command will require approval before running again.", lang: appLanguage))
         }
+
     }
 
     @ViewBuilder

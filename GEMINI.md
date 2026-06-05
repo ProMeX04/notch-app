@@ -1,5 +1,3 @@
-<!-- GSD:project-start source:PROJECT.md -->
-
 ## Project
 
 **Notch Portal Migration - Auth Phase**
@@ -13,10 +11,6 @@ This project is a migration of the existing Next.js web portal backend and front
 - **Tech Stack**: Backend must use Go (Chi & pgx/v5); Frontend must use Vite, React, TypeScript, and TanStack Router to match existing half-done implementation.
 - **Data Parity**: Session hashes, token formats, and user data must remain fully compatible with the existing Prisma PostgreSQL schema.
 - **Port/Coexistence**: The new Go + Vite React environment must run alongside or be easily swappable with Next.js for parity testing.
-
-<!-- GSD:project-end -->
-
-<!-- GSD:stack-start source:research/STACK.md -->
 
 ## Technology Stack
 
@@ -79,23 +73,13 @@ This project is a migration of the existing Next.js web portal backend and front
 - [Go-Chi Official Docs](https://github.com/go-chi/chi) — Chi routing pattern.
 - [pgx Official Docs](https://github.com/jackc/pgx) — Connection pooling guide.
 
-<!-- GSD:stack-end -->
-
-<!-- GSD:conventions-start source:CONVENTIONS.md -->
-
 ## Conventions
 
 Conventions not yet established. Will populate as patterns emerge during development.
-<!-- GSD:conventions-end -->
-
-<!-- GSD:architecture-start source:ARCHITECTURE.md -->
 
 ## Architecture
 
 Architecture not yet mapped. Follow existing patterns found in the codebase.
-<!-- GSD:architecture-end -->
-
-<!-- GSD:skills-start source:skills/ -->
 
 ## Project Skills
 
@@ -106,27 +90,3 @@ Architecture not yet mapped. Follow existing patterns found in the codebase.
 | notch-swift-cloud-api-conventions | Maintain cloud-facing Swift architecture and API contracts in the Notch macOS app. Use when adding, changing, debugging, or reviewing Sources/Notch/Portal, feature cloud sync/coordinators/repositories, URLSession clients, authenticated Portal context, durable outboxes, Codable API DTOs, or core events that feed cloud behavior. | `.agents/skills/notch-swift-cloud-api-conventions/SKILL.md` |
 | notch-swift-ui-conventions | Build and review consistent SwiftUI and AppKit user experiences in Notch. Use when changing settings panes, panels, overlays, windows, reusable controls, visual styling, motion, accessibility, or view-to-feature state wiring under Sources/Notch. | `.agents/skills/notch-swift-ui-conventions/SKILL.md` |
 | notch-verification-release | Verify, deploy, and release Notch changes with explicit evidence and rollback awareness. Use when completing substantial code changes, changing persisted contracts, deploying the Portal to Vercel, packaging/installing the macOS app, resetting data, or preparing a release. | `.agents/skills/notch-verification-release/SKILL.md` |
-<!-- GSD:skills-end -->
-
-<!-- GSD:workflow-start source:GSD defaults -->
-
-## GSD Workflow Enforcement
-
-Before using Edit, Write, or other file-changing tools, start work through a GSD command so planning artifacts and execution context stay in sync.
-
-Use these entry points:
-
-- `/gsd-quick` for small fixes, doc updates, and ad-hoc tasks
-- `/gsd-debug` for investigation and bug fixing
-- `/gsd-execute-phase` for planned phase work
-
-Do not make direct repo edits outside a GSD workflow unless the user explicitly asks to bypass it.
-<!-- GSD:workflow-end -->
-
-<!-- GSD:profile-start -->
-
-## Developer Profile
-
-> Profile not yet configured. Run `/gsd-profile-user` to generate your developer profile.
-> This section is managed by `generate-claude-profile` -- do not edit manually.
-<!-- GSD:profile-end -->

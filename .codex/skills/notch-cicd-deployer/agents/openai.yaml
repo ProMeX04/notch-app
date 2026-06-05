@@ -1,0 +1,4 @@
+interface:
+  display_name: "Notch CI/CD and Deployer"
+  short_description: "Manage, configure, and verify CI/CD pipelines and deployments"
+  default_prompt: "Use $notch-cicd-deployer to manage, configure, or troubleshoot CI/CD pipelines and deployments."

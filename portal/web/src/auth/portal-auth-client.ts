@@ -16,7 +16,7 @@ function readOrCreateDeviceId() {
   try {
     const existing = window.localStorage.getItem(DEVICE_ID_STORAGE_KEY)?.trim()
     if (existing) return existing
-  } catch (e) {
+  } catch {
     // Ignore storage read errors in private/incognito modes
   }
 
@@ -29,7 +29,7 @@ function readOrCreateDeviceId() {
 
   try {
     window.localStorage.setItem(DEVICE_ID_STORAGE_KEY, generated)
-  } catch (e) {
+  } catch {
     // Fallback to in-memory ID if localStorage write is blocked
     memoryDeviceId = generated
   }

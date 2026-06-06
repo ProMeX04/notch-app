@@ -101,6 +101,11 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
         }
 
         self.pipeHandler = nil
+
+        let runner = commandRunner
+        Task {
+            await runner.shutdown()
+        }
     }
 
     private var hasRunningSourceApp: Bool {
@@ -198,12 +203,13 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
 
         let pipeHandler = JSONLinesPipeHandler()
         process.standardOutput = await pipeHandler.getPipe()
-        process.terminationHandler = { process in
+        process.terminationHandler = { [weak self] process in
             if process.terminationStatus != 0 || process.terminationReason != .exit {
                 NotchLog.mediaRemote.error("MediaRemote adapter exited with status \(process.terminationStatus), reason \(process.terminationReason.rawValue)")
             }
-            Task {
+            Task { [weak self] in
                 await pipeHandler.close()
+                await self?.handleObserverTermination()
             }
         }
 
@@ -218,6 +224,20 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
         } catch {
             NotchLog.mediaRemote.error("Failed to launch mediaremote-adapter.pl: \(error.localizedDescription)")
         }
+    }
+
+    private func handleObserverTermination() async {
+        guard !isShuttingDown else { return }
+        NotchLog.mediaRemote.warning("MediaRemote stream observer exited, restarting in 2 seconds...")
+
+        self.streamTask?.cancel()
+        self.streamTask = nil
+        self.process = nil
+        self.pipeHandler = nil
+
+        try? await Task.sleep(for: .seconds(2))
+        guard !isShuttingDown else { return }
+        await setupNowPlayingObserver()
     }
 
     private func processJSONStream() async {
@@ -275,6 +295,7 @@ private actor JSONLinesPipeHandler {
     private let pipe = Pipe()
     private let fileHandle: FileHandle
     private var buffer = ""
+    private var continuation: AsyncStream<Data>.Continuation?
 
     init() {
         fileHandle = pipe.fileHandleForReading
@@ -288,24 +309,19 @@ private actor JSONLinesPipeHandler {
         as type: T.Type,
         onLine: @Sendable @escaping (T) async -> Void
     ) async {
-        do {
-            try await processLines(as: type, onLine: onLine)
-        } catch {
-            NotchLog.mediaRemote.error("Error processing JSON stream: \(error.localizedDescription)")
-        }
-    }
-
-    private func processLines<T: Decodable & Sendable>(
-        as type: T.Type,
-        onLine: @Sendable @escaping (T) async -> Void
-    ) async throws {
-        while true {
-            let data = try await readData()
-            guard !data.isEmpty else {
-                NotchLog.mediaRemote.info("MediaRemote adapter stream ended")
-                break
+        let stream = AsyncStream<Data> { continuation in
+            self.continuation = continuation
+            fileHandle.readabilityHandler = { handle in
+                let data = handle.availableData
+                if data.isEmpty {
+                    continuation.finish()
+                } else {
+                    continuation.yield(data)
+                }
             }
+        }
 
+        for await data in stream {
             if let chunk = String(data: data, encoding: .utf8) {
                 buffer.append(chunk)
 
@@ -336,19 +352,11 @@ private actor JSONLinesPipeHandler {
         }
     }
 
-    private func readData() async throws -> Data {
-        try await withCheckedThrowingContinuation { continuation in
-            fileHandle.readabilityHandler = { handle in
-                let data = handle.availableData
-                handle.readabilityHandler = nil
-                continuation.resume(returning: data)
-            }
-        }
-    }
-
     func close() async {
         do {
             fileHandle.readabilityHandler = nil
+            continuation?.finish()
+            continuation = nil
             try fileHandle.close()
             try pipe.fileHandleForWriting.close()
         } catch {
@@ -361,44 +369,118 @@ private actor MediaRemoteCommandRunner {
     private let adapterScriptURL: URL
     private let adapterFrameworkURL: URL
 
+    private var process: Process?
+    private var writeHandle: FileHandle?
+    private var isShuttingDown = false
+
     init(adapterScriptURL: URL, adapterFrameworkURL: URL) {
         self.adapterScriptURL = adapterScriptURL
         self.adapterFrameworkURL = adapterFrameworkURL
+        Task {
+            await ensureProcessRunning()
+        }
     }
 
-    func send(command: Int) {
-        run(arguments: ["send", String(command)], label: "send \(command)")
-    }
+    private func ensureProcessRunning() {
+        if process != nil && process!.isRunning {
+            return
+        }
 
-    func seek(to time: Double) {
-        let microseconds = Int64((max(0, time) * 1_000_000).rounded())
-        run(arguments: ["seek", String(microseconds)], label: "seek")
-    }
+        cleanup()
 
-    private func run(arguments: [String], label: String) {
+        guard !isShuttingDown else { return }
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
-        process.arguments = [adapterScriptURL.path, adapterFrameworkURL.path] + arguments
+        process.arguments = [
+            adapterScriptURL.path,
+            adapterFrameworkURL.path,
+            "interactive"
+        ]
+
+        let pipe = Pipe()
+        process.standardInput = pipe
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
 
-        NotchLog.mediaRemote.debug("Media command started: \(label, privacy: .public)")
+        process.terminationHandler = { [weak self] _ in
+            Task { [weak self] in
+                await self?.handleProcessTermination()
+            }
+        }
+
+        self.writeHandle = pipe.fileHandleForWriting
+        self.process = process
 
         do {
             try process.run()
-            process.waitUntilExit()
-
-            if process.terminationStatus == 0 && process.terminationReason == .exit {
-                NotchLog.mediaRemote.debug("Media command completed: \(label, privacy: .public)")
-            } else {
-                NotchLog.mediaRemote.error(
-                    "Media command failed: \(label, privacy: .public), status=\(process.terminationStatus)"
-                )
-            }
+            NotchLog.mediaRemote.info("MediaRemote interactive command runner launched")
         } catch {
-            NotchLog.mediaRemote.error(
-                "Media command launch failed: \(label, privacy: .public), error=\(error.localizedDescription)"
-            )
+            NotchLog.mediaRemote.error("Failed to launch MediaRemote interactive command runner: \(error.localizedDescription)")
+            self.cleanup()
+        }
+    }
+
+    private func handleProcessTermination() {
+        guard !isShuttingDown else { return }
+        NotchLog.mediaRemote.warning("MediaRemote interactive command runner exited, restarting...")
+        self.cleanup()
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            ensureProcessRunning()
+        }
+    }
+
+    private func cleanup() {
+        try? writeHandle?.close()
+        writeHandle = nil
+        if let process, process.isRunning {
+            process.terminate()
+        }
+        process = nil
+    }
+
+    func shutdown() {
+        isShuttingDown = true
+        cleanup()
+    }
+
+    func send(command: Int) async {
+        ensureProcessRunning()
+        guard let writeHandle else {
+            NotchLog.mediaRemote.error("Cannot send media command: process not running")
+            return
+        }
+
+        let cmd = "send \(command)\n"
+        if let data = cmd.data(using: .utf8) {
+            do {
+                try writeHandle.write(contentsOf: data)
+                NotchLog.mediaRemote.debug("Sent interactive media command: \(command)")
+            } catch {
+                NotchLog.mediaRemote.error("Failed to write command to MediaRemote process: \(error.localizedDescription)")
+                ensureProcessRunning()
+            }
+        }
+    }
+
+    func seek(to time: Double) async {
+        ensureProcessRunning()
+        guard let writeHandle else {
+            NotchLog.mediaRemote.error("Cannot send seek command: process not running")
+            return
+        }
+
+        let microseconds = Int64((max(0, time) * 1_000_000).rounded())
+        let cmd = "seek \(microseconds)\n"
+        if let data = cmd.data(using: .utf8) {
+            do {
+                try writeHandle.write(contentsOf: data)
+                NotchLog.mediaRemote.debug("Sent interactive seek command: \(microseconds)")
+            } catch {
+                NotchLog.mediaRemote.error("Failed to write seek command to MediaRemote process: \(error.localizedDescription)")
+                ensureProcessRunning()
+            }
         }
     }
 }

@@ -117,7 +117,8 @@ fail "Invalid function name: '$function_name'"
   || $function_name eq "shuffle"
   || $function_name eq "repeat"
   || $function_name eq "speed"
-  || $function_name eq "test";
+  || $function_name eq "test"
+  || $function_name eq "interactive";
 
 sub parse_options {
   my ($start_index) = @_;
@@ -249,6 +250,71 @@ elsif ($function_name eq "speed") {
 }
 elsif ($function_name eq "test") {
   $symbol_name = "adapter_test";
+}
+elsif ($function_name eq "interactive") {
+  $| = 1;
+  my %installed;
+  
+  my $get_and_call = sub {
+    my ($func, $env_symbol) = @_;
+    if (!$installed{$env_symbol}) {
+      my $symbol = DynaLoader::dl_find_symbol($handle, $env_symbol)
+        or fail "Symbol '$env_symbol' not found in $framework";
+      DynaLoader::dl_install_xsub("main::$func", $symbol);
+      $installed{$env_symbol} = 1;
+    }
+    eval {
+      no strict "refs";
+      &{"main::$func"}();
+    };
+    if ($@) {
+      print STDERR "Error executing $func: $@\n";
+    }
+  };
+
+  while (my $line = <STDIN>) {
+    chomp($line);
+    next if $line eq "";
+    
+    my ($cmd, @args) = split(/\s+/, $line);
+    
+    if ($cmd eq "send") {
+      my $id = $args[0];
+      if (defined $id) {
+        set_env_param("adapter_send", 0, "command", "$id");
+        $get_and_call->("send_cmd", "adapter_send_env");
+      }
+    }
+    elsif ($cmd eq "seek") {
+      my $position = $args[0];
+      if (defined $position) {
+        set_env_param("adapter_seek", 0, "position", "$position");
+        $get_and_call->("seek_cmd", "adapter_seek_env");
+      }
+    }
+    elsif ($cmd eq "shuffle") {
+      my $mode = $args[0];
+      if (defined $mode) {
+        set_env_param("adapter_shuffle", 0, "mode", "$mode");
+        $get_and_call->("shuffle_cmd", "adapter_shuffle_env");
+      }
+    }
+    elsif ($cmd eq "repeat") {
+      my $mode = $args[0];
+      if (defined $mode) {
+        set_env_param("adapter_repeat", 0, "mode", "$mode");
+        $get_and_call->("repeat_cmd", "adapter_repeat_env");
+      }
+    }
+    elsif ($cmd eq "speed") {
+      my $speed = $args[0];
+      if (defined $speed) {
+        set_env_param("adapter_speed", 0, "speed", "$speed");
+        $get_and_call->("speed_cmd", "adapter_speed_env");
+      }
+    }
+  }
+  exit 0;
 }
 
 if (defined shift @ARGV) {

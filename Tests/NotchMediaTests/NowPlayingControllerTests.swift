@@ -27,6 +27,13 @@ final class NowPlayingControllerTests: XCTestCase {
             print $fh join(' ', @ARGV) . "\\n";
             close($fh);
         }
+        while (my $line = <STDIN>) {
+            if ($log_file) {
+                open(my $fh, '>>', $log_file) or die $!;
+                print $fh $line;
+                close($fh);
+            }
+        }
         """
         let scriptURL = tempDir.appendingPathComponent("mediaremote-adapter.pl")
         try! dummyPl.write(to: scriptURL, atomically: true, encoding: .utf8)

@@ -329,7 +329,7 @@ func TestAuthenticatorRejectsDeviceMismatch(t *testing.T) {
 	jwtToken, _ := token.SignJWT(token.JWTPayload{UserID: "user_1", SessionID: "session_1", DeviceID: &deviceID}, "secret", time.Hour, now)
 	accessHash := token.HashToken(jwtToken)
 	session := sessionFixture(User{ID: "user_1"}, "session_1", &accessHash, &deviceID, now.Add(time.Hour))
-	platform := "macOS"
+	platform := "macOS-App"
 	session.Platform = &platform
 	authenticator := Authenticator{Repo: &fakeSessionRepo{byID: map[string]*Session{
 		"session_1": session,

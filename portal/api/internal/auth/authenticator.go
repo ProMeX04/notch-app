@@ -81,7 +81,7 @@ func (a Authenticator) authenticateJWT(ctx context.Context, rawToken string, pay
 	}
 
 	// Device check: Enforce DeviceID matching strictly for macOS App sessions
-	if platform != nil && *platform == "macOS" {
+	if platform != nil && *platform == "macOS-App" {
 		if deviceID != nil && !sameStringPtr(deviceID, requestDeviceID) {
 			return nil, ErrUnauthenticated
 		}

@@ -142,7 +142,7 @@ struct PortalDeviceContext: Encodable, Equatable, Sendable {
         return PortalDeviceContext(
             deviceID: deviceID,
             deviceName: resolvedName,
-            platform: "macOS",
+            platform: "macOS-App",
             trustDevice: trustDevice
         )
     }

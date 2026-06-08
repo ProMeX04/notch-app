@@ -409,7 +409,7 @@ func (h *Handler) GetUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var users []UserListRow
+	users := []UserListRow{}
 	for rows.Next() {
 		var row UserListRow
 		var lastSeen *time.Time
@@ -566,7 +566,7 @@ func (h *Handler) GetUserDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	defer sRows.Close()
 
-	var sessions []SessionDetail
+	sessions := []SessionDetail{}
 	var activeSessionCount int
 	var revokedSessionCount int
 	var expiredSessionCount int
@@ -616,7 +616,7 @@ func (h *Handler) GetUserDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	defer pRows.Close()
 
-	var payments []PaymentDetail
+	payments := []PaymentDetail{}
 	var paidPaymentCount int
 	var totalPaidRevenue int
 	var latestPaymentAt *time.Time
@@ -658,7 +658,7 @@ func (h *Handler) GetUserDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	defer eRows.Close()
 
-	var eventList []EventDetail
+	eventList := []EventDetail{}
 	var recentFailureEventCount int
 	eventTypeCounts := make(map[string]int)
 
@@ -686,7 +686,7 @@ func (h *Handler) GetUserDetail(w http.ResponseWriter, r *http.Request) {
 		eventList = append(eventList, e)
 	}
 
-	var topEventTypes []TopEventType
+	topEventTypes := []TopEventType{}
 	for k, v := range eventTypeCounts {
 		topEventTypes = append(topEventTypes, TopEventType{EventType: k, Count: v})
 	}

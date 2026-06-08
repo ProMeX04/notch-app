@@ -236,11 +236,11 @@ export function AdminUserDetailPage() {
     }
   }
 
-  const latestPayment = useMemo(() => data?.payments[0] ?? null, [data])
-  const eventsTotalPages = Math.max(Math.ceil((data?.events.length ?? 0) / tablePageSize), 1)
+  const latestPayment = useMemo(() => (data?.payments || [])[0] ?? null, [data])
+  const eventsTotalPages = Math.max(Math.ceil((data?.events?.length ?? 0) / tablePageSize), 1)
   const activeEventsPage = Math.min(eventsPage, eventsTotalPages)
   const pagedEvents = useMemo(() => {
-    if (!data) return []
+    if (!data || !data.events) return []
     const start = (activeEventsPage - 1) * tablePageSize
     return data.events.slice(start, start + tablePageSize)
   }, [data, activeEventsPage])
@@ -371,7 +371,7 @@ export function AdminUserDetailPage() {
             <h2 className="text-base font-medium text-[#202124]">Thiết bị & phiên đăng nhập</h2>
             <Laptop className="text-[#1a73e8]" size={20} />
           </div>
-          {data.sessions.length === 0 ? <EmptyState text="User chưa có session nào." /> : (
+          {!data.sessions || data.sessions.length === 0 ? <EmptyState text="User chưa có session nào." /> : (
             <div className="space-y-3">
               {data.sessions.slice(0, 5).map(session => (
                 <div key={session.id} className="flex items-center justify-between gap-4 rounded border border-[#e8eaed] bg-[#f8f9fa] p-3">
@@ -399,7 +399,7 @@ export function AdminUserDetailPage() {
             <UserRound className="text-indigo-500" size={24} />
           </div>
           <div className="space-y-3">
-            {data.summary.topEventTypes.length === 0 ? <EmptyState text="Chưa có event." /> : data.summary.topEventTypes.map(event => (
+            {!data.summary?.topEventTypes || data.summary.topEventTypes.length === 0 ? <EmptyState text="Chưa có event." /> : data.summary.topEventTypes.map(event => (
               <div key={event.eventType} className="flex items-center justify-between rounded border border-[#e8eaed] bg-[#f8f9fa] p-3">
                 <span className="truncate text-sm font-bold text-slate-800">{event.eventType}</span>
                 <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{event.count}</span>
@@ -417,7 +417,7 @@ export function AdminUserDetailPage() {
       </div>
 
       <DataTable title="Payments" icon={CreditCard} description="Lịch sử thanh toán của người dùng này.">
-        {data.payments.length === 0 ? <EmptyState text="User chưa có payment nào." /> : (
+        {!data.payments || data.payments.length === 0 ? <EmptyState text="User chưa có payment nào." /> : (
           <div className="overflow-x-auto rounded border border-[#dadce0] bg-white">
             <table className="admin-console-table min-w-[900px]">
               <thead>
@@ -446,7 +446,7 @@ export function AdminUserDetailPage() {
       </DataTable>
 
       <DataTable title="Recent events" icon={CalendarDays} description="Nhật ký hoạt động gần đây của tài khoản này.">
-        {data.events.length === 0 ? <EmptyState text="User chưa có AppEvent nào." /> : (
+        {!data.events || data.events.length === 0 ? <EmptyState text="User chưa có AppEvent nào." /> : (
           <>
             <div className="overflow-x-auto rounded border border-[#dadce0] bg-white">
               <table className="admin-console-table min-w-[1100px]">

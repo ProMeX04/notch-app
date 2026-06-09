@@ -11,11 +11,15 @@ import (
 )
 
 type refreshRepo struct {
-	session        *Session
-	rotated        RotatedSession
-	rotatedDevice  NormalizedDevice
-	refreshHashArg string
-	expiredID      string
+	session              *Session
+	rotated              RotatedSession
+	rotatedDevice        NormalizedDevice
+	refreshHashArg       string
+	expiredID            string
+	revokedSessionID     string
+	revokedReason        string
+	revokeAllUserID      string
+	revokeAllReason      string
 }
 
 func (r *refreshRepo) FindSessionByID(context.Context, string) (*Session, error) { return nil, nil }
@@ -27,8 +31,10 @@ func (r *refreshRepo) FindLegacySessionByTokenHash(context.Context, string) (*Se
 }
 func (r *refreshRepo) FindSessionByRefreshTokenHash(_ context.Context, tokenHash string) (*Session, error) {
 	r.refreshHashArg = tokenHash
-	if r.session != nil && r.session.TokenHash == tokenHash {
-		return r.session, nil
+	if r.session != nil {
+		if r.session.TokenHash == tokenHash || (r.session.OldTokenHash != nil && *r.session.OldTokenHash == tokenHash) {
+			return r.session, nil
+		}
 	}
 	return nil, nil
 }
@@ -58,9 +64,13 @@ func (r *refreshRepo) FindUserByID(_ context.Context, id string) (*User, error) 
 	return nil, nil
 }
 func (r *refreshRepo) RevokeSession(_ context.Context, sessionID string, revokedAt time.Time, reason string) error {
+	r.revokedSessionID = sessionID
+	r.revokedReason = reason
 	return nil
 }
 func (r *refreshRepo) RevokeAllSessionsByUserID(_ context.Context, userID string, reason string) error {
+	r.revokeAllUserID = userID
+	r.revokeAllReason = reason
 	return nil
 }
 func (r *refreshRepo) FindActiveSessionsByUserID(_ context.Context, userID string) ([]*Session, error) {
@@ -166,5 +176,65 @@ func TestRefreshServiceRejectsExpiredAndMarksSession(t *testing.T) {
 }
 
 func ptr(value string) *string { return &value }
+func timePtr(value time.Time) *time.Time { return &value }
+
+func TestRefreshServiceGraceWindowSuccess(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0).UTC()
+	oldRefreshToken := "old-refresh-token"
+	newRefreshToken := "new-refresh-token"
+	repo := &refreshRepo{session: &Session{
+		ID:                    "session_1",
+		TokenHash:             token.HashToken(newRefreshToken),
+		OldTokenHash:          ptr(token.HashToken(oldRefreshToken)),
+		TokenRotatedAt:        timePtr(now.Add(-30 * time.Second)), // Rotated 30 seconds ago (under 60s)
+		RefreshTokenExpiresAt: now.Add(24 * time.Hour),
+		UserID:                "user_1",
+		User:                  User{ID: "user_1", CreatedAt: now},
+	}}
+	service := RefreshService{Repo: repo, JWTSecret: "secret", Now: func() time.Time { return now }}
+
+	payload, err := service.RefreshWithToken(context.Background(), httptest.NewRequest(http.MethodPost, "/", nil), oldRefreshToken, DeviceInput{})
+	if err != nil {
+		t.Fatalf("expected successful refresh within grace window, got error: %v", err)
+	}
+	if payload.RefreshToken == "" {
+		t.Fatal("expected non-empty refresh token in payload")
+	}
+}
+
+func TestRefreshServiceReplayAttackRevokesSingleSession(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0).UTC()
+	oldRefreshToken := "old-refresh-token"
+	newRefreshToken := "new-refresh-token"
+	repo := &refreshRepo{session: &Session{
+		ID:                    "session_1",
+		TokenHash:             token.HashToken(newRefreshToken),
+		OldTokenHash:          ptr(token.HashToken(oldRefreshToken)),
+		TokenRotatedAt:        timePtr(now.Add(-65 * time.Second)), // Rotated 65 seconds ago (above 60s)
+		RefreshTokenExpiresAt: now.Add(24 * time.Hour),
+		UserID:                "user_1",
+		User:                  User{ID: "user_1", CreatedAt: now},
+	}}
+	service := RefreshService{Repo: repo, JWTSecret: "secret", Now: func() time.Time { return now }}
+
+	_, err := service.RefreshWithToken(context.Background(), httptest.NewRequest(http.MethodPost, "/", nil), oldRefreshToken, DeviceInput{})
+	if err != ErrRefreshInvalid {
+		t.Fatalf("expected ErrRefreshInvalid, got: %v", err)
+	}
+
+	// Verify that ONLY the current session was revoked (using RevokeSession)
+	if repo.revokedSessionID != "session_1" {
+		t.Fatalf("expected session_1 to be revoked, got: %q", repo.revokedSessionID)
+	}
+	if repo.revokedReason != "replay_attack" {
+		t.Fatalf("expected revocation reason 'replay_attack', got: %q", repo.revokedReason)
+	}
+
+	// Verify that all sessions of the user were NOT revoked (using RevokeAllSessionsByUserID)
+	if repo.revokeAllUserID != "" {
+		t.Fatalf("expected no call to RevokeAllSessionsByUserID, but got userID: %q", repo.revokeAllUserID)
+	}
+}
+
 
 

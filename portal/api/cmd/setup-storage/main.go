@@ -4,15 +4,27 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 )
 
-const (
-	devDbURL  = "postgresql://postgres.xyhhtghehlzzzpitfveu:%40Mingw401072@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres?sslmode=require"
-	prodDbURL = "postgresql://postgres.jtsshqvahplbjuljtmld:%40Mingw401072@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres?sslmode=require"
-)
+// The DB URLs are read from environment variables to prevent leaking credentials.
+func getDevDbURL() string {
+	if url := os.Getenv("DEV_DATABASE_URL"); url != "" {
+		return url
+	}
+	return "postgresql://postgres.xyhhtghehlzzzpitfveu:password@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres?sslmode=require"
+}
+
+func getProdDbURL() string {
+	if url := os.Getenv("PROD_DATABASE_URL"); url != "" {
+		return url
+	}
+	return "postgresql://postgres.jtsshqvahplbjuljtmld:password@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres?sslmode=require"
+}
+
 
 const sqlQueries = `
 --// Create or update avatars bucket with size limit (200KB) and WebP only
@@ -91,7 +103,7 @@ func setupProject(name, dbURL string) {
 }
 
 func main() {
-	setupProject("Dev (xyhhtghehlzzzpitfveu)", devDbURL)
-	setupProject("Prod (jtsshqvahplbjuljtmld)", prodDbURL)
+	setupProject("Dev (xyhhtghehlzzzpitfveu)", getDevDbURL())
+	setupProject("Prod (jtsshqvahplbjuljtmld)", getProdDbURL())
 	fmt.Println("\n✨ Go Storage Setup Tool Complete!")
 }

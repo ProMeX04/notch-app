@@ -71,7 +71,7 @@ apiClient.interceptors.response.use(
           isRefreshing = false
           processQueue(new Error('Token refresh operation timed out.'))
         }
-      }, 8000)
+      }, 30000)
 
       try {
         await apiClient.post('/api/auth/refresh')

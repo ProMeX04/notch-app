@@ -52,16 +52,16 @@ func (s RefreshService) RefreshWithToken(ctx context.Context, req *http.Request,
 		return empty, ErrRefreshInvalid
 	}
 
-	// Check if this is a rotated token inside the Grace Window (15 seconds)
+	// Check if this is a rotated token inside the Grace Window (60 seconds)
 	if session.TokenHash != tokenHash {
-		if session.TokenRotatedAt != nil && now.Sub(*session.TokenRotatedAt) <= 15*time.Second {
+		if session.TokenRotatedAt != nil && now.Sub(*session.TokenRotatedAt) <= 60*time.Second {
 			device := NormalizeDevice(req, deviceInput, session.User.ID+":"+session.ID, session)
 			if session.DeviceID != nil && *session.DeviceID != device.DeviceID {
 				return empty, ErrRefreshInvalid
 			}
 		} else {
-			// Outside grace window -> Replay Attack detected! Revoke all sessions.
-			_ = s.Repo.RevokeAllSessionsByUserID(ctx, session.User.ID, "replay_attack")
+			// Outside grace window -> Replay Attack detected! Revoke only the active session.
+			_ = s.Repo.RevokeSession(ctx, session.ID, now, "replay_attack")
 			return empty, ErrRefreshInvalid
 		}
 	}

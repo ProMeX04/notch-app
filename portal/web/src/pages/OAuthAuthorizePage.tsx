@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from '@tanstack/react-router'
 import { AlertCircle, Loader2 } from 'lucide-react'
 import { PageShell } from '@/components/ui/PageShell'
 import { usePortalAuth } from '@/auth/usePortalAuth'

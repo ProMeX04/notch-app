@@ -141,7 +141,7 @@ func (s *Server) mount(r chi.Router) {
 		api.Get("/auth/google-drive", authHandler.GoogleDriveAuth)
 		api.Post("/auth/google-drive/exchange", authHandler.GoogleDriveExchange)
 
-		api.With(authHandler.Authenticator.Authenticate).Post("/auth/google-drive/refresh", authHandler.GoogleDriveRefresh)
+		api.Post("/auth/google-drive/refresh", authHandler.GoogleDriveRefresh)
 		api.Post("/oauth/authorize", authHandler.OAuthAuthorize)
 		api.Post("/oauth/token", authHandler.OAuthToken)
 

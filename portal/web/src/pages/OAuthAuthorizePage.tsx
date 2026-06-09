@@ -106,7 +106,7 @@ export function OAuthAuthorizePage() {
             </p>
           </div>
 
-          <div className="portal-card portal-auth-card" style={{ display: 'grid', gap: '18px' }}>
+          <div style={{ display: 'grid', gap: '18px', width: '100%' }}>
             {!oauthRequest ? (
               <div className="portal-error" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', borderRadius: '12px', background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.2)', color: 'var(--red)', fontSize: '0.9rem' }}>
                 <AlertCircle size={18} />
@@ -146,10 +146,6 @@ export function OAuthAuthorizePage() {
                 <p className="portal-muted" style={{ fontSize: '0.9rem' }}>Đang hoàn tất xác thực ứng dụng...</p>
               </div>
             ) : null}
-
-            <Link to="/" className="portal-button-ghost" style={{ justifySelf: 'center', border: 'none', background: 'transparent', color: 'var(--muted)', marginTop: '8px' }}>
-              Quay về trang chủ
-            </Link>
           </div>
         </section>
       </main>

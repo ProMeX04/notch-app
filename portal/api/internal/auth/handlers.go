@@ -700,6 +700,7 @@ func (h Handler) GoogleCallback(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
+		dashboardURL := h.FrontendURL + "/account"
 		deepLink := fmt.Sprintf("notch://gdrive/callback?handoff_token=%s&state=%s", url.QueryEscape(handoffToken), url.QueryEscape(desktopState))
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
@@ -714,6 +715,7 @@ func (h Handler) GoogleCallback(w http.ResponseWriter, req *http.Request) {
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
       height: 100vh;
@@ -722,91 +724,48 @@ func (h Handler) GoogleCallback(w http.ResponseWriter, req *http.Request) {
       margin: 0;
       padding: 16px;
       box-sizing: border-box;
-    }
-    .card {
       text-align: center;
-      max-width: 420px;
-      width: 100%%;
-      padding: 32px;
-      background: #ffffff;
-      border-radius: 24px;
-      border: 1px solid rgba(0, 0, 0, 0.05);
-      box-shadow: 0 20px 40px rgba(0,0,0,0.04);
-      backdrop-filter: blur(20px);
     }
     h2 {
-      font-size: 1.5rem;
+      font-size: 1.75rem;
       margin-top: 0;
-      margin-bottom: 8px;
-      font-weight: 700;
+      margin-bottom: 24px;
+      font-weight: 800;
       letter-spacing: -0.025em;
       color: #141b2b;
-    }
-    p {
-      font-size: 0.95rem;
-      color: #5e6675;
-      line-height: 1.5;
-      margin-bottom: 24px;
     }
     .button {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      padding: 14px 28px;
-      background: linear-gradient(135deg, #003fb1, #1a56db);
-      color: #fff;
+      padding: 12px 24px;
+      background: #ffffff;
+      color: #141b2b;
       text-decoration: none;
-      border-radius: 12px;
+      border-radius: 999px;
       font-weight: 600;
       font-size: 0.95rem;
       transition: all 0.2s ease;
-      box-shadow: 0 4px 12px rgba(0, 63, 177, 0.2);
-      border: none;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+      border: 1px solid rgba(0, 0, 0, 0.05);
       cursor: pointer;
-      width: 100%%;
-      box-sizing: border-box;
     }
     .button:hover {
       transform: translateY(-1px);
-      box-shadow: 0 6px 20px rgba(0, 63, 177, 0.3);
-    }
-    .button:active {
-      transform: translateY(1px);
-    }
-    .logo {
-      width: 64px;
-      height: 64px;
-      margin: 0 auto 20px;
-      background: rgba(0, 63, 177, 0.05);
-      border-radius: 18px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .logo svg {
-      width: 32px;
-      height: 32px;
-      fill: #003fb1;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+      background: #f3f4f6;
     }
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="logo">
-      <svg viewBox="0 0 24 24">
-        <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM19 18H6c-2.21 0-4-1.79-4-4 0-2.05 1.53-3.76 3.56-3.97l1.07-.11.5-.95C8.08 7.14 9.94 6 12 6c2.62 0 4.88 1.86 5.39 4.43l.3 1.5 1.53.11c1.56.1 2.78 1.41 2.78 2.96 0 1.65-1.35 3-3 3z"/>
-      </svg>
-    </div>
-    <h2>Kết nối Google Drive thành công!</h2>
-    <p>Ứng dụng Notch sẽ tự động mở để hoàn tất liên kết. Nếu không thấy phản hồi, vui lòng nhấn nút bên dưới.</p>
-    <a href="%s" class="button">Hoàn tất liên kết</a>
-  </div>
+  <h2>Kết nối Google Drive thành công!</h2>
+  <a href="%s" class="button">Quay về Dashboard</a>
   <script>
     window.location.href = %s;
   </script>
 </body>
 </html>
-`, escapeHTMLAttribute(deepLink), stringifyJSON(deepLink))
+`, escapeHTMLAttribute(dashboardURL), stringifyJSON(deepLink))
 		return
 	}
 

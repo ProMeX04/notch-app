@@ -616,6 +616,10 @@ struct AppTalkSettingsPane: View {
         memoryDraft = gemini.memoryContent
         holdShortcut = HoldToTalkShortcutStore.load()
         shellApprovalEntries = gemini.execApprovals.allApprovedEntries()
+        
+        Task {
+            await gemini.refreshAvailableLiveModels(silent: true)
+        }
     }
 
     private func syncAgentDrafts() {

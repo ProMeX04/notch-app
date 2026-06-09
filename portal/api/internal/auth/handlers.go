@@ -717,8 +717,8 @@ func (h Handler) GoogleCallback(w http.ResponseWriter, req *http.Request) {
       align-items: center;
       justify-content: center;
       height: 100vh;
-      background-color: #0d0d0e;
-      color: #f3f4f6;
+      background-color: #f9f9ff;
+      color: #141b2b;
       margin: 0;
       padding: 16px;
       box-sizing: border-box;
@@ -728,10 +728,10 @@ func (h Handler) GoogleCallback(w http.ResponseWriter, req *http.Request) {
       max-width: 420px;
       width: 100%%;
       padding: 32px;
-      background: rgba(255, 255, 255, 0.03);
+      background: #ffffff;
       border-radius: 24px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+      border: 1px solid rgba(0, 0, 0, 0.05);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.04);
       backdrop-filter: blur(20px);
     }
     h2 {
@@ -740,10 +740,11 @@ func (h Handler) GoogleCallback(w http.ResponseWriter, req *http.Request) {
       margin-bottom: 8px;
       font-weight: 700;
       letter-spacing: -0.025em;
+      color: #141b2b;
     }
     p {
       font-size: 0.95rem;
-      color: #9ca3af;
+      color: #5e6675;
       line-height: 1.5;
       margin-bottom: 24px;
     }
@@ -752,14 +753,14 @@ func (h Handler) GoogleCallback(w http.ResponseWriter, req *http.Request) {
       align-items: center;
       justify-content: center;
       padding: 14px 28px;
-      background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+      background: linear-gradient(135deg, #003fb1, #1a56db);
       color: #fff;
       text-decoration: none;
       border-radius: 12px;
       font-weight: 600;
       font-size: 0.95rem;
       transition: all 0.2s ease;
-      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+      box-shadow: 0 4px 12px rgba(0, 63, 177, 0.2);
       border: none;
       cursor: pointer;
       width: 100%%;
@@ -767,7 +768,7 @@ func (h Handler) GoogleCallback(w http.ResponseWriter, req *http.Request) {
     }
     .button:hover {
       transform: translateY(-1px);
-      box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+      box-shadow: 0 6px 20px rgba(0, 63, 177, 0.3);
     }
     .button:active {
       transform: translateY(1px);
@@ -776,7 +777,7 @@ func (h Handler) GoogleCallback(w http.ResponseWriter, req *http.Request) {
       width: 64px;
       height: 64px;
       margin: 0 auto 20px;
-      background: rgba(255,255,255,0.05);
+      background: rgba(0, 63, 177, 0.05);
       border-radius: 18px;
       display: flex;
       align-items: center;
@@ -785,7 +786,7 @@ func (h Handler) GoogleCallback(w http.ResponseWriter, req *http.Request) {
     .logo svg {
       width: 32px;
       height: 32px;
-      fill: #3b82f6;
+      fill: #003fb1;
     }
   </style>
 </head>

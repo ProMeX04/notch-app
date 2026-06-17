@@ -133,8 +133,10 @@ final class AppSettingsController: ObservableObject, AppSettingsControlling {
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
-        window.isMovableByWindowBackground = true
+        // Set to false to prevent window drag gestures from hijacking SwiftUI Slider drag events
+        window.isMovableByWindowBackground = false
         window.isReleasedWhenClosed = false
+
         window.center()
 
         self.hostingController = hostingController

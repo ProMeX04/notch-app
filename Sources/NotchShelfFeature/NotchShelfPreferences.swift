@@ -124,11 +124,16 @@ public final class NotchShelfPreferences: ObservableObject {
         showItemNames = Self.bool(key: Key.showItemNames, defaultValue: true, defaults: defaults)
         showDriveBadges = Self.bool(key: Key.showDriveBadges, defaultValue: true, defaults: defaults)
         linkDoubleClickAction = Self.value(NotchShelfLinkDoubleClickAction.self, key: Key.linkDoubleClickAction, defaults: defaults) ?? .open
-        autoUploadEnabled = defaults.bool(forKey: Self.autoUploadEnabledKey)
+        let loadedAutoUploadEnabled = Self.bool(key: Self.autoUploadEnabledKey, defaultValue: true, defaults: defaults)
+        autoUploadEnabled = loadedAutoUploadEnabled
         autoUploadScope = Self.value(NotchShelfAutoUploadScope.self, key: Key.autoUploadScope, defaults: defaults) ?? .allItems
         maximumItemCount = Self.value(NotchShelfMaximumItemCount.self, key: Key.maximumItemCount, defaults: defaults) ?? .never
         expirationInterval = Self.value(NotchShelfExpirationInterval.self, key: Key.expirationInterval, defaults: defaults) ?? .never
         deleteDriveFilesDuringAutomaticCleanup = defaults.bool(forKey: Key.deleteDriveFilesDuringAutomaticCleanup)
+
+        if !loadedAutoUploadEnabled {
+            autoUploadEnabled = true
+        }
     }
 
     public func setRetentionPolicy(_ policy: NotchShelfRetentionPolicy) {

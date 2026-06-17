@@ -100,20 +100,22 @@ struct GeminiExecApprovalCard: View {
     }
 }
 
-#Preview {
-    GeminiExecApprovalCard(
-        request: ExecApprovalRequest(
-            toolCallID: "preview-exec-approval",
-            command: "swift test --filter GeminiExecApprovalTests",
-            workingDirectory: "/Users/promex04/Documents/NO/notch-app",
-            timeoutSeconds: 30
-        ),
-        queueCount: 3,
-        onApproveOnce: {},
-        onApproveExact: {},
-        onApproveFamily: {},
-        onDeny: {}
-    )
-    .padding(16)
-    .frame(width: 520)
+struct GeminiExecApprovalCard_Previews: PreviewProvider {
+    static var previews: some View {
+        GeminiExecApprovalCard(
+            request: ExecApprovalRequest(
+                toolCallID: "preview-exec-approval",
+                command: "swift test --filter GeminiExecApprovalTests",
+                workingDirectory: "/Users/promex04/Documents/NO/notch-app",
+                timeoutSeconds: 30
+            ),
+            queueCount: 3,
+            onApproveOnce: {},
+            onApproveExact: {},
+            onApproveFamily: {},
+            onDeny: {}
+        )
+        .padding(16)
+        .frame(width: 520)
+    }
 }

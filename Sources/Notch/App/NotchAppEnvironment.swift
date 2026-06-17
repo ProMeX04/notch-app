@@ -73,6 +73,9 @@ final class NotchAppEnvironment {
         }
 
         shelfViewModel.portalBaseURLProvider = getPortalURL
+        shelfViewModel.sendSystemNotification = { title, body in
+            AppNotificationManager.sendNotification(title: title, body: body)
+        }
         shelfViewModel.applyRetentionPolicy(shelfViewModel.preferences.retentionPolicy)
 
         shelfViewModel.onConnectGoogleDriveRequested = { state, codeChallenge in

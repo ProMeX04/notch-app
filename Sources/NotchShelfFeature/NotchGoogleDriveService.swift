@@ -787,7 +787,261 @@ public final class NotchGoogleDriveService: Sendable {
             throw GoogleDriveError.makePrivateFailed
         }
     }
+
+    public func fetchPermissions(fileId: String, portalBaseURL: URL) async throws -> [GoogleDrivePermission] {
+        let token = try await ensureValidAccessToken(portalBaseURL: portalBaseURL)
+        let url = URL(string: "https://www.googleapis.com/drive/v3/files/\(fileId)/permissions?fields=permissions(id,emailAddress,role,displayName,photoLink,type)")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw GoogleDriveError.uploadFailed
+        }
+        try rejectInvalidAuthorization(httpResponse)
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw GoogleDriveError.uploadFailed
+        }
+        
+        struct PermissionsResponse: Codable {
+            var permissions: [GoogleDrivePermission]
+        }
+        let decoded = try JSONDecoder().decode(PermissionsResponse.self, from: data)
+        return decoded.permissions
+    }
+
+    public func fetchUserInfo(portalBaseURL: URL) async throws -> GoogleDriveUser {
+        let token = try await ensureValidAccessToken(portalBaseURL: portalBaseURL)
+        let url = URL(string: "https://www.googleapis.com/drive/v3/about?fields=user(displayName,emailAddress,photoLink)")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw GoogleDriveError.uploadFailed
+        }
+        try rejectInvalidAuthorization(httpResponse)
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw GoogleDriveError.uploadFailed
+        }
+        
+        struct AboutResponse: Codable {
+            var user: GoogleDriveUser
+        }
+        let decoded = try JSONDecoder().decode(AboutResponse.self, from: data)
+        return decoded.user
+    }
+
+    public func addPermission(fileId: String, email: String, role: String, portalBaseURL: URL) async throws {
+        let token = try await ensureValidAccessToken(portalBaseURL: portalBaseURL)
+        let url = URL(string: "https://www.googleapis.com/drive/v3/files/\(fileId)/permissions?sendNotificationEmail=false")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let body: [String: Any] = [
+            "role": role,
+            "type": "user",
+            "emailAddress": email
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw GoogleDriveError.uploadFailed
+        }
+        try rejectInvalidAuthorization(httpResponse)
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            if let errorMsg = String(data: data, encoding: .utf8) {
+                print("Google Drive add permission error response: \(errorMsg)")
+            }
+            throw GoogleDriveError.uploadFailed
+        }
+    }
+
+    public func deletePermission(fileId: String, permissionId: String, portalBaseURL: URL) async throws {
+        let token = try await ensureValidAccessToken(portalBaseURL: portalBaseURL)
+        let url = URL(string: "https://www.googleapis.com/drive/v3/files/\(fileId)/permissions/\(permissionId)")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw GoogleDriveError.uploadFailed
+        }
+        try rejectInvalidAuthorization(httpResponse)
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            if let errorMsg = String(data: data, encoding: .utf8) {
+                print("Google Drive delete permission error response: \(errorMsg)")
+            }
+            throw GoogleDriveError.uploadFailed
+        }
+    }
+
+    public func updatePermission(fileId: String, permissionId: String, role: String, portalBaseURL: URL) async throws {
+        let token = try await ensureValidAccessToken(portalBaseURL: portalBaseURL)
+        let url = URL(string: "https://www.googleapis.com/drive/v3/files/\(fileId)/permissions/\(permissionId)")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let body: [String: Any] = [
+            "role": role
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw GoogleDriveError.uploadFailed
+        }
+        try rejectInvalidAuthorization(httpResponse)
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            if let errorMsg = String(data: data, encoding: .utf8) {
+                print("Google Drive update permission error response: \(errorMsg)")
+            }
+            throw GoogleDriveError.uploadFailed
+        }
+    }
+
+
+    public func updateGeneralAccess(fileId: String, isPublic: Bool, role: String, portalBaseURL: URL) async throws {
+        if isPublic {
+            let token = try await ensureValidAccessToken(portalBaseURL: portalBaseURL)
+            let url = URL(string: "https://www.googleapis.com/drive/v3/files/\(fileId)/permissions")!
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            
+            let body: [String: Any] = [
+                "role": role,
+                "type": "anyone"
+            ]
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw GoogleDriveError.makePublicFailed
+            }
+            try rejectInvalidAuthorization(httpResponse)
+            
+            guard (200...299).contains(httpResponse.statusCode) else {
+                if let errorMsg = String(data: data, encoding: .utf8) {
+                    print("Google Drive update general access error: \(errorMsg)")
+                }
+                throw GoogleDriveError.makePublicFailed
+            }
+        } else {
+            try await makeFilePrivate(fileId: fileId, portalBaseURL: portalBaseURL)
+        }
+    }
+
+    public func fetchFileSettings(fileId: String, portalBaseURL: URL) async throws -> Bool {
+        let token = try await ensureValidAccessToken(portalBaseURL: portalBaseURL)
+        let url = URL(string: "https://www.googleapis.com/drive/v3/files/\(fileId)?fields=writersCanShare")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw GoogleDriveError.uploadFailed
+        }
+        try rejectInvalidAuthorization(httpResponse)
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw GoogleDriveError.uploadFailed
+        }
+        
+        struct FileSettingsResponse: Codable {
+            var writersCanShare: Bool?
+        }
+        let decoded = try JSONDecoder().decode(FileSettingsResponse.self, from: data)
+        return decoded.writersCanShare ?? true
+    }
+
+    public func updateFileSettings(fileId: String, writersCanShare: Bool, portalBaseURL: URL) async throws {
+        let token = try await ensureValidAccessToken(portalBaseURL: portalBaseURL)
+        let url = URL(string: "https://www.googleapis.com/drive/v3/files/\(fileId)")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let body: [String: Any] = [
+            "writersCanShare": writersCanShare
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw GoogleDriveError.uploadFailed
+        }
+        try rejectInvalidAuthorization(httpResponse)
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            if let errorMsg = String(data: data, encoding: .utf8) {
+                print("Google Drive update settings error response: \(errorMsg)")
+            }
+            throw GoogleDriveError.uploadFailed
+        }
+    }
+
+    public func downloadFile(fileId: String, destinationURL: URL, portalBaseURL: URL) async throws {
+        let token = try await ensureValidAccessToken(portalBaseURL: portalBaseURL)
+        let url = URL(string: "https://www.googleapis.com/drive/v3/files/\(fileId)?alt=media")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw GoogleDriveError.uploadFailed
+        }
+        try rejectInvalidAuthorization(httpResponse)
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw GoogleDriveError.uploadFailed
+        }
+        
+        try data.write(to: destinationURL)
+    }
 }
+
+public struct GoogleDrivePermission: Codable, Identifiable, Hashable, Sendable {
+    public var id: String
+    public var emailAddress: String?
+    public var role: String
+    public var displayName: String?
+    public var photoLink: String?
+    public var type: String
+
+    public init(id: String, emailAddress: String? = nil, role: String, displayName: String? = nil, photoLink: String? = nil, type: String) {
+        self.id = id
+        self.emailAddress = emailAddress
+        self.role = role
+        self.displayName = displayName
+        self.photoLink = photoLink
+        self.type = type
+    }
+}
+
+public struct GoogleDriveUser: Codable, Hashable, Sendable {
+    public var displayName: String
+    public var emailAddress: String
+    public var photoLink: String?
+}
+
 
 extension NotchGoogleDriveService: NotchShelfDriveDeleting {}
 

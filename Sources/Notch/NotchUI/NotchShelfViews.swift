@@ -118,20 +118,6 @@ struct ShelfPanelView: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            if let error = shelf.driveUploadError {
-                ShelfDriveStatusRow(
-                    icon: "exclamationmark.triangle.fill",
-                    text: error,
-                    tint: .red
-                )
-            } else if let message = shelf.driveUploadMessage {
-                ShelfDriveStatusRow(
-                    icon: shelf.isUploadingToDrive ? "arrow.triangle.2.circlepath" : "checkmark.icloud.fill",
-                    text: message,
-                    tint: shelf.isUploadingToDrive ? .blue : .green
-                )
-            }
-
             if shelf.hasItems {
                 ShelfBrowserView(
                     shelf: shelf,
@@ -444,6 +430,7 @@ struct ShelfBrowserView: NSViewRepresentable {
             guard !selection.isEmpty else { return nil }
 
             let menu = NSMenu()
+            let isVi = Locale.preferredLanguages.first?.hasPrefix("vi") == true || Locale.current.identifier.hasPrefix("vi")
             let allOpenable = selection.allSatisfy {
                 switch $0.kind {
                 case .file, .link:
@@ -455,45 +442,50 @@ struct ShelfBrowserView: NSViewRepresentable {
 
             if selection.count == 1 {
                 let item = selection[0]
-                let openTitle: String
-                switch item.kind {
-                case .file:
-                    openTitle = "Open"
-                case .link:
-                    openTitle = "Open Link"
-                case .text:
-                    openTitle = "Copy Text"
-                }
-                menu.addItem(
-                    withTitle: openTitle,
-                    action: #selector(openSelection),
-                    keyEquivalent: ""
-                )
-
-                if case .file = item.kind {
+                let driveState = shelf.isGoogleDriveConnected ? (shelf.cachedDriveStates[item.id] ?? .local) : .local
+                let isOrphaned = (driveState == .orphaned)
+                
+                if !isOrphaned {
+                    let openTitle: String
+                    switch item.kind {
+                    case .file:
+                        openTitle = isVi ? "Mở" : "Open"
+                    case .link:
+                        openTitle = isVi ? "Mở liên kết" : "Open Link"
+                    case .text:
+                        openTitle = isVi ? "Sao chép văn bản" : "Copy Text"
+                    }
                     menu.addItem(
-                        withTitle: "Show in Finder",
-                        action: #selector(revealSelection),
+                        withTitle: openTitle,
+                        action: #selector(openSelection),
+                        keyEquivalent: ""
+                    )
+
+                    if case .file = item.kind {
+                        menu.addItem(
+                            withTitle: isVi ? "Hiển thị trong Finder" : "Show in Finder",
+                            action: #selector(revealSelection),
+                            keyEquivalent: ""
+                        )
+                    }
+
+                    menu.addItem(
+                        withTitle: isVi ? "Sao chép" : "Copy",
+                        action: #selector(copySelection),
                         keyEquivalent: ""
                     )
                 }
-
-                menu.addItem(
-                    withTitle: "Copy",
-                    action: #selector(copySelection),
-                    keyEquivalent: ""
-                )
             } else {
                 if allOpenable {
                     menu.addItem(
-                        withTitle: "Open Selected",
+                        withTitle: isVi ? "Mở mục đã chọn" : "Open Selected",
                         action: #selector(openSelection),
                         keyEquivalent: ""
                     )
                 }
 
                 menu.addItem(
-                    withTitle: "Copy Selected",
+                    withTitle: isVi ? "Sao chép mục đã chọn" : "Copy Selected",
                     action: #selector(copySelection),
                     keyEquivalent: ""
                 )
@@ -509,86 +501,90 @@ struct ShelfBrowserView: NSViewRepresentable {
                     switch shelf.cachedDriveStates[item.id] ?? .local {
                     case .local:
                         menu.addItem(
-                            withTitle: "Upload to Google Drive",
+                            withTitle: isVi ? "Tải lên Google Drive" : "Upload to Google Drive",
                             action: #selector(uploadToGoogleDrive),
                             keyEquivalent: ""
                         )
                     case .synced:
                         menu.addItem(
-                            withTitle: "Copy Link",
+                            withTitle: isVi ? "Sao chép liên kết" : "Copy Link",
                             action: #selector(copyDriveLinkOnly),
                             keyEquivalent: ""
                         )
                         menu.addItem(
-                            withTitle: "Chia sẻ công khai",
-                            action: #selector(copyPublicShareLink),
+                            withTitle: isVi ? "Chia sẻ" : "Share",
+                            action: #selector(openCustomSharePanel),
                             keyEquivalent: ""
                         )
                         menu.addItem(
-                            withTitle: "Open in Google Drive",
+                            withTitle: isVi ? "Mở trong Google Drive" : "Open in Google Drive",
                             action: #selector(openInGoogleDrive),
                             keyEquivalent: ""
                         )
                     case .syncedPublic:
                         menu.addItem(
-                            withTitle: "Copy Link",
+                            withTitle: isVi ? "Sao chép liên kết" : "Copy Link",
                             action: #selector(copyDriveLinkOnly),
                             keyEquivalent: ""
                         )
                         menu.addItem(
-                            withTitle: "Thu hồi chia sẻ công khai",
-                            action: #selector(copyDriveShareLink),
+                            withTitle: isVi ? "Chia sẻ" : "Share",
+                            action: #selector(openCustomSharePanel),
                             keyEquivalent: ""
                         )
                         menu.addItem(
-                            withTitle: "Open in Google Drive",
+                            withTitle: isVi ? "Mở trong Google Drive" : "Open in Google Drive",
                             action: #selector(openInGoogleDrive),
                             keyEquivalent: ""
                         )
                     case .modified:
                         menu.addItem(
-                            withTitle: "Đồng bộ thay đổi lên Drive",
+                            withTitle: isVi ? "Đồng bộ thay đổi lên Drive" : "Sync changes to Drive",
                             action: #selector(uploadToGoogleDrive),
                             keyEquivalent: ""
                         )
+                        menu.addItem(.separator())
                         menu.addItem(
-                            withTitle: "Copy Link",
+                            withTitle: isVi ? "Sao chép liên kết" : "Copy Link",
                             action: #selector(copyDriveLinkOnly),
                             keyEquivalent: ""
                         )
-                        if item.driveIsPublic {
-                            menu.addItem(
-                                withTitle: "Thu hồi chia sẻ công khai",
-                                action: #selector(copyDriveShareLink),
-                                keyEquivalent: ""
-                            )
-                        } else {
-                            menu.addItem(
-                                withTitle: "Chia sẻ công khai",
-                                action: #selector(copyPublicShareLink),
-                                keyEquivalent: ""
-                            )
-                        }
                         menu.addItem(
-                            withTitle: "Open in Google Drive",
+                            withTitle: isVi ? "Chia sẻ" : "Share",
+                            action: #selector(openCustomSharePanel),
+                            keyEquivalent: ""
+                        )
+                        menu.addItem(
+                            withTitle: isVi ? "Mở trong Google Drive" : "Open in Google Drive",
                             action: #selector(openInGoogleDrive),
                             keyEquivalent: ""
                         )
                     case .orphaned:
                         menu.addItem(
-                            withTitle: "Copy Link",
+                            withTitle: isVi ? "Tải xuống" : "Download",
+                            action: #selector(downloadOrphanedFile),
+                            keyEquivalent: ""
+                        )
+                        menu.addItem(.separator())
+                        menu.addItem(
+                            withTitle: isVi ? "Sao chép liên kết" : "Copy Link",
                             action: #selector(copyDriveLinkOnly),
                             keyEquivalent: ""
                         )
                         menu.addItem(
-                            withTitle: "Open in Google Drive",
+                            withTitle: isVi ? "Chia sẻ" : "Share",
+                            action: #selector(openCustomSharePanel),
+                            keyEquivalent: ""
+                        )
+                        menu.addItem(
+                            withTitle: isVi ? "Mở trong Google Drive" : "Open in Google Drive",
                             action: #selector(openInGoogleDrive),
                             keyEquivalent: ""
                         )
                     }
                 } else {
                     menu.addItem(
-                        withTitle: "Link Google Drive",
+                        withTitle: isVi ? "Kết nối Google Drive" : "Link Google Drive",
                         action: #selector(linkGoogleDrive),
                         keyEquivalent: ""
                     )
@@ -596,13 +592,13 @@ struct ShelfBrowserView: NSViewRepresentable {
             } else {
                 if shelf.isGoogleDriveConnected {
                     menu.addItem(
-                        withTitle: "Upload to Google Drive",
+                        withTitle: isVi ? "Tải lên Google Drive" : "Upload to Google Drive",
                         action: #selector(uploadToGoogleDrive),
                         keyEquivalent: ""
                     )
                 } else {
                     menu.addItem(
-                        withTitle: "Link Google Drive",
+                        withTitle: isVi ? "Kết nối Google Drive" : "Link Google Drive",
                         action: #selector(linkGoogleDrive),
                         keyEquivalent: ""
                     )
@@ -614,7 +610,7 @@ struct ShelfBrowserView: NSViewRepresentable {
             }
 
             menu.addItem(
-                withTitle: selection.count == 1 ? "Remove from Shelf" : "Remove Selected",
+                withTitle: selection.count == 1 ? (isVi ? "Xóa khỏi Shelf" : "Remove from Shelf") : (isVi ? "Xóa mục đã chọn" : "Remove Selected"),
                 action: #selector(removeSelection),
                 keyEquivalent: ""
             )
@@ -895,6 +891,39 @@ struct ShelfBrowserView: NSViewRepresentable {
         @objc private func copyPublicShareLink() {
             guard let item = shelf.primarySelectedItem else { return }
             shelf.shareItemPublicly(item)
+        }
+
+        @objc private func openCustomSharePanel() {
+            guard let item = shelf.primarySelectedItem else { return }
+            guard let portalBaseURL = shelf.portalBaseURLProvider?() else { return }
+            NotchShareWindowController.shared.showSharePanel(for: item, portalBaseURL: portalBaseURL)
+        }
+
+        @objc private func downloadOrphanedFile() {
+            guard let item = shelf.primarySelectedItem else { return }
+            
+            let fileManager = FileManager.default
+            guard let downloadsFolder = fileManager.urls(for: .downloadsDirectory, in: .userDomainMask).first else {
+                return
+            }
+            
+            var targetURL = downloadsFolder.appendingPathComponent(item.displayName)
+            if fileManager.fileExists(atPath: targetURL.path) {
+                let pathExtension = targetURL.pathExtension
+                let nameWithoutExtension = targetURL.deletingPathExtension().lastPathComponent
+                var counter = 1
+                while true {
+                    let newName = "\(nameWithoutExtension) (\(counter))" + (pathExtension.isEmpty ? "" : ".\(pathExtension)")
+                    let newURL = downloadsFolder.appendingPathComponent(newName)
+                    if !fileManager.fileExists(atPath: newURL.path) {
+                        targetURL = newURL
+                        break
+                    }
+                    counter += 1
+                }
+            }
+            
+            shelf.downloadOrphanedFile(item, to: targetURL)
         }
 
         @objc private func openInGoogleDrive() {
@@ -1211,7 +1240,7 @@ private final class ShelfCollectionItem: NSCollectionViewItem {
             )
         } else if let errorMsg = error {
             shelfView.setDriveBadge(
-                symbolName: "xmark.icloud.fill",
+                symbolName: "xmark.circle.fill",
                 tint: .systemRed,
                 accessibilityDescription: errorMsg
             )
@@ -1221,27 +1250,23 @@ private final class ShelfCollectionItem: NSCollectionViewItem {
                 switch driveState {
                 case .local:
                     shelfView.setDriveBadge(symbolName: nil, tint: nil, accessibilityDescription: nil)
-                case .synced:
+                case .synced, .syncedPublic:
+                    let syncedBadge = makeGoogleDriveSyncedBadge(size: CGSize(width: 16, height: 16))
                     shelfView.setDriveBadge(
-                        symbolName: "checkmark.icloud.fill",
+                        symbolName: nil,
                         tint: .systemGreen,
-                        accessibilityDescription: "Synced"
-                    )
-                case .syncedPublic:
-                    shelfView.setDriveBadge(
-                        symbolName: "link.icloud.fill",
-                        tint: .systemBlue,
-                        accessibilityDescription: "Synced Public"
+                        accessibilityDescription: "Synced",
+                        customImage: syncedBadge
                     )
                 case .modified:
                     shelfView.setDriveBadge(
-                        symbolName: "arrow.clockwise.icloud.fill",
+                        symbolName: "arrow.clockwise.circle.fill",
                         tint: .systemOrange,
                         accessibilityDescription: "Modified"
                     )
                 case .orphaned:
                     shelfView.setDriveBadge(
-                        symbolName: "exclamationmark.icloud.fill",
+                        symbolName: "exclamationmark.circle.fill",
                         tint: .systemYellow,
                         accessibilityDescription: "Local file missing; Drive copy may still exist"
                     )
@@ -1493,23 +1518,34 @@ internal final class ShelfCollectionItemView: NSView {
         layer?.shadowRadius = 0
     }
 
-    func setDriveBadge(symbolName: String?, tint: NSColor?, accessibilityDescription: String?, isAnimating: Bool = false) {
-        guard let symbolName, let tint else {
+    func setDriveBadge(symbolName: String?, tint: NSColor?, accessibilityDescription: String?, isAnimating: Bool = false, customImage: NSImage? = nil) {
+        guard let tint, (symbolName != nil || customImage != nil) else {
             cloudStatusImageView.image = nil
             cloudStatusImageView.isHidden = true
             cloudStatusImageView.layer?.removeAllAnimations()
             return
         }
 
-        let symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 11, weight: .bold)
-        let image = NSImage(
-            systemSymbolName: symbolName,
-            accessibilityDescription: accessibilityDescription
-        )?.withSymbolConfiguration(symbolConfiguration)
-        image?.isTemplate = true
+        let image: NSImage?
+        if let customImage = customImage {
+            image = customImage
+        } else if let symbolName = symbolName {
+            let symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 11, weight: .bold)
+            image = NSImage(
+                systemSymbolName: symbolName,
+                accessibilityDescription: accessibilityDescription
+            )?.withSymbolConfiguration(symbolConfiguration)
+            image?.isTemplate = true
+        } else {
+            image = nil
+        }
 
         cloudStatusImageView.image = image
-        cloudStatusImageView.contentTintColor = tint
+        if customImage != nil {
+            cloudStatusImageView.contentTintColor = nil
+        } else {
+            cloudStatusImageView.contentTintColor = tint
+        }
         cloudStatusImageView.isHidden = false
         cloudStatusImageView.layer?.zPosition = 20
 
@@ -1631,12 +1667,12 @@ internal final class ShelfCollectionItemView: NSView {
             iconSelectionBackground.topAnchor.constraint(equalTo: previewImageView.topAnchor, constant: -6),
             iconSelectionBackground.bottomAnchor.constraint(equalTo: previewImageView.bottomAnchor, constant: 6),
 
-            cloudStatusImageView.topAnchor.constraint(equalTo: previewImageView.topAnchor, constant: -4),
+            cloudStatusImageView.bottomAnchor.constraint(equalTo: previewImageView.bottomAnchor, constant: 4),
             cloudStatusImageView.trailingAnchor.constraint(equalTo: previewImageView.trailingAnchor, constant: 4),
             cloudStatusImageView.widthAnchor.constraint(equalToConstant: 16),
             cloudStatusImageView.heightAnchor.constraint(equalToConstant: 16),
 
-            circularProgressView.topAnchor.constraint(equalTo: previewImageView.topAnchor, constant: -4),
+            circularProgressView.bottomAnchor.constraint(equalTo: previewImageView.bottomAnchor, constant: 4),
             circularProgressView.trailingAnchor.constraint(equalTo: previewImageView.trailingAnchor, constant: 4),
             circularProgressView.widthAnchor.constraint(equalToConstant: 16),
             circularProgressView.heightAnchor.constraint(equalToConstant: 16),
@@ -1761,5 +1797,53 @@ internal final class ShelfCollectionItemView: NSView {
 
     private func titleWidth(_ title: String, font: NSFont) -> CGFloat {
         ceil((title as NSString).size(withAttributes: [.font: font]).width)
+    }
+}
+
+fileprivate func makeGoogleDriveSyncedBadge(size: CGSize) -> NSImage {
+    return NSImage(size: size, flipped: false) { rect in
+        guard let context = NSGraphicsContext.current?.cgContext else { return false }
+        
+        context.clear(rect)
+        
+        let outerPadding: CGFloat = 1.0
+        let circleRect = rect.insetBy(dx: outerPadding, dy: outerPadding)
+        
+        context.setFillColor(NSColor.white.cgColor)
+        context.fillEllipse(in: circleRect)
+        
+        let borderWidth: CGFloat = 1.5
+        let greenRect = circleRect.insetBy(dx: borderWidth, dy: borderWidth)
+        let greenColor = NSColor(red: 15.0/255.0, green: 157.0/255.0, blue: 88.0/255.0, alpha: 1.0)
+        context.setFillColor(greenColor.cgColor)
+        context.fillEllipse(in: greenRect)
+        
+        context.setStrokeColor(NSColor.white.cgColor)
+        context.setLineWidth(1.5)
+        context.setLineCap(.round)
+        context.setLineJoin(.round)
+        
+        let w = rect.width
+        let h = rect.height
+        
+        let p1 = CGPoint(x: 0.33 * w, y: 0.53 * h)
+        let p2 = CGPoint(x: 0.47 * w, y: 0.38 * h)
+        let p3 = CGPoint(x: 0.67 * w, y: 0.63 * h)
+        
+        context.beginPath()
+        context.move(to: p1)
+        context.addLine(to: p2)
+        context.addLine(to: p3)
+        context.strokePath()
+        
+        let lp1 = CGPoint(x: 0.33 * w, y: 0.28 * h)
+        let lp2 = CGPoint(x: 0.67 * w, y: 0.28 * h)
+        
+        context.beginPath()
+        context.move(to: lp1)
+        context.addLine(to: lp2)
+        context.strokePath()
+        
+        return true
     }
 }

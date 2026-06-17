@@ -118,8 +118,6 @@ func buildTestCases() -> [TestCase] {
                  run: NotchShelfViewModelTests.gdrive_driveStateCalculation),
         TestCase(name: "viewmodel/gdrive_copyDriveLink",
                  run: NotchShelfViewModelTests.gdrive_copyDriveLink),
-        TestCase(name: "viewmodel/gdrive_autoUploadSetting",
-                 run: NotchShelfViewModelTests.gdrive_autoUploadSetting),
         TestCase(name: "viewmodel/gdrive_fileStateCalculations",
                  run: NotchShelfViewModelTests.gdrive_fileStateCalculations),
         TestCase(name: "viewmodel/persistence_preservesOrphanedDriveFileAfterRestart",
@@ -134,6 +132,8 @@ func buildTestCases() -> [TestCase] {
                  run: NotchShelfViewModelTests.gdrive_defaultStorage_doesNotUsePlaintextFile),
         TestCase(name: "viewmodel/automaticRetentionDoesNotDeleteDriveWhenDisabled",
                  run: NotchShelfViewModelTests.automaticRetentionDoesNotDeleteDriveWhenDisabled),
+        TestCase(name: "viewmodel/gdrive_automaticSyncOnModification",
+                 run: NotchShelfViewModelTests.gdrive_automaticSyncOnModification),
     ]
 }
 

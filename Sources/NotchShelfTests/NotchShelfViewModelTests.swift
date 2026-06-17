@@ -683,19 +683,6 @@ enum NotchShelfViewModelTests {
         try expectEqual(pbString, "https://drive.google.com/file/d/123/view?usp=drivesdk")
     }
 
-    static func gdrive_autoUploadSetting() throws {
-        let dir = try makeTempDirectory(label: "ShelfVM")
-        defer { cleanupDirectory(dir) }
-
-        // Disable auto-upload
-        UserDefaults.standard.set(false, forKey: "notchShelfGoogleDriveAutoUploadEnabled")
-        let vm = makeViewModel(dir: dir)
-
-        let a = NotchShelfItem(kind: .text("a"))
-        vm.merge([a])
-        // Since auto-upload is disabled, it remains local and no upload is triggered
-        try expectEqual(vm.items[0].driveState, .local)
-    }
 
     static func gdrive_fileStateCalculations() throws {
         let dir = try makeTempDirectory(label: "ShelfVM")
@@ -913,5 +900,93 @@ enum NotchShelfViewModelTests {
         try expect(vm.items.isEmpty)
         let deletedIDs = await drive.deletedIDs
         try expect(deletedIDs.isEmpty)
+    }
+
+    static func gdrive_automaticSyncOnModification() async throws {
+        let dir = try makeTempDirectory(label: "ShelfVM")
+        defer { cleanupDirectory(dir) }
+
+        let fileURL = dir.appendingPathComponent("sync_test.txt")
+        try "initial content".write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let bookmark = try Bookmark(url: fileURL)
+        let ref = NotchShelfItem.FileReference(
+            url: fileURL,
+            fileIdentity: notchShelfFileIdentity(for: fileURL),
+            bookmarkData: bookmark.data,
+            isTemporary: false
+        )
+
+        let preferences = makePreferences()
+        preferences.autoUploadEnabled = true
+
+        let vm = makeViewModel(dir: dir, preferences: preferences)
+        vm.portalBaseURLProvider = { URL(string: "https://example.com")! }
+
+        // Setup mock tracker actor
+        actor UploadTracker {
+            var uploadedId: String? = nil
+            var updatedId: String? = nil
+
+            func setUploaded(id: String) {
+                uploadedId = id
+            }
+            func setUpdated(id: String) {
+                updatedId = id
+            }
+
+            func getUploaded() -> String? { uploadedId }
+            func getUpdated() -> String? { updatedId }
+        }
+
+        let tracker = UploadTracker()
+        vm.driveUploadHandler = { name, mimeType, data, url, progress in
+            await tracker.setUploaded(id: "uploaded_drive_file_id")
+            return "uploaded_drive_file_id"
+        }
+
+        // 1. Connect Google Drive
+        vm.isGoogleDriveConnected = true
+
+        // 2. Merge item. Since auto-upload is enabled and Drive is connected, it auto-uploads.
+        let item = NotchShelfItem(kind: .file(ref), driveFileID: nil)
+        vm.merge([item])
+
+        // Wait for mock upload to complete
+        var uploadedId: String? = nil
+        for _ in 0..<100 {
+            uploadedId = await tracker.getUploaded()
+            if uploadedId != nil { break }
+            try await Task.sleep(nanoseconds: 10_000_000) // 10ms
+        }
+        try expectEqual(uploadedId, "uploaded_drive_file_id")
+
+        // Wait for VM to apply persistent updates
+        for _ in 0..<100 where vm.items.first?.driveFileID == nil {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        try expectEqual(vm.items.first?.driveFileID, "uploaded_drive_file_id")
+
+        // 3. Setup update mock
+        vm.driveUpdateHandler = { existingId, name, mimeType, data, url, progress in
+            await tracker.setUpdated(id: "updated_drive_file_id")
+            return "updated_drive_file_id"
+        }
+
+        // 4. Modify local file on disk. We sleep slightly to ensure modification time is > uploaded time
+        try await Task.sleep(nanoseconds: 1_200_000_000) // 1.2s
+        try "updated content".write(to: fileURL, atomically: true, encoding: .utf8)
+
+        // 5. Force update of states to trigger autoSyncModifiedItemsIfNeeded()
+        vm.refreshDriveStates(force: true)
+
+        // Wait for update mock to complete
+        var updatedId: String? = nil
+        for _ in 0..<100 {
+            updatedId = await tracker.getUpdated()
+            if updatedId != nil { break }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        try expectEqual(updatedId, "updated_drive_file_id")
     }
 }

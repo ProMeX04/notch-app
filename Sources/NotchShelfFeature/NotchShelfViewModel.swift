@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import CryptoKit
 import Foundation
 import Security
@@ -55,6 +56,10 @@ public struct NotchShelfItem: Identifiable, Equatable, Sendable {
 
     public func withDriveFileID(_ fileID: String?) -> NotchShelfItem {
         NotchShelfItem(id: id, kind: kind, identityOverride: identityOverride, driveFileID: fileID, driveIsPublic: driveIsPublic, driveUploadedAt: driveUploadedAt, addedAt: addedAt)
+    }
+
+    public func withKind(_ kind: Kind) -> NotchShelfItem {
+        NotchShelfItem(id: id, kind: kind, identityOverride: identityOverride, driveFileID: driveFileID, driveIsPublic: driveIsPublic, driveUploadedAt: driveUploadedAt, addedAt: addedAt)
     }
 
     public func withDriveIsPublic(_ isPublic: Bool) -> NotchShelfItem {
@@ -284,18 +289,54 @@ public final class NotchShelfViewModel: ObservableObject {
     @Published public private(set) var selectedItemIDs: Set<UUID> = []
 
     // Google Drive Integration
-    @Published public private(set) var isGoogleDriveConnected = false
+    @Published public internal(set) var isGoogleDriveConnected = false {
+        didSet {
+            if isGoogleDriveConnected {
+                refreshDriveStates(force: true)
+            }
+        }
+    }
     @Published public private(set) var isUploadingToDrive = false
     @Published public private(set) var uploadingItemIDs: Set<UUID> = []
     @Published public private(set) var uploadProgresses: [UUID: Double] = [:]
-    @Published public var driveUploadMessage: String?
-    @Published public private(set) var driveUploadError: String?
+    @Published public var driveUploadMessage: String? {
+        didSet {
+            if let msg = driveUploadMessage {
+                let prefixVi = "Đang"
+                let prefixEn1 = "Downloading"
+                let prefixEn2 = "Configuring"
+                if msg.hasPrefix(prefixVi) || msg.hasPrefix(prefixEn1) || msg.hasPrefix(prefixEn2) {
+                    return
+                }
+                let isVi = Locale.preferredLanguages.first?.hasPrefix("vi") == true || Locale.current.identifier.hasPrefix("vi")
+                let title = isVi ? "Đồng bộ Drive" : "Drive Sync"
+                sendSystemNotification?(title, msg)
+            }
+        }
+    }
+    @Published public private(set) var driveUploadError: String? {
+        didSet {
+            if let err = driveUploadError {
+                let isVi = Locale.preferredLanguages.first?.hasPrefix("vi") == true || Locale.current.identifier.hasPrefix("vi")
+                let title = isVi ? "Lỗi đồng bộ Drive" : "Drive Sync Error"
+                sendSystemNotification?(title, err)
+            }
+        }
+    }
     @Published public private(set) var itemsInProgress: Set<UUID> = []
     @Published public private(set) var itemErrors: [UUID: String] = [:]
     public let preferences: NotchShelfPreferences
     public var portalBaseURLProvider: (() -> URL)?
     public var onConnectGoogleDriveRequested: ((String, String) -> Void)?
+    public var sendSystemNotification: (@Sendable (String, String) -> Void)?
     var pendingGoogleDriveAuthState: String?
+
+    // Mock handlers for unit testing
+    public var driveUploadHandler: (@Sendable (String, String, Data, URL, @escaping @Sendable (Double) -> Void) async throws -> String)?
+    public var driveUpdateHandler: (@Sendable (String, String, String, Data, URL, @escaping @Sendable (Double) -> Void) async throws -> String)?
+
+    private var cancellables = Set<AnyCancellable>()
+    private var autoSyncTimerTask: Task<Void, Never>?
 
     private let dropService: NotchShelfDropService
     private let persistenceService: NotchShelfPersistenceService
@@ -365,6 +406,30 @@ public final class NotchShelfViewModel: ObservableObject {
         self.cachedDriveStates = initialStates
         self.refreshDriveStates(force: true)
         applyAutomaticRetention()
+
+        preferences.$autoUploadEnabled
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] enabled in
+                guard let self = self else { return }
+                if enabled {
+                    self.refreshDriveStates(force: true)
+                }
+            }
+            .store(in: &cancellables)
+
+        preferences.$autoUploadScope
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self = self else { return }
+                if self.preferences.autoUploadEnabled {
+                    self.refreshDriveStates(force: true)
+                }
+            }
+            .store(in: &cancellables)
+
+        startAutoSyncTimer()
     }
 
     deinit {
@@ -375,6 +440,7 @@ public final class NotchShelfViewModel: ObservableObject {
         cleanupTask?.cancel()
         driveHandoffTask?.cancel()
         driveOperationTasks.values.forEach { $0.cancel() }
+        autoSyncTimerTask?.cancel()
     }
 
     public var hasItems: Bool {
@@ -431,6 +497,7 @@ public final class NotchShelfViewModel: ObservableObject {
         driveHandoffTask?.cancel()
         driveOperationTasks.values.forEach { $0.cancel() }
         driveOperationTasks.removeAll()
+        autoSyncTimerTask?.cancel()
         // Final synchronous persist on shutdown.
         persistenceService.save(items)
     }
@@ -1060,25 +1127,33 @@ public final class NotchShelfViewModel: ObservableObject {
 
                         let fileId: String
                         if item.driveState == .local {
-                            fileId = try await NotchGoogleDriveService.shared.upload(
-                                name: name,
-                                mimeType: mimeType,
-                                data: data,
-                                portalBaseURL: portalBaseURL,
-                                onProgress: progressHandler
-                            )
+                            if let uploadHandler = self.driveUploadHandler {
+                                fileId = try await uploadHandler(name, mimeType, data, portalBaseURL, progressHandler)
+                            } else {
+                                fileId = try await NotchGoogleDriveService.shared.upload(
+                                    name: name,
+                                    mimeType: mimeType,
+                                    data: data,
+                                    portalBaseURL: portalBaseURL,
+                                    onProgress: progressHandler
+                                )
+                            }
                         } else {
                             guard let existingId = item.driveFileID else {
                                 throw GoogleDriveError.uploadFailed
                             }
-                            fileId = try await NotchGoogleDriveService.shared.updateFile(
-                                fileId: existingId,
-                                name: name,
-                                mimeType: mimeType,
-                                data: data,
-                                portalBaseURL: portalBaseURL,
-                                onProgress: progressHandler
-                            )
+                            if let updateHandler = self.driveUpdateHandler {
+                                fileId = try await updateHandler(existingId, name, mimeType, data, portalBaseURL, progressHandler)
+                            } else {
+                                fileId = try await NotchGoogleDriveService.shared.updateFile(
+                                    fileId: existingId,
+                                    name: name,
+                                    mimeType: mimeType,
+                                    data: data,
+                                    portalBaseURL: portalBaseURL,
+                                    onProgress: progressHandler
+                                )
+                            }
                         }
 
                         try Task.checkCancellation()
@@ -1142,21 +1217,8 @@ public final class NotchShelfViewModel: ObservableObject {
                 await MainActor.run {
                     self.releaseUploadReservations(reservedIDs)
                     self.driveUploadError = nil
-                    if uploadedCount > 0 {
-                        self.driveUploadMessage = "Tải lên Google Drive thành công!"
-                    } else {
-                        self.driveUploadMessage = nil
-                    }
+                    self.driveUploadMessage = nil
                     self.debouncedPersist()
-                }
-
-                if uploadedCount > 0 {
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)
-                    await MainActor.run {
-                        if self.driveUploadMessage == "Tải lên Google Drive thành công!" {
-                            self.driveUploadMessage = nil
-                        }
-                    }
                 }
             } catch {
                 await MainActor.run {
@@ -1345,6 +1407,80 @@ public final class NotchShelfViewModel: ObservableObject {
         }
     }
 
+    public func downloadOrphanedFile(_ item: NotchShelfItem, to destinationURL: URL) {
+        guard let fileId = item.driveFileID else { return }
+        guard let portalBaseURL = portalBaseURLProvider?() else { return }
+        guard !uploadingItemIDs.contains(item.id), !itemsInProgress.contains(item.id) else {
+            return
+        }
+        
+        self.itemsInProgress.insert(item.id)
+        self.updateDriveActivityState()
+        
+        let isVi = Locale.preferredLanguages.first?.hasPrefix("vi") == true || Locale.current.identifier.hasPrefix("vi")
+        self.driveUploadMessage = isVi ? "Đang tải xuống tệp..." : "Downloading file..."
+        self.driveUploadError = nil
+        
+        Task {
+            do {
+                let accessing = destinationURL.startAccessingSecurityScopedResource()
+                defer {
+                    if accessing {
+                        destinationURL.stopAccessingSecurityScopedResource()
+                    }
+                }
+                
+                try await NotchGoogleDriveService.shared.downloadFile(
+                    fileId: fileId,
+                    destinationURL: destinationURL,
+                    portalBaseURL: portalBaseURL
+                )
+                
+                await MainActor.run {
+                    self.itemsInProgress.remove(item.id)
+                    self.updateDriveActivityState()
+                    
+                    // Generate new bookmark and file reference, then attach it to the item
+                    if let bookmarkData = try? Bookmark(url: destinationURL).data {
+                        let fileRef = NotchShelfItem.FileReference(
+                            url: destinationURL,
+                            fileIdentity: notchShelfFileIdentity(for: destinationURL),
+                            bookmarkData: bookmarkData,
+                            isTemporary: false
+                        )
+                        if let index = self.items.firstIndex(where: { $0.id == item.id }) {
+                            self.items[index] = self.items[index].withKind(.file(fileRef))
+                        }
+                    }
+                    
+                    self.refreshDriveStates(force: true)
+                    self.debouncedPersist()
+                    
+                    self.driveUploadMessage = isVi ? "Đã tải xuống thành công!" : "Downloaded successfully!"
+                    
+                    // Auto-clear message after 3 seconds
+                    let msg = isVi ? "Đã tải xuống thành công!" : "Downloaded successfully!"
+                    Task {
+                        try? await Task.sleep(nanoseconds: 3_000_000_000)
+                        await MainActor.run {
+                            if self.driveUploadMessage == msg {
+                                self.driveUploadMessage = nil
+                            }
+                        }
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.itemsInProgress.remove(item.id)
+                    self.updateDriveActivityState()
+                    self.driveUploadMessage = nil
+                    self.driveUploadError = isVi ? "Lỗi tải tệp: \(error.localizedDescription)" : "Download error: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+
     private func updateDriveActivityState() {
         isUploadingToDrive = isCompletingDriveHandoff
             || !uploadingItemIDs.isEmpty
@@ -1439,7 +1575,36 @@ public final class NotchShelfViewModel: ObservableObject {
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 self.cachedDriveStates = results
+                self.autoSyncModifiedItemsIfNeeded()
             }
+        }
+    }
+
+    private func autoSyncModifiedItemsIfNeeded() {
+        guard isGoogleDriveConnected && preferences.autoUploadEnabled else { return }
+
+        let eligibleItems = items.filter { item in
+            guard let cachedState = cachedDriveStates[item.id] else { return false }
+            let isEligible = (cachedState == .local || cachedState == .modified)
+            guard isEligible else { return false }
+
+            // Check auto-upload scope
+            switch preferences.autoUploadScope {
+            case .filesOnly:
+                if case .file = item.kind { return true }
+                return false
+            case .allItems:
+                return true
+            }
+        }
+
+        // Exclude items already uploading or in progress
+        let itemsToUpload = eligibleItems.filter { item in
+            !uploadingItemIDs.contains(item.id) && !itemsInProgress.contains(item.id)
+        }
+
+        if !itemsToUpload.isEmpty {
+            uploadItemsToDrive(itemsToUpload)
         }
     }
 
@@ -1527,6 +1692,21 @@ public final class NotchShelfViewModel: ObservableObject {
             let safeName = item.displayName.replacingOccurrences(of: "/", with: "-")
             let name = safeName.hasSuffix(".txt") ? safeName : "\(safeName).txt"
             return (name, "text/plain", rawData)
+        }
+    }
+
+    private func startAutoSyncTimer() {
+        autoSyncTimerTask?.cancel()
+        autoSyncTimerTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                guard !Task.isCancelled else { break }
+
+                await MainActor.run { [weak self] in
+                    guard let self = self else { return }
+                    self.refreshDriveStates(force: false)
+                }
+            }
         }
     }
 }

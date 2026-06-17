@@ -232,9 +232,15 @@ export function ProfileView() {
 
     // Resolved dynamically from environment variables (both Vite VITE_ and Next.js NEXT_PUBLIC_ prefixes)
     const metaEnv = import.meta.env as unknown as Record<string, string | undefined>
-    const rawSupabaseUrl = import.meta.env.VITE_SUPABASE_URL || metaEnv.NEXT_PUBLIC_SUPABASE_URL || ''
+    const rawSupabaseUrl =
+      import.meta.env.VITE_SUPABASE_URL ||
+      metaEnv.NEXT_PUBLIC_SUPABASE_URL ||
+      'https://jtsshqvahplbjuljtmld.supabase.co'
     const supabaseUrl = rawSupabaseUrl.endsWith('/') ? rawSupabaseUrl.slice(0, -1) : rawSupabaseUrl
-    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || metaEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    const supabaseAnonKey =
+      import.meta.env.VITE_SUPABASE_ANON_KEY ||
+      metaEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      'sb_publishable_f_Mst2InX6EN_sGZ9ecRjQ_IGQwZzl7'
 
     if (!supabaseUrl || !supabaseAnonKey) {
       setMsg({

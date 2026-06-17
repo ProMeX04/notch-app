@@ -22,7 +22,7 @@ env:
 jobs:
   verify-api:
     name: Verify Go Backend API
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: portal/api

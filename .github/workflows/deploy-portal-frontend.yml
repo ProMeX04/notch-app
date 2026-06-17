@@ -19,7 +19,7 @@ env:
 jobs:
   deploy-frontend:
     name: Deploy Frontend to Vercel
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     environment: production
     env:
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}

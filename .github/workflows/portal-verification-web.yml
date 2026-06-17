@@ -20,7 +20,7 @@ env:
 jobs:
   verify-web:
     name: Verify Vite React Web
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: portal/web

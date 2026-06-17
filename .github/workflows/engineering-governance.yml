@@ -15,7 +15,7 @@ env:
 jobs:
   governance:
     name: Agent governance
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,7 +26,7 @@ jobs:
 
   swift:
     name: Swift verification
-    runs-on: self-hosted
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
       - run: swift test --scratch-path ../swift-build

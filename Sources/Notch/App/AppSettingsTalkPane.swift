@@ -282,7 +282,7 @@ struct AppTalkSettingsPane: View {
                 syncAgentDrafts()
             }
         } message: {
-            Text("Delete \"\(settingsFormattedAgentDisplayName(gemini.selectedSystemPromptPreset.title))\"?")
+            Text(String(format: Localization.get("Delete \"%@\"?", lang: appLanguage), settingsFormattedAgentDisplayName(gemini.selectedSystemPromptPreset.title)))
         }
         .sheet(item: $skillEditorRoute) { route in
             TalkSkillEditorSheet(gemini: gemini, route: route, appLanguage: appLanguage, tint: tint) {
@@ -711,8 +711,8 @@ private struct TalkSkillEditorSheet: View {
                 .foregroundStyle(.primary)
 
             VStack(spacing: 10) {
-                editorField(title: "Name", text: $skillNameText)
-                editorField(title: "Description", text: $skillDescriptionText)
+                editorField(title: Localization.get("Name", lang: appLanguage), text: $skillNameText)
+                editorField(title: Localization.get("Description", lang: appLanguage), text: $skillDescriptionText)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(Localization.get("Instructions", lang: appLanguage))

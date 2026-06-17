@@ -60,11 +60,21 @@ type SessionsResponse struct {
 
 func (h Handler) Me(w http.ResponseWriter, req *http.Request) {
 	noStore(w)
-	auth, err := h.Authenticator.AuthenticateRequest(req.Context(), req)
+	authCtx, err := h.Authenticator.AuthenticateRequest(req.Context(), req)
 	if err == nil {
-		sessionID := auth.SessionID
-		policy := h.getPermissionPolicy(req.Context(), auth.User.IsPro)
-		httpjson.JSON(w, http.StatusOK, BuildUserResponse(auth.User, &sessionID, h.MaxActiveDevices, policy))
+		sessionID := authCtx.SessionID
+
+		// Luôn lấy dữ liệu User mới nhất từ database để tránh hiển thị avatar/tên cũ từ JWT payload
+		var dbUser User
+		dbUserPtr, dbErr := h.Repo.FindUserByID(req.Context(), authCtx.User.ID)
+		if dbErr == nil && dbUserPtr != nil {
+			dbUser = *dbUserPtr
+		} else {
+			dbUser = authCtx.User
+		}
+
+		policy := h.getPermissionPolicy(req.Context(), dbUser.IsPro)
+		httpjson.JSON(w, http.StatusOK, BuildUserResponse(dbUser, &sessionID, h.MaxActiveDevices, policy))
 		return
 	}
 

@@ -238,7 +238,7 @@ final class PortalAccountCoordinator: ObservableObject {
         Task {
             guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
                 cancelPendingOAuthLogin()
-                applyAuthFailure(message: "Invalid OAuth callback.")
+                applyAuthFailure(message: Localization.get("Invalid OAuth callback."))
                 setStatus("Couldn't finish browser sign-in.")
                 return
             }
@@ -268,7 +268,7 @@ final class PortalAccountCoordinator: ObservableObject {
                 pendingOAuthFlows.removeValue(forKey: returnedState)
                 if pendingOAuthFlows.isEmpty { setSaving(false) }
                 let description = queryItems["error_description"]?.trimmingCharacters(in: .whitespacesAndNewlines)
-                applyAuthFailure(message: description?.isEmpty == false ? description! : "Browser sign-in was cancelled.")
+                applyAuthFailure(message: description?.isEmpty == false ? description! : Localization.get("Browser sign-in was cancelled."))
                 setStatus("Browser sign-in was cancelled.")
                 return
             }
@@ -277,7 +277,7 @@ final class PortalAccountCoordinator: ObservableObject {
             guard !code.isEmpty else {
                 pendingOAuthFlows.removeValue(forKey: returnedState)
                 if pendingOAuthFlows.isEmpty { setSaving(false) }
-                applyAuthFailure(message: "Missing OAuth authorization code.")
+                applyAuthFailure(message: Localization.get("Missing OAuth authorization code."))
                 setStatus("Couldn't finish browser sign-in.")
                 return
             }

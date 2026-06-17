@@ -100,7 +100,7 @@ struct ExpandedMediaControlsView: View {
             HStack(spacing: 4) {
                 Image(systemName: "music.note")
                     .font(.system(size: 10, weight: .semibold))
-                Text("ĐANG PHÁT")
+                Text(Localization.get("NOW PLAYING", lang: appLanguage))
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .tracking(0.5)
             }

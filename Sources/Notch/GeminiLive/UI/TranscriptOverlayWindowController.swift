@@ -82,7 +82,7 @@ private struct TranscriptOverlayView: View {
                         .buttonStyle(.plain)
                         .padding(2)
                         .offset(x: 8, y: -8)
-                        .help("Hide Captions")
+                        .help(Localization.get("Hide Captions"))
                     }
                 }
                 .contentShape(Rectangle())

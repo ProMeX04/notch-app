@@ -171,7 +171,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             try launchAtLoginController.setEnabled(!launchAtLoginController.isEnabled)
         } catch {
             let alert = NSAlert()
-            alert.messageText = "Couldn't change Launch At Login"
+            alert.messageText = Localization.get("Couldn't change Launch At Login")
             alert.informativeText = error.localizedDescription
             alert.alertStyle = .warning
             alert.runModal()

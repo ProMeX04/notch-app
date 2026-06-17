@@ -17,31 +17,32 @@ public enum GoogleDriveError: LocalizedError {
     case fileNotFound
 
     public var errorDescription: String? {
+        let isVi = UserDefaults.standard.string(forKey: "app_language") == "Tiếng Việt"
         switch self {
         case .notConnected:
-            return "Chưa kết nối Google Drive."
+            return isVi ? "Chưa kết nối Google Drive." : "Google Drive is not connected."
         case .cannotResolveBookmark:
-            return "Không thể truy cập tệp tin (hết hạn bookmark)."
+            return isVi ? "Không thể truy cập tệp tin (hết hạn bookmark)." : "Cannot access file (bookmark expired)."
         case .invalidQuery:
-            return "Lỗi chuẩn bị truy vấn Google Drive."
+            return isVi ? "Lỗi chuẩn bị truy vấn Google Drive." : "Error preparing Google Drive query."
         case .folderCheckFailed:
-            return "Không thể kiểm tra thư mục lưu trữ trên Google Drive."
+            return isVi ? "Không thể kiểm tra thư mục lưu trữ trên Google Drive." : "Cannot check storage folder on Google Drive."
         case .folderCreationFailed:
-            return "Không thể tạo thư mục lưu trữ trên Google Drive."
+            return isVi ? "Không thể tạo thư mục lưu trữ trên Google Drive." : "Cannot create storage folder on Google Drive."
         case .uploadFailed:
-            return "Tải lên Google Drive thất bại."
+            return isVi ? "Tải lên Google Drive thất bại." : "Google Drive upload failed."
         case .makePublicFailed:
-            return "Không thể bật chế độ chia sẻ công khai."
+            return isVi ? "Không thể bật chế độ chia sẻ công khai." : "Cannot enable public sharing."
         case .makePrivateFailed:
-            return "Không thể tắt chế độ chia sẻ công khai."
+            return isVi ? "Không thể tắt chế độ chia sẻ công khai." : "Cannot disable public sharing."
         case .deleteFailed:
-            return "Không thể xóa file trên Google Drive."
+            return isVi ? "Không thể xóa file trên Google Drive." : "Cannot delete file on Google Drive."
         case .refreshFailed(let reason):
-            return "Lỗi gia hạn kết nối: \(reason)"
+            return isVi ? "Lỗi gia hạn kết nối: \(reason)" : "Connection refresh failed: \(reason)"
         case .fileTooLarge:
-            return "Kích thước file vượt quá giới hạn 100MB."
+            return isVi ? "Kích thước file vượt quá giới hạn 100MB." : "File size exceeds 100MB limit."
         case .fileNotFound:
-            return "Không tìm thấy file trên Google Drive."
+            return isVi ? "Không tìm thấy file trên Google Drive." : "File not found on Google Drive."
         }
     }
 }
@@ -431,11 +432,13 @@ public final class NotchGoogleDriveService: Sendable {
                   key: "ExpiresAt",
                   value: String(Date().addingTimeInterval(Double(payload.expires_in)).timeIntervalSince1970)
               ) else {
-            throw GoogleDriveError.refreshFailed("Không thể lưu thông tin xác thực an toàn.")
+            let isVi = UserDefaults.standard.string(forKey: "app_language") == "Tiếng Việt"
+            throw GoogleDriveError.refreshFailed(isVi ? "Không thể lưu thông tin xác thực an toàn." : "Could not save credentials securely.")
         }
         if let newRefresh = payload.refresh_token,
            !KeychainHelper.save(key: "RefreshToken", value: newRefresh) {
-            throw GoogleDriveError.refreshFailed("Không thể lưu thông tin xác thực an toàn.")
+            let isVi = UserDefaults.standard.string(forKey: "app_language") == "Tiếng Việt"
+            throw GoogleDriveError.refreshFailed(isVi ? "Không thể lưu thông tin xác thực an toàn." : "Could not save credentials securely.")
         }
 
         return payload.access_token

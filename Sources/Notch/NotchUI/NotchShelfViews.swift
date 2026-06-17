@@ -430,7 +430,7 @@ struct ShelfBrowserView: NSViewRepresentable {
             guard !selection.isEmpty else { return nil }
 
             let menu = NSMenu()
-            let isVi = Locale.preferredLanguages.first?.hasPrefix("vi") == true || Locale.current.identifier.hasPrefix("vi")
+            let appLanguage = UserDefaults.standard.string(forKey: "app_language") ?? "English"
             let allOpenable = selection.allSatisfy {
                 switch $0.kind {
                 case .file, .link:
@@ -449,11 +449,11 @@ struct ShelfBrowserView: NSViewRepresentable {
                     let openTitle: String
                     switch item.kind {
                     case .file:
-                        openTitle = isVi ? "Mở" : "Open"
+                        openTitle = Localization.get("Open", lang: appLanguage)
                     case .link:
-                        openTitle = isVi ? "Mở liên kết" : "Open Link"
+                        openTitle = Localization.get("Open Link", lang: appLanguage)
                     case .text:
-                        openTitle = isVi ? "Sao chép văn bản" : "Copy Text"
+                        openTitle = Localization.get("Copy Text", lang: appLanguage)
                     }
                     menu.addItem(
                         withTitle: openTitle,
@@ -463,14 +463,14 @@ struct ShelfBrowserView: NSViewRepresentable {
 
                     if case .file = item.kind {
                         menu.addItem(
-                            withTitle: isVi ? "Hiển thị trong Finder" : "Show in Finder",
+                            withTitle: Localization.get("Show in Finder", lang: appLanguage),
                             action: #selector(revealSelection),
                             keyEquivalent: ""
                         )
                     }
 
                     menu.addItem(
-                        withTitle: isVi ? "Sao chép" : "Copy",
+                        withTitle: Localization.get("Copy", lang: appLanguage),
                         action: #selector(copySelection),
                         keyEquivalent: ""
                     )
@@ -478,14 +478,14 @@ struct ShelfBrowserView: NSViewRepresentable {
             } else {
                 if allOpenable {
                     menu.addItem(
-                        withTitle: isVi ? "Mở mục đã chọn" : "Open Selected",
+                        withTitle: Localization.get("Open Selected", lang: appLanguage),
                         action: #selector(openSelection),
                         keyEquivalent: ""
                     )
                 }
 
                 menu.addItem(
-                    withTitle: isVi ? "Sao chép mục đã chọn" : "Copy Selected",
+                    withTitle: Localization.get("Copy Selected", lang: appLanguage),
                     action: #selector(copySelection),
                     keyEquivalent: ""
                 )
@@ -501,90 +501,90 @@ struct ShelfBrowserView: NSViewRepresentable {
                     switch shelf.cachedDriveStates[item.id] ?? .local {
                     case .local:
                         menu.addItem(
-                            withTitle: isVi ? "Tải lên Google Drive" : "Upload to Google Drive",
+                            withTitle: Localization.get("Upload to Google Drive", lang: appLanguage),
                             action: #selector(uploadToGoogleDrive),
                             keyEquivalent: ""
                         )
                     case .synced:
                         menu.addItem(
-                            withTitle: isVi ? "Sao chép liên kết" : "Copy Link",
+                            withTitle: Localization.get("Copy Link", lang: appLanguage),
                             action: #selector(copyDriveLinkOnly),
                             keyEquivalent: ""
                         )
                         menu.addItem(
-                            withTitle: isVi ? "Chia sẻ" : "Share",
+                            withTitle: Localization.get("Share", lang: appLanguage),
                             action: #selector(openCustomSharePanel),
                             keyEquivalent: ""
                         )
                         menu.addItem(
-                            withTitle: isVi ? "Mở trong Google Drive" : "Open in Google Drive",
+                            withTitle: Localization.get("Open in Google Drive", lang: appLanguage),
                             action: #selector(openInGoogleDrive),
                             keyEquivalent: ""
                         )
                     case .syncedPublic:
                         menu.addItem(
-                            withTitle: isVi ? "Sao chép liên kết" : "Copy Link",
+                            withTitle: Localization.get("Copy Link", lang: appLanguage),
                             action: #selector(copyDriveLinkOnly),
                             keyEquivalent: ""
                         )
                         menu.addItem(
-                            withTitle: isVi ? "Chia sẻ" : "Share",
+                            withTitle: Localization.get("Share", lang: appLanguage),
                             action: #selector(openCustomSharePanel),
                             keyEquivalent: ""
                         )
                         menu.addItem(
-                            withTitle: isVi ? "Mở trong Google Drive" : "Open in Google Drive",
+                            withTitle: Localization.get("Open in Google Drive", lang: appLanguage),
                             action: #selector(openInGoogleDrive),
                             keyEquivalent: ""
                         )
                     case .modified:
                         menu.addItem(
-                            withTitle: isVi ? "Đồng bộ thay đổi lên Drive" : "Sync changes to Drive",
+                            withTitle: Localization.get("Sync changes to Drive", lang: appLanguage),
                             action: #selector(uploadToGoogleDrive),
                             keyEquivalent: ""
                         )
                         menu.addItem(.separator())
                         menu.addItem(
-                            withTitle: isVi ? "Sao chép liên kết" : "Copy Link",
+                            withTitle: Localization.get("Copy Link", lang: appLanguage),
                             action: #selector(copyDriveLinkOnly),
                             keyEquivalent: ""
                         )
                         menu.addItem(
-                            withTitle: isVi ? "Chia sẻ" : "Share",
+                            withTitle: Localization.get("Share", lang: appLanguage),
                             action: #selector(openCustomSharePanel),
                             keyEquivalent: ""
                         )
                         menu.addItem(
-                            withTitle: isVi ? "Mở trong Google Drive" : "Open in Google Drive",
+                            withTitle: Localization.get("Open in Google Drive", lang: appLanguage),
                             action: #selector(openInGoogleDrive),
                             keyEquivalent: ""
                         )
                     case .orphaned:
                         menu.addItem(
-                            withTitle: isVi ? "Tải xuống" : "Download",
+                            withTitle: Localization.get("Download", lang: appLanguage),
                             action: #selector(downloadOrphanedFile),
                             keyEquivalent: ""
                         )
                         menu.addItem(.separator())
                         menu.addItem(
-                            withTitle: isVi ? "Sao chép liên kết" : "Copy Link",
+                            withTitle: Localization.get("Copy Link", lang: appLanguage),
                             action: #selector(copyDriveLinkOnly),
                             keyEquivalent: ""
                         )
                         menu.addItem(
-                            withTitle: isVi ? "Chia sẻ" : "Share",
+                            withTitle: Localization.get("Share", lang: appLanguage),
                             action: #selector(openCustomSharePanel),
                             keyEquivalent: ""
                         )
                         menu.addItem(
-                            withTitle: isVi ? "Mở trong Google Drive" : "Open in Google Drive",
+                            withTitle: Localization.get("Open in Google Drive", lang: appLanguage),
                             action: #selector(openInGoogleDrive),
                             keyEquivalent: ""
                         )
                     }
                 } else {
                     menu.addItem(
-                        withTitle: isVi ? "Kết nối Google Drive" : "Link Google Drive",
+                        withTitle: Localization.get("Link Google Drive", lang: appLanguage),
                         action: #selector(linkGoogleDrive),
                         keyEquivalent: ""
                     )
@@ -592,25 +592,27 @@ struct ShelfBrowserView: NSViewRepresentable {
             } else {
                 if shelf.isGoogleDriveConnected {
                     menu.addItem(
-                        withTitle: isVi ? "Tải lên Google Drive" : "Upload to Google Drive",
+                        withTitle: Localization.get("Upload to Google Drive", lang: appLanguage),
                         action: #selector(uploadToGoogleDrive),
                         keyEquivalent: ""
                     )
                 } else {
                     menu.addItem(
-                        withTitle: isVi ? "Kết nối Google Drive" : "Link Google Drive",
+                        withTitle: Localization.get("Link Google Drive", lang: appLanguage),
                         action: #selector(linkGoogleDrive),
                         keyEquivalent: ""
                     )
                 }
             }
-
+ 
             if !menu.items.isEmpty, menu.items.last?.isSeparatorItem == false {
                 menu.addItem(.separator())
             }
-
+ 
             menu.addItem(
-                withTitle: selection.count == 1 ? (isVi ? "Xóa khỏi Shelf" : "Remove from Shelf") : (isVi ? "Xóa mục đã chọn" : "Remove Selected"),
+                withTitle: selection.count == 1 
+                    ? Localization.get("Remove from Shelf", lang: appLanguage) 
+                    : Localization.get("Remove Selected", lang: appLanguage),
                 action: #selector(removeSelection),
                 keyEquivalent: ""
             )

@@ -165,27 +165,27 @@ struct GeminiToolsPicker: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .alert("⚠️ Enable Shell Access?", isPresented: $showExecWarning) {
-            Button("Cancel", role: .cancel) {}
-            Button("Enable", role: .destructive) {
+        .alert(Localization.get("⚠️ Enable Shell Access?"), isPresented: $showExecWarning) {
+            Button(Localization.get("Cancel"), role: .cancel) {}
+            Button(Localization.get("Enable"), role: .destructive) {
                 selection.insert(.exec)
             }
         } message: {
-            Text("Exec allows the AI to run arbitrary shell commands on your Mac. This is risky in a voice conversation — the AI may execute commands you don't expect. Only enable this if you fully understand the risks.")
+            Text(Localization.get("Exec allows the AI to run arbitrary shell commands on your Mac. This is risky in a voice conversation — the AI may execute commands you don't expect. Only enable this if you fully understand the risks."))
         }
-        .alert("🔒 Full Disk Access Required", isPresented: $showFDAWarning) {
-            Button("Cancel", role: .cancel) {
+        .alert(Localization.get("🔒 Full Disk Access Required"), isPresented: $showFDAWarning) {
+            Button(Localization.get("Cancel"), role: .cancel) {
                 pendingFDATool = nil
             }
-            Button("Open System Settings") {
+            Button(Localization.get("Open System Settings")) {
                 permissionsManager.openFullDiskAccessSettings()
                 // We don't insert yet because they haven't granted it yet.
                 // They'll need to toggle again after granting.
                 pendingFDATool = nil
             }
         } message: {
-            let toolName = pendingFDATool?.displayName ?? "This tool"
-            Text("\(toolName) requires Full Disk Access to read local data. Please add Notch to the Full Disk Access list in System Settings > Privacy & Security.")
+            let toolName = pendingFDATool.map { Localization.get($0.displayName) } ?? Localization.get("This tool")
+            Text(String(format: Localization.get("%@ requires Full Disk Access to read local data. Please add Notch to the Full Disk Access list in System Settings > Privacy & Security."), toolName))
         }
     }
 }
@@ -288,13 +288,13 @@ struct GeminiSkillsPicker: View {
                             .foregroundStyle(isSelected ? .white : .white.opacity(0.6))
 
                         if isUserManaged(skill) {
-                            Text("User")
+                            Text(Localization.get("User"))
                                 .font(.system(size: 8, weight: .bold))
                                 .padding(.horizontal, 4)
                                 .background(themeAccent.opacity(0.2))
                                 .cornerRadius(4)
                         } else if skill.source == .builtin {
-                            Text("Built-in")
+                            Text(Localization.get("Built-in"))
                                 .font(.system(size: 8, weight: .bold))
                                 .padding(.horizontal, 4)
                                 .background(Color.white.opacity(0.08))

@@ -778,7 +778,7 @@ private struct AppFocusCloudRankingSettingsView: View {
                     .background(tint.opacity(0.1).cornerRadius(8))
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Rank anonymously")
+                    Text(Localization.get("Rank anonymously"))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.9))
                     Text(descriptionText)

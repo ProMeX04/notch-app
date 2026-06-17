@@ -39,10 +39,10 @@ struct AgentResultsView: View {
             Image(systemName: "tray")
                 .font(.system(size: 28, weight: .light))
                 .foregroundStyle(.tertiary)
-            Text("No agent results yet")
+            Text(Localization.get("No agent results yet"))
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
-            Text("Items pushed by agents will appear here.")
+            Text(Localization.get("Items pushed by agents will appear here."))
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
@@ -98,11 +98,11 @@ private struct AgentResultsOverlayActions: View {
     var body: some View {
         HStack(spacing: 6) {
             if visibleItemCount > 1 {
-                CopyFeedbackButton(systemName: "square.on.square", badge: visibleItemCount, help: "Copy all visible items") {
+                CopyFeedbackButton(systemName: "square.on.square", badge: visibleItemCount, help: Localization.get("Copy all visible items")) {
                     copyVisibleItems()
                 }
             }
-            IconActionButton(systemName: "xmark", help: "Close results") {
+            IconActionButton(systemName: "xmark", help: Localization.get("Close results")) {
                 AgentResultStore.shared.clear()
                 AgentResultsWindowController.shared.hide()
             }
@@ -254,7 +254,7 @@ private struct AgentResultsSlidePageIndicator: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("Show item \(i + 1)")
+                .help(String(format: Localization.get("Show item %d"), i + 1))
             }
 
             if showsHistoryMore {
@@ -266,7 +266,7 @@ private struct AgentResultsSlidePageIndicator: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("Show previous results")
+                .help(Localization.get("Show previous results"))
             }
         }
         .padding(.horizontal, 12)
@@ -420,28 +420,28 @@ struct AgentResultInteractiveContent: View {
                         Button {
                             NSWorkspace.shared.open(url)
                         } label: {
-                            Label("Open", systemImage: "arrow.up.right.square")
+                            Label(Localization.get("Open"), systemImage: "arrow.up.right.square")
                                 .labelStyle(.iconOnly)
                                 .font(.system(size: 12, weight: .semibold))
                                 .frame(width: 28, height: 24)
                         }
                         .buttonStyle(.plain)
                         .background(.ultraThinMaterial, in: Capsule())
-                        .help("Open file")
+                        .help(Localization.get("Open file"))
 
                         Button {
                             NSWorkspace.shared.activateFileViewerSelecting([url])
                         } label: {
-                            Label("Reveal", systemImage: "magnifyingglass")
+                            Label(Localization.get("Reveal"), systemImage: "magnifyingglass")
                                 .labelStyle(.iconOnly)
                                 .font(.system(size: 12, weight: .semibold))
                                 .frame(width: 28, height: 24)
                         }
                         .buttonStyle(.plain)
                         .background(.ultraThinMaterial, in: Capsule())
-                        .help("Reveal in Finder")
+                        .help(Localization.get("Reveal in Finder"))
                     }
-                    CopyFeedbackButton(help: "Copy") {
+                    CopyFeedbackButton(help: Localization.get("Copy")) {
                         copyToPasteboard()
                     }
                     .background(.ultraThinMaterial, in: Capsule())
@@ -548,16 +548,16 @@ struct LinkBody: View {
                     Button {
                         NSWorkspace.shared.open(url)
                     } label: {
-                        Label("Open", systemImage: "arrow.up.right.square")
+                        Label(Localization.get("Open"), systemImage: "arrow.up.right.square")
                             .labelStyle(.iconOnly)
                             .font(.system(size: 12, weight: .semibold))
                             .frame(width: 28, height: 24)
                     }
                     .buttonStyle(.plain)
                     .background(.ultraThinMaterial, in: Capsule())
-                    .help("Open link")
+                    .help(Localization.get("Open link"))
 
-                    CopyFeedbackButton(help: "Copy link") {
+                    CopyFeedbackButton(help: Localization.get("Copy link")) {
                         let pasteboard = NSPasteboard.general
                         pasteboard.clearContents()
                         pasteboard.setString(url.absoluteString, forType: .string)
@@ -669,28 +669,28 @@ struct FileBody: View {
                     Button {
                         NSWorkspace.shared.open(url)
                     } label: {
-                        Label("Open", systemImage: "arrow.up.right.square")
+                        Label(Localization.get("Open"), systemImage: "arrow.up.right.square")
                             .labelStyle(.iconOnly)
                             .font(.system(size: 12, weight: .semibold))
                             .frame(width: 28, height: 24)
                     }
                     .buttonStyle(.plain)
                     .background(.ultraThinMaterial, in: Capsule())
-                    .help("Open image")
+                    .help(Localization.get("Open image"))
 
                     Button {
                         NSWorkspace.shared.activateFileViewerSelecting([url])
                     } label: {
-                        Label("Reveal", systemImage: "magnifyingglass")
+                        Label(Localization.get("Reveal"), systemImage: "magnifyingglass")
                             .labelStyle(.iconOnly)
                             .font(.system(size: 12, weight: .semibold))
                             .frame(width: 28, height: 24)
                     }
                     .buttonStyle(.plain)
                     .background(.ultraThinMaterial, in: Capsule())
-                    .help("Reveal in Finder")
+                    .help(Localization.get("Reveal in Finder"))
 
-                    CopyFeedbackButton(help: "Copy image") {
+                    CopyFeedbackButton(help: Localization.get("Copy image")) {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.writeObjects([url as NSURL])
                     }
@@ -836,6 +836,6 @@ private struct CopyFeedbackButton: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(copied ? .green : .secondary)
-        .help(copied ? "Copied" : help)
+        .help(copied ? Localization.get("Copied") : help)
     }
 }

@@ -5,31 +5,31 @@ extension GeminiLiveViewModel {
     func startedToolAction(for name: String) -> ToolActionToast? {
         switch name {
         case "webSearch":
-            return ToolActionToast(label: "Searching web…", icon: "magnifyingglass", showsInOverlay: false)
+            return ToolActionToast(label: Localization.get("Searching web…"), icon: "magnifyingglass", showsInOverlay: false)
         case "read":
-            return ToolActionToast(label: "Reading file…", icon: "doc.text", showsInOverlay: false)
+            return ToolActionToast(label: Localization.get("Reading file…"), icon: "doc.text", showsInOverlay: false)
         case "calendar":
-            return ToolActionToast(label: "Checking calendar…", icon: "calendar", showsInOverlay: false)
+            return ToolActionToast(label: Localization.get("Checking calendar…"), icon: "calendar", showsInOverlay: false)
         case "ls":
-            return ToolActionToast(label: "Listing files…", icon: "list.bullet", showsInOverlay: false)
+            return ToolActionToast(label: Localization.get("Listing files…"), icon: "list.bullet", showsInOverlay: false)
         case "clipboard":
-            return ToolActionToast(label: "Using clipboard…", icon: "doc.on.clipboard", showsInOverlay: false)
+            return ToolActionToast(label: Localization.get("Using clipboard…"), icon: "doc.on.clipboard", showsInOverlay: false)
         case "appControl":
-            return ToolActionToast(label: "Controlling app…", icon: "macwindow", showsInOverlay: false)
+            return ToolActionToast(label: Localization.get("Controlling app…"), icon: "macwindow", showsInOverlay: false)
         case "mediaControl":
-            return ToolActionToast(label: "Controlling media…", icon: "playpause", showsInOverlay: false)
+            return ToolActionToast(label: Localization.get("Controlling media…"), icon: "playpause", showsInOverlay: false)
         case "pomodoro":
-            return ToolActionToast(label: "Controlling timer…", icon: "timer", showsInOverlay: false)
+            return ToolActionToast(label: Localization.get("Controlling timer…"), icon: "timer", showsInOverlay: false)
         case "browserControl":
-            return ToolActionToast(label: "Using browser…", icon: "safari", showsInOverlay: false)
+            return ToolActionToast(label: Localization.get("Using browser…"), icon: "safari", showsInOverlay: false)
         case "localFileSearch":
-            return ToolActionToast(label: "Searching files…", icon: "doc.text.magnifyingglass", showsInOverlay: false)
+            return ToolActionToast(label: Localization.get("Searching files…"), icon: "doc.text.magnifyingglass", showsInOverlay: false)
         case "memory":
-            return ToolActionToast(label: "Using memory…", icon: "brain", showsInOverlay: false)
+            return ToolActionToast(label: Localization.get("Using memory…"), icon: "brain", showsInOverlay: false)
         case "exec":
-            return ToolActionToast(label: "Running command…", icon: "terminal", showsInOverlay: false)
+            return ToolActionToast(label: Localization.get("Running command…"), icon: "terminal", showsInOverlay: false)
         case "skillWriter":
-            return ToolActionToast(label: "Skill writer pending approval…", icon: "wand.and.rays.inverse", showsInOverlay: false)
+            return ToolActionToast(label: Localization.get("Skill writer pending approval…"), icon: "wand.and.rays.inverse", showsInOverlay: false)
         default:
             return nil
         }

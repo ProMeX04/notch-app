@@ -208,7 +208,7 @@ private struct ReplayAudioButton: View {
             HStack(spacing: 5) {
                 Image(systemName: isPlaying ? "stop.fill" : "speaker.wave.2")
                     .font(.system(size: 10, weight: .semibold))
-                Text(isPlaying ? "Dừng" : "Nghe lại")
+                Text(Localization.get(isPlaying ? "Stop" : "Replay"))
                     .font(.system(size: 11, weight: .medium))
             }
             .foregroundStyle(Color.black.opacity(0.87))
@@ -478,7 +478,7 @@ private struct CompactResultRowView: View {
                                 .background(Color.black.opacity(0.05), in: Circle())
                         }
                         .buttonStyle(.plain)
-                        .help("Mở file")
+                        .help(Localization.get("Open file"))
 
                         Button {
                             NSWorkspace.shared.activateFileViewerSelecting([url])
@@ -489,7 +489,7 @@ private struct CompactResultRowView: View {
                                 .background(Color.black.opacity(0.05), in: Circle())
                         }
                         .buttonStyle(.plain)
-                        .help("Tìm trong Finder")
+                        .help(Localization.get("Reveal in Finder"))
                     } else if case let .link(url) = item.kind {
                         Button {
                             NSWorkspace.shared.open(url)
@@ -500,7 +500,7 @@ private struct CompactResultRowView: View {
                                 .background(Color.black.opacity(0.05), in: Circle())
                         }
                         .buttonStyle(.plain)
-                        .help("Mở link")
+                        .help(Localization.get("Open link"))
                     }
 
                     Button {
@@ -512,7 +512,7 @@ private struct CompactResultRowView: View {
                             .background(Color.black.opacity(0.05), in: Circle())
                     }
                     .buttonStyle(.plain)
-                    .help("Sao chép")
+                    .help(Localization.get("Copy"))
                 }
                 .foregroundStyle(Color.black.opacity(0.68))
                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
@@ -604,7 +604,7 @@ private struct InlineAgentResultsBubble: View {
                             .padding(.horizontal, 8)
                         HStack {
                             Spacer()
-                            Text("Xem thêm \(items.count - 4) kết quả…")
+                            Text(String(format: Localization.get("See more %d results…"), items.count - 4))
                                 .font(.system(size: 9.5, weight: .bold))
                                 .foregroundStyle(Color.black.opacity(0.5))
                                 .padding(.vertical, 5)

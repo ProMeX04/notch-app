@@ -9,10 +9,10 @@ extension GeminiLiveViewModel {
 
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "Delete skill?"
-        alert.informativeText = "Delete \"\(skill.metadata.name)\" from Notch? You can recreate it anytime."
-        alert.addButton(withTitle: "Delete")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = Localization.get("Delete skill?")
+        alert.informativeText = String(format: Localization.get("Delete \"%@\" from Notch? You can recreate it anytime."), skill.metadata.name)
+        alert.addButton(withTitle: Localization.get("Delete"))
+        alert.addButton(withTitle: Localization.get("Cancel"))
         guard alert.runModal() == .alertFirstButtonReturn else { return }
 
         do {
@@ -22,11 +22,11 @@ extension GeminiLiveViewModel {
             }
             enabledSkillIDs.remove(skill.id)
             reloadInstalledSkills()
-            statusText = "Deleted skill \"\(skill.metadata.name)\"."
+            statusText = String(format: Localization.get("Deleted skill \"%@\"."), skill.metadata.name)
             lastErrorMessage = nil
         } catch {
             lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            statusText = "Skill deletion failed."
+            statusText = Localization.get("Skill deletion failed.")
         }
     }
 
@@ -41,14 +41,14 @@ extension GeminiLiveViewModel {
             _ = try skillsRepository.createSkill(draft: draft, source: .user)
         }
         reloadInstalledSkills()
-        statusText = "Skill saved."
+        statusText = Localization.get("Skill saved.")
         lastErrorMessage = nil
     }
 
     func duplicateSkill(id: String) throws {
         _ = try skillsRepository.duplicateSkill(id: id)
         reloadInstalledSkills()
-        statusText = "Duplicated skill."
+        statusText = Localization.get("Duplicated skill.")
         lastErrorMessage = nil
     }
 
@@ -57,7 +57,7 @@ extension GeminiLiveViewModel {
             try duplicateSkill(id: id)
         } catch {
             lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            statusText = "Couldn't duplicate skill."
+            statusText = Localization.get("Couldn't duplicate skill.")
         }
     }
 

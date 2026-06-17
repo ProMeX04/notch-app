@@ -42,7 +42,7 @@ extension GeminiLiveViewModel {
     private func presentSkillWriterApprovalAlert(for request: SkillWriterApprovalRequest) {
         NSApp.activate(ignoringOtherApps: true)
         postToolAction(
-            label: "Skill write approval needed",
+            label: Localization.get("Skill write approval needed"),
             icon: "wand.and.rays.inverse",
             showsInOverlay: false,
             autoClearAfter: nil
@@ -52,8 +52,8 @@ extension GeminiLiveViewModel {
         alert.alertStyle = .informational
         alert.messageText = request.summary
         alert.informativeText = request.preview
-        alert.addButton(withTitle: "Allow Save")
-        alert.addButton(withTitle: "Deny")
+        alert.addButton(withTitle: Localization.get("Allow Save"))
+        alert.addButton(withTitle: Localization.get("Deny"))
         if alert.runModal() == .alertFirstButtonReturn {
             session.approveSkillWriterCall(toolCallID: request.toolCallID)
         } else {

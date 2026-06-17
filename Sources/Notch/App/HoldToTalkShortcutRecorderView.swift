@@ -3,6 +3,7 @@ import Carbon.HIToolbox
 import SwiftUI
 
 struct HoldToTalkShortcutRecorderView: View {
+    @AppStorage("app_language") private var appLanguage: String = "English"
     @Binding var shortcut: HoldToTalkShortcut
     var title: String? = nil
     var icon: String? = nil
@@ -36,7 +37,7 @@ struct HoldToTalkShortcutRecorderView: View {
                     .frame(width: 28, height: 28)
                     .background(tint.opacity(0.1).cornerRadius(8))
             }
-            Text(title ?? "Push to Talk")
+            Text(title ?? Localization.get("Push to Talk", lang: appLanguage))
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.9))
 
@@ -45,7 +46,7 @@ struct HoldToTalkShortcutRecorderView: View {
             Button {
                 isRecording ? stopRecording() : startRecording()
             } label: {
-                Text(isRecording ? "Recording..." : shortcut.displayString)
+                Text(isRecording ? Localization.get("Recording...", lang: appLanguage) : shortcut.displayString)
                     .font(.system(size: 12, weight: .bold, design: .rounded))
                     .foregroundStyle(isRecording ? Color(nsColor: .systemRed) : tint)
                     .padding(.horizontal, 10)
@@ -53,7 +54,7 @@ struct HoldToTalkShortcutRecorderView: View {
                     .background(Color.white.opacity(0.06).cornerRadius(6))
                     .overlay(
                         RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                             .stroke(Color.white.opacity(0.12), lineWidth: 1)
                     )
             }
             .buttonStyle(.plain)
@@ -89,14 +90,14 @@ struct HoldToTalkShortcutRecorderView: View {
                     HStack(spacing: 8) {
                         Image(systemName: isRecording ? "circle.fill" : "keyboard")
                             .foregroundStyle(isRecording ? Color.red : Color.accentColor)
-                        Text(isRecording ? "Press Shortcut…" : shortcut.displayString)
+                        Text(isRecording ? Localization.get("Press Shortcut…", lang: appLanguage) : shortcut.displayString)
                             .font(.system(.body, design: .monospaced))
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.borderedProminent)
 
-                Button("Reset") {
+                Button(Localization.get("Reset", lang: appLanguage)) {
                     HoldToTalkShortcutStore.reset()
                     shortcut = HoldToTalkShortcutStore.load()
                     validationMessage = nil
@@ -110,7 +111,7 @@ struct HoldToTalkShortcutRecorderView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                Text("Default: \(HoldToTalkShortcutStore.defaultShortcut.displayString)")
+                Text(String(format: Localization.get("Default: %@", lang: appLanguage), HoldToTalkShortcutStore.defaultShortcut.displayString))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -150,7 +151,8 @@ struct HoldToTalkShortcutRecorderView: View {
 
         let modifiers = event.modifierFlags.intersection(HoldToTalkShortcut.allowedModifierFlags)
         guard !modifiers.isEmpty else {
-            validationMessage = "Shortcut must include Command, Control, Option, or Shift."
+            let isVi = appLanguage == "Tiếng Việt"
+            validationMessage = isVi ? "Phím tắt phải bao gồm Command, Control, Option, hoặc Shift." : "Shortcut must include Command, Control, Option, or Shift."
             NSSound.beep()
             return
         }

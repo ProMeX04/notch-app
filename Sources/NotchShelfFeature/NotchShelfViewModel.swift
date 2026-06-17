@@ -308,7 +308,6 @@ public final class NotchShelfViewModel: ObservableObject {
                 if msg.hasPrefix(prefixVi) || msg.hasPrefix(prefixEn1) || msg.hasPrefix(prefixEn2) {
                     return
                 }
-                let isVi = Locale.preferredLanguages.first?.hasPrefix("vi") == true || Locale.current.identifier.hasPrefix("vi")
                 let title = isVi ? "Đồng bộ Drive" : "Drive Sync"
                 sendSystemNotification?(title, msg)
             }
@@ -317,11 +316,13 @@ public final class NotchShelfViewModel: ObservableObject {
     @Published public private(set) var driveUploadError: String? {
         didSet {
             if let err = driveUploadError {
-                let isVi = Locale.preferredLanguages.first?.hasPrefix("vi") == true || Locale.current.identifier.hasPrefix("vi")
                 let title = isVi ? "Lỗi đồng bộ Drive" : "Drive Sync Error"
                 sendSystemNotification?(title, err)
             }
         }
+    }
+    private var isVi: Bool {
+        UserDefaults.standard.string(forKey: "app_language") == "Tiếng Việt"
     }
     @Published public private(set) var itemsInProgress: Set<UUID> = []
     @Published public private(set) var itemErrors: [UUID: String] = [:]
@@ -353,7 +354,10 @@ public final class NotchShelfViewModel: ObservableObject {
     private var pendingGoogleDriveAuthStateExpiresAt: Date?
     private var pendingGoogleDriveCodeVerifier: String?
     private static let googleDriveAuthStateLifetime: TimeInterval = 10 * 60
-    private static let invalidGoogleDriveCallbackMessage = "Kết nối thất bại: Phiên xác thực Google Drive không hợp lệ hoặc đã hết hạn."
+    private static var invalidGoogleDriveCallbackMessage: String {
+        let isVi = UserDefaults.standard.string(forKey: "app_language") == "Tiếng Việt"
+        return isVi ? "Kết nối thất bại: Phiên xác thực Google Drive không hợp lệ hoặc đã hết hạn." : "Connection failed: Invalid or expired Google Drive authentication session."
+    }
 
     public convenience init() {
         self.init(
@@ -739,7 +743,7 @@ public final class NotchShelfViewModel: ObservableObject {
         }
         guard let portalBaseURL = portalBaseURLProvider?() else {
             if !isAutoSync {
-                driveUploadError = "Không thể lấy cấu hình URL hệ thống."
+                driveUploadError = isVi ? "Không thể lấy cấu hình URL hệ thống." : "Could not retrieve system URL configuration."
             }
             scheduleRetentionEvaluation()
             return
@@ -978,7 +982,7 @@ public final class NotchShelfViewModel: ObservableObject {
         }
 
         if let error = error {
-            driveUploadError = "Kết nối thất bại: \(error)"
+            driveUploadError = "\(isVi ? "Kết nối thất bại" : "Connection failed"): \(error)"
             return
         }
 
@@ -988,7 +992,7 @@ public final class NotchShelfViewModel: ObservableObject {
             return
         }
 
-        driveUploadError = "Kết nối thất bại: Phản hồi Google Drive không sử dụng handoff an toàn."
+        driveUploadError = isVi ? "Kết nối thất bại: Phản hồi Google Drive không sử dụng handoff an toàn." : "Connection failed: Google Drive response does not use secure handoff."
     }
 
     private func completeGoogleDriveHandoff(_ handoffToken: String, codeVerifier: String) {
@@ -1000,7 +1004,7 @@ public final class NotchShelfViewModel: ObservableObject {
         isCompletingDriveHandoff = true
         updateDriveActivityState()
         driveUploadError = nil
-        driveUploadMessage = "Đang hoàn tất liên kết Google Drive..."
+        driveUploadMessage = isVi ? "Đang hoàn tất liên kết Google Drive..." : "Completing Google Drive connection..."
 
         driveHandoffTask = Task {
             do {
@@ -1025,7 +1029,7 @@ public final class NotchShelfViewModel: ObservableObject {
                     self.updateDriveActivityState()
                     self.driveUploadMessage = nil
                     if !Task.isCancelled {
-                        self.driveUploadError = "Kết nối thất bại: \(error.localizedDescription)"
+                        self.driveUploadError = "\(self.isVi ? "Kết nối thất bại" : "Connection failed"): \(error.localizedDescription)"
                     }
                 }
             }
@@ -1047,17 +1051,18 @@ public final class NotchShelfViewModel: ObservableObject {
         ) else {
             isGoogleDriveConnected = false
             driveUploadMessage = nil
-            driveUploadError = "Kết nối thất bại: Không thể lưu thông tin xác thực an toàn."
+            driveUploadError = isVi ? "Kết nối thất bại: Không thể lưu thông tin xác thực an toàn." : "Connection failed: Could not save credentials securely."
             return
         }
 
         isGoogleDriveConnected = true
         driveUploadError = nil
-        driveUploadMessage = "Đã liên kết Google Drive thành công!"
+        driveUploadMessage = isVi ? "Đã liên kết Google Drive thành công!" : "Successfully connected to Google Drive!"
 
         Task {
             try? await Task.sleep(nanoseconds: 3_000_000_000)
-            if driveUploadMessage == "Đã liên kết Google Drive thành công!" {
+            let successMsg = isVi ? "Đã liên kết Google Drive thành công!" : "Successfully connected to Google Drive!"
+            if driveUploadMessage == successMsg {
                 driveUploadMessage = nil
             }
         }
@@ -1069,12 +1074,13 @@ public final class NotchShelfViewModel: ObservableObject {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.writeObjects([link as NSString])
-        driveUploadMessage = "Đã sao chép liên kết Google Drive!"
+        driveUploadMessage = isVi ? "Đã sao chép liên kết Google Drive!" : "Google Drive link copied!"
 
         Task {
             try? await Task.sleep(nanoseconds: 3_000_000_000)
             await MainActor.run {
-                if self.driveUploadMessage == "Đã sao chép liên kết Google Drive!" {
+                let copyMsg = self.isVi ? "Đã sao chép liên kết Google Drive!" : "Google Drive link copied!"
+                if self.driveUploadMessage == copyMsg {
                     self.driveUploadMessage = nil
                 }
             }
@@ -1085,7 +1091,7 @@ public final class NotchShelfViewModel: ObservableObject {
         guard !itemsToUpload.isEmpty else { return }
         guard let portalBaseURL = portalBaseURLProvider?() else {
             if !isAutoSync {
-                driveUploadError = "Không thể lấy cấu hình URL hệ thống."
+                driveUploadError = isVi ? "Không thể lấy cấu hình URL hệ thống." : "Could not retrieve system URL configuration."
             }
             return
         }
@@ -1191,10 +1197,11 @@ public final class NotchShelfViewModel: ObservableObject {
                                     self.items[index] = resetItem
                                 }
                                 self.driveUploadMessage = nil
+                                let deletedMsg = self.isVi ? "File đã bị xóa trên Google Drive." : "File has been deleted from Google Drive."
                                 if !isAutoSync {
-                                    self.driveUploadError = "File đã bị xóa trên Google Drive."
+                                    self.driveUploadError = deletedMsg
                                 }
-                                self.itemErrors[item.id] = "File đã bị xóa trên Google Drive."
+                                self.itemErrors[item.id] = deletedMsg
                                 self.debouncedPersist()
                             }
                         } else {
@@ -1253,17 +1260,18 @@ public final class NotchShelfViewModel: ObservableObject {
     public func uploadSelectedItemsToDrive() {
         let allSelected = selectedItems
         guard !allSelected.isEmpty else {
-            driveUploadError = "Không có mục nào được chọn để tải lên."
+            driveUploadError = isVi ? "Không có mục nào được chọn để tải lên." : "No items selected for upload."
             return
         }
 
         let itemsToUpload = allSelected.filter { $0.isDriveUploadEligible }
         if itemsToUpload.isEmpty {
-            driveUploadMessage = "Tất cả các mục đã chọn đều đã được tải lên trước đó."
+            driveUploadMessage = isVi ? "Tất cả các mục đã chọn đều đã được tải lên trước đó." : "All selected items have already been uploaded."
             Task {
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 await MainActor.run {
-                    if self.driveUploadMessage == "Tất cả các mục đã chọn đều đã được tải lên trước đó." {
+                    let alreadyMsg = self.isVi ? "Tất cả các mục đã chọn đều đã được tải lên trước đó." : "All selected items have already been uploaded."
+                    if self.driveUploadMessage == alreadyMsg {
                         self.driveUploadMessage = nil
                     }
                 }
@@ -1276,11 +1284,11 @@ public final class NotchShelfViewModel: ObservableObject {
 
     public func shareItemPublicly(_ item: NotchShelfItem) {
         guard let fileId = item.driveFileID else {
-            driveUploadError = "File chưa được tải lên Google Drive."
+            driveUploadError = isVi ? "File chưa được tải lên Google Drive." : "File is not uploaded to Google Drive yet."
             return
         }
         guard let portalBaseURL = portalBaseURLProvider?() else {
-            driveUploadError = "Không thể lấy cấu hình URL hệ thống."
+            driveUploadError = isVi ? "Không thể lấy cấu hình URL hệ thống." : "Could not retrieve system URL configuration."
             return
         }
         guard !uploadingItemIDs.contains(item.id), !itemsInProgress.contains(item.id) else {
@@ -1288,7 +1296,7 @@ public final class NotchShelfViewModel: ObservableObject {
         }
 
         driveUploadError = nil
-        driveUploadMessage = "Đang cấu hình chia sẻ công khai..."
+        driveUploadMessage = isVi ? "Đang cấu hình chia sẻ công khai..." : "Configuring public sharing..."
         self.itemsInProgress.insert(item.id)
         self.itemErrors.removeValue(forKey: item.id)
         updateDriveActivityState()
@@ -1310,13 +1318,14 @@ public final class NotchShelfViewModel: ObservableObject {
                     self.itemsInProgress.remove(item.id)
                     self.updateDriveActivityState()
                     self.driveUploadError = nil
-                    self.driveUploadMessage = "Đã bật chia sẻ công khai và sao chép link!"
+                    self.driveUploadMessage = self.isVi ? "Đã bật chia sẻ công khai và sao chép link!" : "Enabled public sharing and copied link!"
                     self.debouncedPersist()
                 }
 
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 await MainActor.run {
-                    if self.driveUploadMessage == "Đã bật chia sẻ công khai và sao chép link!" {
+                    let sharedMsg = self.isVi ? "Đã bật chia sẻ công khai và sao chép link!" : "Enabled public sharing and copied link!"
+                    if self.driveUploadMessage == sharedMsg {
                         self.driveUploadMessage = nil
                     }
                 }
@@ -1334,8 +1343,9 @@ public final class NotchShelfViewModel: ObservableObject {
                                 .withDriveUploadedAt(nil)
                                 .withDriveIsPublic(false)
                         }
-                        self.driveUploadError = "File đã bị xóa trên Google Drive."
-                        self.itemErrors[item.id] = "File đã bị xóa trên Google Drive."
+                        let deletedMsg = self.isVi ? "File đã bị xóa trên Google Drive." : "File has been deleted from Google Drive."
+                        self.driveUploadError = deletedMsg
+                        self.itemErrors[item.id] = deletedMsg
                         self.debouncedPersist()
                     } else {
                         self.driveUploadError = error.localizedDescription
@@ -1348,11 +1358,11 @@ public final class NotchShelfViewModel: ObservableObject {
 
     public func shareItemPrivately(_ item: NotchShelfItem) {
         guard let fileId = item.driveFileID else {
-            driveUploadError = "File chưa được tải lên Google Drive."
+            driveUploadError = isVi ? "File chưa được tải lên Google Drive." : "File is not uploaded to Google Drive yet."
             return
         }
         guard let portalBaseURL = portalBaseURLProvider?() else {
-            driveUploadError = "Không thể lấy cấu hình URL hệ thống."
+            driveUploadError = isVi ? "Không thể lấy cấu hình URL hệ thống." : "Could not retrieve system URL configuration."
             return
         }
         guard !uploadingItemIDs.contains(item.id), !itemsInProgress.contains(item.id) else {
@@ -1360,7 +1370,7 @@ public final class NotchShelfViewModel: ObservableObject {
         }
 
         driveUploadError = nil
-        driveUploadMessage = "Đang tắt chế độ chia sẻ công khai..."
+        driveUploadMessage = isVi ? "Đang tắt chế độ chia sẻ công khai..." : "Disabling public sharing..."
         self.itemsInProgress.insert(item.id)
         self.itemErrors.removeValue(forKey: item.id)
         updateDriveActivityState()
@@ -1382,13 +1392,14 @@ public final class NotchShelfViewModel: ObservableObject {
                     self.itemsInProgress.remove(item.id)
                     self.updateDriveActivityState()
                     self.driveUploadError = nil
-                    self.driveUploadMessage = "Đã tắt chia sẻ công khai và sao chép link!"
+                    self.driveUploadMessage = self.isVi ? "Đã tắt chia sẻ công khai và sao chép link!" : "Disabled public sharing and copied link!"
                     self.debouncedPersist()
                 }
 
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 await MainActor.run {
-                    if self.driveUploadMessage == "Đã tắt chia sẻ công khai và sao chép link!" {
+                    let privateMsg = self.isVi ? "Đã tắt chia sẻ công khai và sao chép link!" : "Disabled public sharing and copied link!"
+                    if self.driveUploadMessage == privateMsg {
                         self.driveUploadMessage = nil
                     }
                 }
@@ -1406,8 +1417,9 @@ public final class NotchShelfViewModel: ObservableObject {
                                 .withDriveUploadedAt(nil)
                                 .withDriveIsPublic(false)
                         }
-                        self.driveUploadError = "File đã bị xóa trên Google Drive."
-                        self.itemErrors[item.id] = "File đã bị xóa trên Google Drive."
+                        let deletedMsg = self.isVi ? "File đã bị xóa trên Google Drive." : "File has been deleted from Google Drive."
+                        self.driveUploadError = deletedMsg
+                        self.itemErrors[item.id] = deletedMsg
                         self.debouncedPersist()
                     } else {
                         self.driveUploadError = error.localizedDescription

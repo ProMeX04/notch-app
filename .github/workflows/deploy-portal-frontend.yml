@@ -42,8 +42,12 @@ jobs:
         working-directory: portal/web
 
       - name: Link Vercel env to Vite root
-        run: cp .vercel/.env.production.local .env.production.local
+        run: |
+          cp .vercel/.env.production.local .env.production.local
+          echo 'VITE_SUPABASE_URL="https://jtsshqvahplbjuljtmld.supabase.co"' >> .env.production.local
+          echo 'VITE_SUPABASE_ANON_KEY="sb_publishable_f_Mst2InX6EN_sGZ9ecRjQ_IGQwZzl7"' >> .env.production.local
         working-directory: portal/web
+
 
       - name: Build Project Artifacts
         run: npx vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}

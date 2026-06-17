@@ -656,7 +656,8 @@ public final class NotchShelfViewModel: ObservableObject {
         if !candidates.isEmpty {
             performCleanup(
                 candidates,
-                deleteDriveFiles: preferences.deleteDriveFilesDuringAutomaticCleanup
+                deleteDriveFiles: preferences.deleteDriveFilesDuringAutomaticCleanup,
+                isAutoSync: true
             )
         }
         scheduleRetentionEvaluation(now: now)
@@ -725,7 +726,7 @@ public final class NotchShelfViewModel: ObservableObject {
         }
     }
 
-    private func performCleanup(_ candidates: [NotchShelfItem], deleteDriveFiles: Bool) {
+    private func performCleanup(_ candidates: [NotchShelfItem], deleteDriveFiles: Bool, isAutoSync: Bool = false) {
         guard !candidates.isEmpty else { return }
 
         let remoteItems = deleteDriveFiles ? candidates.filter { $0.driveFileID != nil } : []
@@ -737,7 +738,9 @@ public final class NotchShelfViewModel: ObservableObject {
             return
         }
         guard let portalBaseURL = portalBaseURLProvider?() else {
-            driveUploadError = "Không thể lấy cấu hình URL hệ thống."
+            if !isAutoSync {
+                driveUploadError = "Không thể lấy cấu hình URL hệ thống."
+            }
             scheduleRetentionEvaluation()
             return
         }
@@ -769,7 +772,9 @@ public final class NotchShelfViewModel: ObservableObject {
                 self.removeItemsFromShelf(removedItems)
                 if let (_, error) = failed.first {
                     self.handleGoogleDriveConnectionLossIfNeeded(error)
-                    self.driveUploadError = error.localizedDescription
+                    if !isAutoSync {
+                        self.driveUploadError = error.localizedDescription
+                    }
                     for (item, failure) in failed {
                         self.itemErrors[item.id] = failure.localizedDescription
                     }

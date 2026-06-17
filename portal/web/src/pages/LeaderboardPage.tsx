@@ -27,6 +27,12 @@ export function LeaderboardPage() {
   const [windowState, setWindowState] = useState<'week' | 'all'>('week')
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [failedAvatars, setFailedAvatars] = useState<Record<string, boolean>>({})
+
+  const hasAvatar = (url: string | null | undefined, userId: string) => {
+    return !!url && !failedAvatars[userId]
+  }
+
 
   useEffect(() => {
     let ignore = false
@@ -266,8 +272,13 @@ export function LeaderboardPage() {
                   
                   {/* Avatar */}
                   <div style={{ width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden', background: '#e9edff', border: '1.5px solid #cbd5e1', padding: '1px' }}>
-                    {top2.avatar_url ? (
-                      <img src={top2.avatar_url} alt={top2.display_name || 'Ẩn danh'} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                    {hasAvatar(top2.avatar_url, top2.user_id) ? (
+                      <img 
+                        src={top2.avatar_url!} 
+                        alt={top2.display_name || 'Ẩn danh'} 
+                        style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} 
+                        onError={() => setFailedAvatars(prev => ({ ...prev, [top2.user_id]: true }))}
+                      />
                     ) : (
                       <div style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#9ca3af' }}>
                         <User size={18} />
@@ -286,7 +297,7 @@ export function LeaderboardPage() {
                       )}
                     </div>
                   </div>
-
+ 
                   {/* Stats */}
                   <div style={{ marginTop: '4px' }}>
                     <div style={{ fontSize: '0.98rem', fontWeight: 850, color: '#003fb1', lineHeight: 1.1 }}>{formatFocusTime(top2.focus_seconds)}</div>
@@ -294,7 +305,7 @@ export function LeaderboardPage() {
                   </div>
                 </div>
               )}
-
+ 
               {/* Gold - Rank 1 */}
               {top1 && (
                 <div className="podium-circle-card gold">
@@ -305,8 +316,13 @@ export function LeaderboardPage() {
                   
                   {/* Avatar */}
                   <div style={{ width: '60px', height: '60px', borderRadius: '50%', overflow: 'hidden', background: '#fef3c7', border: '2px solid #fbbf24', padding: '1px' }}>
-                    {top1.avatar_url ? (
-                      <img src={top1.avatar_url} alt={top1.display_name || 'Ẩn danh'} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                    {hasAvatar(top1.avatar_url, top1.user_id) ? (
+                      <img 
+                        src={top1.avatar_url!} 
+                        alt={top1.display_name || 'Ẩn danh'} 
+                        style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} 
+                        onError={() => setFailedAvatars(prev => ({ ...prev, [top1.user_id]: true }))}
+                      />
                     ) : (
                       <div style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fef3c7', color: '#d97706' }}>
                         <User size={24} />
@@ -325,7 +341,7 @@ export function LeaderboardPage() {
                       )}
                     </div>
                   </div>
-
+ 
                   {/* Stats */}
                   <div style={{ marginTop: '6px' }}>
                     <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#b45309', lineHeight: 1.1 }}>{formatFocusTime(top1.focus_seconds)}</div>
@@ -333,7 +349,7 @@ export function LeaderboardPage() {
                   </div>
                 </div>
               )}
-
+ 
               {/* Bronze - Rank 3 */}
               {top3 && (
                 <div className="podium-circle-card bronze">
@@ -344,8 +360,13 @@ export function LeaderboardPage() {
                   
                   {/* Avatar */}
                   <div style={{ width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden', background: '#e9edff', border: '1.5px solid #f97316', padding: '1px' }}>
-                    {top3.avatar_url ? (
-                      <img src={top3.avatar_url} alt={top3.display_name || 'Ẩn danh'} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                    {hasAvatar(top3.avatar_url, top3.user_id) ? (
+                      <img 
+                        src={top3.avatar_url!} 
+                        alt={top3.display_name || 'Ẩn danh'} 
+                        style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} 
+                        onError={() => setFailedAvatars(prev => ({ ...prev, [top3.user_id]: true }))}
+                      />
                     ) : (
                       <div style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#ffedd5', color: '#ea580c' }}>
                         <User size={18} />
@@ -421,14 +442,20 @@ export function LeaderboardPage() {
                             <td style={{ padding: '18px 24px' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                 <div style={{ width: '32px', height: '32px', borderRadius: '50%', overflow: 'hidden', background: '#e9edff' }}>
-                                  {entry.avatar_url ? (
-                                    <img src={entry.avatar_url} alt={entry.display_name || 'Ẩn danh'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  {hasAvatar(entry.avatar_url, entry.user_id) ? (
+                                    <img 
+                                      src={entry.avatar_url!} 
+                                      alt={entry.display_name || 'Ẩn danh'} 
+                                      style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                                      onError={() => setFailedAvatars(prev => ({ ...prev, [entry.user_id]: true }))}
+                                    />
                                   ) : (
                                     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#9ca3af' }}>
                                       <User size={16} />
                                     </div>
                                   )}
                                 </div>
+
                                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                                   <span style={{ fontSize: '0.9rem', color: '#141b2b', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                                     {entry.display_name || 'Ẩn danh'}

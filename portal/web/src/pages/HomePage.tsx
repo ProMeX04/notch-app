@@ -51,12 +51,13 @@ const occupations = [
 ]
 
 const mockAvatars = [
-  'https://lh3.googleusercontent.com/aida/ADBb0ui7Xhfsf25eJzaf-xF8q2wpsit3mUqDdyDdsy6pTeLKcyDQlBokzo7ZmGb5pqdmMMWcA-5Uo-6KCIG7K-tm1iE3FptrPyKhnNibvqC55dSe1WXh-Ra-MUaQrzhqaiFEqg9mbMyNLEBk_Nuj4TqwvK3iyA1kmngN9vZxHr2h6JtLkz80ml0U7uFy81O0kF28maiRKe9a4qjdUB91AwEIVFtXQa8LZcL8As3rObYwbrgKrDwjvJLCImE2rbpQ', // Hoàng N.
-  'https://lh3.googleusercontent.com/aida/AP1WRLuXQui_38q17EIC-WVd8MqmtjVfLpovbm0BXktZ64OAB4CIDcamhqfgWOljqsaNjQbg-XP0Vr-4RJfL4-8Mt3vp9lknecxgdMG01gzAIpzkgQkU9RW5ncoKyPOFJsXgiEQvXdNOf6o3yz5VA8iOz2W7SbpLvtSa6kc1-jJ-XKgWEsCcmj1MoqN60n11xjGx76DurgNSsjxIZ7kjKZgyVTvEv93S0Ox6nI8FAxCmihdQc1_5Wotd1c30E-69', // Minh T.
-  'https://lh3.googleusercontent.com/aida/AP1WRLvf2IjK744W_3cLxgPjj5agdpiaRysl8d1KTB2GpSkE0eAYaYVc3dtMF9gOvtHxwgPRqwTzIFiPdhWvoaejcvVL9fUqOPf0DLXb2LmF8n8EPcktxclMgUJRBNOqjFLf53jinjTmQ7nPF9GaqwkwgdCHlucPV-me6qjBrCNXZejnA6lN9epRa0dQJVhwcSoy3WL-rccZ-cBfwCQ7xNfSOKkH28fl6EKSPXjjoCACpRS4nb-RmJYj3d7K891l', // Linh V.
-  'https://lh3.googleusercontent.com/aida/ADBb0uiTkqZ4mB1gGn-wmYdUkqDCRajoOKgrRzsUN5_volRvOqUj-OsXHHqgUYc53hbNWsVpC-0ZpRwzLRsVeg8UQ__CZYIjdcMfrq4GiiacWjNR311zWcVGlXibEiCBAE4OuBBJu5ZYfN6J7c1CcWAh2oum43It0Jn3R6uPQFRkaXFGvkJTiQjazc_w3k7EZAXgxro5Ows-U2bZYL5QiVY7X5A9VbDvqATVewQ_kYRX71Mz_fNfWVI6J0Rm4-dA', // Tuấn A.
-  'https://lh3.googleusercontent.com/aida/AP1WRLtJBOnKQotX-g_21ANxY0jM8it_hNKg7xQxLnIdhcB2Awpznv-0KoASinpx8KHGU2Vz1a97Ho0-p-EOLTp-GCLO9ve9g5a2xncjxHp7vbsBzkgZ4CS-vaCoHEErD9MVFAyHiM24TCqVbbgrx0f04hIFKADZ_G-_Pmqi-_aZjw4JE4H8GDkKwYOLO7-xguGxgU4Dh53oyw92sQI0ngUI7q71NOwE3p2pCix9hD8nbEV0WW0matw9SlPFcmE5' // Hương M.
+  'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80', // Hoàng N.
+  'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=150&h=150&q=80', // Minh T.
+  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&h=150&q=80', // Linh V.
+  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&h=150&q=80', // Tuấn A.
+  'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=150&h=150&q=80'  // Hương M.
 ]
+
 
 const defaultLeaderboardWeek: LeaderboardEntry[] = [
   { rank: 1, user_id: 'mock-1', display_name: 'Hoàng N.', focus_seconds: 142 * 3600 + 15 * 60, session_count: 98, avatar_url: mockAvatars[0] },
@@ -120,6 +121,12 @@ export function HomePage() {
   const [limit, setLimit] = useState(6)
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
+  const [failedAvatars, setFailedAvatars] = useState<Record<string, boolean>>({})
+
+  const hasAvatar = (url: string | null | undefined, userId: string) => {
+    return !!url && !failedAvatars[userId]
+  }
+
   
   const faqs = [
     {
@@ -523,8 +530,13 @@ export function HomePage() {
                       </div>
                       <div className="relative mt-2">
                         <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-slate-200 p-0.5 bg-white shadow-inner">
-                          {top2.avatar_url ? (
-                            <img src={top2.avatar_url} alt={top2.display_name} className="w-full h-full rounded-full object-cover" />
+                          {hasAvatar(top2.avatar_url, top2.user_id) ? (
+                            <img 
+                              src={top2.avatar_url!} 
+                              alt={top2.display_name} 
+                              className="w-full h-full rounded-full object-cover" 
+                              onError={() => setFailedAvatars(prev => ({ ...prev, [top2.user_id]: true }))}
+                            />
                           ) : (
                             <div className="w-full h-full rounded-full bg-slate-100 text-[#141b2b] flex items-center justify-center font-bold text-base">
                               {initials(top2.display_name)}
@@ -551,8 +563,13 @@ export function HomePage() {
                       </div>
                       <div className="relative mt-2">
                         <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-amber-300 p-0.5 bg-white shadow-md ring-4 ring-amber-400/20">
-                          {top1.avatar_url ? (
-                            <img src={top1.avatar_url} alt={top1.display_name} className="w-full h-full rounded-full object-cover" />
+                          {hasAvatar(top1.avatar_url, top1.user_id) ? (
+                            <img 
+                              src={top1.avatar_url!} 
+                              alt={top1.display_name} 
+                              className="w-full h-full rounded-full object-cover" 
+                              onError={() => setFailedAvatars(prev => ({ ...prev, [top1.user_id]: true }))}
+                            />
                           ) : (
                             <div className="w-full h-full rounded-full bg-[#dce2f7] text-[#141b2b] flex items-center justify-center font-bold text-lg">
                               {initials(top1.display_name)}
@@ -579,8 +596,13 @@ export function HomePage() {
                       </div>
                       <div className="relative mt-2">
                         <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-orange-200 p-0.5 bg-white shadow-inner">
-                          {top3.avatar_url ? (
-                            <img src={top3.avatar_url} alt={top3.display_name} className="w-full h-full rounded-full object-cover" />
+                          {hasAvatar(top3.avatar_url, top3.user_id) ? (
+                            <img 
+                              src={top3.avatar_url!} 
+                              alt={top3.display_name} 
+                              className="w-full h-full rounded-full object-cover" 
+                              onError={() => setFailedAvatars(prev => ({ ...prev, [top3.user_id]: true }))}
+                            />
                           ) : (
                             <div className="w-full h-full rounded-full bg-orange-50 text-[#141b2b] flex items-center justify-center font-bold text-base">
                               {initials(top3.display_name)}
@@ -588,6 +610,7 @@ export function HomePage() {
                           )}
                         </div>
                       </div>
+
                       <div className="mt-2">
                         <h3 className="font-bold text-base text-[#141b2b] truncate max-w-[140px]">{top3.display_name}</h3>
                         <p className="text-xs text-gray-500 truncate max-w-[140px]">{getOccupation(top3.user_id, 3)}</p>
@@ -622,8 +645,13 @@ export function HomePage() {
                         </div>
                         <div className="col-span-6 flex items-center gap-4">
                           <div className="w-14 h-14 rounded-full overflow-hidden bg-[#e9edff] border border-[#003fb1]/20 flex items-center justify-center font-bold text-sm text-[#003fb1] shrink-0">
-                            {meEntry.avatar_url ? (
-                              <img src={meEntry.avatar_url} alt={meEntry.display_name} className="h-full w-full object-cover" />
+                            {hasAvatar(meEntry.avatar_url, meEntry.user_id) ? (
+                              <img 
+                                src={meEntry.avatar_url!} 
+                                alt={meEntry.display_name} 
+                                className="h-full w-full object-cover" 
+                                onError={() => setFailedAvatars(prev => ({ ...prev, [meEntry.user_id]: true }))}
+                              />
                             ) : (
                               initials(meEntry.display_name)
                             )}
@@ -653,12 +681,18 @@ export function HomePage() {
                         </div>
                         <div className="col-span-6 flex items-center gap-4">
                           <div className="w-14 h-14 rounded-full overflow-hidden bg-[#e9edff] flex items-center justify-center font-bold text-sm text-gray-700 shrink-0">
-                            {entry.avatar_url ? (
-                              <img src={entry.avatar_url} alt={entry.display_name} className="h-full w-full object-cover" />
+                            {hasAvatar(entry.avatar_url, entry.user_id) ? (
+                              <img 
+                                src={entry.avatar_url!} 
+                                alt={entry.display_name} 
+                                className="h-full w-full object-cover" 
+                                onError={() => setFailedAvatars(prev => ({ ...prev, [entry.user_id]: true }))}
+                              />
                             ) : (
                               initials(entry.display_name)
                             )}
                           </div>
+
                           <div className="min-w-0">
                             <div className="font-semibold text-base text-gray-900 truncate">{entry.display_name}</div>
                             <div className="text-xs text-gray-500 truncate">{getOccupation(entry.user_id, entry.rank)}</div>

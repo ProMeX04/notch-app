@@ -230,8 +230,8 @@ export function ProfileView() {
     const file = e.target.files?.[0]
     if (!file) return
 
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://xyhhtghehlzzzpitfveu.supabase.co'
-    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_mXbBCCIKj0Sf0JGFK_4qSA_h8rVZA1j'
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || (import.meta.env as any).NEXT_PUBLIC_SUPABASE_URL
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || (import.meta.env as any).NEXT_PUBLIC_SUPABASE_ANON_KEY
 
     if (!supabaseAnonKey) {
       setMsg({

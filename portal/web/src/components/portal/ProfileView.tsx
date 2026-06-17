@@ -230,6 +230,7 @@ export function ProfileView() {
     const file = e.target.files?.[0]
     if (!file) return
 
+    // Resolved dynamically from environment variables (both Vite VITE_ and Next.js NEXT_PUBLIC_ prefixes)
     const metaEnv = import.meta.env as unknown as Record<string, string | undefined>
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || metaEnv.NEXT_PUBLIC_SUPABASE_URL
     const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || metaEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY

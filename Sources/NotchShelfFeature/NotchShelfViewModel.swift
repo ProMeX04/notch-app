@@ -862,7 +862,7 @@ public final class NotchShelfViewModel: ObservableObject {
         applyAutomaticRetention()
 
         if isGoogleDriveConnected && preferences.autoUploadEnabled {
-            uploadItemsToDrive(automaticUploadCandidates(from: insertedItems))
+            uploadItemsToDrive(automaticUploadCandidates(from: insertedItems), isAutoSync: true)
         }
     }
 
@@ -1076,10 +1076,12 @@ public final class NotchShelfViewModel: ObservableObject {
         }
     }
 
-    public func uploadItemsToDrive(_ itemsToUpload: [NotchShelfItem]) {
+    public func uploadItemsToDrive(_ itemsToUpload: [NotchShelfItem], isAutoSync: Bool = false) {
         guard !itemsToUpload.isEmpty else { return }
         guard let portalBaseURL = portalBaseURLProvider?() else {
-            driveUploadError = "Không thể lấy cấu hình URL hệ thống."
+            if !isAutoSync {
+                driveUploadError = "Không thể lấy cấu hình URL hệ thống."
+            }
             return
         }
 
@@ -1184,7 +1186,9 @@ public final class NotchShelfViewModel: ObservableObject {
                                     self.items[index] = resetItem
                                 }
                                 self.driveUploadMessage = nil
-                                self.driveUploadError = "File đã bị xóa trên Google Drive."
+                                if !isAutoSync {
+                                    self.driveUploadError = "File đã bị xóa trên Google Drive."
+                                }
                                 self.itemErrors[item.id] = "File đã bị xóa trên Google Drive."
                                 self.debouncedPersist()
                             }
@@ -1226,7 +1230,9 @@ public final class NotchShelfViewModel: ObservableObject {
                     self.driveUploadMessage = nil
                     if !(error is CancellationError) {
                         self.handleGoogleDriveConnectionLossIfNeeded(error)
-                        self.driveUploadError = error.localizedDescription
+                        if !isAutoSync {
+                            self.driveUploadError = error.localizedDescription
+                        }
                     }
                     if uploadedCount > 0 {
                         self.debouncedPersist()
@@ -1604,7 +1610,7 @@ public final class NotchShelfViewModel: ObservableObject {
         }
 
         if !itemsToUpload.isEmpty {
-            uploadItemsToDrive(itemsToUpload)
+            uploadItemsToDrive(itemsToUpload, isAutoSync: true)
         }
     }
 

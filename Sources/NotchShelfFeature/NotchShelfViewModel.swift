@@ -79,10 +79,6 @@ public struct NotchShelfItem: Identifiable, Equatable, Sendable {
     }
 
     public var driveState: ItemDriveState {
-        guard driveFileID != nil else {
-            return .local
-        }
-
         switch kind {
         case .file(let reference):
             let bookmark = Bookmark(data: reference.bookmarkData)
@@ -101,6 +97,10 @@ public struct NotchShelfItem: Identifiable, Equatable, Sendable {
                 return .orphaned
             }
 
+            guard driveFileID != nil else {
+                return .local
+            }
+
             if let driveUploadedAt = driveUploadedAt {
                 let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
                 if let modDate = attributes?[.modificationDate] as? Date,
@@ -110,7 +110,9 @@ public struct NotchShelfItem: Identifiable, Equatable, Sendable {
             }
 
         case .text, .link:
-            break
+            guard driveFileID != nil else {
+                return .local
+            }
         }
 
         return driveIsPublic ? .syncedPublic : .synced
@@ -485,12 +487,13 @@ public final class NotchShelfViewModel: ObservableObject {
         items.removeAll { $0.id == item.id }
         selectedItemIDs.remove(item.id)
         cleanupIfNeeded(item)
+        deleteFromDriveIfNeeded(item)
         clearThumbnailCache(for: item)
         debouncedPersist()
     }
 
     public func clear() {
-        clearShelf(deleteDriveFiles: false)
+        clearShelf(deleteDriveFiles: true)
     }
 
     public func shutdown() {
@@ -623,6 +626,7 @@ public final class NotchShelfViewModel: ObservableObject {
         items.removeAll { removedIDs.contains($0.id) }
         selectedItemIDs.removeAll()
         cleanupIfNeeded(itemsToRemove)
+        deleteFromDriveIfNeeded(itemsToRemove)
         clearThumbnailCache(for: itemsToRemove)
         debouncedPersist()
     }
@@ -909,6 +913,20 @@ public final class NotchShelfViewModel: ObservableObject {
         }
     }
 
+    private func deleteFromDriveIfNeeded(_ item: NotchShelfItem) {
+        guard let fileID = item.driveFileID else { return }
+        guard let portalBaseURL = portalBaseURLProvider?() else { return }
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.driveDeletingService.deleteFile(fileId: fileID, portalBaseURL: portalBaseURL)
+            } catch {
+                print("Failed to delete corresponding file \(fileID) from Google Drive: \(error.localizedDescription)")
+            }
+        }
+    }
+
     private func cleanupIfNeeded(_ items: [NotchShelfItem]) {
         let temporaryURLs = items.compactMap { item -> URL? in
             guard item.isTemporaryFile else { return nil }
@@ -919,6 +937,24 @@ public final class NotchShelfViewModel: ObservableObject {
 
         Task {
             await dropService.removeTemporaryFiles(at: temporaryURLs)
+        }
+    }
+
+    private func deleteFromDriveIfNeeded(_ items: [NotchShelfItem]) {
+        let remoteItems = items.filter { $0.driveFileID != nil }
+        guard !remoteItems.isEmpty else { return }
+        guard let portalBaseURL = portalBaseURLProvider?() else { return }
+
+        Task { [weak self] in
+            guard let self else { return }
+            for item in remoteItems {
+                guard let fileID = item.driveFileID else { continue }
+                do {
+                    try await self.driveDeletingService.deleteFile(fileId: fileID, portalBaseURL: portalBaseURL)
+                } catch {
+                    print("Failed to delete corresponding file \(fileID) from Google Drive: \(error.localizedDescription)")
+                }
+            }
         }
     }
 

@@ -628,6 +628,14 @@ struct Localization {
         "Link Google Drive": ["English": "Link Google Drive", "Tiếng Việt": "Kết nối Google Drive"],
         "Remove from Shelf": ["English": "Remove from Shelf", "Tiếng Việt": "Xóa khỏi Shelf"],
         "Remove Selected": ["English": "Remove Selected", "Tiếng Việt": "Xóa mục đã chọn"],
+        "Local file missing; Drive copy may still exist": [
+            "English": "Local file missing; Drive copy may still exist",
+            "Tiếng Việt": "Tệp cục bộ bị thiếu; bản sao Drive có thể vẫn tồn tại"
+        ],
+        "Local file missing": [
+            "English": "Local file missing",
+            "Tiếng Việt": "Tệp cục bộ bị thiếu"
+        ],
     ]
 
     static func get(_ key: String) -> String {

@@ -129,7 +129,11 @@ public final class NotchShelfPreferences: ObservableObject {
         autoUploadScope = Self.value(NotchShelfAutoUploadScope.self, key: Key.autoUploadScope, defaults: defaults) ?? .allItems
         maximumItemCount = Self.value(NotchShelfMaximumItemCount.self, key: Key.maximumItemCount, defaults: defaults) ?? .never
         expirationInterval = Self.value(NotchShelfExpirationInterval.self, key: Key.expirationInterval, defaults: defaults) ?? .never
-        deleteDriveFilesDuringAutomaticCleanup = defaults.bool(forKey: Key.deleteDriveFilesDuringAutomaticCleanup)
+        if defaults.object(forKey: Key.deleteDriveFilesDuringAutomaticCleanup) == nil {
+            deleteDriveFilesDuringAutomaticCleanup = true
+        } else {
+            deleteDriveFilesDuringAutomaticCleanup = defaults.bool(forKey: Key.deleteDriveFilesDuringAutomaticCleanup)
+        }
 
         if !loadedAutoUploadEnabled {
             autoUploadEnabled = true

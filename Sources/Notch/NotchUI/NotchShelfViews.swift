@@ -442,7 +442,7 @@ struct ShelfBrowserView: NSViewRepresentable {
 
             if selection.count == 1 {
                 let item = selection[0]
-                let driveState = shelf.isGoogleDriveConnected ? (shelf.cachedDriveStates[item.id] ?? .local) : .local
+                let driveState = shelf.cachedDriveStates[item.id] ?? .local
                 let isOrphaned = (driveState == .orphaned)
                 
                 if !isOrphaned {
@@ -560,27 +560,29 @@ struct ShelfBrowserView: NSViewRepresentable {
                             keyEquivalent: ""
                         )
                     case .orphaned:
-                        menu.addItem(
-                            withTitle: Localization.get("Download", lang: appLanguage),
-                            action: #selector(downloadOrphanedFile),
-                            keyEquivalent: ""
-                        )
-                        menu.addItem(.separator())
-                        menu.addItem(
-                            withTitle: Localization.get("Copy Link", lang: appLanguage),
-                            action: #selector(copyDriveLinkOnly),
-                            keyEquivalent: ""
-                        )
-                        menu.addItem(
-                            withTitle: Localization.get("Share", lang: appLanguage),
-                            action: #selector(openCustomSharePanel),
-                            keyEquivalent: ""
-                        )
-                        menu.addItem(
-                            withTitle: Localization.get("Open in Google Drive", lang: appLanguage),
-                            action: #selector(openInGoogleDrive),
-                            keyEquivalent: ""
-                        )
+                        if item.driveFileID != nil {
+                            menu.addItem(
+                                withTitle: Localization.get("Download", lang: appLanguage),
+                                action: #selector(downloadOrphanedFile),
+                                keyEquivalent: ""
+                            )
+                            menu.addItem(.separator())
+                            menu.addItem(
+                                withTitle: Localization.get("Copy Link", lang: appLanguage),
+                                action: #selector(copyDriveLinkOnly),
+                                keyEquivalent: ""
+                            )
+                            menu.addItem(
+                                withTitle: Localization.get("Share", lang: appLanguage),
+                                action: #selector(openCustomSharePanel),
+                                keyEquivalent: ""
+                            )
+                            menu.addItem(
+                                withTitle: Localization.get("Open in Google Drive", lang: appLanguage),
+                                action: #selector(openInGoogleDrive),
+                                keyEquivalent: ""
+                            )
+                        }
                     }
                 } else {
                     menu.addItem(
@@ -1248,7 +1250,17 @@ private final class ShelfCollectionItem: NSCollectionViewItem {
             )
             shelfView.toolTip = errorMsg
         } else {
-            if isGoogleDriveConnected && showDriveBadges {
+            let appLanguage = UserDefaults.standard.string(forKey: "app_language") ?? "English"
+            if driveState == .orphaned {
+                let desc = item.driveFileID != nil
+                    ? Localization.get("Local file missing; Drive copy may still exist", lang: appLanguage)
+                    : Localization.get("Local file missing", lang: appLanguage)
+                shelfView.setDriveBadge(
+                    symbolName: "exclamationmark.circle.fill",
+                    tint: .systemYellow,
+                    accessibilityDescription: desc
+                )
+            } else if isGoogleDriveConnected && showDriveBadges {
                 switch driveState {
                 case .local:
                     shelfView.setDriveBadge(symbolName: nil, tint: nil, accessibilityDescription: nil)
@@ -1267,12 +1279,10 @@ private final class ShelfCollectionItem: NSCollectionViewItem {
                         accessibilityDescription: "Modified"
                     )
                 case .orphaned:
-                    shelfView.setDriveBadge(
-                        symbolName: "exclamationmark.circle.fill",
-                        tint: .systemYellow,
-                        accessibilityDescription: "Local file missing; Drive copy may still exist"
-                    )
+                    break
                 }
+            } else {
+                shelfView.setDriveBadge(symbolName: nil, tint: nil, accessibilityDescription: nil)
             }
         }
 

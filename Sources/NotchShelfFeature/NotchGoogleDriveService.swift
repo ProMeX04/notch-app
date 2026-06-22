@@ -919,30 +919,35 @@ public final class NotchGoogleDriveService: Sendable {
 
     public func updateGeneralAccess(fileId: String, isPublic: Bool, role: String, portalBaseURL: URL) async throws {
         if isPublic {
-            let token = try await ensureValidAccessToken(portalBaseURL: portalBaseURL)
-            let url = URL(string: "https://www.googleapis.com/drive/v3/files/\(fileId)/permissions")!
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            
-            let body: [String: Any] = [
-                "role": role,
-                "type": "anyone"
-            ]
-            request.httpBody = try JSONSerialization.data(withJSONObject: body)
-            
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw GoogleDriveError.makePublicFailed
-            }
-            try rejectInvalidAuthorization(httpResponse)
-            
-            guard (200...299).contains(httpResponse.statusCode) else {
-                if let errorMsg = String(data: data, encoding: .utf8) {
-                    print("Google Drive update general access error: \(errorMsg)")
+            let permissions = try? await fetchPermissions(fileId: fileId, portalBaseURL: portalBaseURL)
+            if let anyonePerm = permissions?.first(where: { $0.type == "anyone" }) {
+                try await updatePermission(fileId: fileId, permissionId: anyonePerm.id, role: role, portalBaseURL: portalBaseURL)
+            } else {
+                let token = try await ensureValidAccessToken(portalBaseURL: portalBaseURL)
+                let url = URL(string: "https://www.googleapis.com/drive/v3/files/\(fileId)/permissions")!
+                var request = URLRequest(url: url)
+                request.httpMethod = "POST"
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                
+                let body: [String: Any] = [
+                    "role": role,
+                    "type": "anyone"
+                ]
+                request.httpBody = try JSONSerialization.data(withJSONObject: body)
+                
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    throw GoogleDriveError.makePublicFailed
                 }
-                throw GoogleDriveError.makePublicFailed
+                try rejectInvalidAuthorization(httpResponse)
+                
+                guard (200...299).contains(httpResponse.statusCode) else {
+                    if let errorMsg = String(data: data, encoding: .utf8) {
+                        print("Google Drive update general access error: \(errorMsg)")
+                    }
+                    throw GoogleDriveError.makePublicFailed
+                }
             }
         } else {
             try await makeFilePrivate(fileId: fileId, portalBaseURL: portalBaseURL)

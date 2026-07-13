@@ -5,6 +5,7 @@ enum QuickKeyShortcutParser {
     struct Result: Equatable {
         var keyCode: Int
         var modifiers: UInt64
+        var triggerMode: QuickKeyTriggerMode
     }
 
     enum ParseError: LocalizedError {
@@ -28,6 +29,15 @@ enum QuickKeyShortcutParser {
         guard !trimmed.isEmpty else { return .failure(.empty) }
 
         var s = trimmed
+        var triggerMode: QuickKeyTriggerMode = .single
+        // Optional double marker: "rcmd x2", "rcmd×2", "cmd+b ×2"
+        let doublePattern = #/(?i)(?:\s*[×x]\s*2|\s+double)\s*$/#
+        if let match = s.firstMatch(of: doublePattern) {
+            triggerMode = .double
+            s = String(s[..<match.range.lowerBound])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
         s = s.replacingOccurrences(of: "⌘", with: " cmd ")
         s = s.replacingOccurrences(of: "⌃", with: " ctrl ")
         s = s.replacingOccurrences(of: "⌥", with: " opt ")
@@ -45,8 +55,18 @@ enum QuickKeyShortcutParser {
         var sawKey = false
 
         for token in tokens {
+            if token == "x2" || token == "×2" || token == "double" {
+                triggerMode = .double
+                continue
+            }
             if let sideKey = sideModifierKeyCode(token) {
-                if sawKey { return .failure(.multipleKeys) }
+                if sawKey {
+                    if resolvedKey == sideKey {
+                        triggerMode = .double
+                        continue
+                    }
+                    return .failure(.multipleKeys)
+                }
                 resolvedKey = sideKey
                 sawKey = true
                 continue
@@ -56,7 +76,13 @@ enum QuickKeyShortcutParser {
                 continue
             }
             if let code = resolveKeyCode(token) {
-                if sawKey { return .failure(.multipleKeys) }
+                if sawKey {
+                    if resolvedKey == code {
+                        triggerMode = .double
+                        continue
+                    }
+                    return .failure(.multipleKeys)
+                }
                 resolvedKey = code
                 sawKey = true
                 continue
@@ -66,36 +92,54 @@ enum QuickKeyShortcutParser {
 
         guard let key = resolvedKey else { return .failure(.missingKey) }
         if QuickKeyModifier.isModifierKeyCode(key) {
-            return .success(Result(keyCode: key, modifiers: 0))
+            return .success(Result(keyCode: key, modifiers: 0, triggerMode: triggerMode))
         }
-        return .success(Result(keyCode: key, modifiers: modifiers))
+        return .success(Result(keyCode: key, modifiers: modifiers, triggerMode: triggerMode))
     }
 
-    static func format(keyCode: Int, modifiers: UInt64) -> String {
+    static func format(keyCode: Int, modifiers: UInt64, mode: QuickKeyTriggerMode = .single) -> String {
+        let base: String
         if QuickKeyModifier.isModifierKeyCode(keyCode) {
-            return formatKeyOnly(keyCode)
+            base = formatKeyOnly(keyCode)
+        } else {
+            var parts: [String] = []
+            let flags = CGEventFlags(rawValue: modifiers)
+            if flags.contains(.maskControl) { parts.append("ctrl") }
+            if flags.contains(.maskAlternate) { parts.append("opt") }
+            if flags.contains(.maskShift) { parts.append("shift") }
+            if flags.contains(.maskCommand) { parts.append("cmd") }
+            parts.append(formatKeyOnly(keyCode))
+            base = parts.joined(separator: "+")
         }
-        var parts: [String] = []
-        let flags = CGEventFlags(rawValue: modifiers)
-        if flags.contains(.maskControl) { parts.append("ctrl") }
-        if flags.contains(.maskAlternate) { parts.append("opt") }
-        if flags.contains(.maskShift) { parts.append("shift") }
-        if flags.contains(.maskCommand) { parts.append("cmd") }
-        parts.append(formatKeyOnly(keyCode))
-        return parts.joined(separator: "+")
+        switch mode {
+        case .single: return base
+        case .double: return "\(base) x2"
+        }
     }
 
-    static func apply(text: String, keyCode: inout Int, modifiers: inout UInt64) -> String? {
+    static func apply(
+        text: String,
+        keyCode: inout Int,
+        modifiers: inout UInt64,
+        triggerMode: inout QuickKeyTriggerMode
+    ) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return "Empty keybinding" }
         switch parse(trimmed) {
         case .success(let r):
             keyCode = r.keyCode
             modifiers = r.modifiers
+            triggerMode = r.triggerMode
             return nil
         case .failure(let e):
             return e.errorDescription
         }
+    }
+
+    /// Back-compat helper for callers that ignore mode.
+    static func apply(text: String, keyCode: inout Int, modifiers: inout UInt64) -> String? {
+        var mode = QuickKeyTriggerMode.single
+        return apply(text: text, keyCode: &keyCode, modifiers: &modifiers, triggerMode: &mode)
     }
 
     // MARK: - Private
@@ -236,7 +280,7 @@ enum QuickKeyShortcutParser {
             if t.hasPrefix("vk"), let n = Int(t.dropFirst(2)), (0...255).contains(n) {
                 return n
             }
-            // Strip parentheses from format "(110)" legacy
+            // Strip parentheses from format "(110)" historical
             if t.hasPrefix("("), t.hasSuffix(")"), t.count > 2,
                let n = Int(t.dropFirst().dropLast()), (0...255).contains(n) {
                 return n

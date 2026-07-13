@@ -2,6 +2,28 @@ import AppKit
 import Carbon.HIToolbox
 import Foundation
 
+/// How many times the trigger key must be pressed to fire the mapping.
+enum QuickKeyTriggerMode: String, Codable, CaseIterable, Identifiable, Hashable {
+    case single
+    case double
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .single: return "Single"
+        case .double: return "Double"
+        }
+    }
+
+    var shortBadge: String {
+        switch self {
+        case .single: return ""
+        case .double: return "×2"
+        }
+    }
+}
+
 /// Spare key → app shortcut (optional frontmost-app scope).
 struct QuickKeyMapping: Identifiable, Codable, Equatable, Hashable {
     var id: UUID
@@ -9,6 +31,8 @@ struct QuickKeyMapping: Identifiable, Codable, Equatable, Hashable {
     var isEnabled: Bool
     var triggerKeyCode: Int
     var triggerModifiers: UInt64
+    /// `.single` = one press; `.double` = two presses within a short window.
+    var triggerMode: QuickKeyTriggerMode
     var targetKeyCode: Int
     var targetModifiers: UInt64
     var appBundleID: String?
@@ -20,6 +44,7 @@ struct QuickKeyMapping: Identifiable, Codable, Equatable, Hashable {
         isEnabled: Bool = true,
         triggerKeyCode: Int = Int(kVK_RightCommand),
         triggerModifiers: UInt64 = 0,
+        triggerMode: QuickKeyTriggerMode = .single,
         targetKeyCode: Int = Int(kVK_ANSI_B),
         targetModifiers: UInt64 = CGEventFlags.maskCommand.rawValue,
         appBundleID: String? = nil,
@@ -30,14 +55,42 @@ struct QuickKeyMapping: Identifiable, Codable, Equatable, Hashable {
         self.isEnabled = isEnabled
         self.triggerKeyCode = triggerKeyCode
         self.triggerModifiers = triggerModifiers
+        self.triggerMode = triggerMode
         self.targetKeyCode = targetKeyCode
         self.targetModifiers = targetModifiers
         self.appBundleID = appBundleID
         self.appDisplayName = appDisplayName
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case id, name, isEnabled
+        case triggerKeyCode, triggerModifiers, triggerMode
+        case targetKeyCode, targetModifiers
+        case appBundleID, appDisplayName
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        isEnabled = try c.decode(Bool.self, forKey: .isEnabled)
+        triggerKeyCode = try c.decode(Int.self, forKey: .triggerKeyCode)
+        triggerModifiers = try c.decode(UInt64.self, forKey: .triggerModifiers)
+        triggerMode = try c.decodeIfPresent(QuickKeyTriggerMode.self, forKey: .triggerMode) ?? .single
+        targetKeyCode = try c.decode(Int.self, forKey: .targetKeyCode)
+        targetModifiers = try c.decode(UInt64.self, forKey: .targetModifiers)
+        appBundleID = try c.decodeIfPresent(String.self, forKey: .appBundleID)
+        appDisplayName = try c.decodeIfPresent(String.self, forKey: .appDisplayName)
+    }
+
     var triggerDisplay: String {
-        QuickKeyChord.display(keyCode: triggerKeyCode, modifiers: triggerModifiers)
+        let base = QuickKeyChord.display(keyCode: triggerKeyCode, modifiers: triggerModifiers)
+        switch triggerMode {
+        case .single:
+            return base
+        case .double:
+            return "\(base) ×2"
+        }
     }
 
     var targetDisplay: String {

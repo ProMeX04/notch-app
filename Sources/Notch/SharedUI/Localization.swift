@@ -139,6 +139,7 @@ struct Localization {
         "Delete Agent?": ["English": "Delete Agent?", "Tiếng Việt": "Xóa trợ lý này?"],
         "Cancel": ["English": "Cancel", "Tiếng Việt": "Hủy"],
         "Delete": ["English": "Delete", "Tiếng Việt": "Xóa"],
+        "Disable": ["English": "Disable", "Tiếng Việt": "Tắt"],
         "Back to Home": ["English": "Back to Home", "Tiếng Việt": "Trang chủ"],
         "Nothing Playing": ["English": "Nothing Playing", "Tiếng Việt": "Không có nội dung"],
         "System Media": ["English": "System Media", "Tiếng Việt": "Hệ thống"],

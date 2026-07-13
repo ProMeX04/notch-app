@@ -5,6 +5,9 @@ import Carbon.HIToolbox
 final class QuickKeyEngine: @unchecked Sendable {
     static let shared = QuickKeyEngine()
 
+    /// Max gap between presses for double-press triggers.
+    private static let doublePressInterval: CFTimeInterval = 0.38
+
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var workspaceObserver: NSObjectProtocol?
@@ -16,6 +19,18 @@ final class QuickKeyEngine: @unchecked Sendable {
     private var byKeyCode: [Int: [QuickKeyMapping]] = [:]
     private var watchesModifiers = false
     private var frontmostBundleID: String?
+
+    /// Waiting for a second press of a double-mode trigger.
+    private var pendingDouble: PendingDoublePress?
+    private var doubleTimeoutWorkItem: DispatchWorkItem?
+
+    private struct PendingDoublePress {
+        let keyCode: Int
+        let modifiers: UInt64
+        let isModifier: Bool
+        let mapping: QuickKeyMapping
+        let startedAt: CFAbsoluteTime
+    }
 
     private init() {
         frontmostBundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
@@ -116,6 +131,7 @@ final class QuickKeyEngine: @unchecked Sendable {
 
     @MainActor
     func stop() {
+        cancelPendingDouble(reinject: false)
         stopTapOnly()
         lock.lock()
         byKeyCode = [:]
@@ -155,6 +171,9 @@ final class QuickKeyEngine: @unchecked Sendable {
         lock.lock()
         isPaused = paused
         lock.unlock()
+        if paused {
+            cancelPendingDouble(reinject: false)
+        }
     }
 
     // MARK: - Hot path
@@ -172,26 +191,48 @@ final class QuickKeyEngine: @unchecked Sendable {
         let paused = isPaused
         let synthesizing = isSynthesizing
         let watchMods = watchesModifiers
+        let pending = pendingDouble
+        let candidatesSnapshot = byKeyCode
+        let front = frontmostBundleID
+        lock.unlock()
+
         guard enabled, !paused, !synthesizing else {
-            lock.unlock()
             return Unmanaged.passUnretained(event)
         }
 
         let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
 
+        // Swallow companion events while waiting for a double press.
+        // Do not swallow a second press of the same key — that completes the double.
+        if let pending {
+            if type == .keyUp, keyCode == pending.keyCode, !pending.isModifier {
+                return nil
+            }
+            if type == .flagsChanged, keyCode == pending.keyCode, pending.isModifier {
+                let isDown = QuickKeyModifier.isDown(keyCode: keyCode, cgFlags: event.flags)
+                if !isDown {
+                    // Modifier release of the first press.
+                    return nil
+                }
+                // Second press of same modifier — fall through to resolvePress.
+            }
+            let isNewPress =
+                type == .keyDown
+                || (type == .flagsChanged && QuickKeyModifier.isDown(keyCode: keyCode, cgFlags: event.flags))
+            if isNewPress, keyCode != pending.keyCode {
+                cancelPendingDouble(reinject: true)
+                // Re-process the new key without the stale pending state.
+                return handle(type: type, event: event)
+            }
+        }
+
         if type == .flagsChanged, !watchMods {
-            lock.unlock()
             return Unmanaged.passUnretained(event)
         }
 
-        guard let candidates = byKeyCode[keyCode], !candidates.isEmpty else {
-            lock.unlock()
+        guard let maps = candidatesSnapshot[keyCode], !maps.isEmpty else {
             return Unmanaged.passUnretained(event)
         }
-
-        let maps = candidates
-        let front = frontmostBundleID
-        lock.unlock()
 
         if type == .flagsChanged {
             return handleFlagsChanged(event: event, keyCode: keyCode, maps: maps, front: front)
@@ -206,10 +247,22 @@ final class QuickKeyEngine: @unchecked Sendable {
             return Unmanaged.passUnretained(event)
         }
 
-        if type == .keyDown, event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
-            synthesize(mapping)
+        // Swallow keyUp for matched mappings (paired with swallowed keyDown).
+        if type == .keyUp {
+            return nil
         }
-        return nil
+
+        // Ignore OS key repeat.
+        if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 {
+            return nil
+        }
+
+        return resolvePress(
+            mapping: mapping,
+            keyCode: keyCode,
+            modifiers: modifiers,
+            isModifier: false
+        )
     }
 
     private func handleFlagsChanged(
@@ -224,8 +277,133 @@ final class QuickKeyEngine: @unchecked Sendable {
         guard let mapping = match(maps: maps, modifiers: 0, frontBundle: front) else {
             return Unmanaged.passUnretained(event)
         }
-        synthesize(mapping)
-        return nil
+        return resolvePress(
+            mapping: mapping,
+            keyCode: keyCode,
+            modifiers: 0,
+            isModifier: true
+        )
+    }
+
+    private func resolvePress(
+        mapping: QuickKeyMapping,
+        keyCode: Int,
+        modifiers: UInt64,
+        isModifier: Bool
+    ) -> Unmanaged<CGEvent>? {
+        switch mapping.triggerMode {
+        case .single:
+            cancelPendingDouble(reinject: true)
+            synthesize(mapping)
+            return nil
+
+        case .double:
+            lock.lock()
+            let existing = pendingDouble
+            lock.unlock()
+
+            if let pending = existing,
+               pending.keyCode == keyCode,
+               pending.modifiers == modifiers,
+               pending.mapping.id == mapping.id,
+               CFAbsoluteTimeGetCurrent() - pending.startedAt <= Self.doublePressInterval {
+                cancelPendingDouble(reinject: false)
+                synthesize(mapping)
+                return nil
+            }
+
+            // First press of a double (or restart after a different/stale pending).
+            cancelPendingDouble(reinject: true)
+            beginPendingDouble(
+                keyCode: keyCode,
+                modifiers: modifiers,
+                isModifier: isModifier,
+                mapping: mapping
+            )
+            return nil
+        }
+    }
+
+    private func beginPendingDouble(
+        keyCode: Int,
+        modifiers: UInt64,
+        isModifier: Bool,
+        mapping: QuickKeyMapping
+    ) {
+        lock.lock()
+        pendingDouble = PendingDoublePress(
+            keyCode: keyCode,
+            modifiers: modifiers,
+            isModifier: isModifier,
+            mapping: mapping,
+            startedAt: CFAbsoluteTimeGetCurrent()
+        )
+        lock.unlock()
+
+        doubleTimeoutWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.onDoublePressTimeout()
+        }
+        doubleTimeoutWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.doublePressInterval, execute: work)
+    }
+
+    private func onDoublePressTimeout() {
+        // Single press only — reinject so the original key is not lost.
+        cancelPendingDouble(reinject: true)
+    }
+
+    private func cancelPendingDouble(reinject: Bool) {
+        doubleTimeoutWorkItem?.cancel()
+        doubleTimeoutWorkItem = nil
+
+        lock.lock()
+        let pending = pendingDouble
+        pendingDouble = nil
+        lock.unlock()
+
+        guard reinject, let pending else { return }
+        reinjectOriginal(
+            keyCode: pending.keyCode,
+            modifiers: pending.modifiers,
+            isModifier: pending.isModifier
+        )
+    }
+
+    private func reinjectOriginal(keyCode: Int, modifiers: UInt64, isModifier: Bool) {
+        lock.lock()
+        isSynthesizing = true
+        lock.unlock()
+        defer {
+            lock.lock()
+            isSynthesizing = false
+            lock.unlock()
+        }
+
+        let code = CGKeyCode(keyCode)
+        let flags = CGEventFlags(rawValue: modifiers)
+        guard let source = CGEventSource(stateID: .combinedSessionState) else { return }
+
+        if isModifier {
+            if let down = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: true) {
+                down.flags = flags.union(QuickKeyModifier.flag(for: keyCode))
+                down.post(tap: .cgSessionEventTap)
+            }
+            if let up = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: false) {
+                up.flags = flags
+                up.post(tap: .cgSessionEventTap)
+            }
+            return
+        }
+
+        if let down = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: true) {
+            down.flags = flags
+            down.post(tap: .cgSessionEventTap)
+        }
+        if let up = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: false) {
+            up.flags = flags
+            up.post(tap: .cgSessionEventTap)
+        }
     }
 
     private func match(maps: [QuickKeyMapping], modifiers: UInt64, frontBundle: String?) -> QuickKeyMapping? {

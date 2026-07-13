@@ -388,10 +388,10 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         id = try c.decode(String.self, forKey: .id)
         title = try c.decode(String.self, forKey: .title)
         content = try c.decode(String.self, forKey: .content)
-        // Drop removed tools (e.g. legacy "exec") so old presets stay valid.
+        // Drop removed tools (e.g. historical "exec") so old presets stay valid.
         enabledTools = (try c.decodeIfPresent([String].self, forKey: .enabledTools) ?? [])
             .filter { GeminiTool(rawValue: $0) != nil }
-        // Legacy field from removed skills feature — ignored.
+        // Historical field from removed skills feature — ignored.
         _ = try c.decodeIfPresent([String].self, forKey: .enabledSkillIDs)
         voice = try c.decodeIfPresent(String.self, forKey: .voice) ?? GeminiVoice.kore.rawValue
         model = try c.decodeIfPresent(String.self, forKey: .model) ?? GeminiLiveModel.defaultModelID

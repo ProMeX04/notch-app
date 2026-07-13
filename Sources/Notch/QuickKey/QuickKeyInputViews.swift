@@ -8,8 +8,12 @@ struct QuickKeybindInput: View {
     @Binding var modifiers: UInt64
     @Binding var text: String
     @Binding var isRecording: Bool
+    /// When `detectDoublePress` is true, double-tap while recording sets this to `.double`.
+    @Binding var triggerMode: QuickKeyTriggerMode
     var placeholder: String = "cmd+b"
     var allowPureModifiers: Bool = true
+    /// Key field only: double-tap while recording → double trigger (no separate mode picker).
+    var detectDoublePress: Bool = false
     var tint: Color = .white
 
     @State private var error: String?
@@ -17,7 +21,7 @@ struct QuickKeybindInput: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            TextField(isRecording ? "Press keys…" : placeholder, text: $text)
+            TextField(isRecording ? (detectDoublePress ? "Press or double-tap…" : "Press keys…") : placeholder, text: $text)
                 .textFieldStyle(.plain)
                 .font(.system(size: 12, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.9))
@@ -42,7 +46,7 @@ struct QuickKeybindInput: View {
                     .foregroundStyle(isRecording ? Color.white.opacity(0.85) : tint.opacity(0.9))
             }
             .buttonStyle(.plain)
-            .help(isRecording ? "Stop (Esc)" : "Record keys")
+            .help(isRecording ? "Stop (Esc)" : (detectDoublePress ? "Record key (double-tap = double)" : "Record keys"))
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
@@ -59,7 +63,9 @@ struct QuickKeybindInput: View {
                 isRecording: $isRecording,
                 keyCode: $keyCode,
                 modifiers: $modifiers,
-                allowPureModifiers: allowPureModifiers
+                triggerMode: $triggerMode,
+                allowPureModifiers: allowPureModifiers,
+                detectDoublePress: detectDoublePress
             )
         )
         .onChange(of: isRecording) { was, now in
@@ -68,18 +74,17 @@ struct QuickKeybindInput: View {
                 error = nil
                 textFocused = false
             } else if was {
-                text = QuickKeyShortcutParser.format(keyCode: keyCode, modifiers: modifiers)
+                text = formattedText()
             }
         }
         .onChange(of: keyCode) { _, _ in
-            if isRecording {
-                text = QuickKeyShortcutParser.format(keyCode: keyCode, modifiers: modifiers)
-            }
+            if isRecording { text = formattedText() }
         }
         .onChange(of: modifiers) { _, _ in
-            if isRecording {
-                text = QuickKeyShortcutParser.format(keyCode: keyCode, modifiers: modifiers)
-            }
+            if isRecording { text = formattedText() }
+        }
+        .onChange(of: triggerMode) { _, _ in
+            if isRecording || !text.isEmpty { text = formattedText() }
         }
         .onDisappear {
             if isRecording {
@@ -101,9 +106,15 @@ struct QuickKeybindInput: View {
     private var previewChord: String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty, case .success(let r) = QuickKeyShortcutParser.parse(trimmed) {
-            return QuickKeyChord.display(keyCode: r.keyCode, modifiers: r.modifiers)
+            let base = QuickKeyChord.display(keyCode: r.keyCode, modifiers: r.modifiers)
+            return r.triggerMode == .double ? "\(base) ×2" : base
         }
-        return QuickKeyChord.display(keyCode: keyCode, modifiers: modifiers)
+        let base = QuickKeyChord.display(keyCode: keyCode, modifiers: modifiers)
+        return triggerMode == .double ? "\(base) ×2" : base
+    }
+
+    private func formattedText() -> String {
+        QuickKeyShortcutParser.format(keyCode: keyCode, modifiers: modifiers, mode: triggerMode)
     }
 
     private func toggleRecord() {
@@ -121,14 +132,19 @@ struct QuickKeybindInput: View {
     private func commit(showError: Bool) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            text = QuickKeyShortcutParser.format(keyCode: keyCode, modifiers: modifiers)
+            text = formattedText()
             return true
         }
         switch QuickKeyShortcutParser.parse(trimmed) {
         case .success(let r):
             keyCode = r.keyCode
             modifiers = r.modifiers
-            text = QuickKeyShortcutParser.format(keyCode: r.keyCode, modifiers: r.modifiers)
+            if detectDoublePress {
+                triggerMode = r.triggerMode
+            } else {
+                triggerMode = .single
+            }
+            text = formattedText()
             error = nil
             return true
         case .failure(let e):
@@ -149,6 +165,7 @@ struct QuickKeyEditorSheet: View {
     @State private var isEnabled = true
     @State private var triggerKeyCode = Int(kVK_RightCommand)
     @State private var triggerModifiers: UInt64 = 0
+    @State private var triggerMode: QuickKeyTriggerMode = .single
     @State private var targetKeyCode = Int(kVK_ANSI_B)
     @State private var targetModifiers: UInt64 = CGEventFlags.maskCommand.rawValue
     @State private var triggerText = "rcmd"
@@ -188,8 +205,10 @@ struct QuickKeyEditorSheet: View {
                     modifiers: $triggerModifiers,
                     text: $triggerText,
                     isRecording: $recordingTrigger,
-                    placeholder: "rcmd  f13",
+                    triggerMode: $triggerMode,
+                    placeholder: "rcmd  or double-tap",
                     allowPureModifiers: true,
+                    detectDoublePress: true,
                     tint: tint
                 )
                 .onChange(of: recordingTrigger) { _, v in if v { recordingTarget = false } }
@@ -209,8 +228,10 @@ struct QuickKeyEditorSheet: View {
                     modifiers: $targetModifiers,
                     text: $targetText,
                     isRecording: $recordingTarget,
+                    triggerMode: .constant(.single),
                     placeholder: "cmd+b",
                     allowPureModifiers: false,
+                    detectDoublePress: false,
                     tint: tint
                 )
                 .onChange(of: recordingTarget) { _, v in if v { recordingTrigger = false } }
@@ -273,7 +294,7 @@ struct QuickKeyEditorSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 400, height: 460)
+        .frame(width: 400, height: 480)
         .background(Color.black)
         .preferredColorScheme(.dark)
         .onAppear(perform: load)
@@ -290,7 +311,11 @@ struct QuickKeyEditorSheet: View {
 
     private func load() {
         guard let existing else {
-            triggerText = QuickKeyShortcutParser.format(keyCode: triggerKeyCode, modifiers: triggerModifiers)
+            triggerText = QuickKeyShortcutParser.format(
+                keyCode: triggerKeyCode,
+                modifiers: triggerModifiers,
+                mode: triggerMode
+            )
             targetText = QuickKeyShortcutParser.format(keyCode: targetKeyCode, modifiers: targetModifiers)
             return
         }
@@ -298,9 +323,14 @@ struct QuickKeyEditorSheet: View {
         isEnabled = existing.isEnabled
         triggerKeyCode = existing.triggerKeyCode
         triggerModifiers = existing.triggerModifiers
+        triggerMode = existing.triggerMode
         targetKeyCode = existing.targetKeyCode
         targetModifiers = existing.targetModifiers
-        triggerText = QuickKeyShortcutParser.format(keyCode: triggerKeyCode, modifiers: triggerModifiers)
+        triggerText = QuickKeyShortcutParser.format(
+            keyCode: triggerKeyCode,
+            modifiers: triggerModifiers,
+            mode: triggerMode
+        )
         targetText = QuickKeyShortcutParser.format(keyCode: targetKeyCode, modifiers: targetModifiers)
         if let bid = existing.appBundleID, !bid.isEmpty {
             whenApp = true
@@ -343,10 +373,16 @@ struct QuickKeyEditorSheet: View {
 
         var tCode = triggerKeyCode
         var tMods = triggerModifiers
+        var tMode = triggerMode
         var sCode = targetKeyCode
         var sMods = targetModifiers
 
-        if let err = QuickKeyShortcutParser.apply(text: triggerText, keyCode: &tCode, modifiers: &tMods) {
+        if let err = QuickKeyShortcutParser.apply(
+            text: triggerText,
+            keyCode: &tCode,
+            modifiers: &tMods,
+            triggerMode: &tMode
+        ) {
             saveError = "Key: \(err)"
             return
         }
@@ -361,6 +397,7 @@ struct QuickKeyEditorSheet: View {
             isEnabled: isEnabled,
             triggerKeyCode: tCode,
             triggerModifiers: tMods,
+            triggerMode: tMode,
             targetKeyCode: sCode,
             targetModifiers: sMods,
             appBundleID: whenApp ? appBundleID : nil,

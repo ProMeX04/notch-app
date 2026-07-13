@@ -145,12 +145,43 @@ struct AppQuickKeySettingsPane: View {
                 .foregroundStyle(.white.opacity(0.25))
             chordBadge(mapping.targetDisplay)
 
-            StandardActionButton(
-                title: Localization.get("Edit", lang: appLanguage),
-                tint: tint,
-                variant: .secondary,
-                action: { editing = mapping }
-            )
+            HStack(spacing: 6) {
+                // Enable / Disable (Power)
+                Button(action: { store.toggle(mapping) }) {
+                    Image(systemName: "power")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(mapping.isEnabled ? tint : .white.opacity(0.25))
+                        .frame(width: 24, height: 24)
+                        .background(mapping.isEnabled ? tint.opacity(0.12) : Color.white.opacity(0.04))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .help(mapping.isEnabled ? Localization.get("Disable", lang: appLanguage) : Localization.get("Enable", lang: appLanguage))
+
+                // Edit (Pencil)
+                Button(action: { editing = mapping }) {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(tint)
+                        .frame(width: 24, height: 24)
+                        .background(tint.opacity(0.12))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .help(Localization.get("Edit", lang: appLanguage))
+
+                // Delete (Trash)
+                Button(action: { store.delete(mapping) }) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color.red.opacity(0.8))
+                        .frame(width: 24, height: 24)
+                        .background(Color.red.opacity(0.12))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .help(Localization.get("Delete", lang: appLanguage))
+            }
         }
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { editing = mapping }

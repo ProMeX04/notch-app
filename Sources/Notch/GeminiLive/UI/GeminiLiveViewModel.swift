@@ -7,7 +7,6 @@ import NotchGeminiLiveCore
 @preconcurrency import ScreenCaptureKit
 import Security
 import SwiftUI
-import NotchGeminiSkillStorage
 
 @MainActor
 final class GeminiLiveViewModel: ObservableObject {
@@ -128,15 +127,6 @@ final class GeminiLiveViewModel: ObservableObject {
             persistSettings()
         }
     }
-    @Published var enabledSkillIDs: Set<String> = [] {
-        didSet {
-            normalizeEnabledSkillIDs()
-            if let idx = systemPromptPresets.firstIndex(where: { $0.id == selectedSystemPromptID }) {
-                systemPromptPresets[idx].enabledSkillIDs = enabledSkillIDs.sorted()
-            }
-            persistSettings()
-        }
-    }
     @Published var showTranscriptOverlay: Bool = true {
         didSet { persistSettings() }
     }
@@ -155,7 +145,6 @@ final class GeminiLiveViewModel: ObservableObject {
     }
     @Published var systemPromptPresets: [GeminiSystemPromptPreset] = GeminiSystemPromptPreset.defaultPresets
     @Published var selectedSystemPromptID = GeminiSystemPromptPreset.defaultPreset.id
-    @Published var installedSkills: [InstalledSkill] = []
     @Published var hasSavedAPIKey = false
     @Published var isSavingAPIKey = false
     @Published var lastToolAction: ToolActionToast?
@@ -184,15 +173,10 @@ final class GeminiLiveViewModel: ObservableObject {
     }
     let toolingController: GeminiLiveToolingController
     let userAPIClient: any GeminiLiveUserAPIClient
-    var currentSkillSnapshot: SkillSessionSnapshot?
-    var isNormalizingEnabledSkillIDs = false
 
     var storedAPIKey: String?
     var storedBackendConfiguration: PortalBackendConfiguration?
     var onOpenAppSettingsRequested: (() -> Void)?
-    var onExecApprovalAttentionRequested: (() -> Void)?
-    @Published private(set) var pendingExecApprovals: [ExecApprovalRequest] = []
-    var execApprovals: ExecApprovalCoordinator { toolingController.execApprovals }
 
     var screenShare: ScreenShareCoordinator { sessionController.screenShare }
     var cameraShare: CameraShareCoordinator { sessionController.cameraShare }
@@ -203,8 +187,6 @@ final class GeminiLiveViewModel: ObservableObject {
     var backendClient: any GeminiLivePortalClient { accountController.backendClient }
     private var settingsStore: GeminiLiveSettingsStore { settingsController.settingsStore }
     var agentAvatarStore: GeminiAgentAvatarStore { toolingController.agentAvatarStore }
-    private var skillStore: SkillStore { toolingController.skillStore }
-    var skillsRepository: GeminiSkillsRepository { toolingController.skillsRepository }
     var userStore: UserStore { toolingController.userStore }
     var memoryStore: MemoryStore { toolingController.memoryStore }
     var selectedModel: GeminiLiveModel {
@@ -243,7 +225,6 @@ final class GeminiLiveViewModel: ObservableObject {
         backendURLText = PortalHostedBackend.defaultURL
         backendClientTokenText = ""
         backendAuthEmailText = ""
-        installedSkills = (try? dependencies.toolingController.skillsRepository.listInstalledSkillsSorted()) ?? []
 
         let savedSettings = dependencies.settingsController.settingsStore.read()
         if let savedSettings {
@@ -293,13 +274,6 @@ final class GeminiLiveViewModel: ObservableObject {
 
         normalizeSystemPromptSelection()
         session.setOutputVolume(outputVolume)
-        execApprovals.$pending.assign(to: &$pendingExecApprovals)
-        execApprovals.onApprove = { [weak self] toolCallID in
-            self?.session.approveExecCall(toolCallID: toolCallID)
-        }
-        execApprovals.onDeny = { [weak self] toolCallID in
-            self?.session.denyExecCall(toolCallID: toolCallID)
-        }
         backend.$authPhase.assign(to: &$backendAuthPhase)
         backend.$isAuthenticated.assign(to: &$isBackendAuthenticated)
         backend.$signedInSummary.assign(to: &$backendSignedInSummary)
@@ -634,8 +608,6 @@ final class GeminiLiveViewModel: ObservableObject {
             }
         }
         
-        configureExecApprovalCallbacks()
-        configureSkillWriterCallbacks()
 
         // Derive overlayInput from all relevant publishers so observers subscribe to one source.
         Publishers.CombineLatest(
@@ -707,7 +679,6 @@ final class GeminiLiveViewModel: ObservableObject {
 
     func shutdown() {
         disconnect()
-        execApprovals.clearAll()
         subscriptions.removeAll()
         backend.shutdown()
         stopVisualSharing()

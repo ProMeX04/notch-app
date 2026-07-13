@@ -1,7 +1,6 @@
 import AppKit
 import Foundation
 import NotchGeminiLiveCore
-import NotchGeminiSkillStorage
 
 extension GeminiLiveViewModel {
     var selectedSystemPromptPreset: GeminiSystemPromptPreset {
@@ -10,21 +9,8 @@ extension GeminiLiveViewModel {
             ?? GeminiSystemPromptPreset.defaultPreset
     }
 
-    var activeInstalledSkills: [InstalledSkill] {
-        let lookup = Dictionary(uniqueKeysWithValues: installedSkills.map { ($0.id, $0) })
-        return enabledSkillIDs.sorted().compactMap { lookup[$0] }
-    }
-
-    var userInstalledSkills: [InstalledSkill] {
-        installedSkills.filter { $0.source != .builtin }
-    }
-
     var effectiveEnabledTools: Set<GeminiTool> {
         enabledTools
-    }
-
-    var canManageSkills: Bool {
-        canManageConfiguration
     }
 
     var availableThinkingLevels: [GeminiThinkingLevel] {
@@ -86,7 +72,7 @@ extension GeminiLiveViewModel {
     }
 
     func chooseSelectedSystemPromptAvatarImage() {
-        guard canManageSkills else { return }
+        guard canManageConfiguration else { return }
         guard let existingIndex = systemPromptPresets.firstIndex(where: { $0.id == selectedSystemPromptID }) else { return }
 
         let panel = NSOpenPanel()
@@ -112,7 +98,7 @@ extension GeminiLiveViewModel {
     }
 
     func clearSelectedSystemPromptAvatarImage() {
-        guard canManageSkills else { return }
+        guard canManageConfiguration else { return }
         guard let existingIndex = systemPromptPresets.firstIndex(where: { $0.id == selectedSystemPromptID }) else { return }
         let existingFilename = systemPromptPresets[existingIndex].avatarImageFilename
         guard existingFilename != nil else { return }
@@ -204,23 +190,15 @@ extension GeminiLiveViewModel {
         mediaResolution = active.mediaResolutionEnum
         selectedModelID = active.modelAPIName
         enabledTools = active.toolSet
-        enabledSkillIDs = Set(active.enabledSkillIDs)
-        normalizeEnabledSkillIDs()
-        syncEnabledSkillIDsToActivePreset()
     }
 
     func buildSystemPrompt(
-        activeSkills: [InstalledSkill],
         effectiveTools: Set<GeminiTool>,
         userContent: String,
         memoryContent: String
     ) -> String {
         let promptBody = selectedSystemPromptPreset.content.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedPromptBody = promptBody
-        let skillPrompt = SkillPromptComposer.buildPromptSection(
-            for: activeSkills,
-            canReadSkills: effectiveTools.contains(.read) || effectiveTools.contains(.exec)
-        )
         let userPrompt = buildInjectedPromptSection(
             title: "User profile",
             tag: "user",
@@ -231,7 +209,6 @@ extension GeminiLiveViewModel {
             tag: "memory",
             content: memoryContent
         )
-        let optionalSkillSection = skillPrompt.isEmpty ? "" : "\n\n\(skillPrompt)"
         let optionalUserSection = userPrompt.isEmpty ? "" : "\n\n\(userPrompt)"
         let optionalMemorySection = memoryPrompt.isEmpty ? "" : "\n\n\(memoryPrompt)"
         let toolRules = buildToolRules(for: effectiveTools)
@@ -242,7 +219,6 @@ extension GeminiLiveViewModel {
         \(optionalToolRulesSection)
         \(optionalUserSection)
         \(optionalMemorySection)
-        \(optionalSkillSection)
         """
     }
 
@@ -285,9 +261,6 @@ extension GeminiLiveViewModel {
         if effectiveTools.contains(.read) {
             lines.append("- Use `read` to examine files. It supports text files and common images.")
         }
-        if effectiveTools.contains(.appleMail) {
-            lines.append("- Use `appleMail` to search or list recent emails from Apple Mail, or read full email bodies when available; it may fall back to summary/snippet content.")
-        }
         if effectiveTools.contains(.appControl) {
             lines.append("- Use `appControl` to open, quit, or check macOS apps. Use exact app names. Do not use for opening URLs.")
         }
@@ -297,20 +270,8 @@ extension GeminiLiveViewModel {
         if effectiveTools.contains(.pomodoro) {
             lines.append("- Use `pomodoro` to control the Notch Pomodoro timer: start, pause, resume, reset, set durations, check status. If the user says stop/end/cancel focus, call reset.")
         }
-        if effectiveTools.contains(.browserControl) {
-            lines.append("- Use `browserControl` to open URLs, play music via DuckDuckGo Lucky, or read the current browser tab content.")
-        }
-        if effectiveTools.contains(.localFileSearch) {
-            lines.append("- Use `localFileSearch` to search indexed local files, folders, apps, and media.")
-        }
         if effectiveTools.contains(.memory) {
             lines.append("- Use `memory` to read or write persistent USER.md (identity, preferences) and MEMORY.md (durable facts, habits). Use write-user for profile updates and write-memory for broader long-term notes.")
-        }
-        if effectiveTools.contains(.exec) {
-            lines.append("- Use `exec` to run shell commands. Every command requires explicit user approval before execution. Prefer native tools over exec when possible.")
-        }
-        if effectiveTools.contains(.skillWriter) {
-            lines.append("- Use `skillWriter` only to persist reusable skills the user confirms. Saves require explicit approval in Notch; never claim a skill saved until the approval flow succeeds.")
         }
 
         return lines.joined(separator: "\n")

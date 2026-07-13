@@ -13,7 +13,7 @@ Notch is a SwiftPM-first macOS app. [Package.swift](../Package.swift) is the sou
 | Focus feature package | [Sources/NotchFocusFeature](../Sources/NotchFocusFeature/) | Pomodoro feature state, preferences, and domain events that can run without the app shell. |
 | Shelf feature package | [Sources/NotchShelfFeature](../Sources/NotchShelfFeature/) | Shelf state, feature persistence, Google Drive integration, and item handling. |
 | Chat history feature package | [Sources/NotchChatHistoryFeature](../Sources/NotchChatHistoryFeature/) | Gemini chat suggestion history and its feature persistence. |
-| Browser bridge parser core | [Sources/NotchBridgeParserCore](../Sources/NotchBridgeParserCore/) | Browser bridge protocol parsing. |
+
 | Mail parser core | [Sources/NotchMailParserCore](../Sources/NotchMailParserCore/) | Apple Mail body parsing independent of Gemini Live or UI concerns. |
 | Tests | [Tests](../Tests/) and executable targets under [Sources](../Sources/) | Lightweight executable regression suites and XCTest coverage. |
 
@@ -64,18 +64,17 @@ The shell should present state and forward user intent; feature-specific decisio
 
 This layer is intentionally broad, but new command families should be grouped behind focused methods or adapters to avoid turning the coordinator into a second composition root.
 
-### Focus and browser bridge
+### Focus
 
 - [NotchFocusFeature](../Sources/NotchFocusFeature/) owns reusable Pomodoro feature state and behavior.
-- [FocusBrowserBridgeServer.swift](../Sources/Notch/Focus/FocusBrowserBridgeServer.swift) adapts focus features to the browser extension bridge.
 - [PomodoroSupportAdapters.swift](../Sources/Notch/Focus/PomodoroSupportAdapters.swift) connects focus core abstractions to app services such as notifications and sounds.
 - [FocusDailyStatsRepository.swift](../Sources/Notch/Focus/FocusDailyStatsRepository.swift) owns atomic daily aggregate/outbox persistence for cloud ranking.
 - [FocusCloudSyncCoordinator.swift](../Sources/Notch/Focus/FocusCloudSyncCoordinator.swift) owns authenticated sync/profile orchestration using shared Portal account context.
+- Chrome extension, local WebSocket browser bridge, and website blocklists were removed.
 
-The browser bridge, daily repository, and cloud coordinator are app/runtime
-infrastructure, so they stay outside focus core. Focus core emits domain meaning
-such as focused intervals and completed sessions; it does not infer or persist
-ranking aggregates.
+The daily repository and cloud coordinator are app/runtime infrastructure, so they
+stay outside focus core. Focus core emits domain meaning such as focused intervals
+and completed sessions; it does not infer or persist ranking aggregates.
 
 ### Shelf
 
@@ -149,7 +148,6 @@ Common verification commands:
 swift build
 swift test
 swift run NotchFocusTests
-swift run NotchBridgeParserTests
 swift run NotchMailParserTests
 swift run NotchShelfTests
 swift run NotchToolParityTests

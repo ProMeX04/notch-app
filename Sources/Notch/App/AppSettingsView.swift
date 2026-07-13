@@ -6,7 +6,6 @@ import SwiftUI
 struct AppSettingsView: View {
     @ObservedObject var presentationModel: NotchPresentationModel
     @ObservedObject var pomodoro: PomodoroViewModel
-    @ObservedObject var focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore
     @ObservedObject var learningStats: LearningStatsStore
     @ObservedObject var focusCloudSync: FocusCloudSyncCoordinator
     @ObservedObject var portalAccount: PortalAccountCoordinator
@@ -20,7 +19,6 @@ struct AppSettingsView: View {
     init(
         presentationModel: NotchPresentationModel,
         pomodoro: PomodoroViewModel,
-        focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore,
         learningStats: LearningStatsStore,
         focusCloudSync: FocusCloudSyncCoordinator,
         portalAccount: PortalAccountCoordinator,
@@ -31,7 +29,6 @@ struct AppSettingsView: View {
     ) {
         self.presentationModel = presentationModel
         self.pomodoro = pomodoro
-        self.focusWebsiteBlocklistStore = focusWebsiteBlocklistStore
         self.learningStats = learningStats
         self.focusCloudSync = focusCloudSync
         self.portalAccount = portalAccount
@@ -78,13 +75,14 @@ struct AppSettingsView: View {
                     case .focus:
                         AppFocusSettingsPane(
                             pomodoro: pomodoro,
-                            websiteBlocklistStore: focusWebsiteBlocklistStore,
                             learningStats: learningStats,
                             focusCloudSync: focusCloudSync,
                             isBackendAuthenticated: portalAccount.isAuthenticated
                         )
                     case .talk:
                         AppTalkSettingsPane(gemini: gemini)
+                    case .shortcuts:
+                        AppQuickKeySettingsPane(presentationModel: presentationModel)
                     }
                 }
                 .padding(24)

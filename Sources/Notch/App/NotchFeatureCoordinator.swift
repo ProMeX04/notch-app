@@ -84,16 +84,12 @@ final class NotchFeatureCoordinator: NotchCommandHandling {
     }
 
     func start() {
-        geminiLiveViewModel.onExecApprovalAttentionRequested = { [weak self] in
-            self?.windowController.presentExecApproval()
-        }
         geminiLiveViewModel.onOpenAppSettingsRequested = { [weak self] in
             self?.appSettingsController.open(tab: .talk)
         }
     }
 
     func stop() {
-        geminiLiveViewModel.onExecApprovalAttentionRequested = nil
         geminiLiveViewModel.onOpenAppSettingsRequested = nil
     }
 

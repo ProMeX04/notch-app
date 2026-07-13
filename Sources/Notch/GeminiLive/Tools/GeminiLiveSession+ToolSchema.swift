@@ -4,30 +4,7 @@ import NotchTooling
 extension GeminiLiveSession {
     var enabledToolDeclarations: [[String: Any]] {
         var decls: [[String: Any]] = []
-        if enabledTools.contains(.exec) {
-            decls.append([
-                "name": GeminiLiveToolName.exec,
-                "description": "Run a local shell command on the user's Mac using zsh. Use this for command-line tools such as curl, jq, python3, or git. Commands run in ~/.notch/workspace by default unless a working directory is provided. New or untrusted commands may require approval. Prefer concise commands and read-only inspection unless the user clearly wants a change.",
-                "parameters": [
-                    "type": "OBJECT",
-                    "properties": [
-                        "command": [
-                            "type": "STRING",
-                            "description": "The exact shell command to run, for example: curl -s https://example.com"
-                        ],
-                        "workingDirectory": [
-                            "type": "STRING",
-                            "description": "Optional absolute path or ~/ path to run the command in. If omitted, Notch uses ~/.notch/workspace."
-                        ],
-                        "timeoutSeconds": [
-                            "type": "NUMBER",
-                            "description": "Optional timeout in seconds. Use 1-900. Defaults to 900 (15 minutes)."
-                        ]
-                    ],
-                    "required": ["command"]
-                ]
-            ])
-        }
+        // Shell `exec` is intentionally not registered — removed for security.
         if enabledTools.contains(.read) {
             decls.append([
                 "name": GeminiLiveToolName.read,
@@ -245,60 +222,6 @@ extension GeminiLiveSession {
                 ] as [String: Any]
             ])
         }
-        if enabledTools.contains(.browserControl) {
-            decls.append([
-                "name": GeminiLiveToolName.browserControl,
-                "description": """
-                Control the browser: open URLs, read tab content, navigate, manage tabs, and interact with page elements.
-                Actions:
-                - "open": Open a URL in the default browser.
-                - "lucky": Open the top DuckDuckGo search result. 'youtube' is appended automatically for music queries.
-                - "read-tab": Read the current tab's URL, title, and visible text.
-                - "navigate": Navigate the current tab to a URL (stays in same tab).
-                - "go-back": Go back in browser history.
-                - "go-forward": Go forward in browser history.
-                - "reload": Reload the current page.
-                - "close-tab": Close a tab. IMPORTANT: Use 'tabId' for a specific tab from 'list-tabs' results. If no 'tabId' is provided, the current active tab is closed.
-                - "list-tabs": List all tabs in the front window. Returns each tab's unique 'tabId', title, and URL.
-                - "switch-tab": Switch to a tab. IMPORTANT: Prefer 'tabId' for reliability. Using 'index' (1-based) is supported but discouraged as indices shift when tabs are moved or closed.
-                - "scroll": Scroll the page up or down by a pixel amount (Chrome/Edge: precise; Safari: page scroll).
-                """,
-                "parameters": [
-                    "type": "OBJECT",
-                    "properties": [
-                        "action": [
-                            "type": "STRING",
-                            "description": "Action: 'open', 'lucky', 'read-tab', 'navigate', 'go-back', 'go-forward', 'reload', 'close-tab', 'list-tabs', 'switch-tab', or 'scroll'."
-                        ],
-                        "url": [
-                            "type": "STRING",
-                            "description": "For 'open', 'navigate': the URL."
-                        ],
-                        "query": [
-                            "type": "STRING",
-                            "description": "For 'lucky': the search query."
-                        ],
-                        "tabId": [
-                            "type": "INTEGER",
-                            "description": "The unique ID of the tab to target. Get this from 'list-tabs'. Highly recommended for 'close-tab', 'switch-tab', 'read-tab', and 'navigate'."
-                        ],
-                        "index": [
-                            "type": "INTEGER",
-                            "description": "For 'switch-tab': 1-based tab index. Discouraged, use 'tabId' instead."
-                        ],
-                        "direction": [
-                            "type": "STRING",
-                            "description": "For 'scroll': 'up' or 'down'. Defaults to 'down'."
-                        ],
-                        "amount": [
-                            "type": "INTEGER",
-                            "description": "For 'scroll': pixel amount to scroll. Defaults to 500."
-                        ],
-                    ],
-                    "required": ["action"]
-                ] as [String: Any]
-            ])
-        }
         if enabledTools.contains(.memory) {
             decls.append([
                 "name": GeminiLiveToolName.memory,
@@ -324,107 +247,6 @@ extension GeminiLiveSession {
                     ],
                     "required": ["action"]
                 ] as [String: Any]
-            ])
-        }
-        if enabledTools.contains(.localFileSearch) {
-            decls.append([
-                "name": GeminiLiveToolName.localFileSearch,
-                "description": "Search indexed local files, folders, apps, and media on the user's Mac.",
-                "parameters": [
-                    "type": "OBJECT",
-                    "properties": [
-                        "query": [
-                            "type": "STRING",
-                            "description": "Search text."
-                        ],
-                        "limit": [
-                            "type": "INTEGER",
-                            "description": "Max results (default 10, max 50)."
-                        ],
-                        "scope": [
-                            "type": "STRING",
-                            "description": "Optional: 'home', 'documents', 'desktop', 'downloads', 'applications', or 'all'."
-                        ],
-                        "kind": [
-                            "type": "STRING",
-                            "description": "Optional: 'any', 'app', 'folder', 'document', 'image', 'pdf', 'audio', or 'video'."
-                        ],
-                    ],
-                    "required": ["query"]
-                ] as [String: Any]
-            ])
-        }
-        if enabledTools.contains(.appleMail) {
-            decls.append([
-                "name": GeminiLiveToolName.appleMail,
-                "description": """
-                Search or list recent emails from Apple Mail.
-                Actions:
-                - "list_recent": List the most recent emails.
-                - "search": Search for emails by keyword (sender name, email, subject, or snippet).
-                - "read_content": Read the full body and metadata for a specific email when available; falls back to summary/snippet.
-                Requires Full Disk Access to read the Mail database and message files.
-                """,
-                "parameters": [
-                    "type": "OBJECT",
-                    "properties": [
-                        "action": [
-                            "type": "STRING",
-                            "description": "The action to perform: 'list_recent', 'search', or 'read_content'."
-                        ],
-                        "query": [
-                            "type": "STRING",
-                            "description": "For 'search': the search keyword."
-                        ],
-                        "limit": [
-                            "type": "NUMBER",
-                            "description": "Max number of results to return (default 10)."
-                        ],
-                        "messageId": [
-                            "type": "STRING",
-                            "description": "For 'read_content': required database ID of the message. Obtain it from 'search' or 'list_recent'."
-                        ]
-                    ],
-                    "required": ["action"]
-                ] as [String: Any]
-            ])
-        }
-        if enabledTools.contains(.skillWriter) {
-            decls.append([
-                "name": GeminiLiveToolName.skillWriter,
-                "description": """
-                Proposes creating or updating a Notch Skill (instructions the model may read via the `read` tool). Writes only after validation and explicit user confirmation in Notch.
-
-                Important:
-                - This does not toggle macOS permissions or Gemini tools automatically.
-                - Use sparingly — skills should be reusable playbooks rather than ephemeral chat transcripts.
-                """,
-                "parameters": [
-                    "type": "OBJECT",
-                    "properties": [
-                        "action": [
-                            "type": "STRING",
-                            "description": "Either \"create\" to add a new skill, or \"update\" to overwrite an existing one.",
-                        ],
-                        "skillId": [
-                            "type": "STRING",
-                            "description": "Required when action is \"update\": the SkillRecord id from the Skills list / prior tool responses.",
-                        ],
-                        "name": [
-                            "type": "STRING",
-                            "description": "Short skill title shown in Notch Settings.",
-                        ],
-                        "description": [
-                            "type": "STRING",
-                            "description": "One-line summary describing when to use this skill.",
-                        ],
-                        "instructions": [
-                            "type": "STRING",
-                            "description": "Markdown-friendly instructions loaded when this skill is read.",
-                        ],
-                    ],
-                    "required": ["action", "name", "description", "instructions"],
-                ] as [String: Any],
             ])
         }
         return decls

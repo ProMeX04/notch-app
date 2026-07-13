@@ -36,7 +36,6 @@ final class ApplicationBootstrapper {
         environment.appSettingsController.configure(
             presentationModel: environment.presentationModel,
             pomodoro: environment.pomodoroViewModel,
-            focusWebsiteBlocklistStore: environment.focusWebsiteBlocklistStore,
             learningStats: environment.learningStatsStore,
             focusCloudSync: environment.focusCloudSyncService,
             portalAccount: environment.portalAccountCoordinator,
@@ -45,7 +44,6 @@ final class ApplicationBootstrapper {
             shelf: environment.shelfViewModel
         )
 
-        environment.focusBrowserBridgeServer.start()
         environment.focusCloudSyncService.start()
 
         let holdToTalkHotkeyManager = HoldToTalkHotkeyManager()
@@ -58,6 +56,9 @@ final class ApplicationBootstrapper {
         self.holdToTalkHotkeyManager = holdToTalkHotkeyManager
 
         statusItemController = StatusItemController(featureCoordinator: environment.featureCoordinator)
+
+        // Keyboard remapper (Settings → Shortcuts)
+        QuickKeyEngine.shared.bootstrap()
 
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
@@ -79,6 +80,7 @@ final class ApplicationBootstrapper {
         }
         statusItemController = nil
         holdToTalkHotkeyManager = nil
+        QuickKeyEngine.shared.stop()
         coordinator.stop()
         environment.focusCloudSyncService.shutdown()
     }

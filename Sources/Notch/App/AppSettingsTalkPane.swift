@@ -1,18 +1,4 @@
 import SwiftUI
-import NotchGeminiSkillStorage
-
-private enum TalkSkillEditorRoute: Identifiable, Equatable {
-    case create
-    case edit(skillID: String)
-
-    var id: String {
-        switch self {
-        case .create: return "skill-editor-create"
-        case let .edit(skillID): return "skill-editor-\(skillID)"
-        }
-    }
-}
-
 
 struct AppTalkSettingsPane: View {
     @ObservedObject var gemini: GeminiLiveViewModel
@@ -29,11 +15,6 @@ struct AppTalkSettingsPane: View {
     @State private var isUserProfileExpanded = false
     @State private var isMemoryExpanded = false
     @State private var isSystemPromptExpanded = false
-    @State private var skillEditorRoute: TalkSkillEditorRoute?
-    @State private var isShellApprovalsExpanded = false
-    @State private var shellApprovalEntries: [GeminiLiveExecApprovalStore.ApprovedEntry] = []
-    @State private var pendingShellApprovalRemoval: String?
-
     private var tint: Color {
         settingsAccentColor(from: accentColorID)
     }
@@ -255,14 +236,6 @@ struct AppTalkSettingsPane: View {
             }
 
             AppSettingsCard(
-                title: Localization.get("Shell Approvals", lang: appLanguage)
-            ) {
-                shellApprovalCard
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-            }
-
-            AppSettingsCard(
                 title: Localization.get("Agents", lang: appLanguage)
             ) {
                 agentEditorPanel
@@ -284,92 +257,7 @@ struct AppTalkSettingsPane: View {
         } message: {
             Text(String(format: Localization.get("Delete \"%@\"?", lang: appLanguage), settingsFormattedAgentDisplayName(gemini.selectedSystemPromptPreset.title)))
         }
-        .sheet(item: $skillEditorRoute) { route in
-            TalkSkillEditorSheet(gemini: gemini, route: route, appLanguage: appLanguage, tint: tint) {
-                skillEditorRoute = nil
-            }
-        }
-        .alert(Localization.get("Remove Approval?", lang: appLanguage), isPresented: .init(
-            get: { pendingShellApprovalRemoval != nil },
-            set: { if !$0 { pendingShellApprovalRemoval = nil } }
-        )) {
-            Button(Localization.get("Cancel", lang: appLanguage), role: .cancel) {
-                pendingShellApprovalRemoval = nil
-            }
-            Button(Localization.get("Remove", lang: appLanguage), role: .destructive) {
-                if let key = pendingShellApprovalRemoval {
-                    gemini.execApprovals.removeApprovedEntry(key: key)
-                    shellApprovalEntries = gemini.execApprovals.allApprovedEntries()
-                }
-                pendingShellApprovalRemoval = nil
-            }
-        } message: {
-            Text(Localization.get("This command will require approval before running again.", lang: appLanguage))
-        }
 
-    }
-
-    @ViewBuilder
-    private var shellApprovalCard: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                withAnimation(.snappy(duration: 0.25)) {
-                    isShellApprovalsExpanded.toggle()
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "terminal.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(tint.opacity(0.9))
-                        .frame(width: 28, height: 28)
-                        .background(tint.opacity(0.1).cornerRadius(8))
-                    Text(Localization.get("Approved Shell Commands", lang: appLanguage))
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.9))
-                    Spacer()
-                    Text("\(shellApprovalEntries.count)")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.4))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color.white.opacity(0.08).cornerRadius(8))
-                    Image(systemName: isShellApprovalsExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.4))
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .onChange(of: isShellApprovalsExpanded) { _, isExpanded in
-                if isExpanded {
-                    shellApprovalEntries = gemini.execApprovals.allApprovedEntries()
-                }
-            }
-
-            if isShellApprovalsExpanded {
-                if shellApprovalEntries.isEmpty {
-                    Text(Localization.get("No approved commands. Commands run via Talk will require approval each time.", lang: appLanguage))
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.4))
-                        .padding(.top, 10)
-                } else {
-                    ScrollView {
-                        VStack(spacing: 6) {
-                            ForEach(shellApprovalEntries) { entry in
-                                ShellApprovalEntryRow(
-                                    entry: entry,
-                                    tint: tint
-                                ) {
-                                    pendingShellApprovalRemoval = entry.key
-                                }
-                            }
-                        }
-                        .padding(.top, 10)
-                    }
-                    .frame(maxHeight: 200)
-                }
-            }
-        }
     }
 
     @ViewBuilder
@@ -588,21 +476,7 @@ struct AppTalkSettingsPane: View {
                 Divider().overlay(Color.white.opacity(0.07))
 
                 VStack(alignment: .leading, spacing: 8) {
-                    GeminiToolsPicker(selection: $gemini.enabledTools, isDisabled: !gemini.canManageSkills)
-                }
-
-                Divider().overlay(Color.white.opacity(0.07))
-
-                VStack(alignment: .leading, spacing: 8) {
-                    GeminiSkillsPicker(
-                        installedSkills: gemini.installedSkills,
-                        selection: $gemini.enabledSkillIDs,
-                        isDisabled: !gemini.canManageSkills,
-                        onCreateInEditor: { skillEditorRoute = .create },
-                        onEdit: { skillEditorRoute = .edit(skillID: $0) },
-                        onDuplicate: { gemini.duplicateSkillFromPicker(id: $0) },
-                        onDelete: { gemini.deleteSkill(id: $0) }
-                    )
+                    GeminiToolsPicker(selection: $gemini.enabledTools, isDisabled: !gemini.canManageConfiguration)
                 }
             }
             .padding(18)
@@ -615,8 +489,7 @@ struct AppTalkSettingsPane: View {
         userProfileDraft = gemini.userProfileContent
         memoryDraft = gemini.memoryContent
         holdShortcut = HoldToTalkShortcutStore.load()
-        shellApprovalEntries = gemini.execApprovals.allApprovedEntries()
-        
+
         Task {
             await gemini.refreshAvailableLiveModels(silent: true)
         }
@@ -683,186 +556,6 @@ struct AppTalkSettingsPane: View {
     }
 }
 
-private struct TalkSkillEditorSheet: View {
-    @ObservedObject var gemini: GeminiLiveViewModel
-    let route: TalkSkillEditorRoute
-    let appLanguage: String
-    let tint: Color
-    let onDismiss: () -> Void
-
-    @State private var skillNameText = ""
-    @State private var skillDescriptionText = ""
-    @State private var skillInstructionsText = ""
-
-    private var editedSkillID: String? {
-        if case let .edit(id) = route { return id }
-        return nil
-    }
-
-    private var isBuiltin: Bool {
-        guard let editedSkillID else { return false }
-        return gemini.skillRecord(for: editedSkillID)?.source == .builtin
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(titleKey)
-                .font(.system(size: 17, weight: .bold))
-                .foregroundStyle(.primary)
-
-            VStack(spacing: 10) {
-                editorField(title: Localization.get("Name", lang: appLanguage), text: $skillNameText)
-                editorField(title: Localization.get("Description", lang: appLanguage), text: $skillDescriptionText)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(Localization.get("Instructions", lang: appLanguage))
-                        .font(.system(size: 12, weight: .semibold))
-                    TextEditor(text: $skillInstructionsText)
-                        .font(.system(size: 11, weight: .regular, design: .monospaced))
-                        .frame(minHeight: 220)
-                        .padding(8)
-                        .background(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.25)))
-                        .disabled(isBuiltin)
-                }
-            }
-
-            if isBuiltin {
-                Text(Localization.get("Built-in skills are read-only. Duplicate this skill from the picker to edit a personal copy.", lang: appLanguage))
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
-
-            HStack {
-                Spacer()
-                Button(Localization.get("Cancel", lang: appLanguage)) {
-                    onDismiss()
-                }
-                .keyboardShortcut(.cancelAction)
-                if !isBuiltin {
-                    Button(Localization.get("Save", lang: appLanguage)) {
-                        saveDraft()
-                    }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!canAttemptSave)
-                }
-            }
-        }
-        .padding(20)
-        .frame(width: 520)
-        .onAppear(perform: loadInitialDraft)
-    }
-
-    private var titleKey: String {
-        switch route {
-        case .create:
-            Localization.get("New skill", lang: appLanguage)
-        case .edit:
-            Localization.get("Edit skill", lang: appLanguage)
-        }
-    }
-
-    private var canAttemptSave: Bool {
-        !skillNameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-            !skillInstructionsText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    @ViewBuilder
-    private func editorField(title key: String, text: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(Localization.get(key, lang: appLanguage))
-                .font(.system(size: 12, weight: .semibold))
-            TextField("", text: text)
-                .textFieldStyle(.roundedBorder)
-                .disabled(isBuiltin)
-        }
-    }
-
-    private func loadInitialDraft() {
-        switch route {
-        case .create:
-            skillNameText = ""
-            skillDescriptionText = ""
-            skillInstructionsText = ""
-        case let .edit(id):
-            guard let draft = gemini.resolvedSkillDraft(forSkillID: id) else {
-                skillNameText = ""
-                skillDescriptionText = ""
-                skillInstructionsText = ""
-                return
-            }
-            skillNameText = draft.name
-            skillDescriptionText = draft.description
-            skillInstructionsText = draft.instructions
-        }
-    }
-
-    private func saveDraft() {
-        let draft = SkillDraft(
-            name: skillNameText,
-            description: skillDescriptionText,
-            category: "general",
-            instructions: skillInstructionsText
-        )
-        do {
-            try gemini.persistSkillDraftFromEditor(skillID: editedSkillID, draft: draft)
-            onDismiss()
-        } catch {
-            gemini.ingestSkillsEditorSaveFailure(error)
-        }
-    }
-    }
-
-
-struct ShellApprovalEntryRow: View {
-    let entry: GeminiLiveExecApprovalStore.ApprovedEntry
-    let tint: Color
-    let onRemove: () -> Void
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: entry.type == .family ? "folder.fill" : "terminal.fill")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(entry.type == .family ? Color(nsColor: .systemTeal) : Color(nsColor: .systemGreen))
-                .frame(width: 20)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(entry.commandOrFamily)
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                if !entry.workingDirectory.isEmpty {
-                    Text(entry.workingDirectory)
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.35))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-            }
-
-            Spacer()
-
-            Button(action: onRemove) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.white.opacity(0.25))
-            }
-            .buttonStyle(.plain)
-            .help(Localization.get("Remove approval", lang: "English"))
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.white.opacity(0.04))
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.white.opacity(0.06), lineWidth: 1)
-        }
-    }
-}
-
 struct AgentListRow: View {
     let prompt: GeminiSystemPromptPreset
     let isSelected: Bool
@@ -899,3 +592,4 @@ struct AgentListRow: View {
         .buttonStyle(.plain)
     }
 }
+

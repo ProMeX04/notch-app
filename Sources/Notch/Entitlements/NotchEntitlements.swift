@@ -65,8 +65,6 @@ enum NotchPermissionRecoveryAction: Equatable {
 enum NotchCapability: Equatable {
     case talkConnection
     case focusPomodoro
-    case focusWebsiteBlocklist
-    case browserBridge
     case mediaControls
     case shelf
 
@@ -76,10 +74,6 @@ enum NotchCapability: Equatable {
             return "talk_connection"
         case .focusPomodoro:
             return "focus_pomodoro"
-        case .focusWebsiteBlocklist:
-            return "focus_website_blocklist"
-        case .browserBridge:
-            return "browser_bridge"
         case .mediaControls:
             return "media_controls"
         case .shelf:
@@ -93,10 +87,6 @@ enum NotchCapability: Equatable {
             return "Talk"
         case .focusPomodoro:
             return "Focus"
-        case .focusWebsiteBlocklist:
-            return "website blocking"
-        case .browserBridge:
-            return "browser bridge"
         case .mediaControls:
             return "media controls"
         case .shelf:

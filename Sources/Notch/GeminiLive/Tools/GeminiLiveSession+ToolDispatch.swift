@@ -1,7 +1,6 @@
 import Foundation
 import AppKit
 import NotchGeminiLiveCore
-import NotchGeminiSkillStorage
 import NotchTooling
 
 extension GeminiLiveSession {
@@ -16,14 +15,17 @@ extension GeminiLiveSession {
         switch name {
         case GeminiLiveToolName.read:
             handleReadCall(id: id, call: call)
-        case GeminiLiveToolName.exec:
-            handleExecCall(id: id, call: call)
+        case "exec":
+            sendFunctionResponse(
+                id: id,
+                name: name,
+                result: [
+                    "success": false,
+                    "error": "The exec/shell tool has been removed from Notch for security.",
+                ]
+            )
         case GeminiLiveToolName.calendar:
             handleCalendarCall(id: id, call: call)
-        case GeminiLiveToolName.browserControl:
-            handleBrowserControlCall(id: id, call: call)
-        case GeminiLiveToolName.localFileSearch:
-            handleLocalFileSearchCall(id: id, call: call)
         case GeminiLiveToolName.pomodoro:
             handlePomodoroCall(id: id, call: call)
         case GeminiLiveToolName.appControl:
@@ -34,60 +36,11 @@ extension GeminiLiveSession {
             handleClipboardCall(id: id, call: call)
         case GeminiLiveToolName.memory:
             handleMemoryCall(id: id, call: call)
-        case GeminiLiveToolName.appleMail:
-            handleAppleMailCall(id: id, call: call)
-        case GeminiLiveToolName.skillWriter:
-            handleSkillWriterCall(id: id, call: call)
         default:
             sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
         }
     }
 
-    private func handleExecCall(id: String, call: [String: Any]) {
-        let name = GeminiLiveToolName.exec
-        guard let args = call["args"] as? [String: Any],
-              let command = args["command"] as? String else {
-            sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
-            return
-        }
-        let workingDirectory = args["workingDirectory"] as? String
-        let timeoutSeconds = (args["timeoutSeconds"] as? NSNumber)?.doubleValue
-            ?? (args["timeoutSeconds"] as? Double)
-        let resolvedTimeout = min(max(timeoutSeconds ?? 900, 1), 900)
-        let trimmedCommand = command.trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolvedWorkingDirectory = GeminiLiveStoragePaths
-            .resolvedExecWorkingDirectory(from: workingDirectory)?
-            .path
-
-        if onShouldAutoApproveExec?(trimmedCommand, resolvedWorkingDirectory) == true {
-            notifyFunctionStarted(name: name, args: args)
-            let sendableArgs = SendableToolArgs(args: args)
-            Task {
-                let result = await executeExec(command: trimmedCommand, workingDirectory: resolvedWorkingDirectory, timeoutSeconds: resolvedTimeout)
-                notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
-                sendFunctionResponse(id: id, name: name, result: result)
-            }
-            return
-        }
-
-        enqueuePendingExecApproval(
-            PendingExecApprovalCall(
-                toolCallID: id,
-                args: args,
-                command: trimmedCommand,
-                workingDirectory: resolvedWorkingDirectory,
-                timeoutSeconds: resolvedTimeout
-            )
-        )
-        onExecApprovalRequested?(
-            ExecApprovalRequest(
-                toolCallID: id,
-                command: trimmedCommand,
-                workingDirectory: resolvedWorkingDirectory,
-                timeoutSeconds: resolvedTimeout
-            )
-        )
-    }
 
     private func handleReadCall(id: String, call: [String: Any]) {
         let name = GeminiLiveToolName.read
@@ -124,40 +77,6 @@ extension GeminiLiveSession {
             self.sendFunctionResponse(id: id, name: name, result: result)
         }
     }
-
-    private func handleBrowserControlCall(id: String, call: [String: Any]) {
-        let name = GeminiLiveToolName.browserControl
-        let rawArgs = call["args"] as? [String: Any] ?? [:]
-        let args = GeminiToolArgumentNormalizer.normalize(rawArgs)
-
-        let action = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["action"]) ?? "open"
-        let sendableArgs = SendableToolArgs(args: args)
-        toolExecutionQueue.async { [weak self] in
-            guard let self else { return }
-            self.notifyFunctionStarted(name: name, args: sendableArgs.args)
-            Task {
-                let result = await self.executeBrowserControl(action: action, args: sendableArgs.args)
-                self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
-                self.sendFunctionResponse(id: id, name: name, result: result)
-            }
-        }
-    }
-
-    func approveExecCall(toolCallID: String) {
-        guard let pending = takePendingExecApproval(toolCallID: toolCallID) else { return }
-        notifyFunctionStarted(name: "exec", args: pending.args)
-        let sendableArgs = SendableToolArgs(args: pending.args)
-        Task {
-            let result = await executeExec(
-                command: pending.command,
-                workingDirectory: pending.workingDirectory,
-                timeoutSeconds: pending.timeoutSeconds
-            )
-            notifyFunctionExecuted(name: "exec", args: sendableArgs.args, result: result)
-            sendFunctionResponse(id: toolCallID, name: "exec", result: result)
-        }
-    }
-
 
     private func handlePomodoroCall(id: String, call: [String: Any]) {
         let name = GeminiLiveToolName.pomodoro
@@ -449,119 +368,6 @@ extension GeminiLiveSession {
             }
         }
     }
-
-    private func handleLocalFileSearchCall(id: String, call: [String: Any]) {
-        let name = GeminiLiveToolName.localFileSearch
-        let rawArgs = call["args"] as? [String: Any] ?? [:]
-        let args = GeminiToolArgumentNormalizer.normalize(rawArgs)
-        guard let query = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["query"]) else {
-            sendFunctionResponse(id: id, name: name, result: ["error": "Missing required field: query"])
-            return
-        }
-        let limit = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["limit"])
-        let scope = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["scope"])
-        let kind = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["kind"])
-        let sendableArgs = SendableToolArgs(args: args)
-        
-        toolExecutionQueue.async { [weak self] in
-            guard let self else { return }
-            self.notifyFunctionStarted(name: name, args: sendableArgs.args)
-            let result = self.executeLocalFileSearch(query: query, limit: limit, scope: scope, kind: kind)
-            self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
-            self.sendFunctionResponse(id: id, name: name, result: result)
-        }
-    }
-
-    func denyExecCall(toolCallID: String) {
-        guard let pending = takePendingExecApproval(toolCallID: toolCallID) else { return }
-        let result: [String: Any] = [
-            "success": false,
-            "error": "Command not approved by user."
-        ]
-        notifyFunctionExecuted(name: GeminiLiveToolName.exec, args: pending.args, result: result)
-        sendFunctionResponse(id: toolCallID, name: GeminiLiveToolName.exec, result: result)
-    }
-
-    private func handleAppleMailCall(id: String, call: [String: Any]) {
-        let name = GeminiLiveToolName.appleMail
-        let rawArgs = call["args"] as? [String: Any] ?? [:]
-        let args = GeminiToolArgumentNormalizer.normalize(rawArgs)
-        
-        let action = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["action"]) ?? "list_recent"
-        let query = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["query"])
-        let limit = GeminiToolArgumentNormalizer.intValue(in: args, keys: ["limit"])
-        let messageId = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["messageId"])
-        
-        let sendableArgs = SendableToolArgs(args: args)
-        toolExecutionQueue.async { [weak self] in
-            guard let self else { return }
-            self.notifyFunctionStarted(name: name, args: sendableArgs.args)
-            let result = self.executeAppleMailSearch(action: action, query: query, limit: limit, messageId: messageId)
-            self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
-            self.sendFunctionResponse(id: id, name: name, result: result)
-        }
-    }
-
-    private func handleSkillWriterCall(id: String, call: [String: Any]) {
-        let name = GeminiLiveToolName.skillWriter
-        guard let rawArgs = call["args"] as? [String: Any] else {
-            sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
-            return
-        }
-        let args = GeminiToolArgumentNormalizer.normalize(rawArgs)
-        let actionRaw = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["action"])?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased() ?? ""
-        guard let action = SkillWriterToolAction(rawValue: actionRaw) else {
-            sendFunctionResponse(id: id, name: name, result: ["success": false, "error": "Invalid action; use create or update."])
-            return
-        }
-        let skillId = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["skillId", "skill_id", "id"])
-        if action == .update, (skillId?.isEmpty ?? true) {
-            sendFunctionResponse(id: id, name: name, result: ["success": false, "error": "update requires skillId."])
-            return
-        }
-        let skillName = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["name"]) ?? ""
-        let description = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["description"]) ?? ""
-        let instructions = GeminiToolArgumentNormalizer.stringValue(in: args, keys: ["instructions"]) ?? ""
-        let draft = SkillDraft(name: skillName, description: description, category: "general", instructions: instructions)
-        let records = skillDraftValidationRecordsProvider?() ?? []
-        let excludingRecordID = action == .update ? skillId : nil
-        let validation = SkillDraftValidator.validate(
-            draft: draft,
-            existingRecords: records,
-            excludingRecordID: excludingRecordID,
-            requireNonEmptyInstructions: true
-        )
-        if case let .failure(err) = validation {
-            sendFunctionResponse(id: id, name: name, result: ["success": false, "error": err.errorDescription ?? "Validation failed."])
-            return
-        }
-        let pending = PendingSkillWriterCall(
-            toolCallID: id,
-            args: args,
-            action: action,
-            draft: draft,
-            existingSkillID: skillId
-        )
-        enqueuePendingSkillWriterApproval(pending)
-        let previewLimit = 900
-        let previewBody: String
-        if draft.instructions.count > previewLimit {
-            previewBody = String(draft.instructions.prefix(previewLimit)) + "\n…"
-        } else {
-            previewBody = draft.instructions
-        }
-        let summary: String
-        switch action {
-        case .create:
-            summary = "Allow saving a new skill named \"\(draft.name)\"?"
-        case .update:
-            summary = "Allow updating skill \"\(draft.name)\" (\(skillId ?? "missing id"))?"
-        }
-        onSkillWriterApprovalRequested?(SkillWriterApprovalRequest(toolCallID: id, summary: summary, preview: previewBody))
-    }
-
 
 }
 

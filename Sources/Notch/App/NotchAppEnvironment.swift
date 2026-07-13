@@ -12,12 +12,10 @@ final class NotchAppEnvironment {
     let focusCloudSyncService: FocusCloudSyncCoordinator
     let playbackViewModel: MediaProbeViewModel
     let pomodoroViewModel: PomodoroViewModel
-    let focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore
     let shelfViewModel: NotchShelfViewModel
     let presentationModel: NotchPresentationModel
     let notchController: NotchWindowManager
     let featureCoordinator: NotchFeatureCoordinator
-    let focusBrowserBridgeServer: FocusBrowserBridgeServer
     let appSettingsController: AppSettingsControlling
 
     init(appSettingsController: AppSettingsControlling = AppSettingsController.shared) {
@@ -60,7 +58,6 @@ final class NotchAppEnvironment {
                 dailyStats: focusDailyStatsRepository
             )
         )
-        focusWebsiteBlocklistStore = FocusWebsiteBlocklistStore()
         shelfViewModel = NotchShelfViewModel()
 
         let portalAccount = portalAccountCoordinator
@@ -93,7 +90,6 @@ final class NotchAppEnvironment {
         notchController = NotchWindowManager(
             playbackViewModel: playbackViewModel,
             pomodoroViewModel: pomodoroViewModel,
-            focusWebsiteBlocklistStore: focusWebsiteBlocklistStore,
             geminiLiveViewModel: geminiLiveViewModel,
             shelfViewModel: shelfViewModel,
             learningStatsStore: learningStatsStore,
@@ -113,19 +109,12 @@ final class NotchAppEnvironment {
             appSettingsController: appSettingsController
         )
 
-        focusBrowserBridgeServer = FocusBrowserBridgeServer(
-            pomodoroViewModel: pomodoroViewModel,
-            blocklistStore: focusWebsiteBlocklistStore,
-            entitlementStore: entitlementStore
-        )
-
         let geminiLiveFeatureBridge = GeminiLiveFeatureBridge(
             geminiLiveViewModel: geminiLiveViewModel,
             featureCoordinator: featureCoordinator,
             entitlementStore: entitlementStore,
             playbackViewModel: playbackViewModel,
-            pomodoroViewModel: pomodoroViewModel,
-            focusBrowserBridgeServer: focusBrowserBridgeServer
+            pomodoroViewModel: pomodoroViewModel
         )
         geminiLiveFeatureBridge.install()
 

@@ -1,16 +1,7 @@
 @preconcurrency import AVFoundation
 import Foundation
 import NotchGeminiLiveCore
-import NotchGeminiSkillStorage
 import NotchTooling
-
-struct PendingExecApprovalCall {
-    let toolCallID: String
-    let args: [String: Any]
-    let command: String
-    let workingDirectory: String?
-    let timeoutSeconds: Double
-}
 
 // Internal to this module - used by GeminiLiveSession and its extensions
 enum GeminiLiveCaptureMode {
@@ -104,12 +95,6 @@ final class GeminiLiveSession: @unchecked Sendable {
     var onUsageMetadata: (@Sendable (GeminiLiveUsageMetadata) -> Void)?
     var onFunctionStarted: (@Sendable (_ name: String, _ args: [String: Any]) -> Void)?
     var onFunctionExecuted: (@Sendable (_ name: String, _ args: [String: Any], _ result: [String: Any]) -> Void)?
-    var onShouldAutoApproveExec: (@Sendable (_ command: String, _ workingDirectory: String?) -> Bool)?
-    var onExecApprovalRequested: (@Sendable (ExecApprovalRequest) -> Void)?
-    var onSkillWriterApprovalRequested: (@Sendable (SkillWriterApprovalRequest) -> Void)?
-    var onSkillWriterExecuteApproved: (@Sendable (PendingSkillWriterCall, @escaping @Sendable ([String: Any]) -> Void) -> Void)?
-    /// Used to validate Gemini-proposed drafts (duplicate names etc.) against the live skill store snapshot.
-    var skillDraftValidationRecordsProvider: (@Sendable () -> [SkillRecord])?
 
     /// Intercept handler for `notchctl` URL-scheme commands (media, focus, talk, panel, etc.).
     /// Returns `true` if the command was handled in-process, `false` to fall through to shell.
@@ -122,12 +107,6 @@ final class GeminiLiveSession: @unchecked Sendable {
     var onWriteUserStore: (@Sendable (_ content: String) async -> Bool)?
     var onWriteMemoryStore: (@Sendable (_ content: String) async -> Bool)?
 
-    /// Send a browser command through the extension bridge.
-    /// Returns the result dict if the extension responded, or nil on timeout.
-    var onBrowserBridgeCommand: (@Sendable (_ action: String, _ args: [String: Any]) async -> [String: Any]?)?
-
-    /// Check if the browser extension is currently connected and polling.
-    var onBrowserBridgeIsConnected: (@Sendable () -> Bool)?
 
     func sendVisualFrame(_ data: Data) {
         sendJSONObject([
@@ -213,10 +192,6 @@ final class GeminiLiveSession: @unchecked Sendable {
     private var lastMessageReceivedAt: Date?
     private var reconnectAttemptCount = 0
     private var hasLoggedUnstableConnection = false
-    private let execApprovalQueue = DispatchQueue(label: "dev.notch.gemini.exec-approval")
-    private var pendingExecApprovalsByID: [String: PendingExecApprovalCall] = [:]
-    private let skillWriterApprovalQueue = DispatchQueue(label: "dev.notch.gemini.skill-writer")
-    private var pendingSkillWritesByID: [String: PendingSkillWriterCall] = [:]
 
     var currentResumptionHandle: String? {
         resumptionState.handle
@@ -243,8 +218,7 @@ final class GeminiLiveSession: @unchecked Sendable {
         thinkingConfiguration: GeminiThinkingWireConfiguration?,
         voiceName: String = "Kore",
         mediaResolution: GeminiMediaResolution = .low,
-        enabledTools: Set<GeminiTool> = GeminiTool.coreToolSet,
-        skillSnapshot: SkillSessionSnapshot? = nil
+        enabledTools: Set<GeminiTool> = GeminiTool.coreToolSet
     ) {
         cancelPendingReconnect()
 
@@ -264,8 +238,7 @@ final class GeminiLiveSession: @unchecked Sendable {
             systemPrompt: systemPrompt,
             thinkingConfiguration: thinkingConfiguration,
             voiceName: voiceName,
-            mediaResolution: mediaResolution,
-            skillSnapshot: skillSnapshot
+            mediaResolution: mediaResolution
         )
         currentConfiguration = configuration
         let shouldPreserveAudioSession = outputPrepared && captureMode == .webRTC
@@ -304,8 +277,6 @@ final class GeminiLiveSession: @unchecked Sendable {
             resumptionState.clear()
             reconnectAttemptCount = 0
             hasLoggedUnstableConnection = false
-            clearPendingExecApprovals()
-            clearPendingSkillWrites()
             isResumingConnection = false
             isWaitingForFreshCredentialSessionRefresh = false
             // Fire the disconnected state right away so the UI button/label
@@ -656,66 +627,6 @@ final class GeminiLiveSession: @unchecked Sendable {
     func resetReconnectBackoff() {
         reconnectAttemptCount = 0
         hasLoggedUnstableConnection = false
-    }
-
-    func enqueuePendingExecApproval(_ call: PendingExecApprovalCall) {
-        execApprovalQueue.sync {
-            pendingExecApprovalsByID[call.toolCallID] = call
-        }
-    }
-
-    func takePendingExecApproval(toolCallID: String) -> PendingExecApprovalCall? {
-        execApprovalQueue.sync {
-            pendingExecApprovalsByID.removeValue(forKey: toolCallID)
-        }
-    }
-
-    func clearPendingExecApprovals() {
-        execApprovalQueue.sync {
-            pendingExecApprovalsByID.removeAll()
-        }
-    }
-
-    func enqueuePendingSkillWriterApproval(_ pending: PendingSkillWriterCall) {
-        skillWriterApprovalQueue.sync {
-            pendingSkillWritesByID[pending.toolCallID] = pending
-        }
-    }
-
-    func takePendingSkillWriterCall(toolCallID: String) -> PendingSkillWriterCall? {
-        skillWriterApprovalQueue.sync {
-            pendingSkillWritesByID.removeValue(forKey: toolCallID)
-        }
-    }
-
-    func clearPendingSkillWrites() {
-        skillWriterApprovalQueue.sync {
-            pendingSkillWritesByID.removeAll()
-        }
-    }
-
-    func approveSkillWriterCall(toolCallID: String) {
-        let name = GeminiLiveToolName.skillWriter
-        guard let pending = takePendingSkillWriterCall(toolCallID: toolCallID) else { return }
-        let args = pending.args
-        notifyFunctionStarted(name: name, args: args)
-        let auditedArgs = SendableToolArgs(args: args)
-        onSkillWriterExecuteApproved?(pending, { @Sendable [weak self] result in
-            guard let self else { return }
-            self.notifyFunctionExecuted(name: name, args: auditedArgs.args, result: result)
-            self.sendFunctionResponse(id: toolCallID, name: name, result: result)
-        })
-    }
-
-    func denySkillWriterCall(toolCallID: String) {
-        let name = GeminiLiveToolName.skillWriter
-        _ = takePendingSkillWriterCall(toolCallID: toolCallID)
-        let result: [String: Any] = [
-            "success": false,
-            "error": "Skill write denied by user.",
-        ]
-        notifyFunctionExecuted(name: name, args: [:], result: result)
-        sendFunctionResponse(id: toolCallID, name: name, result: result)
     }
 
     func beginHeartbeatAfterSetup() {
@@ -1093,7 +1004,6 @@ struct LiveSessionConfiguration {
     let thinkingConfiguration: GeminiThinkingWireConfiguration?
     let voiceName: String
     let mediaResolution: GeminiMediaResolution
-    let skillSnapshot: SkillSessionSnapshot?
 
     var isManagedCredential: Bool {
         backendConfiguration != nil && connectionCredential.hasPrefix("auth_tokens/")
@@ -1115,8 +1025,7 @@ struct LiveSessionConfiguration {
             systemPrompt: systemPrompt,
             thinkingConfiguration: thinkingConfiguration,
             voiceName: voiceName,
-            mediaResolution: mediaResolution,
-            skillSnapshot: skillSnapshot
+            mediaResolution: mediaResolution
         )
     }
 }

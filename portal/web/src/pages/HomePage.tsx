@@ -34,9 +34,7 @@ type PortalCapability = {
 const defaultCapabilities: PortalCapability[] = [
   { key: 'talk_connection', name: 'Gemini Live', description: 'Trò chuyện với AI trực tiếp từ Notch', isProOnly: true, isEnabled: true },
   { key: 'focus_pomodoro', name: 'Focus Pomodoro', description: 'Hỗ trợ tập trung và quản lý phiên làm việc', isProOnly: false, isEnabled: true },
-  { key: 'focus_website_blocklist', name: 'Chặn website', description: 'Chặn trang web gây xao nhãng', isProOnly: false, isEnabled: true },
   { key: 'media_controls', name: 'Điều khiển nhạc', description: 'Điều khiển nhạc trên Notch', isProOnly: false, isEnabled: true },
-  { key: 'browser_bridge', name: 'Kết nối trình duyệt', description: 'Kết nối ứng dụng với trình duyệt', isProOnly: false, isEnabled: true },
   { key: 'panel_shelf', name: 'Shelf', description: 'Lưu tạm tệp tin, văn bản và đường dẫn trong Notch', isProOnly: true, isEnabled: true }
 ]
 
@@ -130,16 +128,16 @@ export function HomePage() {
   
   const faqs = [
     {
-      q: 'Làm sao để kết nối Chrome Focus Blocker?',
-      a: 'Hãy bật cổng WebSocket Bridge trong Notch App Settings. Sau đó mở Chrome extensions, bật Developer mode, chọn "Load unpacked" và chọn thư mục chrome-extension/notch-focus-blocker có sẵn trong repo.'
-    },
-    {
       q: 'Làm sao để nâng cấp tài khoản Pro?',
       a: 'Sau khi đăng nhập bằng Google trên trang chủ Portal, bạn sẽ được tự động đưa đến trang cá nhân. Nhấn nút "Nâng cấp Pro ngay" để chuyển tiếp qua cổng VNPAY thực hiện giao dịch.'
     },
     {
       q: 'Tại sao app không thể mở sau khi tải về?',
       a: 'Do cơ chế bảo mật Gatekeeper của macOS chặn phần mềm ngoài App Store. Bạn hãy vào System Settings > Privacy & Security, kéo xuống dưới cùng mục Security và chọn "Open Anyway" là xong.'
+    },
+    {
+      q: 'Notch còn chặn website không?',
+      a: 'Không. Tính năng chặn website qua Chrome extension đã được gỡ hoàn toàn. Focus Pomodoro vẫn dùng để đếm giờ tập trung; AI chỉ có thể mở URL bằng trình duyệt mặc định của hệ thống.'
     }
   ]
 

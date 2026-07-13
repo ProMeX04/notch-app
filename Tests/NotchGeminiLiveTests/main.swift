@@ -14,7 +14,7 @@ extension TestCase {
 
 @MainActor
 func buildTestCases() -> [TestCase] {
-    ExecApprovalCoordinatorTests.allTests + GeminiLiveSessionPolicyTests.allTests
+    GeminiLiveSessionPolicyTests.allTests
 }
 
 @MainActor

@@ -9,6 +9,7 @@ enum AppSettingsTab: String, CaseIterable, Identifiable {
     case shelf
     case focus
     case talk
+    case shortcuts
 
     var id: String { rawValue }
 
@@ -24,6 +25,8 @@ enum AppSettingsTab: String, CaseIterable, Identifiable {
             return "Focus"
         case .talk:
             return "Talk"
+        case .shortcuts:
+            return "Shortcuts"
         }
     }
 
@@ -40,6 +43,8 @@ enum AppSettingsTab: String, CaseIterable, Identifiable {
             return "timer"
         case .talk:
             return "bubble.left.and.bubble.right"
+        case .shortcuts:
+            return "keyboard"
         }
     }
 }
@@ -49,7 +54,6 @@ protocol AppSettingsControlling: AnyObject {
     func configure(
         presentationModel: NotchPresentationModel,
         pomodoro: PomodoroViewModel,
-        focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore,
         learningStats: LearningStatsStore,
         focusCloudSync: FocusCloudSyncCoordinator,
         portalAccount: PortalAccountCoordinator,
@@ -67,7 +71,6 @@ final class AppSettingsController: ObservableObject, AppSettingsControlling {
     private struct Dependencies {
         let presentationModel: NotchPresentationModel
         let pomodoro: PomodoroViewModel
-        let focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore
         let learningStats: LearningStatsStore
         let focusCloudSync: FocusCloudSyncCoordinator
         let portalAccount: PortalAccountCoordinator
@@ -84,7 +87,6 @@ final class AppSettingsController: ObservableObject, AppSettingsControlling {
     func configure(
         presentationModel: NotchPresentationModel,
         pomodoro: PomodoroViewModel,
-        focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore,
         learningStats: LearningStatsStore,
         focusCloudSync: FocusCloudSyncCoordinator,
         portalAccount: PortalAccountCoordinator,
@@ -95,7 +97,6 @@ final class AppSettingsController: ObservableObject, AppSettingsControlling {
         dependencies = Dependencies(
             presentationModel: presentationModel,
             pomodoro: pomodoro,
-            focusWebsiteBlocklistStore: focusWebsiteBlocklistStore,
             learningStats: learningStats,
             focusCloudSync: focusCloudSync,
             portalAccount: portalAccount,
@@ -153,7 +154,6 @@ final class AppSettingsController: ObservableObject, AppSettingsControlling {
         AppSettingsView(
             presentationModel: dependencies.presentationModel,
             pomodoro: dependencies.pomodoro,
-            focusWebsiteBlocklistStore: dependencies.focusWebsiteBlocklistStore,
             learningStats: dependencies.learningStats,
             focusCloudSync: dependencies.focusCloudSync,
             portalAccount: dependencies.portalAccount,

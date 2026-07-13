@@ -1,7 +1,6 @@
 import AppKit
 import Foundation
 import NotchGeminiLiveCore
-import NotchGeminiSkillStorage
 import SwiftUI
 
 enum GeminiLiveConnectionState: Equatable {
@@ -207,27 +206,6 @@ struct ToolActionToast: Equatable {
     var showsInOverlay: Bool = true
 }
 
-struct SkillWriterApprovalRequest: Identifiable, Equatable, Sendable {
-    let toolCallID: String
-    let summary: String
-    let preview: String
-
-    var id: String { toolCallID }
-}
-
-enum SkillWriterToolAction: String, Sendable {
-    case create
-    case update
-}
-
-struct PendingSkillWriterCall: @unchecked Sendable {
-    let toolCallID: String
-    let args: [String: Any]
-    let action: SkillWriterToolAction
-    let draft: SkillDraft
-    let existingSkillID: String?
-}
-
 struct LiveChatMessage: Identifiable, Equatable {
     let id: UUID
     let isUser: Bool
@@ -278,12 +256,7 @@ enum GeminiTool: String, CaseIterable, Identifiable {
     case appControl = "appControl"
     case mediaControl = "mediaControl"
     case pomodoro = "pomodoro"
-    case browserControl = "browserControl"
-    case localFileSearch = "localFileSearch"
     case memory = "memory"
-    case exec = "exec"
-    case appleMail = "appleMail"
-    case skillWriter = "skillWriter"
 
     var id: String { rawValue }
 
@@ -295,10 +268,7 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         .appControl,
         .mediaControl,
         .pomodoro,
-        .browserControl,
-        .localFileSearch,
         .memory,
-        .appleMail,
     ]
 
     static let coreToolSet: Set<GeminiTool> = Set(coreCases)
@@ -311,13 +281,12 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         .appControl,
         .mediaControl,
         .pomodoro,
-        .browserControl,
         .memory,
     ]
 
-    /// Tools excluded from the default set for safety.
-    /// Shown in the picker but off by default; enabling them requires an explicit warning acknowledgment.
-    static let restrictedTools: Set<GeminiTool> = [.exec, .skillWriter]
+    /// Tools excluded from the default set for safety (off until user enables).
+    /// Note: shell `exec`, browser control, local file search, and Apple Mail were removed.
+    static let restrictedTools: Set<GeminiTool> = []
 
     var displayName: String {
         switch self {
@@ -328,12 +297,7 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         case .appControl: return "App"
         case .mediaControl: return "Media"
         case .pomodoro: return "Focus"
-        case .browserControl: return "Browser"
-        case .localFileSearch: return "Local File Search"
         case .memory: return "Memory"
-        case .exec: return "Exec"
-        case .appleMail: return "Mail"
-        case .skillWriter: return "Skill Writer"
         }
     }
 
@@ -346,12 +310,7 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         case .appControl: return "macwindow"
         case .mediaControl: return "playpause"
         case .pomodoro: return "timer"
-        case .browserControl: return "safari"
-        case .localFileSearch: return "doc.text.magnifyingglass"
         case .memory: return "brain"
-        case .exec: return "terminal"
-        case .appleMail: return "envelope"
-        case .skillWriter: return "wand.and.rays.inverse"
         }
     }
 }
@@ -377,8 +336,6 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
     var content: String
     /// rawValues of enabled GeminiTool cases. Empty = no tools enabled.
     var enabledTools: [String]
-    /// Installed skill record ids (`SkillRecord.id`) enabled for this preset.
-    var enabledSkillIDs: [String]
     /// GeminiVoice.rawValue for this preset.
     var voice: String
     /// Gemini Live model id for this preset.
@@ -399,7 +356,6 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         title: String,
         content: String,
         enabledTools: [String] = [],
-        enabledSkillIDs: [String] = [],
         voice: String = GeminiVoice.kore.rawValue,
         model: String = GeminiLiveModel.defaultModelID,
         thinkingLevel: String = GeminiThinkingLevel.minimal.rawValue,
@@ -412,7 +368,6 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         self.title = title
         self.content = content
         self.enabledTools = enabledTools
-        self.enabledSkillIDs = enabledSkillIDs
         self.voice = voice
         self.model = model
         self.thinkingLevel = (GeminiThinkingLevel(rawValue: thinkingLevel)
@@ -433,8 +388,11 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         id = try c.decode(String.self, forKey: .id)
         title = try c.decode(String.self, forKey: .title)
         content = try c.decode(String.self, forKey: .content)
-        enabledTools = try c.decodeIfPresent([String].self, forKey: .enabledTools) ?? []
-        enabledSkillIDs = try c.decodeIfPresent([String].self, forKey: .enabledSkillIDs) ?? []
+        // Drop removed tools (e.g. legacy "exec") so old presets stay valid.
+        enabledTools = (try c.decodeIfPresent([String].self, forKey: .enabledTools) ?? [])
+            .filter { GeminiTool(rawValue: $0) != nil }
+        // Legacy field from removed skills feature — ignored.
+        _ = try c.decodeIfPresent([String].self, forKey: .enabledSkillIDs)
         voice = try c.decodeIfPresent(String.self, forKey: .voice) ?? GeminiVoice.kore.rawValue
         model = try c.decodeIfPresent(String.self, forKey: .model) ?? GeminiLiveModel.defaultModelID
         let savedThinkingLevel = try c.decodeIfPresent(String.self, forKey: .thinkingLevel) ?? GeminiThinkingLevel.minimal.rawValue
@@ -453,7 +411,6 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         try c.encode(title, forKey: .title)
         try c.encode(content, forKey: .content)
         try c.encode(enabledTools, forKey: .enabledTools)
-        try c.encode(enabledSkillIDs.sorted(), forKey: .enabledSkillIDs)
         try c.encode(voice, forKey: .voice)
         try c.encode(model, forKey: .model)
         try c.encode(thinkingLevel, forKey: .thinkingLevel)
@@ -504,7 +461,6 @@ struct GeminiSystemPromptPreset: Identifiable, Hashable, Codable {
         title: "Default",
         content: "",
         enabledTools: GeminiTool.defaultEnabledCases.map(\.rawValue),
-        enabledSkillIDs: [SkillRecord.gettingStartedBuiltinID],
         voice: GeminiVoice.kore.rawValue,
         model: GeminiLiveModel.defaultModelID,
         thinkingLevel: GeminiThinkingLevel.high.rawValue

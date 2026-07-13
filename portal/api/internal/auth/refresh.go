@@ -172,9 +172,7 @@ func (s RefreshService) getPermissionPolicy(ctx context.Context, isPro bool) Per
 	features := map[string]string{
 		"talk_connection":         "pro",
 		"focus_pomodoro":          "free",
-		"focus_website_blocklist": "free",
 		"media_controls":          "free",
-		"browser_bridge":          "free",
 		"panel_shelf":             "pro",
 	}
 

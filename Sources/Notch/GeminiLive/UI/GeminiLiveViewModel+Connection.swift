@@ -114,17 +114,9 @@ extension GeminiLiveViewModel {
                 return
             }
 
-            let skillSnapshot: SkillSessionSnapshot
-            if self.currentSkillSnapshot == nil {
-                skillSnapshot = self.makeSkillSessionSnapshot()
-                self.currentSkillSnapshot = skillSnapshot
-            } else {
-                skillSnapshot = self.currentSkillSnapshot ?? self.makeSkillSessionSnapshot()
-            }
-
+            let effectiveTools = self.effectiveEnabledTools
             let systemPrompt = self.buildSystemPrompt(
-                activeSkills: skillSnapshot.activeSkills,
-                effectiveTools: skillSnapshot.effectiveTools,
+                effectiveTools: effectiveTools,
                 userContent: self.userProfileContent,
                 memoryContent: self.memoryContent
             )
@@ -207,8 +199,7 @@ extension GeminiLiveViewModel {
                 thinkingConfiguration: preset.thinkingEnum.wireConfiguration(forModel: preset.modelAPIName),
                 voiceName: preset.voiceEnum.apiName,
                 mediaResolution: preset.mediaResolutionEnum,
-                enabledTools: skillSnapshot.effectiveTools,
-                skillSnapshot: skillSnapshot
+                enabledTools: effectiveTools
             )
             self.syncEffectiveMicrophoneState()
         }
@@ -258,14 +249,12 @@ extension GeminiLiveViewModel {
         lastDisconnectWasUserInitiated = true
         cancelReconnect()
         stopVisualSharing()
-        execApprovals.clearAll()
         toastClearTask = nil
         lastToolAction = nil
         isModelThinking = false
         isHoldToTalkActive = false
         isMicrophoneLive = false
         clearTranscripts()
-        currentSkillSnapshot = nil
         session.disconnect(userInitiated: true)
         setConnectionState(.disconnected)
         statusText = defaultDisconnectedStatusText

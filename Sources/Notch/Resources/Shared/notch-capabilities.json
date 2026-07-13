@@ -14,21 +14,9 @@
       "requirement": "free"
     },
     {
-      "key": "focus_website_blocklist",
-      "name": "Chặn website",
-      "description": "Chặn trang web gây xao nhãng",
-      "requirement": "free"
-    },
-    {
       "key": "media_controls",
       "name": "Điều khiển nhạc",
       "description": "Điều khiển nhạc trên Notch",
-      "requirement": "free"
-    },
-    {
-      "key": "browser_bridge",
-      "name": "Kết nối trình duyệt",
-      "description": "Kết nối ứng dụng với trình duyệt",
       "requirement": "free"
     },
     {

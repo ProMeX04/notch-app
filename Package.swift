@@ -17,20 +17,12 @@ let package = Package(
             targets: ["NotchFocusFeature"]
         ),
         .library(
-            name: "NotchBridgeParserCore",
-            targets: ["NotchBridgeParserCore"]
-        ),
-        .library(
             name: "NotchMailParserCore",
             targets: ["NotchMailParserCore"]
         ),
         .library(
             name: "NotchChatHistoryFeature",
             targets: ["NotchChatHistoryFeature"]
-        ),
-        .library(
-            name: "NotchGeminiSkillStorage",
-            targets: ["NotchGeminiSkillStorage"]
         ),
         .library(
             name: "NotchScreenShareCore",
@@ -49,16 +41,8 @@ let package = Package(
             targets: ["NotchShelfTests"]
         ),
         .executable(
-            name: "NotchBridgeParserTests",
-            targets: ["NotchBridgeParserTests"]
-        ),
-        .executable(
             name: "NotchMailParserTests",
             targets: ["NotchMailParserTests"]
-        ),
-        .executable(
-            name: "NotchSkillsTests",
-            targets: ["NotchSkillsTests"]
         ),
         .executable(
             name: "NotchChatHistoryTests",
@@ -95,26 +79,15 @@ let package = Package(
             ]
         ),
         .target(
-            name: "NotchGeminiSkillStorage"
-        ),
-        .target(
             name: "NotchGeminiLiveCore"
-        ),
-        .executableTarget(
-            name: "NotchSkillsTests",
-            dependencies: ["NotchGeminiSkillStorage"],
-            path: "Tests/NotchSkillsTests"
         ),
         .executableTarget(
             name: "Notch",
             dependencies: [
                 "NotchTooling",
-                "NotchGeminiSkillStorage",
                 "NotchGeminiLiveCore",
                 "NotchFocusFeature",
                 "NotchShelfFeature",
-                "NotchBridgeParserCore",
-                "NotchMailParserCore",
                 "NotchChatHistoryFeature",
                 "NotchScreenShareCore",
                 .product(name: "LiveKitWebRTC", package: "webrtc-xcframework"),
@@ -143,9 +116,6 @@ let package = Package(
             path: "Tests/NotchFocusTests"
         ),
         .target(
-            name: "NotchBridgeParserCore"
-        ),
-        .target(
             name: "NotchMailParserCore"
         ),
         .target(
@@ -153,11 +123,6 @@ let package = Package(
         ),
         .target(
             name: "NotchScreenShareCore"
-        ),
-        .executableTarget(
-            name: "NotchBridgeParserTests",
-            dependencies: ["NotchBridgeParserCore"],
-            path: "Tests/NotchBridgeParserTests"
         ),
         .executableTarget(
             name: "NotchMailParserTests",

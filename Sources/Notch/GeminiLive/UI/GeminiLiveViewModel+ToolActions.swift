@@ -20,16 +20,10 @@ extension GeminiLiveViewModel {
             return ToolActionToast(label: Localization.get("Controlling media…"), icon: "playpause", showsInOverlay: false)
         case "pomodoro":
             return ToolActionToast(label: Localization.get("Controlling timer…"), icon: "timer", showsInOverlay: false)
-        case "browserControl":
-            return ToolActionToast(label: Localization.get("Using browser…"), icon: "safari", showsInOverlay: false)
-        case "localFileSearch":
-            return ToolActionToast(label: Localization.get("Searching files…"), icon: "doc.text.magnifyingglass", showsInOverlay: false)
         case "memory":
             return ToolActionToast(label: Localization.get("Using memory…"), icon: "brain", showsInOverlay: false)
         case "exec":
             return ToolActionToast(label: Localization.get("Running command…"), icon: "terminal", showsInOverlay: false)
-        case "skillWriter":
-            return ToolActionToast(label: Localization.get("Skill writer pending approval…"), icon: "wand.and.rays.inverse", showsInOverlay: false)
         default:
             return nil
         }
@@ -65,18 +59,10 @@ extension GeminiLiveViewModel {
             return ToolActionToast(label: mediaControlToolActionLabel(args: args, result: result), icon: "playpause", showsInOverlay: false)
         case "pomodoro":
             return ToolActionToast(label: pomodoroToolActionLabel(args: args, result: result, message: message), icon: "timer", showsInOverlay: false)
-        case "browserControl":
-            return ToolActionToast(label: browserControlToolActionLabel(args: args, result: result, message: message), icon: "safari", showsInOverlay: false)
-        case "localFileSearch":
-            return ToolActionToast(label: localFileSearchToolActionLabel(args: args, result: result), icon: "doc.text.magnifyingglass", showsInOverlay: false)
         case "memory":
             return ToolActionToast(label: memoryToolActionLabel(args: args, message: message), icon: "brain", showsInOverlay: false)
         case "exec":
             return ToolActionToast(label: execToolActionLabel(args: args, result: result, message: message), icon: "terminal", showsInOverlay: false)
-        case "appleMail":
-            return ToolActionToast(label: appleMailToolActionLabel(args: args, result: result), icon: "envelope", showsInOverlay: false)
-        case "skillWriter":
-            return ToolActionToast(label: message ?? "Skill saved", icon: "wand.and.rays.inverse", showsInOverlay: false)
         default:
             return nil
         }
@@ -204,29 +190,6 @@ extension GeminiLiveViewModel {
         }
     }
 
-    private nonisolated func browserControlToolActionLabel(args: [String: Any], result: [String: Any], message: String?) -> String {
-        let action = stringValue(args, "action") ?? "open"
-        if let title = stringValue(result, "title") {
-            return "Browser \(action): \(title)"
-        }
-        if let count = intValue(result, "count") ?? intValue(result, "tabCount") {
-            return count == 1 ? "Browser \(action): 1 tab" : "Browser \(action): \(count) tabs"
-        }
-        return message ?? "Browser \(action) completed"
-    }
-
-    private nonisolated func localFileSearchToolActionLabel(args: [String: Any], result: [String: Any]) -> String {
-        let query = stringValue(args, "query")
-        let count = intValue(result, "count") ?? intValue(result, "resultCount")
-        if let query, let count {
-            return count == 1 ? "Found 1 file for \(query)" : "Found \(count) files for \(query)"
-        }
-        if let query {
-            return "Searched files: \(query)"
-        }
-        return "File search completed"
-    }
-
     private nonisolated func memoryToolActionLabel(args: [String: Any], message: String?) -> String {
         switch stringValue(args, "action") {
         case "read-user":
@@ -254,28 +217,6 @@ extension GeminiLiveViewModel {
     }
 
 
-
-    private nonisolated func appleMailToolActionLabel(args: [String: Any], result: [String: Any]) -> String {
-        switch stringValue(args, "action") {
-        case "read_content":
-            if let subject = stringValue(result, "subject") {
-                return "Read email: \(subject)"
-            }
-            return "Read email"
-        case "search":
-            let count = intValue(result, "count")
-            let query = stringValue(args, "query")
-            if let count, let query {
-                return count == 1 ? "Found 1 email for \(query)" : "Found \(count) emails for \(query)"
-            }
-            return "Searched Mail"
-        default:
-            if let count = intValue(result, "count") {
-                return count == 1 ? "Found 1 recent email" : "Found \(count) recent emails"
-            }
-            return "Listed recent emails"
-        }
-    }
 
     private nonisolated func calendarToolActionLabel(args: [String: Any], result: [String: Any], message: String?) -> String {
         let action = (result["action"] as? String) ?? (args["action"] as? String)
@@ -381,16 +322,10 @@ extension GeminiLiveViewModel {
             return "Media control failed."
         case "pomodoro":
             return "Timer control failed."
-        case "browserControl":
-            return "Browser control failed."
-        case "localFileSearch":
-            return "File search failed."
         case "memory":
             return "Memory failed."
         case "exec":
             return "Command failed."
-        case "skillWriter":
-            return "Skill writer failed."
         default:
             return "Tool failed."
         }

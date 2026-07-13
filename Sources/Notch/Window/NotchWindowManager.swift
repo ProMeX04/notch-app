@@ -7,7 +7,6 @@ import NotchShelfFeature
 final class NotchWindowManager {
     let playbackViewModel: MediaProbeViewModel
     let pomodoroViewModel: PomodoroViewModel
-    let focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore
     let geminiLiveViewModel: GeminiLiveViewModel
     let shelfViewModel: NotchShelfViewModel
     let learningStatsStore: LearningStatsStore
@@ -25,7 +24,6 @@ final class NotchWindowManager {
     init(
         playbackViewModel: MediaProbeViewModel,
         pomodoroViewModel: PomodoroViewModel,
-        focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore,
         geminiLiveViewModel: GeminiLiveViewModel,
         shelfViewModel: NotchShelfViewModel,
         learningStatsStore: LearningStatsStore,
@@ -35,7 +33,6 @@ final class NotchWindowManager {
     ) {
         self.playbackViewModel = playbackViewModel
         self.pomodoroViewModel = pomodoroViewModel
-        self.focusWebsiteBlocklistStore = focusWebsiteBlocklistStore
         self.geminiLiveViewModel = geminiLiveViewModel
         self.shelfViewModel = shelfViewModel
         self.learningStatsStore = learningStatsStore
@@ -82,7 +79,8 @@ final class NotchWindowManager {
         updateOverlayScreen()
     }
 
-    func presentExecApproval() {
+    /// Bring live chat forward when a tool needs user attention.
+    func presentTalkApprovalAttention() {
         liveChatInputPanel.showIfNeeded()
     }
 
@@ -177,7 +175,6 @@ final class NotchWindowManager {
         NotchWindowController(
             playbackViewModel: playbackViewModel,
             pomodoroViewModel: pomodoroViewModel,
-            focusWebsiteBlocklistStore: focusWebsiteBlocklistStore,
             geminiLiveViewModel: geminiLiveViewModel,
             shelfViewModel: shelfViewModel,
             learningStatsStore: learningStatsStore,

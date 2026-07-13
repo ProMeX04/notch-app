@@ -37,19 +37,12 @@ final class GeminiLiveSessionController {
 
 @MainActor
 final class GeminiLiveToolingController {
-    let execApprovals: ExecApprovalCoordinator
     let agentAvatarStore: GeminiAgentAvatarStore
-    let skillStore: SkillStore
-    let skillsRepository: GeminiSkillsRepository
     let userStore: UserStore
     let memoryStore: MemoryStore
 
     init() {
-        let execApprovalStore = GeminiLiveExecApprovalStore()
-        execApprovals = ExecApprovalCoordinator(store: execApprovalStore)
         agentAvatarStore = GeminiAgentAvatarStore()
-        skillStore = SkillStore()
-        skillsRepository = GeminiSkillsRepository()
         userStore = UserStore()
         memoryStore = MemoryStore()
     }

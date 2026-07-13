@@ -438,6 +438,67 @@ struct Localization {
         ],
         "Weekly Activity": ["English": "Weekly Activity", "Tiếng Việt": "Hoạt động hàng tuần"],
         "Session Timing": ["English": "Session Timing", "Tiếng Việt": "Thời gian phiên"],
+        "Overview": ["English": "Overview", "Tiếng Việt": "Tổng quan"],
+        "Session": ["English": "Session", "Tiếng Việt": "Phiên"],
+        "Sound & Alerts": ["English": "Sound & Alerts", "Tiếng Việt": "Âm thanh & Cảnh báo"],
+        "Cloud Ranking": ["English": "Cloud Ranking", "Tiếng Việt": "Xếp hạng đám mây"],
+        "Pomodoro lengths, weekly activity, and ranking privacy": [
+            "English": "Pomodoro lengths, weekly activity, and ranking privacy",
+            "Tiếng Việt": "Độ dài pomodoro, hoạt động tuần, và quyền riêng tư xếp hạng",
+        ],
+        "Pomodoro lengths and long-break cycle": [
+            "English": "Pomodoro lengths and long-break cycle",
+            "Tiếng Việt": "Độ dài pomodoro và chu kỳ nghỉ dài",
+        ],
+        "Lengths and long-break cycle": [
+            "English": "Lengths and long-break cycle",
+            "Tiếng Việt": "Độ dài và chu kỳ nghỉ dài",
+        ],
+        "Last 7 days": ["English": "Last 7 days", "Tiếng Việt": "7 ngày qua"],
+        "Selected period": ["English": "Selected period", "Tiếng Việt": "Khoảng đã chọn"],
+        "avg session": ["English": "avg session", "Tiếng Việt": "phiên TB"],
+        "No focus time yet this week": [
+            "English": "No focus time yet this week",
+            "Tiếng Việt": "Tuần này chưa có thời gian tập trung",
+        ],
+        "Sessions before long break": [
+            "English": "Sessions before long break",
+            "Tiếng Việt": "Số phiên trước nghỉ dài",
+        ],
+        "Notify when a phase ends": [
+            "English": "Notify when a phase ends",
+            "Tiếng Việt": "Thông báo khi một giai đoạn kết thúc",
+        ],
+        "Begin breaks when focus ends": [
+            "English": "Begin breaks when focus ends",
+            "Tiếng Việt": "Bắt đầu nghỉ khi hết focus",
+        ],
+        "Begin focus when a break ends": [
+            "English": "Begin focus when a break ends",
+            "Tiếng Việt": "Bắt đầu focus khi hết nghỉ",
+        ],
+        "Keep the countdown visible outside Notch": [
+            "English": "Keep the countdown visible outside Notch",
+            "Tiếng Việt": "Giữ đồng hồ đếm ngược hiện ngoài Notch",
+        ],
+        "Sign in from Account settings to sync focus ranking.": [
+            "English": "Sign in from Account settings to sync focus ranking.",
+            "Tiếng Việt": "Đăng nhập trong Account để đồng bộ xếp hạng focus.",
+        ],
+        "Showing your profile name on the leaderboard.": [
+            "English": "Showing your profile name on the leaderboard.",
+            "Tiếng Việt": "Hiện tên hồ sơ trên bảng xếp hạng.",
+        ],
+        "Ranking anonymously on the leaderboard.": [
+            "English": "Ranking anonymously on the leaderboard.",
+            "Tiếng Việt": "Xếp hạng ẩn danh trên bảng xếp hạng.",
+        ],
+        "min": ["English": "min", "Tiếng Việt": "phút"],
+        "pomo": ["English": "pomo", "Tiếng Việt": "pomo"],
+        "Long break every %d focus sessions": [
+            "English": "Long break every %d focus sessions",
+            "Tiếng Việt": "Nghỉ dài sau mỗi %d phiên tập trung",
+        ],
         "Automation": ["English": "Automation", "Tiếng Việt": "Tự động hóa"],
         "Allowed Websites": ["English": "Allowed Websites", "Tiếng Việt": "Trang web được cho phép"],
         "Auto-open on Focus Start": ["English": "Auto-open on Focus Start", "Tiếng Việt": "Tự động mở khi tập trung"],

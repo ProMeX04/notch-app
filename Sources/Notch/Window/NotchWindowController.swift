@@ -8,7 +8,6 @@ import SwiftUI
 final class NotchWindowController {
     let playbackViewModel: MediaProbeViewModel
     let pomodoroViewModel: PomodoroViewModel
-    let focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore
     let geminiLiveViewModel: GeminiLiveViewModel
     let shelfViewModel: NotchShelfViewModel
     let learningStatsStore: LearningStatsStore
@@ -30,7 +29,6 @@ final class NotchWindowController {
     init(
         playbackViewModel: MediaProbeViewModel,
         pomodoroViewModel: PomodoroViewModel,
-        focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore,
         geminiLiveViewModel: GeminiLiveViewModel,
         shelfViewModel: NotchShelfViewModel,
         learningStatsStore: LearningStatsStore,
@@ -41,7 +39,6 @@ final class NotchWindowController {
     ) {
         self.playbackViewModel = playbackViewModel
         self.pomodoroViewModel = pomodoroViewModel
-        self.focusWebsiteBlocklistStore = focusWebsiteBlocklistStore
         self.geminiLiveViewModel = geminiLiveViewModel
         self.shelfViewModel = shelfViewModel
         self.learningStatsStore = learningStatsStore
@@ -73,8 +70,7 @@ final class NotchWindowController {
             rootView: MediaNotchView(
                 playback: playbackViewModel,
                 pomodoro: pomodoroViewModel,
-                focusWebsiteBlocklistStore: focusWebsiteBlocklistStore,
-                gemini: geminiLiveViewModel,
+                    gemini: geminiLiveViewModel,
                 shelf: shelfViewModel,
                 learningStats: learningStatsStore,
                 presentationModel: presentationModel,

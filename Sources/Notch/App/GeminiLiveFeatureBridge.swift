@@ -8,7 +8,6 @@ struct GeminiLiveFeatureBridge {
     let entitlementStore: NotchEntitlementStore
     let playbackViewModel: MediaProbeViewModel
     let pomodoroViewModel: PomodoroViewModel
-    let focusBrowserBridgeServer: FocusBrowserBridgeServer
 
     func install() {
         let session = geminiLiveViewModel.session
@@ -119,13 +118,6 @@ struct GeminiLiveFeatureBridge {
             } catch {
                 return false
             }
-        }
-
-        session.onBrowserBridgeCommand = { [weak focusBrowserBridgeServer] action, args in
-            await focusBrowserBridgeServer?.enqueueBrowserCommand(action: action, args: args)
-        }
-        session.onBrowserBridgeIsConnected = { [weak focusBrowserBridgeServer] in
-            focusBrowserBridgeServer?.isExtensionConnected ?? false
         }
     }
 }

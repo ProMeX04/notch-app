@@ -43,7 +43,6 @@ final class ApplicationCoordinator {
         cancellables.removeAll()
         singleInstanceCoordinator.unregisterActivationHandler()
         environment.featureCoordinator.stop()
-        environment.focusBrowserBridgeServer.stop()
         jarvisBackgroundWindowController.hide()
         agentResultsWindowController.hide()
         agentResultStore.shutdown()

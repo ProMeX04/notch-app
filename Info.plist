@@ -17,7 +17,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.43</string>
+	<string>1.0.44</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -30,13 +30,15 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>1.0.43</string>
+	<string>1.0.44</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>LSMultipleInstancesProhibited</key>
 	<true/>
 	<key>LSUIElement</key>
 	<true/>
+	<key>NSAccessibilityUsageDescription</key>
+	<string>Notch uses Accessibility to remap spare keys to app shortcuts (Settings → Shortcuts).</string>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Notch controls playback in supported music apps.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>

@@ -14,7 +14,6 @@ final class NotchAppDelegate: NSObject, NSApplicationDelegate {
     var learningStatsStore: LearningStatsStore { bootstrapper.environment.learningStatsStore }
     var focusCloudSyncService: FocusCloudSyncCoordinator { bootstrapper.environment.focusCloudSyncService }
     var pomodoroViewModel: PomodoroViewModel { bootstrapper.environment.pomodoroViewModel }
-    var focusWebsiteBlocklistStore: FocusWebsiteBlocklistStore { bootstrapper.environment.focusWebsiteBlocklistStore }
     var presentationModel: NotchPresentationModel { bootstrapper.environment.presentationModel }
     var shelfViewModel: NotchShelfViewModel { bootstrapper.environment.shelfViewModel }
 

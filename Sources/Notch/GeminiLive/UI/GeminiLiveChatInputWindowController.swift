@@ -625,31 +625,6 @@ private struct InlineAgentResultsBubble: View {
     }
 }
 
-private struct InlineExecApprovalView: View {
-    @ObservedObject var gemini: GeminiLiveViewModel
-
-    var body: some View {
-        if let approval = gemini.currentPendingExecApproval {
-            HStack {
-                GeminiExecApprovalCard(
-                    request: approval,
-                    queueCount: gemini.pendingExecApprovals.count,
-                    onApproveOnce: { gemini.approveCurrentExecApprovalOnce() },
-                    onApproveExact: { gemini.approveCurrentExecApprovalExact() },
-                    onApproveFamily: { gemini.approveCurrentExecApprovalFamily() },
-                    onDeny: { gemini.denyCurrentExecApproval() }
-                )
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .geminiChatGlassBubble()
-                .frame(maxWidth: GeminiChatMarkdownLayout.bubbleContentMaxWidth)
-                Spacer(minLength: 48)
-            }
-            .id("inline-exec-approval")
-        }
-    }
-}
-
 // MARK: - Content View
 
 private struct GeminiLiveChatInputContentView: View {
@@ -673,7 +648,6 @@ private struct GeminiLiveChatInputContentView: View {
     }
 
     private var shouldShowConversation: Bool {
-        if gemini.currentPendingExecApproval != nil { return true }
         return gemini.showTranscriptOverlay && (!gemini.transcriptOverlayAutoHide || !isConversationAutoHidden)
     }
 
@@ -695,9 +669,6 @@ private struct GeminiLiveChatInputContentView: View {
                 revealConversationAndScheduleAutoHide()
             }
             .onChange(of: gemini.isModelThinking) { _, _ in
-                revealConversationAndScheduleAutoHide()
-            }
-            .onChange(of: gemini.pendingExecApprovals) { _, _ in
                 revealConversationAndScheduleAutoHide()
             }
             .onChange(of: gemini.showTranscriptOverlay) { _, showConversation in
@@ -758,10 +729,6 @@ private struct GeminiLiveChatInputContentView: View {
                         }
                     }
 
-                    if gemini.currentPendingExecApproval != nil {
-                        InlineExecApprovalView(gemini: gemini)
-                    }
-
                     if !gemini.userTranscript.isEmpty {
                         HStack {
                             Spacer(minLength: 48)
@@ -802,9 +769,6 @@ private struct GeminiLiveChatInputContentView: View {
                 scrollToBottom(proxy: scrollProxy)
             }
             .onChange(of: gemini.modelTranscript) { _, _ in
-                scrollToBottom(proxy: scrollProxy)
-            }
-            .onChange(of: gemini.pendingExecApprovals) { _, _ in
                 scrollToBottom(proxy: scrollProxy)
             }
             .onAppear {
@@ -1059,11 +1023,11 @@ final class GeminiLiveChatInputWindowController {
         self.gemini = gemini
         cancellables.removeAll()
 
-        Publishers.CombineLatest4(gemini.$lifecycleState, gemini.$showTranscriptOverlay, gemini.$showLiveChatInput, gemini.$pendingExecApprovals)
+        Publishers.CombineLatest3(gemini.$lifecycleState, gemini.$showTranscriptOverlay, gemini.$showLiveChatInput)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] lifecycleState, showConversation, showInput, pendingApprovals in
+            .sink { [weak self] lifecycleState, showConversation, showInput in
                 guard let self else { return }
-                if lifecycleState.preservesSessionUI, showConversation || showInput || !pendingApprovals.isEmpty {
+                if lifecycleState.preservesSessionUI, showConversation || showInput {
                     self.ensurePanel(gemini: gemini)
                     self.panel?.orderFrontRegardless()
                 } else {

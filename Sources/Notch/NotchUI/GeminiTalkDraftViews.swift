@@ -133,7 +133,6 @@ private struct GeminiTalkHubControlSurface: View {
             VStack(spacing: 6) {
                 GeminiTalkHubTinyChip(icon: "waveform", title: gemini.selectedVoice.rawValue, tint: themeAccent)
                 GeminiTalkHubTinyChip(icon: "wrench.and.screwdriver", title: "\(gemini.enabledTools.count) tools", tint: themeAccent)
-                GeminiTalkHubTinyChip(icon: "wand.and.stars", title: "\(gemini.enabledSkillIDs.count) skills", tint: themeAccent)
             }
             .frame(maxWidth: .infinity)
         }

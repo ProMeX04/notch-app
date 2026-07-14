@@ -34,6 +34,13 @@ struct AppFocusSettingsPane: View {
             }
 
             AppSettingsCard(
+                title: Localization.get("TOEIC Study", lang: appLanguage),
+                subtitle: Localization.get("Opens automatically while Focus is running", lang: appLanguage)
+            ) {
+                AppFocusTOEICSettingsRow(tint: tint)
+            }
+
+            AppSettingsCard(
                 title: Localization.get("Session", lang: appLanguage),
                 subtitle: Localization.get("Lengths and long-break cycle", lang: appLanguage)
             ) {
@@ -567,5 +574,66 @@ private struct AppFocusCloudRankingSettingsView: View {
         return focusCloudSync.leaderboardOptIn
             ? Localization.get("Showing your profile name on the leaderboard.", lang: appLanguage)
             : Localization.get("Ranking anonymously on the leaderboard.", lang: appLanguage)
+    }
+}
+
+// MARK: - TOEIC
+
+private struct AppFocusTOEICSettingsRow: View {
+    let tint: Color
+    @ObservedObject private var progress = TOEICProgressStore.shared
+    @AppStorage("app_language") private var appLanguage: String = "English"
+    @AppStorage(TOEICFocusSessionBinder.enabledKey) private var openDuringFocus = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            AppSettingsRow(showDivider: true) {
+                Image(systemName: "text.book.closed.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(tint.opacity(0.9))
+                    .frame(width: 28, height: 28)
+                    .background(tint.opacity(0.1).cornerRadius(8))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(Localization.get("Study during Focus", lang: appLanguage))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.9))
+                    Text(
+                        String(
+                            format: Localization.get(
+                                "Vocab %d · Known %d · Today %d",
+                                lang: appLanguage
+                            ),
+                            TOEICVocabularyBank.count,
+                            progress.snapshot.knownCount,
+                            progress.snapshot.dailyReviewCount
+                        )
+                    )
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.42))
+                }
+
+                Spacer(minLength: 8)
+
+                Toggle("", isOn: $openDuringFocus)
+                    .toggleStyle(NotchSwitchStyle(tint: tint))
+                    .labelsHidden()
+            }
+
+            AppSettingsRow(showDivider: false) {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(tint.opacity(0.9))
+                    .frame(width: 28, height: 28)
+                    .background(tint.opacity(0.1).cornerRadius(8))
+
+                Text(Localization.get("Start Focus → study window opens. Break / pause → closes.", lang: appLanguage))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.45))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Spacer(minLength: 0)
+            }
+        }
     }
 }

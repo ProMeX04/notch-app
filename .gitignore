@@ -13,3 +13,4 @@ xcuserdata/
 *.xcuserstate
 .planning/
 
+script/node_modules/

@@ -124,7 +124,7 @@ struct QuickKeyMapping: Identifiable, Codable, Equatable, Hashable {
     var whenDisplay: String {
         if let appDisplayName, !appDisplayName.isEmpty { return appDisplayName }
         if let appBundleID, !appBundleID.isEmpty { return appBundleID }
-        return "Always"
+        return Localization.get("Always")
     }
 }
 

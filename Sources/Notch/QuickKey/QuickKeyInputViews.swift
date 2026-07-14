@@ -16,12 +16,30 @@ struct QuickKeybindInput: View {
     var detectMultiPress: Bool = false
     var tint: Color = .white
 
+    @AppStorage("app_language") private var appLanguage: String = "English"
     @State private var error: String?
     @FocusState private var textFocused: Bool
 
+    private var recordingPlaceholder: String {
+        if detectMultiPress {
+            return Localization.get("Press · double · triple…", lang: appLanguage)
+        }
+        return Localization.get("Press keys…", lang: appLanguage)
+    }
+
+    private var recordHelp: String {
+        if isRecording {
+            return Localization.get("Stop (Esc)", lang: appLanguage)
+        }
+        if detectMultiPress {
+            return Localization.get("Record key (multi-tap = ×2 / ×3)", lang: appLanguage)
+        }
+        return Localization.get("Record keys", lang: appLanguage)
+    }
+
     var body: some View {
         HStack(spacing: 8) {
-            TextField(isRecording ? (detectMultiPress ? "Press · double · triple…" : "Press keys…") : placeholder, text: $text)
+            TextField(isRecording ? recordingPlaceholder : placeholder, text: $text)
                 .textFieldStyle(.plain)
                 .font(.system(size: 12, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.9))
@@ -46,7 +64,7 @@ struct QuickKeybindInput: View {
                     .foregroundStyle(isRecording ? Color.white.opacity(0.85) : tint.opacity(0.9))
             }
             .buttonStyle(.plain)
-            .help(isRecording ? "Stop (Esc)" : (detectMultiPress ? "Record key (multi-tap = ×2 / ×3)" : "Record keys"))
+            .help(recordHelp)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
@@ -150,7 +168,9 @@ struct QuickKeybindInput: View {
             error = nil
             return true
         case .failure(let e):
-            if showError { error = e.errorDescription }
+            if showError {
+                error = Localization.get(e.errorDescription ?? "Unknown", lang: appLanguage)
+            }
             return false
         }
     }
@@ -158,12 +178,13 @@ struct QuickKeybindInput: View {
 
 struct QuickKeyEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("app_language") private var appLanguage: String = "English"
 
     let existing: QuickKeyMapping?
     var tint: Color = .white
     var onSave: (QuickKeyMapping) -> Void
 
-    @State private var name = "Shortcut"
+    @State private var name = ""
     @State private var isEnabled = true
     @State private var triggerKeyCode = Int(kVK_RightCommand)
     @State private var triggerModifiers: UInt64 = 0
@@ -179,10 +200,14 @@ struct QuickKeyEditorSheet: View {
     @State private var recordingTarget = false
     @State private var saveError: String?
 
+    private func L(_ key: String) -> String {
+        Localization.get(key, lang: appLanguage)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text(existing == nil ? "New Shortcut" : "Edit Shortcut")
+                Text(existing == nil ? L("New Shortcut") : L("Edit Shortcut"))
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(.white.opacity(0.95))
                 Spacer()
@@ -191,8 +216,8 @@ struct QuickKeyEditorSheet: View {
                     .labelsHidden()
             }
 
-            labeled("Name") {
-                TextField("Name", text: $name)
+            labeled(L("Name")) {
+                TextField(L("Name"), text: $name)
                     .textFieldStyle(.plain)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.white.opacity(0.9))
@@ -201,7 +226,7 @@ struct QuickKeyEditorSheet: View {
                     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
             }
 
-            labeled("Key") {
+            labeled(L("Key")) {
                 VStack(alignment: .leading, spacing: 6) {
                     QuickKeybindInput(
                         keyCode: $triggerKeyCode,
@@ -209,14 +234,14 @@ struct QuickKeyEditorSheet: View {
                         text: $triggerText,
                         isRecording: $recordingTrigger,
                         triggerMode: $triggerMode,
-                        placeholder: "key · chord · x2 · x3",
+                        placeholder: L("key · chord · x2 · x3"),
                         allowPureModifiers: true,
                         detectMultiPress: true,
                         tint: tint
                     )
                     .onChange(of: recordingTrigger) { _, v in if v { recordingTarget = false } }
 
-                    Text("1 shortcut → 1 shortcut. Multi-tap while recording: ×2 / ×3.")
+                    Text(L("1 shortcut → 1 shortcut. Multi-tap while recording: ×2 / ×3."))
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.white.opacity(0.38))
                         .fixedSize(horizontal: false, vertical: true)
@@ -231,7 +256,7 @@ struct QuickKeyEditorSheet: View {
                 Spacer()
             }
 
-            labeled("Send") {
+            labeled(L("Send")) {
                 QuickKeybindInput(
                     keyCode: $targetKeyCode,
                     modifiers: $targetModifiers,
@@ -246,11 +271,11 @@ struct QuickKeyEditorSheet: View {
                 .onChange(of: recordingTarget) { _, v in if v { recordingTrigger = false } }
             }
 
-            labeled("When") {
+            labeled(L("When")) {
                 VStack(alignment: .leading, spacing: 8) {
                     Picker("", selection: $whenApp) {
-                        Text("Always").tag(false)
-                        Text("App").tag(true)
+                        Text(L("Always")).tag(false)
+                        Text(L("App")).tag(true)
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
@@ -258,7 +283,7 @@ struct QuickKeyEditorSheet: View {
                     if whenApp {
                         Button(action: showAppPicker) {
                             HStack {
-                                Text(appDisplayName.isEmpty ? "Choose app…" : appDisplayName)
+                                Text(appDisplayName.isEmpty ? L("Choose app…") : appDisplayName)
                                     .font(.system(size: 12, weight: .medium))
                                     .foregroundStyle(appDisplayName.isEmpty ? .white.opacity(0.4) : .white.opacity(0.9))
                                 Spacer()
@@ -284,7 +309,7 @@ struct QuickKeyEditorSheet: View {
 
             HStack {
                 StandardActionButton(
-                    title: "Cancel",
+                    title: L("Cancel"),
                     tint: tint,
                     variant: .secondary,
                     action: { dismiss() }
@@ -292,7 +317,7 @@ struct QuickKeyEditorSheet: View {
                 .keyboardShortcut(.cancelAction)
                 Spacer()
                 StandardActionButton(
-                    title: "Save",
+                    title: L("Save"),
                     tint: tint,
                     variant: .primary,
                     isDisabled: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -320,6 +345,9 @@ struct QuickKeyEditorSheet: View {
 
     private func load() {
         guard let existing else {
+            if name.isEmpty {
+                name = L("Shortcut")
+            }
             triggerText = QuickKeyShortcutParser.format(
                 keyCode: triggerKeyCode,
                 modifiers: triggerModifiers,
@@ -358,9 +386,9 @@ struct QuickKeyEditorSheet: View {
             .sorted { $0.0.localizedCaseInsensitiveCompare($1.0) == .orderedAscending }
 
         let alert = NSAlert()
-        alert.messageText = "Choose App"
-        alert.addButton(withTitle: "OK")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = L("Choose App")
+        alert.addButton(withTitle: L("OK"))
+        alert.addButton(withTitle: L("Cancel"))
         let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 260, height: 28), pullsDown: false)
         for (n, bid) in apps {
             popup.addItem(withTitle: n)
@@ -392,11 +420,11 @@ struct QuickKeyEditorSheet: View {
             modifiers: &tMods,
             triggerMode: &tMode
         ) {
-            saveError = "Key: \(err)"
+            saveError = "\(L("Key")): \(Localization.get(err, lang: appLanguage))"
             return
         }
         if let err = QuickKeyShortcutParser.apply(text: targetText, keyCode: &sCode, modifiers: &sMods) {
-            saveError = "Send: \(err)"
+            saveError = "\(L("Send")): \(Localization.get(err, lang: appLanguage))"
             return
         }
 

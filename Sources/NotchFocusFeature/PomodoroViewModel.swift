@@ -129,6 +129,8 @@ package final class PomodoroViewModel: ObservableObject {
     @Published package private(set) var sessionsBeforeLongBreakOverride: Int? { didSet { persistSettings() } }
     /// Matches `MotivationalQuotes` for the current phase — also used for system notifications when a phase begins (timer or skip).
     @Published package private(set) var phaseReminder: MotivationalQuote = MotivationalQuote(text: "", author: "")
+    /// Extra break seconds queued from study rewards; applied when a break phase starts.
+    @Published package private(set) var pendingLeisureBreakSeconds: Int = 0
 
     private var phaseCompletionTask: Task<Void, Never>?
     private var phaseEndDate: Date?
@@ -215,6 +217,7 @@ package final class PomodoroViewModel: ObservableObject {
         self.breakDurationOverrideSeconds = breakDurationOverrideSeconds
         self.longBreakDurationOverrideSeconds = longBreakDurationOverrideSeconds
         self.sessionsBeforeLongBreakOverride = sessionsBeforeLongBreakOverride
+        self.pendingLeisureBreakSeconds = max(0, userDefaults.integer(forKey: Self.pendingLeisureBreakSecondsKey))
 
         remainingSeconds = focusDurationOverrideSeconds ?? Self.defaultFocusDurationSeconds
         loadTasks()
@@ -399,6 +402,41 @@ package final class PomodoroViewModel: ObservableObject {
         persistRuntimeState()
     }
 
+    /// Study rewards → leisure break time.
+    /// If already on a running break, extends the current phase immediately.
+    /// Otherwise queues seconds for the next short/long break.
+    @discardableResult
+    package func grantLeisureBreakSeconds(_ seconds: Int) -> Int {
+        let grant = max(0, seconds)
+        guard grant > 0 else { return 0 }
+
+        if isRunning, phase == .shortBreak || phase == .longBreak {
+            if let end = phaseEndDate {
+                phaseEndDate = end.addingTimeInterval(TimeInterval(grant))
+            } else {
+                remainingSeconds += grant
+            }
+            remainingSeconds = remainingSeconds(at: nowProvider())
+            // Re-arm completion task for the new end date.
+            startPhaseCompletionTask()
+            persistRuntimeState()
+            return grant
+        }
+
+        pendingLeisureBreakSeconds += grant
+        userDefaults.set(pendingLeisureBreakSeconds, forKey: Self.pendingLeisureBreakSecondsKey)
+        return grant
+    }
+
+    /// Apply and clear any queued leisure seconds (used when entering a break phase).
+    @discardableResult
+    private func consumePendingLeisureBreakSeconds() -> Int {
+        let bonus = max(0, pendingLeisureBreakSeconds)
+        pendingLeisureBreakSeconds = 0
+        userDefaults.set(0, forKey: Self.pendingLeisureBreakSecondsKey)
+        return bonus
+    }
+
     package func setPhase(_ targetPhase: PomodoroPhase) {
         guard phase != targetPhase else { return }
         let shouldContinueRunning = isRunning
@@ -409,7 +447,11 @@ package final class PomodoroViewModel: ObservableObject {
         scheduledPhaseTaskID = UUID()
         
         phase = targetPhase
-        remainingSeconds = duration(for: phase)
+        var phaseDuration = duration(for: phase)
+        if phase == .shortBreak || phase == .longBreak {
+            phaseDuration += consumePendingLeisureBreakSeconds()
+        }
+        remainingSeconds = phaseDuration
         hasActiveSession = true
         recordedFocusSecondsForCurrentPhase = 0
         if shouldContinueRunning {
@@ -527,7 +569,11 @@ package final class PomodoroViewModel: ObservableObject {
             phase = .focus
         }
 
-        remainingSeconds = duration(for: phase)
+        var phaseDuration = duration(for: phase)
+        if phase == .shortBreak || phase == .longBreak {
+            phaseDuration += consumePendingLeisureBreakSeconds()
+        }
+        remainingSeconds = phaseDuration
         phaseEndDate = nil
         hasActiveSession = continueRunning || hadActiveSession
         recordedFocusSecondsForCurrentPhase = 0
@@ -973,6 +1019,7 @@ package final class PomodoroViewModel: ObservableObject {
     private static let breakDurationOverrideSecondsKey = "NotchPomodoroBreakDurationOverrideSeconds"
     private static let longBreakDurationOverrideSecondsKey = "NotchPomodoroLongBreakDurationOverrideSeconds"
     private static let sessionsBeforeLongBreakOverrideKey = "NotchPomodoroSessionsBeforeLongBreakOverride"
+    private static let pendingLeisureBreakSecondsKey = "NotchPomodoroPendingLeisureBreakSeconds"
     private static let defaultFocusDurationSeconds = 25 * 60
     private static let defaultBreakDurationSeconds = 5 * 60
     private static let defaultLongBreakDurationSeconds = 15 * 60

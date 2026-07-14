@@ -14,20 +14,22 @@ enum AppSettingsTab: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     var title: String {
+        let key: String
         switch self {
         case .general:
-            return "General"
+            key = "General"
         case .shelf:
-            return "Shelf"
+            key = "Shelf"
         case .account:
-            return "Account"
+            key = "Account"
         case .focus:
-            return "Focus"
+            key = "Focus"
         case .talk:
-            return "Talk"
+            key = "Talk"
         case .shortcuts:
-            return "Shortcuts"
+            key = "Shortcuts"
         }
+        return Localization.get(key)
     }
 
 

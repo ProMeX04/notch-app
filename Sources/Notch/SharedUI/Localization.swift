@@ -66,6 +66,37 @@ struct Localization {
         "Reset": ["English": "Reset", "Tiếng Việt": "Đặt lại"],
         "Skip": ["English": "Skip", "Tiếng Việt": "Bỏ qua"],
         "Next": ["English": "Next", "Tiếng Việt": "Tiếp theo"],
+        "Correct": ["English": "Correct", "Tiếng Việt": "Đúng"],
+        "Incorrect": ["English": "Incorrect", "Tiếng Việt": "Chưa đúng"],
+        "Answer": ["English": "Answer", "Tiếng Việt": "Đáp án"],
+        "Explanation": ["English": "Explanation", "Tiếng Việt": "Giải thích"],
+        "Translation": ["English": "Translation", "Tiếng Việt": "Dịch nghĩa"],
+        "Accuracy": ["English": "Accuracy", "Tiếng Việt": "Độ chính xác"],
+        "AI quiz: %d ready": [
+            "English": "AI quiz: %d ready",
+            "Tiếng Việt": "AI quiz: %d câu sẵn sàng",
+        ],
+        "AI Part 5/6: %d questions": [
+            "English": "AI Part 5/6: %d questions",
+            "Tiếng Việt": "AI Part 5/6: %d câu",
+        ],
+        "AI unavailable · meaning quiz": [
+            "English": "AI unavailable · meaning quiz",
+            "Tiếng Việt": "AI không sẵn · quiz nghĩa từ",
+        ],
+        "Hover for translation": [
+            "English": "Hover for translation",
+            "Tiếng Việt": "Hover để xem bản dịch",
+        ],
+        "Leisure": ["English": "Leisure", "Tiếng Việt": "Giải trí"],
+        "+%d min leisure": [
+            "English": "+%d min leisure",
+            "Tiếng Việt": "+%d phút giải trí",
+        ],
+        "Break +%d min from study": [
+            "English": "Break +%d min from study",
+            "Tiếng Việt": "Nghỉ +%d phút từ học",
+        ],
         "Auto Start Breaks": ["English": "Auto Start Breaks", "Tiếng Việt": "Tự chạy khi nghỉ"],
         "Auto Start Pomo": ["English": "Auto Start Pomo", "Tiếng Việt": "Tự chạy Pomo"],
         "Auto Breaks": ["English": "Auto Breaks", "Tiếng Việt": "Tự bật nghỉ"],
@@ -228,7 +259,7 @@ struct Localization {
         "Zen": ["English": "Zen", "Tiếng Việt": "Chìm đắm"],
         "Strict": ["English": "Strict", "Tiếng Việt": "Kỷ luật nghỉ"],
         "Sound": ["English": "Sound", "Tiếng Việt": "Âm thanh"],
-        "Streak": ["English": "Streak", "Tiếng Việt": "Chuỗi"],
+        "Streak": ["English": "Streak", "Tiếng Việt": "Chuỗi đúng"],
         "Today": ["English": "Today", "Tiếng Việt": "Hôm nay"],
         "Sessions": ["English": "Sessions", "Tiếng Việt": "Phiên"],
         "Average": ["English": "Average", "Tiếng Việt": "Trung bình"],
@@ -586,6 +617,188 @@ struct Localization {
         "Open System Settings": ["English": "Open System Settings", "Tiếng Việt": "Mở Cài đặt Hệ thống"],
         "%@ requires Full Disk Access to read local data. Please add Notch to the Full Disk Access list in System Settings > Privacy & Security.": ["English": "%@ requires Full Disk Access to read local data. Please add Notch to the Full Disk Access list in System Settings > Privacy & Security.", "Tiếng Việt": "%@ cần quyền Truy cập Toàn bộ Ổ đĩa để đọc dữ liệu cục bộ. Vui lòng thêm Notch vào danh sách Truy cập Toàn bộ Ổ đĩa trong Cài đặt Hệ thống > Quyền riêng tư & Bảo mật."],
         "Launch At Login": ["English": "Launch At Login", "Tiếng Việt": "Khởi động cùng máy"],
+        // MARK: TOEIC Study
+        "TOEIC": ["English": "TOEIC", "Tiếng Việt": "TOEIC"],
+        "TOEIC Study": ["English": "TOEIC Study", "Tiếng Việt": "Học TOEIC"],
+        "Native vocab + Part 5 practice": [
+            "English": "Native vocab + Part 5 practice",
+            "Tiếng Việt": "Từ vựng native + luyện Part 5",
+        ],
+        "Offline pack + AI via localhost OpenAI API": [
+            "English": "Offline pack + AI via localhost OpenAI API",
+            "Tiếng Việt": "Gói offline + AI qua API OpenAI localhost",
+        ],
+        "Bundled Study4 vocab · flashcards + quiz": [
+            "English": "Bundled Study4 vocab · flashcards + quiz",
+            "Tiếng Việt": "Từ vựng Study4 nhúng app · flashcard + quiz",
+        ],
+        "Vocab bank: %d words": [
+            "English": "Vocab bank: %d words",
+            "Tiếng Việt": "Kho từ: %d từ",
+        ],
+        "Bundled vocab · offline": [
+            "English": "Bundled vocab · offline",
+            "Tiếng Việt": "Từ vựng nhúng · offline",
+        ],
+        "Vocab %d · Known %d · Today %d": [
+            "English": "Vocab %d · Known %d · Today %d",
+            "Tiếng Việt": "Từ %d · Thuộc %d · Hôm nay %d",
+        ],
+        "Study during Focus": [
+            "English": "Study during Focus",
+            "Tiếng Việt": "Học khi Focus",
+        ],
+        "Opens automatically while Focus is running": [
+            "English": "Opens automatically while Focus is running",
+            "Tiếng Việt": "Tự mở khi Focus đang chạy",
+        ],
+        "Start Focus → study window opens. Break / pause → closes.": [
+            "English": "Start Focus → study window opens. Break / pause → closes.",
+            "Tiếng Việt": "Bắt đầu Focus → mở cửa sổ học. Nghỉ / tạm dừng → đóng.",
+        ],
+        "Pronounce": [
+            "English": "Pronounce",
+            "Tiếng Việt": "Phát âm",
+        ],
+        "Progress": [
+            "English": "Progress",
+            "Tiếng Việt": "Tiến độ",
+        ],
+        "Vocab flashcards and Part 5 style practice": [
+            "English": "Vocab flashcards and Part 5 style practice",
+            "Tiếng Việt": "Flashcard từ vựng và luyện dạng Part 5",
+        ],
+        "Flashcards": ["English": "Flashcards", "Tiếng Việt": "Flashcard"],
+        "Quiz": ["English": "Quiz", "Tiếng Việt": "Trắc nghiệm"],
+        "Known": ["English": "Known", "Tiếng Việt": "Đã thuộc"],
+        "Shuffle": ["English": "Shuffle", "Tiếng Việt": "Xáo trộn"],
+        "Built-in TOEIC pack · offline": [
+            "English": "Built-in TOEIC pack · offline",
+            "Tiếng Việt": "Gói TOEIC có sẵn · offline",
+        ],
+        "Tap card to flip": ["English": "Tap card to flip", "Tiếng Việt": "Bấm thẻ để lật"],
+        "Again": ["English": "Again", "Tiếng Việt": "Học lại"],
+        "Know": ["English": "Know", "Tiếng Việt": "Đã biết"],
+        "Next question": ["English": "Next question", "Tiếng Việt": "Câu tiếp"],
+        "No cards": ["English": "No cards", "Tiếng Việt": "Không có thẻ"],
+        "No questions": ["English": "No questions", "Tiếng Việt": "Không có câu hỏi"],
+        "Known %d · Today %d · Quiz %d%%": [
+            "English": "Known %d · Today %d · Quiz %d%%",
+            "Tiếng Việt": "Thuộc %d · Hôm nay %d · Quiz %d%%",
+        ],
+        "AI Quiz": ["English": "AI Quiz", "Tiếng Việt": "Quiz AI"],
+        "AI Vocab": ["English": "AI Vocab", "Tiếng Việt": "Từ vựng AI"],
+        "Word bank + AI stems": [
+            "English": "Word bank + AI stems",
+            "Tiếng Việt": "Kho từ + câu AI",
+        ],
+        "Word bank · offline": [
+            "English": "Word bank · offline",
+            "Tiếng Việt": "Kho từ · offline",
+        ],
+        "Drawing from word bank…": [
+            "English": "Drawing from word bank…",
+            "Tiếng Việt": "Đang bốc từ kho…",
+        ],
+        "Building quiz from bank…": [
+            "English": "Building quiz from bank…",
+            "Tiếng Việt": "Đang dựng quiz từ kho…",
+        ],
+        "Refreshing examples…": [
+            "English": "Refreshing examples…",
+            "Tiếng Việt": "Đang làm mới ví dụ…",
+        ],
+        "Word bank is empty": [
+            "English": "Word bank is empty",
+            "Tiếng Việt": "Kho từ trống",
+        ],
+        "AI returned no questions": [
+            "English": "AI returned no questions",
+            "Tiếng Việt": "AI không trả câu hỏi",
+        ],
+        "Quiz from bank: %d words": [
+            "English": "Quiz from bank: %d words",
+            "Tiếng Việt": "Quiz từ kho: %d từ",
+        ],
+        "Study set from bank: %d words": [
+            "English": "Study set from bank: %d words",
+            "Tiếng Việt": "Bộ học từ kho: %d từ",
+        ],
+        "AI explain unavailable · offline note shown": [
+            "English": "AI explain unavailable · offline note shown",
+            "Tiếng Việt": "Không giải thích AI · dùng ghi chú offline",
+        ],
+        "Bank %d words · mastery %d": [
+            "English": "Bank %d words · mastery %d",
+            "Tiếng Việt": "Kho %d từ · mastery %d",
+        ],
+        "Bank %d · mastery %d · Q %d": [
+            "English": "Bank %d · mastery %d · Q %d",
+            "Tiếng Việt": "Kho %d · mastery %d · câu %d",
+        ],
+        "words": ["English": "words", "Tiếng Việt": "từ"],
+        "Reload bank + progress": [
+            "English": "Reload bank + progress",
+            "Tiếng Việt": "Tải lại kho + tiến trình",
+        ],
+
+        // MARK: Shortcuts (QuickKey)
+        "Shortcuts": ["English": "Shortcuts", "Tiếng Việt": "Phím tắt"],
+        "Map spare keys to any app shortcut": [
+            "English": "Map spare keys to any app shortcut",
+            "Tiếng Việt": "Gán phím thừa thành phím tắt của app",
+        ],
+        "Accessibility required": [
+            "English": "Accessibility required",
+            "Tiếng Việt": "Cần quyền Trợ năng",
+        ],
+        "Needed to read and send key events": [
+            "English": "Needed to read and send key events",
+            "Tiếng Việt": "Cần để đọc và gửi sự kiện phím",
+        ],
+        "Open Settings": ["English": "Open Settings", "Tiếng Việt": "Mở Cài đặt"],
+        "Grant": ["English": "Grant", "Tiếng Việt": "Cấp quyền"],
+        "Engine": ["English": "Engine", "Tiếng Việt": "Công cụ"],
+        "Enable remapper": ["English": "Enable remapper", "Tiếng Việt": "Bật remap phím"],
+        "active": ["English": "active", "Tiếng Việt": "đang bật"],
+        "Keybindings": ["English": "Keybindings", "Tiếng Việt": "Phím gán"],
+        "Key → Send": ["English": "Key → Send", "Tiếng Việt": "Phím → Gửi"],
+        "No shortcuts yet": ["English": "No shortcuts yet", "Tiếng Việt": "Chưa có phím tắt"],
+        "Add shortcut": ["English": "Add shortcut", "Tiếng Việt": "Thêm phím tắt"],
+        "New Shortcut": ["English": "New Shortcut", "Tiếng Việt": "Phím tắt mới"],
+        "Edit Shortcut": ["English": "Edit Shortcut", "Tiếng Việt": "Sửa phím tắt"],
+        "Shortcut": ["English": "Shortcut", "Tiếng Việt": "Phím tắt"],
+        "Key": ["English": "Key", "Tiếng Việt": "Phím"],
+        "Send": ["English": "Send", "Tiếng Việt": "Gửi"],
+        "When": ["English": "When", "Tiếng Việt": "Khi"],
+        "Choose app…": ["English": "Choose app…", "Tiếng Việt": "Chọn ứng dụng…"],
+        "Choose App": ["English": "Choose App", "Tiếng Việt": "Chọn ứng dụng"],
+        "OK": ["English": "OK", "Tiếng Việt": "OK"],
+        "key · chord · x2 · x3": [
+            "English": "key · chord · x2 · x3",
+            "Tiếng Việt": "phím · tổ hợp · x2 · x3",
+        ],
+        "1 shortcut → 1 shortcut. Multi-tap while recording: ×2 / ×3.": [
+            "English": "1 shortcut → 1 shortcut. Multi-tap while recording: ×2 / ×3.",
+            "Tiếng Việt": "1 phím tắt → 1 phím tắt. Bấm nhiều lần khi ghi: ×2 / ×3.",
+        ],
+        "Press · double · triple…": [
+            "English": "Press · double · triple…",
+            "Tiếng Việt": "Bấm · double · triple…",
+        ],
+        "Press keys…": ["English": "Press keys…", "Tiếng Việt": "Nhấn phím…"],
+        "Stop (Esc)": ["English": "Stop (Esc)", "Tiếng Việt": "Dừng (Esc)"],
+        "Record key (multi-tap = ×2 / ×3)": [
+            "English": "Record key (multi-tap = ×2 / ×3)",
+            "Tiếng Việt": "Ghi phím (bấm nhiều = ×2 / ×3)",
+        ],
+        "Record keys": ["English": "Record keys", "Tiếng Việt": "Ghi phím"],
+        "Empty": ["English": "Empty", "Tiếng Việt": "Trống"],
+        "Missing key": ["English": "Missing key", "Tiếng Việt": "Thiếu phím"],
+        "Only one main key": ["English": "Only one main key", "Tiếng Việt": "Chỉ một phím chính"],
+        "Empty keybinding": ["English": "Empty keybinding", "Tiếng Việt": "Phím tắt trống"],
+        "Unknown": ["English": "Unknown", "Tiếng Việt": "Không rõ"],
+
         "No agent results yet": ["English": "No agent results yet", "Tiếng Việt": "Chưa có kết quả từ agent"],
         "Items pushed by agents will appear here.": ["English": "Items pushed by agents will appear here.", "Tiếng Việt": "Các mục được gửi từ agent sẽ xuất hiện tại đây."],
         "Copy all visible items": ["English": "Copy all visible items", "Tiếng Việt": "Sao chép tất cả mục đang hiện"],

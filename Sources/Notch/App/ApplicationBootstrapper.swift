@@ -60,6 +60,10 @@ final class ApplicationBootstrapper {
         // Keyboard remapper (Settings → Shortcuts)
         QuickKeyEngine.shared.bootstrap()
 
+        // TOEIC study opens automatically during Focus (running + focus phase).
+        TOEICFocusSessionBinder.shared.bind(pomodoro: environment.pomodoroViewModel)
+        TOEICBlockShortsBridge.shared.startServerIfNeeded()
+
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil,

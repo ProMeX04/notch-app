@@ -104,6 +104,7 @@ let package = Package(
                 .copy("Resources/Animations"),
                 .copy("Resources/Shared"),
                 .copy("Resources/WebMarkdown"),
+                .copy("Resources/TOEIC"),
             ]
         ),
         .executableTarget(

@@ -9,6 +9,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 BUILD_SCRIPT="$ROOT_DIR/build-app.sh"
+# Launch outside ~/Documents so reading bundled resources does not trigger
+# macOS “access Documents” TCC (dev tree lives under Documents/).
+RUN_ROOT="${TMPDIR:-/tmp}/NotchRun"
+RUN_BUNDLE="$RUN_ROOT/$APP_NAME.app"
 
 usage() {
   echo "usage: $0 [run|--debug|--logs|--telemetry|--verify]" >&2
@@ -32,8 +36,21 @@ build_app() {
   fi
 }
 
+stage_run_bundle() {
+  mkdir -p "$RUN_ROOT"
+  # Fresh copy each run so dist/ changes are picked up.
+  rm -rf "$RUN_BUNDLE"
+  /usr/bin/ditto "$APP_BUNDLE" "$RUN_BUNDLE"
+  if [[ ! -x "$RUN_BUNDLE/Contents/MacOS/$APP_NAME" ]]; then
+    echo "error: staged run bundle missing executable at $RUN_BUNDLE" >&2
+    exit 1
+  fi
+}
+
 open_app() {
-  /usr/bin/open -n "$APP_BUNDLE"
+  stage_run_bundle
+  echo "Launching from $RUN_BUNDLE (outside Documents — avoids TCC prompt)"
+  /usr/bin/open -n "$RUN_BUNDLE"
 }
 
 find_pid() {

@@ -102,11 +102,6 @@ final class GeminiLiveSession: @unchecked Sendable {
     var onReadPomodoroState: (@Sendable () async -> [String: Any])?
     var onReadMediaState: (@Sendable () async -> [String: Any])?
     var onMediaCommand: (@Sendable (String, [String: String]) async -> Bool)?
-    var onReadUserStore: (@Sendable () -> String)?
-    var onReadMemoryStore: (@Sendable () -> String)?
-    var onWriteUserStore: (@Sendable (_ content: String) async -> Bool)?
-    var onWriteMemoryStore: (@Sendable (_ content: String) async -> Bool)?
-
 
     func sendVisualFrame(_ data: Data) {
         sendJSONObject([

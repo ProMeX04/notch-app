@@ -194,8 +194,7 @@ extension GeminiLiveViewModel {
 
     func buildSystemPrompt(
         effectiveTools: Set<GeminiTool>,
-        userContent: String,
-        memoryContent: String
+        userContent: String
     ) -> String {
         let promptBody = selectedSystemPromptPreset.content.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedPromptBody = promptBody
@@ -204,13 +203,7 @@ extension GeminiLiveViewModel {
             tag: "user",
             content: userContent
         )
-        let memoryPrompt = buildInjectedPromptSection(
-            title: "Memory",
-            tag: "memory",
-            content: memoryContent
-        )
         let optionalUserSection = userPrompt.isEmpty ? "" : "\n\n\(userPrompt)"
-        let optionalMemorySection = memoryPrompt.isEmpty ? "" : "\n\n\(memoryPrompt)"
         let toolRules = buildToolRules(for: effectiveTools)
         let optionalToolRulesSection = toolRules.isEmpty ? "" : "\n\nTool rules:\n\(toolRules)"
 
@@ -218,7 +211,6 @@ extension GeminiLiveViewModel {
         \(resolvedPromptBody)
         \(optionalToolRulesSection)
         \(optionalUserSection)
-        \(optionalMemorySection)
         """
     }
 
@@ -228,15 +220,6 @@ extension GeminiLiveViewModel {
             userProfileContent = content
         } catch {
             lastErrorMessage = "Failed to save user profile."
-        }
-    }
-
-    func saveMemory(_ content: String) {
-        do {
-            try memoryStore.saveMemory(content)
-            memoryContent = content
-        } catch {
-            lastErrorMessage = "Failed to save memory."
         }
     }
 
@@ -269,9 +252,6 @@ extension GeminiLiveViewModel {
         }
         if effectiveTools.contains(.pomodoro) {
             lines.append("- Use `pomodoro` to control the Notch Pomodoro timer: start, pause, resume, reset, set durations, check status. If the user says stop/end/cancel focus, call reset.")
-        }
-        if effectiveTools.contains(.memory) {
-            lines.append("- Use `memory` to read or write persistent USER.md (identity, preferences) and MEMORY.md (durable facts, habits). Use write-user for profile updates and write-memory for broader long-term notes.")
         }
 
         return lines.joined(separator: "\n")

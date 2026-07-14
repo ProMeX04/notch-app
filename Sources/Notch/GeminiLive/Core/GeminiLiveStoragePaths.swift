@@ -1,6 +1,6 @@
 import Foundation
 
-/// On-disk layout under ~/.notch used by Talk storage (workspace, memory, avatars, transcripts).
+/// On-disk layout under ~/.notch used by Talk storage (workspace, user profile, avatars, transcripts).
 enum GeminiLiveStoragePaths {
     private static let preparedStorage: Void = {
         let fileManager = FileManager.default
@@ -34,10 +34,6 @@ enum GeminiLiveStoragePaths {
 
     static var transcriptsDirectory: URL {
         stateRoot.appendingPathComponent("transcripts", isDirectory: true)
-    }
-
-    static var memoryFile: URL {
-        workspaceRoot.appendingPathComponent("MEMORY.md")
     }
 
     static var userFile: URL {
@@ -117,26 +113,6 @@ enum GeminiLiveStoragePaths {
         if path == rootPath { return "." }
         guard path.hasPrefix(rootPath + "/") else { return resolved.lastPathComponent }
         return String(path.dropFirst(rootPath.count + 1))
-    }
-}
-
-final class MemoryStore: @unchecked Sendable {
-    private let fileManager: FileManager
-    private let fileURL: URL
-
-    init(fileManager: FileManager = .default, fileURL: URL = GeminiLiveStoragePaths.memoryFile) {
-        GeminiLiveStoragePaths.prepare(fileManager: fileManager)
-        self.fileManager = fileManager
-        self.fileURL = fileURL
-    }
-
-    func readMainMemory() -> String {
-        (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
-    }
-
-    func saveMemory(_ content: String) throws {
-        try fileManager.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try content.write(to: fileURL, atomically: true, encoding: .utf8)
     }
 }
 

@@ -34,8 +34,6 @@ extension GeminiLiveSession {
             handleMediaControlCall(id: id, call: call)
         case GeminiLiveToolName.clipboard:
             handleClipboardCall(id: id, call: call)
-        case GeminiLiveToolName.memory:
-            handleMemoryCall(id: id, call: call)
         default:
             sendFunctionResponse(id: id, name: name, result: ["error": "Unknown function or missing parameters"])
         }
@@ -336,38 +334,6 @@ extension GeminiLiveSession {
         }
     }
 
-
-    private func handleMemoryCall(id: String, call: [String: Any]) {
-        let name = GeminiLiveToolName.memory
-        let rawArgs = call["args"] as? [String: Any] ?? [:]
-        let action = GeminiToolArgumentNormalizer.stringValue(in: rawArgs, keys: ["action"]) ?? "read-user"
-        let contentStr = GeminiToolArgumentNormalizer.stringValue(in: rawArgs, keys: ["content"]) ?? ""
-        
-        let sendableArgs = SendableToolArgs(args: rawArgs)
-        toolExecutionQueue.async { [weak self] in
-            guard let self else { return }
-            self.notifyFunctionStarted(name: name, args: sendableArgs.args)
-            Task {
-                var result: [String: Any] = ["success": false, "error": "Unknown memory action"]
-                switch action {
-                case "read-user":
-                    result = ["success": true, "content": self.onReadUserStore?() ?? ""]
-                case "read-memory":
-                    result = ["success": true, "content": self.onReadMemoryStore?() ?? ""]
-                case "write-user":
-                    let ok = await self.onWriteUserStore?(contentStr) ?? false
-                    result = ["success": ok, "message": ok ? "User profile updated." : "Failed to update user profile."]
-                case "write-memory":
-                    let ok = await self.onWriteMemoryStore?(contentStr) ?? false
-                    result = ["success": ok, "message": ok ? "Memory updated." : "Failed to update memory."]
-                default:
-                    break
-                }
-                self.notifyFunctionExecuted(name: name, args: sendableArgs.args, result: result)
-                self.sendFunctionResponse(id: id, name: name, result: result)
-            }
-        }
-    }
 
 }
 

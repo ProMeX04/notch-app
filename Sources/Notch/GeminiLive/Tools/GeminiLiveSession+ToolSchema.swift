@@ -222,33 +222,6 @@ extension GeminiLiveSession {
                 ] as [String: Any]
             ])
         }
-        if enabledTools.contains(.memory) {
-            decls.append([
-                "name": GeminiLiveToolName.memory,
-                "description": """
-                Read or write persistent memory files for long-term context.
-                - "read-user": Read USER.md (stable identity: name, pronouns, role, preferences).
-                - "read-memory": Read MEMORY.md (durable facts, preferences, habits).
-                - "write-user": Overwrite USER.md with updated profile content.
-                - "write-memory": Overwrite MEMORY.md with updated memory content.
-                Use "write-user" when the user shares or corrects identity details. Use "write-memory" for broader long-term notes. Do not save temporary chatter or sensitive data.
-                """,
-                "parameters": [
-                    "type": "OBJECT",
-                    "properties": [
-                        "action": [
-                            "type": "STRING",
-                            "description": "Action: 'read-user', 'read-memory', 'write-user', or 'write-memory'."
-                        ],
-                        "content": [
-                            "type": "STRING",
-                            "description": "For 'write-user' or 'write-memory': the full file content to save."
-                        ],
-                    ],
-                    "required": ["action"]
-                ] as [String: Any]
-            ])
-        }
         return decls
     }
 

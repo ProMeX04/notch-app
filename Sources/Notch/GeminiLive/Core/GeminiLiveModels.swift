@@ -256,7 +256,6 @@ enum GeminiTool: String, CaseIterable, Identifiable {
     case appControl = "appControl"
     case mediaControl = "mediaControl"
     case pomodoro = "pomodoro"
-    case memory = "memory"
 
     var id: String { rawValue }
 
@@ -268,7 +267,6 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         .appControl,
         .mediaControl,
         .pomodoro,
-        .memory,
     ]
 
     static let coreToolSet: Set<GeminiTool> = Set(coreCases)
@@ -281,11 +279,10 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         .appControl,
         .mediaControl,
         .pomodoro,
-        .memory,
     ]
 
     /// Tools excluded from the default set for safety (off until user enables).
-    /// Note: shell `exec`, browser control, local file search, and Apple Mail were removed.
+    /// Note: shell `exec`, browser control, local file search, Apple Mail, and memory were removed.
     static let restrictedTools: Set<GeminiTool> = []
 
     var displayName: String {
@@ -297,7 +294,6 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         case .appControl: return "App"
         case .mediaControl: return "Media"
         case .pomodoro: return "Focus"
-        case .memory: return "Memory"
         }
     }
 
@@ -310,7 +306,6 @@ enum GeminiTool: String, CaseIterable, Identifiable {
         case .appControl: return "macwindow"
         case .mediaControl: return "playpause"
         case .pomodoro: return "timer"
-        case .memory: return "brain"
         }
     }
 }

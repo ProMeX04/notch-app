@@ -39,11 +39,9 @@ final class GeminiLiveSessionController {
 final class GeminiLiveToolingController {
     let agentAvatarStore: GeminiAgentAvatarStore
     let userStore: UserStore
-    let memoryStore: MemoryStore
 
     init() {
         agentAvatarStore = GeminiAgentAvatarStore()
         userStore = UserStore()
-        memoryStore = MemoryStore()
     }
 }

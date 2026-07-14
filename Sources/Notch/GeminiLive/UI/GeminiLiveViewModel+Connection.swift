@@ -117,8 +117,7 @@ extension GeminiLiveViewModel {
             let effectiveTools = self.effectiveEnabledTools
             let systemPrompt = self.buildSystemPrompt(
                 effectiveTools: effectiveTools,
-                userContent: self.userProfileContent,
-                memoryContent: self.memoryContent
+                userContent: self.userProfileContent
             )
 
             let preset = self.selectedSystemPromptPreset

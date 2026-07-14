@@ -61,7 +61,6 @@ final class GeminiLiveViewModel: ObservableObject {
     }
     @Published private(set) var backendSignedInSummary: String?
     @Published var userProfileContent: String = ""
-    @Published var memoryContent: String = ""
 
     @Published private(set) var isScreenSharingEnabled = false
     @Published private(set) var isCameraSharingEnabled = false
@@ -188,7 +187,6 @@ final class GeminiLiveViewModel: ObservableObject {
     private var settingsStore: GeminiLiveSettingsStore { settingsController.settingsStore }
     var agentAvatarStore: GeminiAgentAvatarStore { toolingController.agentAvatarStore }
     var userStore: UserStore { toolingController.userStore }
-    var memoryStore: MemoryStore { toolingController.memoryStore }
     var selectedModel: GeminiLiveModel {
         get {
             let normalizedID = GeminiLiveModel.normalizedModelID(selectedModelID)
@@ -242,7 +240,6 @@ final class GeminiLiveViewModel: ObservableObject {
         }
 
         userProfileContent = dependencies.toolingController.userStore.readUserProfile()
-        memoryContent = dependencies.toolingController.memoryStore.readMainMemory()
 
         let currentGeminiKey = dependencies.settingsController.keyStore.read()?.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedCurrentGeminiKey = (currentGeminiKey?.isEmpty == false) ? currentGeminiKey : nil

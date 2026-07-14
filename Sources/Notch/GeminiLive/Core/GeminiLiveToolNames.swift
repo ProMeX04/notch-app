@@ -5,5 +5,4 @@ enum GeminiLiveToolName {
     static let appControl = "appControl"
     static let mediaControl = "mediaControl"
     static let clipboard = "clipboard"
-    static let memory = "memory"
 }

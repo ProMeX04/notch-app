@@ -9,11 +9,9 @@ struct AppTalkSettingsPane: View {
     @State private var agentNameDraft = ""
     @State private var agentPromptDraft = ""
     @State private var userProfileDraft = ""
-    @State private var memoryDraft = ""
     @State private var showingDeleteAgentAlert = false
 
     @State private var isUserProfileExpanded = false
-    @State private var isMemoryExpanded = false
     @State private var isSystemPromptExpanded = false
     private var tint: Color {
         settingsAccentColor(from: accentColorID)
@@ -159,7 +157,7 @@ struct AppTalkSettingsPane: View {
                 title: Localization.get("Context Files", lang: appLanguage)
             ) {
                 VStack(alignment: .leading, spacing: 0) {
-                    AppSettingsRow(showDivider: true) {
+                    AppSettingsRow(showDivider: false) {
                         VStack(alignment: .leading, spacing: 10) {
                             Button {
                                 withAnimation(.snappy(duration: 0.25)) {
@@ -195,43 +193,6 @@ struct AppTalkSettingsPane: View {
                             }
                         }
                     }
-
-                    AppSettingsRow(showDivider: false) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Button {
-                                withAnimation(.snappy(duration: 0.25)) {
-                                    isMemoryExpanded.toggle()
-                                }
-                            } label: {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "brain")
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .foregroundStyle(tint.opacity(0.9))
-                                        .frame(width: 28, height: 28)
-                                        .background(tint.opacity(0.1).cornerRadius(8))
-                                    Text(Localization.get("Memory", lang: appLanguage))
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(.white.opacity(0.9))
-                                    Spacer()
-                                    Image(systemName: isMemoryExpanded ? "chevron.down" : "chevron.right")
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundStyle(.white.opacity(0.4))
-                                }
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-
-                            if isMemoryExpanded {
-                                GeminiFileTextEditor(text: $memoryDraft)
-                                    .onChange(of: memoryDraft) { _, newValue in
-                                        if gemini.memoryContent != newValue {
-                                            gemini.saveMemory(newValue)
-                                        }
-                                    }
-                                    .disabled(!gemini.canManageConfiguration)
-                            }
-                        }
-                    }
                 }
             }
 
@@ -247,7 +208,6 @@ struct AppTalkSettingsPane: View {
         .onAppear(perform: syncDrafts)
         .onChange(of: gemini.selectedSystemPromptID) { _, _ in syncAgentDrafts() }
         .onChange(of: gemini.userProfileContent) { _, value in userProfileDraft = value }
-        .onChange(of: gemini.memoryContent) { _, value in memoryDraft = value }
         .alert(Localization.get("Delete Agent?", lang: appLanguage), isPresented: $showingDeleteAgentAlert) {
             Button(Localization.get("Cancel", lang: appLanguage), role: .cancel) {}
             Button(Localization.get("Delete", lang: appLanguage), role: .destructive) {
@@ -487,7 +447,6 @@ struct AppTalkSettingsPane: View {
     private func syncDrafts() {
         syncAgentDrafts()
         userProfileDraft = gemini.userProfileContent
-        memoryDraft = gemini.memoryContent
         holdShortcut = HoldToTalkShortcutStore.load()
 
         Task {

@@ -126,7 +126,7 @@ GeminiLiveViewModel
   -> session/coordinator interfaces
     -> GeminiLiveSession for transport/audio/session lifecycle
     -> Gemini tool registry for schema + routing
-    -> app feature bridge for Focus/Media/Memory/Browser commands
+    -> app feature bridge for Focus/Media/Browser commands
     -> local data services for Mail/Spotlight/filesystem access
 ```
 

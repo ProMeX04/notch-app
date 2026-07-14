@@ -20,8 +20,6 @@ extension GeminiLiveViewModel {
             return ToolActionToast(label: Localization.get("Controlling media…"), icon: "playpause", showsInOverlay: false)
         case "pomodoro":
             return ToolActionToast(label: Localization.get("Controlling timer…"), icon: "timer", showsInOverlay: false)
-        case "memory":
-            return ToolActionToast(label: Localization.get("Using memory…"), icon: "brain", showsInOverlay: false)
         case "exec":
             return ToolActionToast(label: Localization.get("Running command…"), icon: "terminal", showsInOverlay: false)
         default:
@@ -59,8 +57,6 @@ extension GeminiLiveViewModel {
             return ToolActionToast(label: mediaControlToolActionLabel(args: args, result: result), icon: "playpause", showsInOverlay: false)
         case "pomodoro":
             return ToolActionToast(label: pomodoroToolActionLabel(args: args, result: result, message: message), icon: "timer", showsInOverlay: false)
-        case "memory":
-            return ToolActionToast(label: memoryToolActionLabel(args: args, message: message), icon: "brain", showsInOverlay: false)
         case "exec":
             return ToolActionToast(label: execToolActionLabel(args: args, result: result, message: message), icon: "terminal", showsInOverlay: false)
         default:
@@ -190,21 +186,6 @@ extension GeminiLiveViewModel {
         }
     }
 
-    private nonisolated func memoryToolActionLabel(args: [String: Any], message: String?) -> String {
-        switch stringValue(args, "action") {
-        case "read-user":
-            return "Read user profile"
-        case "read-memory":
-            return "Read memory"
-        case "write-user":
-            return message ?? "Updated user profile"
-        case "write-memory":
-            return message ?? "Updated memory"
-        default:
-            return message ?? "Memory action completed"
-        }
-    }
-
     private nonisolated func execToolActionLabel(args: [String: Any], result: [String: Any], message: String?) -> String {
         let command = stringValue(args, "command").map(shortCommand)
         if let exitCode = intValue(result, "exitCode") {
@@ -322,8 +303,6 @@ extension GeminiLiveViewModel {
             return "Media control failed."
         case "pomodoro":
             return "Timer control failed."
-        case "memory":
-            return "Memory failed."
         case "exec":
             return "Command failed."
         default:

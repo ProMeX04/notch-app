@@ -90,34 +90,5 @@ struct GeminiLiveFeatureBridge {
                 "currentTask": currentTask
             ]
         }
-
-        let userStore = geminiLiveViewModel.toolingController.userStore
-        let memoryStore = geminiLiveViewModel.toolingController.memoryStore
-        session.onReadUserStore = { [weak userStore] in
-            userStore?.readUserProfile() ?? ""
-        }
-        session.onReadMemoryStore = { [weak memoryStore] in
-            memoryStore?.readMainMemory() ?? ""
-        }
-        session.onWriteUserStore = { [weak geminiLiveViewModel, weak userStore] content in
-            guard let vm = geminiLiveViewModel, let userStore else { return false }
-            do {
-                try userStore.saveUserProfile(content)
-                await MainActor.run { vm.userProfileContent = content }
-                return true
-            } catch {
-                return false
-            }
-        }
-        session.onWriteMemoryStore = { [weak geminiLiveViewModel, weak memoryStore] content in
-            guard let vm = geminiLiveViewModel, let memoryStore else { return false }
-            do {
-                try memoryStore.saveMemory(content)
-                await MainActor.run { vm.memoryContent = content }
-                return true
-            } catch {
-                return false
-            }
-        }
     }
 }

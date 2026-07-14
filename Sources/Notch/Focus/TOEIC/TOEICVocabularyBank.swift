@@ -26,9 +26,11 @@ enum TOEICVocabularyBank {
     static var count: Int { cachedCards.count }
 
     private static func loadFromBundle() -> [TOEICVocabCard] {
+        // Use NotchResourceBundle (Contents/Resources/Notch_Notch.bundle) — not Bundle.module,
+        // which fails in ad-hoc/brew installs without a local .build path.
         let url =
-            Bundle.module.url(forResource: "toeic_vocabulary", withExtension: "json", subdirectory: "TOEIC")
-            ?? Bundle.module.url(forResource: "toeic_vocabulary", withExtension: "json")
+            NotchResourceBundle.url(forResource: "toeic_vocabulary", withExtension: "json", subdirectory: "TOEIC")
+            ?? NotchResourceBundle.url(forResource: "toeic_vocabulary", withExtension: "json")
             ?? Bundle.main.url(forResource: "toeic_vocabulary", withExtension: "json", subdirectory: "TOEIC")
             ?? Bundle.main.url(forResource: "toeic_vocabulary", withExtension: "json")
 

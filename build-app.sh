@@ -39,7 +39,15 @@ if [[ -d "$BIN_DIR/LiveKitWebRTC.framework" ]]; then
     cp -R "$BIN_DIR/LiveKitWebRTC.framework" "$APP_DIR/Contents/MacOS/"
 fi
 
-cp -R "$BIN_DIR/${APP_NAME}_${APP_NAME}.bundle" "$APP_DIR/Contents/Resources/${APP_NAME}_${APP_NAME}.bundle"
+# SPM resource bundle lives in Contents/Resources (codesign-safe).
+# App code must load via NotchResourceBundle (not Bundle.module alone —
+# SPM's Bundle.module points at app-root/Notch_Notch.bundle which breaks release installs).
+RESOURCE_BUNDLE="$BIN_DIR/${APP_NAME}_${APP_NAME}.bundle"
+if [[ -d "$RESOURCE_BUNDLE" ]]; then
+    cp -R "$RESOURCE_BUNDLE" "$APP_DIR/Contents/Resources/${APP_NAME}_${APP_NAME}.bundle"
+fi
+# Ensure no unsealed contents at app root (codesign rejects that).
+rm -rf "$APP_DIR/${APP_NAME}_${APP_NAME}.bundle"
 
 if [[ -f "$ROOT_DIR/AppIcon.icns" ]]; then
     cp "$ROOT_DIR/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"

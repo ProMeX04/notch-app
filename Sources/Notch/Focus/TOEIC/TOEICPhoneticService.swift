@@ -44,8 +44,8 @@ final class TOEICPhoneticService: ObservableObject {
 
     private static func loadBundledIPA() -> [String: String] {
         let url =
-            Bundle.module.url(forResource: "toeic_phonetics", withExtension: "json", subdirectory: "TOEIC")
-            ?? Bundle.module.url(forResource: "toeic_phonetics", withExtension: "json")
+            NotchResourceBundle.url(forResource: "toeic_phonetics", withExtension: "json", subdirectory: "TOEIC")
+            ?? NotchResourceBundle.url(forResource: "toeic_phonetics", withExtension: "json")
             ?? Bundle.main.url(forResource: "toeic_phonetics", withExtension: "json", subdirectory: "TOEIC")
             ?? Bundle.main.url(forResource: "toeic_phonetics", withExtension: "json")
 

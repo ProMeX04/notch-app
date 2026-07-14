@@ -21,8 +21,6 @@ final class TOEICFocusSessionBinder {
         cancellables.removeAll()
         self.pomodoro = pomodoro
         TOEICStudyViewModel.shared.pomodoro = pomodoro
-        // Localhost bridge so Block Shorts can claim leisure minutes while Notch is open.
-        TOEICBlockShortsBridge.shared.startServerIfNeeded()
 
         Publishers.CombineLatest(pomodoro.$isRunning, pomodoro.$phase)
             .receive(on: DispatchQueue.main)

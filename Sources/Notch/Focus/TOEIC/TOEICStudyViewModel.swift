@@ -270,16 +270,10 @@ final class TOEICStudyViewModel: ObservableObject {
     }
 
     /// Bank leisure minutes from study (shown in UI). Applied to Focus break when break starts.
-    /// Also pushes a grant to Block Shorts & Reels (`gemini_pending_minutes` via bridge).
     private func creditLeisure(_ minutes: Int) {
         let granted = progress.earnLeisureMinutes(minutes)
         lastLeisureRewardMinutes = granted
         guard granted > 0 else { return }
-        TOEICBlockShortsBridge.shared.enqueueLeisureMinutes(
-            granted,
-            reason: "study_reward"
-        )
-        TOEICBlockShortsBridge.shared.startServerIfNeeded()
         statusMessage = String(
             format: Localization.get("+%d min leisure"),
             granted

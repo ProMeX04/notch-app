@@ -1,12 +1,13 @@
 import AppKit
 import Carbon.HIToolbox
 
-/// Lightweight CGEvent remapper used by Notch Settings → Shortcuts.
+/// Lightweight CGEvent remapper: one trigger shortcut → one send shortcut.
+/// Trigger supports single key, chord, double-press, and triple-press.
 final class QuickKeyEngine: @unchecked Sendable {
     static let shared = QuickKeyEngine()
 
-    /// Max gap between presses for double-press triggers.
-    private static let doublePressInterval: CFTimeInterval = 0.38
+    /// Gap between multi-taps (double / triple).
+    private static let multiPressInterval: CFTimeInterval = 0.38
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -20,16 +21,18 @@ final class QuickKeyEngine: @unchecked Sendable {
     private var watchesModifiers = false
     private var frontmostBundleID: String?
 
-    /// Waiting for a second press of a double-mode trigger.
-    private var pendingDouble: PendingDoublePress?
-    private var doubleTimeoutWorkItem: DispatchWorkItem?
+    /// Multi-tap in progress for a trigger shortcut.
+    private var pendingMulti: PendingMultiPress?
+    private var multiTimeoutWorkItem: DispatchWorkItem?
 
-    private struct PendingDoublePress {
+    private struct PendingMultiPress {
         let keyCode: Int
         let modifiers: UInt64
         let isModifier: Bool
-        let mapping: QuickKeyMapping
-        let startedAt: CFAbsoluteTime
+        /// Mappings that share this key/mods (app-scoped preferred set).
+        let candidates: [QuickKeyMapping]
+        var pressCount: Int
+        var lastPressAt: CFAbsoluteTime
     }
 
     private init() {
@@ -63,7 +66,6 @@ final class QuickKeyEngine: @unchecked Sendable {
         }
     }
 
-    /// Call once from app bootstrap.
     @MainActor
     func bootstrap() {
         QuickKeyAccessibility.shared.refresh()
@@ -131,7 +133,7 @@ final class QuickKeyEngine: @unchecked Sendable {
 
     @MainActor
     func stop() {
-        cancelPendingDouble(reinject: false)
+        cancelPendingMulti(reinject: false)
         stopTapOnly()
         lock.lock()
         byKeyCode = [:]
@@ -172,7 +174,7 @@ final class QuickKeyEngine: @unchecked Sendable {
         isPaused = paused
         lock.unlock()
         if paused {
-            cancelPendingDouble(reinject: false)
+            cancelPendingMulti(reinject: false)
         }
     }
 
@@ -191,7 +193,7 @@ final class QuickKeyEngine: @unchecked Sendable {
         let paused = isPaused
         let synthesizing = isSynthesizing
         let watchMods = watchesModifiers
-        let pending = pendingDouble
+        let pending = pendingMulti
         let candidatesSnapshot = byKeyCode
         let front = frontmostBundleID
         lock.unlock()
@@ -202,26 +204,21 @@ final class QuickKeyEngine: @unchecked Sendable {
 
         let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
 
-        // Swallow companion events while waiting for a double press.
-        // Do not swallow a second press of the same key — that completes the double.
+        // Companion events while multi-tapping.
         if let pending {
             if type == .keyUp, keyCode == pending.keyCode, !pending.isModifier {
                 return nil
             }
             if type == .flagsChanged, keyCode == pending.keyCode, pending.isModifier {
                 let isDown = QuickKeyModifier.isDown(keyCode: keyCode, cgFlags: event.flags)
-                if !isDown {
-                    // Modifier release of the first press.
-                    return nil
-                }
-                // Second press of same modifier — fall through to resolvePress.
+                if !isDown { return nil }
+                // Second/third press of same modifier — fall through.
             }
             let isNewPress =
                 type == .keyDown
                 || (type == .flagsChanged && QuickKeyModifier.isDown(keyCode: keyCode, cgFlags: event.flags))
             if isNewPress, keyCode != pending.keyCode {
-                cancelPendingDouble(reinject: true)
-                // Re-process the new key without the stale pending state.
+                cancelPendingMulti(reinject: true)
                 return handle(type: type, event: event)
             }
         }
@@ -243,22 +240,21 @@ final class QuickKeyEngine: @unchecked Sendable {
         }
 
         let modifiers = event.flags.rawValue & QuickKeyChord.relevantModifierMask
-        guard let mapping = match(maps: maps, modifiers: modifiers, frontBundle: front) else {
+        let matched = matchAll(maps: maps, modifiers: modifiers, frontBundle: front)
+        guard !matched.isEmpty else {
             return Unmanaged.passUnretained(event)
         }
 
-        // Swallow keyUp for matched mappings (paired with swallowed keyDown).
         if type == .keyUp {
             return nil
         }
 
-        // Ignore OS key repeat.
         if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 {
             return nil
         }
 
         return resolvePress(
-            mapping: mapping,
+            candidates: matched,
             keyCode: keyCode,
             modifiers: modifiers,
             isModifier: false
@@ -274,11 +270,12 @@ final class QuickKeyEngine: @unchecked Sendable {
         guard QuickKeyModifier.isDown(keyCode: keyCode, cgFlags: event.flags) else {
             return Unmanaged.passUnretained(event)
         }
-        guard let mapping = match(maps: maps, modifiers: 0, frontBundle: front) else {
+        let matched = matchAll(maps: maps, modifiers: 0, frontBundle: front)
+        guard !matched.isEmpty else {
             return Unmanaged.passUnretained(event)
         }
         return resolvePress(
-            mapping: mapping,
+            candidates: matched,
             keyCode: keyCode,
             modifiers: 0,
             isModifier: true
@@ -286,80 +283,107 @@ final class QuickKeyEngine: @unchecked Sendable {
     }
 
     private func resolvePress(
-        mapping: QuickKeyMapping,
+        candidates: [QuickKeyMapping],
         keyCode: Int,
         modifiers: UInt64,
         isModifier: Bool
     ) -> Unmanaged<CGEvent>? {
-        switch mapping.triggerMode {
-        case .single:
-            cancelPendingDouble(reinject: true)
+        let maxRequired = candidates.map(\.triggerMode.pressCount).max() ?? 1
+
+        // Fast path: only single-press mappings.
+        if maxRequired == 1, let mapping = preferred(candidates, pressCount: 1) {
+            cancelPendingMulti(reinject: true)
             synthesize(mapping)
             return nil
+        }
 
-        case .double:
-            lock.lock()
-            let existing = pendingDouble
-            lock.unlock()
+        lock.lock()
+        let existing = pendingMulti
+        lock.unlock()
 
-            if let pending = existing,
-               pending.keyCode == keyCode,
-               pending.modifiers == modifiers,
-               pending.mapping.id == mapping.id,
-               CFAbsoluteTimeGetCurrent() - pending.startedAt <= Self.doublePressInterval {
-                cancelPendingDouble(reinject: false)
-                synthesize(mapping)
+        if let pending = existing,
+           pending.keyCode == keyCode,
+           pending.modifiers == modifiers {
+            var next = pending
+            next.pressCount += 1
+            next.lastPressAt = CFAbsoluteTimeGetCurrent()
+
+            if next.pressCount >= maxRequired {
+                cancelPendingMulti(reinject: false)
+                if let mapping = preferred(next.candidates, pressCount: next.pressCount)
+                    ?? preferred(next.candidates, pressCount: maxRequired) {
+                    synthesize(mapping)
+                }
                 return nil
             }
 
-            // First press of a double (or restart after a different/stale pending).
-            cancelPendingDouble(reinject: true)
-            beginPendingDouble(
-                keyCode: keyCode,
-                modifiers: modifiers,
-                isModifier: isModifier,
-                mapping: mapping
-            )
+            lock.lock()
+            pendingMulti = next
+            lock.unlock()
+            scheduleMultiTimeout()
             return nil
         }
-    }
 
-    private func beginPendingDouble(
-        keyCode: Int,
-        modifiers: UInt64,
-        isModifier: Bool,
-        mapping: QuickKeyMapping
-    ) {
+        // First press of a multi-tap sequence (or restart).
+        cancelPendingMulti(reinject: true)
+
+        if maxRequired == 1, let mapping = preferred(candidates, pressCount: 1) {
+            synthesize(mapping)
+            return nil
+        }
+
         lock.lock()
-        pendingDouble = PendingDoublePress(
+        pendingMulti = PendingMultiPress(
             keyCode: keyCode,
             modifiers: modifiers,
             isModifier: isModifier,
-            mapping: mapping,
-            startedAt: CFAbsoluteTimeGetCurrent()
+            candidates: candidates,
+            pressCount: 1,
+            lastPressAt: CFAbsoluteTimeGetCurrent()
         )
         lock.unlock()
+        scheduleMultiTimeout()
+        return nil
+    }
 
-        doubleTimeoutWorkItem?.cancel()
+    private func scheduleMultiTimeout() {
+        multiTimeoutWorkItem?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            self?.onDoublePressTimeout()
+            self?.onMultiPressTimeout()
         }
-        doubleTimeoutWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.doublePressInterval, execute: work)
+        multiTimeoutWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.multiPressInterval, execute: work)
     }
 
-    private func onDoublePressTimeout() {
-        // Single press only — reinject so the original key is not lost.
-        cancelPendingDouble(reinject: true)
+    private func onMultiPressTimeout() {
+        lock.lock()
+        let pending = pendingMulti
+        pendingMulti = nil
+        multiTimeoutWorkItem = nil
+        lock.unlock()
+
+        guard let pending else { return }
+
+        if let mapping = preferred(pending.candidates, pressCount: pending.pressCount) {
+            synthesize(mapping)
+            return
+        }
+
+        // No mapping for this press count — reinject original key(s) once.
+        reinjectOriginal(
+            keyCode: pending.keyCode,
+            modifiers: pending.modifiers,
+            isModifier: pending.isModifier
+        )
     }
 
-    private func cancelPendingDouble(reinject: Bool) {
-        doubleTimeoutWorkItem?.cancel()
-        doubleTimeoutWorkItem = nil
+    private func cancelPendingMulti(reinject: Bool) {
+        multiTimeoutWorkItem?.cancel()
+        multiTimeoutWorkItem = nil
 
         lock.lock()
-        let pending = pendingDouble
-        pendingDouble = nil
+        let pending = pendingMulti
+        pendingMulti = nil
         lock.unlock()
 
         guard reinject, let pending else { return }
@@ -406,17 +430,27 @@ final class QuickKeyEngine: @unchecked Sendable {
         }
     }
 
-    private func match(maps: [QuickKeyMapping], modifiers: UInt64, frontBundle: String?) -> QuickKeyMapping? {
-        var globalHit: QuickKeyMapping?
+    /// All mappings for this key+mods, app-specific preferred over global when both exist for same mode.
+    private func matchAll(maps: [QuickKeyMapping], modifiers: UInt64, frontBundle: String?) -> [QuickKeyMapping] {
+        var appHits: [QuickKeyMapping] = []
+        var globalHits: [QuickKeyMapping] = []
         for mapping in maps {
             guard mapping.triggerModifiers == modifiers else { continue }
             if let bid = mapping.appBundleID, !bid.isEmpty {
-                if bid == frontBundle { return mapping }
-            } else if globalHit == nil {
-                globalHit = mapping
+                if bid == frontBundle { appHits.append(mapping) }
+            } else {
+                globalHits.append(mapping)
             }
         }
-        return globalHit
+        // Prefer app-scoped when present for a press count; otherwise global.
+        var byCount: [Int: QuickKeyMapping] = [:]
+        for m in globalHits { byCount[m.triggerMode.pressCount] = m }
+        for m in appHits { byCount[m.triggerMode.pressCount] = m }
+        return byCount.values.sorted { $0.triggerMode.pressCount < $1.triggerMode.pressCount }
+    }
+
+    private func preferred(_ candidates: [QuickKeyMapping], pressCount: Int) -> QuickKeyMapping? {
+        candidates.first { $0.triggerMode.pressCount == pressCount }
     }
 
     private func synthesize(_ mapping: QuickKeyMapping) {

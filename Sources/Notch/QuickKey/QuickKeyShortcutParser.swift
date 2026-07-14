@@ -30,10 +30,16 @@ enum QuickKeyShortcutParser {
 
         var s = trimmed
         var triggerMode: QuickKeyTriggerMode = .single
-        // Optional double marker: "rcmd x2", "rcmd×2", "cmd+b ×2"
-        let doublePattern = #/(?i)(?:\s*[×x]\s*2|\s+double)\s*$/#
-        if let match = s.firstMatch(of: doublePattern) {
-            triggerMode = .double
+        // Optional multi marker: "rcmd x2", "rcmd×3", "cmd+b double", "f13 triple"
+        let multiPattern = #/(?i)(?:\s*[×x]\s*([23])|\s+(double|triple))\s*$/#
+        if let match = s.firstMatch(of: multiPattern) {
+            let whole = String(s[match.range])
+            let lower = whole.lowercased()
+            if lower.contains("3") || lower.contains("triple") {
+                triggerMode = .triple
+            } else {
+                triggerMode = .double
+            }
             s = String(s[..<match.range.lowerBound])
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         }
@@ -53,16 +59,24 @@ enum QuickKeyShortcutParser {
         var modifiers: UInt64 = 0
         var resolvedKey: Int?
         var sawKey = false
+        var sameKeyRepeats = 0
+        /// Ambiguous bare names (`ctrl`, `cmd`, …) — chord flag if a main key follows, else pure left key.
+        var bareModifierFlags: [UInt64] = []
 
         for token in tokens {
             if token == "x2" || token == "×2" || token == "double" {
                 triggerMode = .double
                 continue
             }
+            if token == "x3" || token == "×3" || token == "triple" {
+                triggerMode = .triple
+                continue
+            }
             if let sideKey = sideModifierKeyCode(token) {
                 if sawKey {
                     if resolvedKey == sideKey {
-                        triggerMode = .double
+                        sameKeyRepeats += 1
+                        triggerMode = QuickKeyTriggerMode(pressCount: 1 + sameKeyRepeats)
                         continue
                     }
                     return .failure(.multipleKeys)
@@ -72,22 +86,41 @@ enum QuickKeyShortcutParser {
                 continue
             }
             if let flag = chordModifierFlag(token) {
-                modifiers |= flag
+                bareModifierFlags.append(flag)
                 continue
             }
             if let code = resolveKeyCode(token) {
                 if sawKey {
                     if resolvedKey == code {
-                        triggerMode = .double
+                        sameKeyRepeats += 1
+                        triggerMode = QuickKeyTriggerMode(pressCount: 1 + sameKeyRepeats)
                         continue
                     }
                     return .failure(.multipleKeys)
                 }
+                // Main key present → prior bare names are chord modifiers.
+                for flag in bareModifierFlags { modifiers |= flag }
+                bareModifierFlags.removeAll()
                 resolvedKey = code
                 sawKey = true
                 continue
             }
             return .failure(.unknownToken(token))
+        }
+
+        if !sawKey {
+            // `ctrl` alone → left Control pure key (same as recording left Control).
+            // `ctrl+cmd` alone without a key is invalid.
+            if bareModifierFlags.count == 1, let pure = pureLeftKey(forFlag: bareModifierFlags[0]) {
+                resolvedKey = pure
+                sawKey = true
+            } else if bareModifierFlags.isEmpty {
+                return .failure(.missingKey)
+            } else {
+                return .failure(.missingKey)
+            }
+        } else {
+            for flag in bareModifierFlags { modifiers |= flag }
         }
 
         guard let key = resolvedKey else { return .failure(.missingKey) }
@@ -100,6 +133,8 @@ enum QuickKeyShortcutParser {
     static func format(keyCode: Int, modifiers: UInt64, mode: QuickKeyTriggerMode = .single) -> String {
         let base: String
         if QuickKeyModifier.isModifierKeyCode(keyCode) {
+            // Left pure keys use friendly names: ctrl / cmd / opt / shift
+            // Right pure keys stay explicit: rctrl / rcmd / …
             base = formatKeyOnly(keyCode)
         } else {
             var parts: [String] = []
@@ -114,6 +149,7 @@ enum QuickKeyShortcutParser {
         switch mode {
         case .single: return base
         case .double: return "\(base) x2"
+        case .triple: return "\(base) x3"
         }
     }
 
@@ -197,6 +233,7 @@ enum QuickKeyShortcutParser {
         }
     }
 
+    /// Bare `ctrl` / `cmd` / … (not rctrl / lctrl).
     private static func chordModifierFlag(_ token: String) -> UInt64? {
         switch normalize(token) {
         case "cmd", "command", "meta", "super", "win":
@@ -210,6 +247,15 @@ enum QuickKeyShortcutParser {
         default:
             return nil
         }
+    }
+
+    /// Map a lone chord flag to the left physical modifier key.
+    private static func pureLeftKey(forFlag flag: UInt64) -> Int? {
+        if flag == CGEventFlags.maskControl.rawValue { return Int(kVK_Control) }
+        if flag == CGEventFlags.maskCommand.rawValue { return Int(kVK_Command) }
+        if flag == CGEventFlags.maskAlternate.rawValue { return Int(kVK_Option) }
+        if flag == CGEventFlags.maskShift.rawValue { return Int(kVK_Shift) }
+        return nil
     }
 
     private static func resolveKeyCode(_ token: String) -> Int? {
@@ -295,14 +341,16 @@ enum QuickKeyShortcutParser {
 
     private static func formatKeyOnly(_ keyCode: Int) -> String {
         switch keyCode {
+        // Left pure modifiers: friendly names (match what users type).
+        case Int(kVK_Command): return "cmd"
+        case Int(kVK_Control): return "ctrl"
+        case Int(kVK_Option): return "opt"
+        case Int(kVK_Shift): return "shift"
+        // Right pure modifiers: explicit side prefix.
         case Int(kVK_RightCommand): return "rcmd"
-        case Int(kVK_Command): return "lcmd"
         case Int(kVK_RightControl): return "rctrl"
-        case Int(kVK_Control): return "lctrl"
         case Int(kVK_RightOption): return "ropt"
-        case Int(kVK_Option): return "lopt"
         case Int(kVK_RightShift): return "rshift"
-        case Int(kVK_Shift): return "lshift"
         case Int(kVK_Function): return "fn"
         case Int(kVK_CapsLock): return "caps"
         case Int(kVK_Space): return "space"

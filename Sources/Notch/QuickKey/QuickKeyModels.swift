@@ -2,17 +2,29 @@ import AppKit
 import Carbon.HIToolbox
 import Foundation
 
-/// How many times the trigger key must be pressed to fire the mapping.
+/// How many times the trigger shortcut must be pressed to fire the mapping.
+/// Mapping is always 1 trigger shortcut → 1 send shortcut.
 enum QuickKeyTriggerMode: String, Codable, CaseIterable, Identifiable, Hashable {
     case single
     case double
+    case triple
 
     var id: String { rawValue }
+
+    /// Presses required within the multi-tap window.
+    var pressCount: Int {
+        switch self {
+        case .single: return 1
+        case .double: return 2
+        case .triple: return 3
+        }
+    }
 
     var displayName: String {
         switch self {
         case .single: return "Single"
         case .double: return "Double"
+        case .triple: return "Triple"
         }
     }
 
@@ -20,18 +32,34 @@ enum QuickKeyTriggerMode: String, Codable, CaseIterable, Identifiable, Hashable 
         switch self {
         case .single: return ""
         case .double: return "×2"
+        case .triple: return "×3"
+        }
+    }
+
+    init(pressCount: Int) {
+        switch pressCount {
+        case 3...: self = .triple
+        case 2: self = .double
+        default: self = .single
         }
     }
 }
 
-/// Spare key → app shortcut (optional frontmost-app scope).
+/// One trigger shortcut → one send shortcut (optional frontmost-app scope).
+///
+/// Trigger may be:
+/// - one key (e.g. F13, Menu, r⌘)
+/// - a chord (e.g. ⌘B)
+/// - multi-press of that key/chord (×2 / ×3)
+///
+/// Send is always a single key or chord delivered once when the trigger fires.
 struct QuickKeyMapping: Identifiable, Codable, Equatable, Hashable {
     var id: UUID
     var name: String
     var isEnabled: Bool
     var triggerKeyCode: Int
     var triggerModifiers: UInt64
-    /// `.single` = one press; `.double` = two presses within a short window.
+    /// Single / double / triple press of the trigger shortcut.
     var triggerMode: QuickKeyTriggerMode
     var targetKeyCode: Int
     var targetModifiers: UInt64
@@ -85,12 +113,8 @@ struct QuickKeyMapping: Identifiable, Codable, Equatable, Hashable {
 
     var triggerDisplay: String {
         let base = QuickKeyChord.display(keyCode: triggerKeyCode, modifiers: triggerModifiers)
-        switch triggerMode {
-        case .single:
-            return base
-        case .double:
-            return "\(base) ×2"
-        }
+        let badge = triggerMode.shortBadge
+        return badge.isEmpty ? base : "\(base) \(badge)"
     }
 
     var targetDisplay: String {
@@ -148,9 +172,10 @@ enum QuickKeyChord {
             Int(kVK_ANSI_Grave): "`",
             Int(kVK_Return): "↵", Int(kVK_Tab): "⇥", Int(kVK_Space): "Space",
             Int(kVK_Delete): "⌫", Int(kVK_Escape): "Esc",
-            Int(kVK_Command): "l⌘", Int(kVK_Shift): "l⇧",
-            Int(kVK_CapsLock): "Caps", Int(kVK_Option): "l⌥",
-            Int(kVK_Control): "l⌃",
+            // Left pure keys: no "l" prefix (matches typed `ctrl` / `cmd`).
+            Int(kVK_Command): "⌘", Int(kVK_Shift): "⇧",
+            Int(kVK_CapsLock): "Caps", Int(kVK_Option): "⌥",
+            Int(kVK_Control): "⌃",
             Int(kVK_RightCommand): "r⌘", Int(kVK_RightShift): "r⇧",
             Int(kVK_RightOption): "r⌥", Int(kVK_RightControl): "r⌃",
             Int(kVK_Function): "Fn",
@@ -185,6 +210,16 @@ enum QuickKeyChord {
 }
 
 enum QuickKeyModifier {
+    // Device-dependent side masks (NX_DEVICE*KEYMASK) — distinguish left vs right.
+    private static let leftControlBit: UInt64 = 0x0000_0001
+    private static let leftShiftBit: UInt64 = 0x0000_0002
+    private static let rightShiftBit: UInt64 = 0x0000_0004
+    private static let leftCommandBit: UInt64 = 0x0000_0008
+    private static let rightCommandBit: UInt64 = 0x0000_0010
+    private static let leftAlternateBit: UInt64 = 0x0000_0020
+    private static let rightAlternateBit: UInt64 = 0x0000_0040
+    private static let rightControlBit: UInt64 = 0x0000_2000
+
     static func isModifierKeyCode(_ keyCode: Int) -> Bool {
         switch keyCode {
         case Int(kVK_Command), Int(kVK_Shift), Int(kVK_CapsLock),
@@ -198,34 +233,86 @@ enum QuickKeyModifier {
     }
 
     static func isDown(keyCode: Int, nsFlags: NSEvent.ModifierFlags) -> Bool {
-        switch keyCode {
-        case Int(kVK_Shift), Int(kVK_RightShift): return nsFlags.contains(.shift)
-        case Int(kVK_Command), Int(kVK_RightCommand): return nsFlags.contains(.command)
-        case Int(kVK_Option), Int(kVK_RightOption): return nsFlags.contains(.option)
-        case Int(kVK_Control), Int(kVK_RightControl): return nsFlags.contains(.control)
-        case Int(kVK_CapsLock): return nsFlags.contains(.capsLock)
-        case Int(kVK_Function): return nsFlags.contains(.function)
-        default: return false
-        }
+        isDown(keyCode: keyCode, rawFlags: UInt64(nsFlags.rawValue), deviceIndependent: {
+            switch keyCode {
+            case Int(kVK_Shift), Int(kVK_RightShift): return nsFlags.contains(.shift)
+            case Int(kVK_Command), Int(kVK_RightCommand): return nsFlags.contains(.command)
+            case Int(kVK_Option), Int(kVK_RightOption): return nsFlags.contains(.option)
+            case Int(kVK_Control), Int(kVK_RightControl): return nsFlags.contains(.control)
+            case Int(kVK_CapsLock): return nsFlags.contains(.capsLock)
+            case Int(kVK_Function): return nsFlags.contains(.function)
+            default: return false
+            }
+        })
     }
 
     static func isDown(keyCode: Int, cgFlags: CGEventFlags) -> Bool {
+        isDown(keyCode: keyCode, rawFlags: cgFlags.rawValue, deviceIndependent: {
+            switch keyCode {
+            case Int(kVK_Shift), Int(kVK_RightShift): return cgFlags.contains(.maskShift)
+            case Int(kVK_Command), Int(kVK_RightCommand): return cgFlags.contains(.maskCommand)
+            case Int(kVK_Option), Int(kVK_RightOption): return cgFlags.contains(.maskAlternate)
+            case Int(kVK_Control), Int(kVK_RightControl): return cgFlags.contains(.maskControl)
+            case Int(kVK_CapsLock): return cgFlags.contains(.maskAlphaShift)
+            case Int(kVK_Function): return cgFlags.contains(.maskSecondaryFn)
+            default: return false
+            }
+        })
+    }
+
+    /// Prefer side-specific bits so left Control is not confused with right Control.
+    private static func isDown(
+        keyCode: Int,
+        rawFlags: UInt64,
+        deviceIndependent: () -> Bool
+    ) -> Bool {
         switch keyCode {
-        case Int(kVK_Shift), Int(kVK_RightShift): return cgFlags.contains(.maskShift)
-        case Int(kVK_Command), Int(kVK_RightCommand): return cgFlags.contains(.maskCommand)
-        case Int(kVK_Option), Int(kVK_RightOption): return cgFlags.contains(.maskAlternate)
-        case Int(kVK_Control), Int(kVK_RightControl): return cgFlags.contains(.maskControl)
-        case Int(kVK_CapsLock): return cgFlags.contains(.maskAlphaShift)
-        case Int(kVK_Function): return cgFlags.contains(.maskSecondaryFn)
-        default: return false
+        case Int(kVK_Control):
+            if rawFlags & leftControlBit != 0 { return true }
+            if rawFlags & rightControlBit != 0 { return false }
+            return deviceIndependent()
+        case Int(kVK_RightControl):
+            if rawFlags & rightControlBit != 0 { return true }
+            if rawFlags & leftControlBit != 0 { return false }
+            return deviceIndependent()
+        case Int(kVK_Shift):
+            if rawFlags & leftShiftBit != 0 { return true }
+            if rawFlags & rightShiftBit != 0 { return false }
+            return deviceIndependent()
+        case Int(kVK_RightShift):
+            if rawFlags & rightShiftBit != 0 { return true }
+            if rawFlags & leftShiftBit != 0 { return false }
+            return deviceIndependent()
+        case Int(kVK_Command):
+            if rawFlags & leftCommandBit != 0 { return true }
+            if rawFlags & rightCommandBit != 0 { return false }
+            return deviceIndependent()
+        case Int(kVK_RightCommand):
+            if rawFlags & rightCommandBit != 0 { return true }
+            if rawFlags & leftCommandBit != 0 { return false }
+            return deviceIndependent()
+        case Int(kVK_Option):
+            if rawFlags & leftAlternateBit != 0 { return true }
+            if rawFlags & rightAlternateBit != 0 { return false }
+            return deviceIndependent()
+        case Int(kVK_RightOption):
+            if rawFlags & rightAlternateBit != 0 { return true }
+            if rawFlags & leftAlternateBit != 0 { return false }
+            return deviceIndependent()
+        case Int(kVK_CapsLock), Int(kVK_Function):
+            return deviceIndependent()
+        default:
+            return false
         }
     }
 
+    /// Pure modifier keys that can be the entire Key (trigger), left and right.
     static func isPureCaptureKey(_ keyCode: Int) -> Bool {
         switch keyCode {
-        case Int(kVK_RightCommand), Int(kVK_RightControl),
+        case Int(kVK_Command), Int(kVK_Control), Int(kVK_Option), Int(kVK_Shift),
+             Int(kVK_RightCommand), Int(kVK_RightControl),
              Int(kVK_RightOption), Int(kVK_RightShift),
-             Int(kVK_Function):
+             Int(kVK_Function), Int(kVK_CapsLock):
             return true
         default:
             return false

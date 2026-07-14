@@ -8,12 +8,12 @@ struct QuickKeybindInput: View {
     @Binding var modifiers: UInt64
     @Binding var text: String
     @Binding var isRecording: Bool
-    /// When `detectDoublePress` is true, double-tap while recording sets this to `.double`.
+    /// Multi-tap while recording sets this to `.double` / `.triple` when `detectMultiPress`.
     @Binding var triggerMode: QuickKeyTriggerMode
     var placeholder: String = "cmd+b"
     var allowPureModifiers: Bool = true
-    /// Key field only: double-tap while recording → double trigger (no separate mode picker).
-    var detectDoublePress: Bool = false
+    /// Key field only: multi-tap while recording → ×2 / ×3 (no separate mode picker).
+    var detectMultiPress: Bool = false
     var tint: Color = .white
 
     @State private var error: String?
@@ -21,7 +21,7 @@ struct QuickKeybindInput: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            TextField(isRecording ? (detectDoublePress ? "Press or double-tap…" : "Press keys…") : placeholder, text: $text)
+            TextField(isRecording ? (detectMultiPress ? "Press · double · triple…" : "Press keys…") : placeholder, text: $text)
                 .textFieldStyle(.plain)
                 .font(.system(size: 12, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.9))
@@ -46,7 +46,7 @@ struct QuickKeybindInput: View {
                     .foregroundStyle(isRecording ? Color.white.opacity(0.85) : tint.opacity(0.9))
             }
             .buttonStyle(.plain)
-            .help(isRecording ? "Stop (Esc)" : (detectDoublePress ? "Record key (double-tap = double)" : "Record keys"))
+            .help(isRecording ? "Stop (Esc)" : (detectMultiPress ? "Record key (multi-tap = ×2 / ×3)" : "Record keys"))
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
@@ -65,7 +65,7 @@ struct QuickKeybindInput: View {
                 modifiers: $modifiers,
                 triggerMode: $triggerMode,
                 allowPureModifiers: allowPureModifiers,
-                detectDoublePress: detectDoublePress
+                detectMultiPress: detectMultiPress
             )
         )
         .onChange(of: isRecording) { was, now in
@@ -107,10 +107,12 @@ struct QuickKeybindInput: View {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty, case .success(let r) = QuickKeyShortcutParser.parse(trimmed) {
             let base = QuickKeyChord.display(keyCode: r.keyCode, modifiers: r.modifiers)
-            return r.triggerMode == .double ? "\(base) ×2" : base
+            let badge = r.triggerMode.shortBadge
+            return badge.isEmpty ? base : "\(base) \(badge)"
         }
         let base = QuickKeyChord.display(keyCode: keyCode, modifiers: modifiers)
-        return triggerMode == .double ? "\(base) ×2" : base
+        let badge = triggerMode.shortBadge
+        return badge.isEmpty ? base : "\(base) \(badge)"
     }
 
     private func formattedText() -> String {
@@ -139,7 +141,7 @@ struct QuickKeybindInput: View {
         case .success(let r):
             keyCode = r.keyCode
             modifiers = r.modifiers
-            if detectDoublePress {
+            if detectMultiPress {
                 triggerMode = r.triggerMode
             } else {
                 triggerMode = .single
@@ -200,18 +202,25 @@ struct QuickKeyEditorSheet: View {
             }
 
             labeled("Key") {
-                QuickKeybindInput(
-                    keyCode: $triggerKeyCode,
-                    modifiers: $triggerModifiers,
-                    text: $triggerText,
-                    isRecording: $recordingTrigger,
-                    triggerMode: $triggerMode,
-                    placeholder: "rcmd  or double-tap",
-                    allowPureModifiers: true,
-                    detectDoublePress: true,
-                    tint: tint
-                )
-                .onChange(of: recordingTrigger) { _, v in if v { recordingTarget = false } }
+                VStack(alignment: .leading, spacing: 6) {
+                    QuickKeybindInput(
+                        keyCode: $triggerKeyCode,
+                        modifiers: $triggerModifiers,
+                        text: $triggerText,
+                        isRecording: $recordingTrigger,
+                        triggerMode: $triggerMode,
+                        placeholder: "key · chord · x2 · x3",
+                        allowPureModifiers: true,
+                        detectMultiPress: true,
+                        tint: tint
+                    )
+                    .onChange(of: recordingTrigger) { _, v in if v { recordingTarget = false } }
+
+                    Text("1 shortcut → 1 shortcut. Multi-tap while recording: ×2 / ×3.")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.38))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             HStack {
@@ -231,7 +240,7 @@ struct QuickKeyEditorSheet: View {
                     triggerMode: .constant(.single),
                     placeholder: "cmd+b",
                     allowPureModifiers: false,
-                    detectDoublePress: false,
+                    detectMultiPress: false,
                     tint: tint
                 )
                 .onChange(of: recordingTarget) { _, v in if v { recordingTrigger = false } }

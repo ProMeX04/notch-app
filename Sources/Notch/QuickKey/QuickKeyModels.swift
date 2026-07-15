@@ -45,12 +45,89 @@ enum QuickKeyTriggerMode: String, Codable, CaseIterable, Identifiable, Hashable 
     }
 }
 
+/// Mouse buttons encoded as synthetic trigger key codes (no clash with HID 0…255).
+/// CG button numbers: 0 left, 1 right, 2 middle, 3 back (Mouse 4), 4 forward (Mouse 5).
+enum QuickKeyMouse {
+    static let keyCodeBase = 1_000_000
+
+    static func keyCode(forButton button: Int) -> Int {
+        keyCodeBase + button
+    }
+
+    static func isMouseKeyCode(_ keyCode: Int) -> Bool {
+        keyCode >= keyCodeBase && keyCode < keyCodeBase + 32
+    }
+
+    static func buttonNumber(fromKeyCode keyCode: Int) -> Int? {
+        guard isMouseKeyCode(keyCode) else { return nil }
+        return keyCode - keyCodeBase
+    }
+
+    /// Remappable extras only — not primary left/right click.
+    static func isRemappableButton(_ button: Int) -> Bool {
+        (2...31).contains(button)
+    }
+
+    static func displayName(button: Int) -> String {
+        switch button {
+        case 2: return "Middle"
+        case 3: return "Mouse 4"
+        case 4: return "Mouse 5"
+        default: return "Mouse \(button + 1)"
+        }
+    }
+
+    static func formatToken(button: Int) -> String {
+        switch button {
+        case 2: return "middle"
+        case 3: return "mouse4"
+        case 4: return "mouse5"
+        default: return "mousebtn\(button)"
+        }
+    }
+
+    /// Parse typed tokens → CG mouse button number.
+    static func buttonNumber(fromToken token: String) -> Int? {
+        switch token {
+        case "middle", "mid", "mouse3", "m3", "mousebtn2", "btn2", "button2":
+            return 2
+        case "mouse4", "m4", "back", "mouseback", "sideback", "mousebtn3", "btn3", "button3":
+            return 3
+        case "mouse5", "m5", "fwd", "forward", "mousefwd", "mouseforward", "sidefwd",
+             "mousebtn4", "btn4", "button4":
+            return 4
+        default:
+            if token.hasPrefix("mousebtn"), let n = Int(token.dropFirst("mousebtn".count)), (2...31).contains(n) {
+                return n
+            }
+            if token.hasPrefix("btn"), let n = Int(token.dropFirst(3)), (2...31).contains(n) {
+                return n
+            }
+            if token.hasPrefix("mouse"), let n = Int(token.dropFirst(5)), (3...32).contains(n) {
+                // mouse3 → button 2, mouse4 → button 3, …
+                return n - 1
+            }
+            return nil
+        }
+    }
+
+    /// CGEvent only exposes left / right / other — middle and side buttons use `otherMouse*`.
+    static func eventTypes(forButton button: Int) -> (down: CGEventType, up: CGEventType) {
+        switch button {
+        case 0: return (.leftMouseDown, .leftMouseUp)
+        case 1: return (.rightMouseDown, .rightMouseUp)
+        default: return (.otherMouseDown, .otherMouseUp)
+        }
+    }
+}
+
 /// One trigger shortcut → one send shortcut (optional frontmost-app scope).
 ///
 /// Trigger may be:
 /// - one key (e.g. F13, Menu, r⌘)
 /// - a chord (e.g. ⌘B)
 /// - multi-press of that key/chord (×2 / ×3)
+/// - a mouse button (Middle / Mouse 4 / Mouse 5 side buttons)
 ///
 /// Send is always a single key or chord delivered once when the trigger fires.
 struct QuickKeyMapping: Identifiable, Codable, Equatable, Hashable {
@@ -136,6 +213,10 @@ enum QuickKeyChord {
         | CGEventFlags.maskControl.rawValue
 
     static func display(keyCode: Int, modifiers: UInt64) -> String {
+        if QuickKeyMouse.isMouseKeyCode(keyCode),
+           let button = QuickKeyMouse.buttonNumber(fromKeyCode: keyCode) {
+            return QuickKeyMouse.displayName(button: button)
+        }
         if QuickKeyModifier.isModifierKeyCode(keyCode) {
             return keyName(for: keyCode)
         }
@@ -150,6 +231,10 @@ enum QuickKeyChord {
     }
 
     static func keyName(for keyCode: Int) -> String {
+        if QuickKeyMouse.isMouseKeyCode(keyCode),
+           let button = QuickKeyMouse.buttonNumber(fromKeyCode: keyCode) {
+            return QuickKeyMouse.displayName(button: button)
+        }
         let map: [Int: String] = [
             Int(kVK_ANSI_A): "A", Int(kVK_ANSI_B): "B", Int(kVK_ANSI_C): "C",
             Int(kVK_ANSI_D): "D", Int(kVK_ANSI_E): "E", Int(kVK_ANSI_F): "F",

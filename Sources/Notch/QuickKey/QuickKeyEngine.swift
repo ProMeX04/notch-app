@@ -2,7 +2,7 @@ import AppKit
 import Carbon.HIToolbox
 
 /// Lightweight CGEvent remapper: one trigger shortcut → one send shortcut.
-/// Trigger supports single key, chord, double-press, and triple-press.
+/// Trigger supports keys, chords, multi-press, and extra mouse buttons (Middle / Mouse 4–5).
 final class QuickKeyEngine: @unchecked Sendable {
     static let shared = QuickKeyEngine()
 
@@ -19,6 +19,7 @@ final class QuickKeyEngine: @unchecked Sendable {
     private var engineEnabled = true
     private var byKeyCode: [Int: [QuickKeyMapping]] = [:]
     private var watchesModifiers = false
+    private var watchesMouse = false
     private var frontmostBundleID: String?
 
     /// Multi-tap in progress for a trigger shortcut.
@@ -29,6 +30,7 @@ final class QuickKeyEngine: @unchecked Sendable {
         let keyCode: Int
         let modifiers: UInt64
         let isModifier: Bool
+        let isMouse: Bool
         /// Mappings that share this key/mods (app-scoped preferred set).
         let candidates: [QuickKeyMapping]
         var pressCount: Int
@@ -80,11 +82,49 @@ final class QuickKeyEngine: @unchecked Sendable {
         let enabled = store.isEngineEnabled
         var index: [Int: [QuickKeyMapping]] = [:]
         var needsModifiers = false
+        var needsMouse = false
         if enabled {
             for mapping in store.mappings where mapping.isEnabled {
                 index[mapping.triggerKeyCode, default: []].append(mapping)
                 if QuickKeyModifier.isModifierKeyCode(mapping.triggerKeyCode) {
                     needsModifiers = true
+                }
+                if QuickKeyMouse.isMouseKeyCode(mapping.triggerKeyCode) {
+                    needsMouse = true
+                }
+            }
+        }
+        lock.lock()
+        let mouseChanged = watchesMouse != needsMouse
+        engineEnabled = enabled
+        byKeyCode = index
+        watchesModifiers = needsModifiers
+        watchesMouse = needsMouse
+        lock.unlock()
+        // Mouse watch set changed → rebuild the event tap mask.
+        if mouseChanged, eventTap != nil {
+            start()
+        }
+    }
+
+    @MainActor
+    func start() {
+        cancelPendingMulti(reinject: false)
+        stopTapOnly()
+        // Load index without re-entering start via mouseChanged.
+        let store = QuickKeyStore.shared
+        let enabled = store.isEngineEnabled
+        var index: [Int: [QuickKeyMapping]] = [:]
+        var needsModifiers = false
+        var needsMouse = false
+        if enabled {
+            for mapping in store.mappings where mapping.isEnabled {
+                index[mapping.triggerKeyCode, default: []].append(mapping)
+                if QuickKeyModifier.isModifierKeyCode(mapping.triggerKeyCode) {
+                    needsModifiers = true
+                }
+                if QuickKeyMouse.isMouseKeyCode(mapping.triggerKeyCode) {
+                    needsMouse = true
                 }
             }
         }
@@ -92,19 +132,20 @@ final class QuickKeyEngine: @unchecked Sendable {
         engineEnabled = enabled
         byKeyCode = index
         watchesModifiers = needsModifiers
+        watchesMouse = needsMouse
         lock.unlock()
-    }
-
-    @MainActor
-    func start() {
-        stopTapOnly()
-        reloadMappings()
         frontmostBundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
 
-        let mask =
+        var mask =
             (1 << CGEventType.keyDown.rawValue)
             | (1 << CGEventType.keyUp.rawValue)
             | (1 << CGEventType.flagsChanged.rawValue)
+        if needsMouse {
+            // Middle + side buttons arrive as otherMouse* with buttonNumber 2+.
+            mask |=
+                (1 << CGEventType.otherMouseDown.rawValue)
+                | (1 << CGEventType.otherMouseUp.rawValue)
+        }
 
         let callback: CGEventTapCallBack = { _, type, event, refcon in
             guard let refcon else { return Unmanaged.passUnretained(event) }
@@ -139,6 +180,7 @@ final class QuickKeyEngine: @unchecked Sendable {
         byKeyCode = [:]
         engineEnabled = false
         watchesModifiers = false
+        watchesMouse = false
         lock.unlock()
     }
 
@@ -193,6 +235,7 @@ final class QuickKeyEngine: @unchecked Sendable {
         let paused = isPaused
         let synthesizing = isSynthesizing
         let watchMods = watchesModifiers
+        let watchMouse = watchesMouse
         let pending = pendingMulti
         let candidatesSnapshot = byKeyCode
         let front = frontmostBundleID
@@ -202,10 +245,26 @@ final class QuickKeyEngine: @unchecked Sendable {
             return Unmanaged.passUnretained(event)
         }
 
+        if isMouseEventType(type) {
+            guard watchMouse else {
+                return Unmanaged.passUnretained(event)
+            }
+            return handleMouse(type: type, event: event, pending: pending, candidatesSnapshot: candidatesSnapshot, front: front)
+        }
+
         let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
 
         // Companion events while multi-tapping.
         if let pending {
+            if pending.isMouse {
+                // Keyboard press interrupts a mouse multi-tap sequence.
+                if type == .keyDown
+                    || (type == .flagsChanged && QuickKeyModifier.isDown(keyCode: keyCode, cgFlags: event.flags)) {
+                    cancelPendingMulti(reinject: true)
+                    return handle(type: type, event: event)
+                }
+                return Unmanaged.passUnretained(event)
+            }
             if type == .keyUp, keyCode == pending.keyCode, !pending.isModifier {
                 return nil
             }
@@ -257,7 +316,78 @@ final class QuickKeyEngine: @unchecked Sendable {
             candidates: matched,
             keyCode: keyCode,
             modifiers: modifiers,
-            isModifier: false
+            isModifier: false,
+            isMouse: false
+        )
+    }
+
+    private func isMouseEventType(_ type: CGEventType) -> Bool {
+        type == .otherMouseDown || type == .otherMouseUp
+    }
+
+    private func isMouseDownType(_ type: CGEventType) -> Bool {
+        type == .otherMouseDown
+    }
+
+    private func isMouseUpType(_ type: CGEventType) -> Bool {
+        type == .otherMouseUp
+    }
+
+    private func handleMouse(
+        type: CGEventType,
+        event: CGEvent,
+        pending: PendingMultiPress?,
+        candidatesSnapshot: [Int: [QuickKeyMapping]],
+        front: String?
+    ) -> Unmanaged<CGEvent>? {
+        let button = Int(event.getIntegerValueField(.mouseEventButtonNumber))
+        guard QuickKeyMouse.isRemappableButton(button) else {
+            return Unmanaged.passUnretained(event)
+        }
+        let keyCode = QuickKeyMouse.keyCode(forButton: button)
+
+        if let pending {
+            if pending.isMouse {
+                if isMouseUpType(type), keyCode == pending.keyCode {
+                    return nil
+                }
+                if isMouseDownType(type), keyCode != pending.keyCode {
+                    cancelPendingMulti(reinject: true)
+                    return handle(type: type, event: event)
+                }
+                // Same mouse button down again → multi-tap fallthrough below.
+            } else if isMouseDownType(type) {
+                cancelPendingMulti(reinject: true)
+                return handle(type: type, event: event)
+            } else {
+                return Unmanaged.passUnretained(event)
+            }
+        }
+
+        guard let maps = candidatesSnapshot[keyCode], !maps.isEmpty else {
+            return Unmanaged.passUnretained(event)
+        }
+
+        let matched = matchAll(maps: maps, modifiers: 0, frontBundle: front)
+        guard !matched.isEmpty else {
+            return Unmanaged.passUnretained(event)
+        }
+
+        if isMouseUpType(type) {
+            // Swallow ups for active remaps (down already matched or multi pending).
+            return nil
+        }
+
+        guard isMouseDownType(type) else {
+            return Unmanaged.passUnretained(event)
+        }
+
+        return resolvePress(
+            candidates: matched,
+            keyCode: keyCode,
+            modifiers: 0,
+            isModifier: false,
+            isMouse: true
         )
     }
 
@@ -278,7 +408,8 @@ final class QuickKeyEngine: @unchecked Sendable {
             candidates: matched,
             keyCode: keyCode,
             modifiers: 0,
-            isModifier: true
+            isModifier: true,
+            isMouse: false
         )
     }
 
@@ -286,7 +417,8 @@ final class QuickKeyEngine: @unchecked Sendable {
         candidates: [QuickKeyMapping],
         keyCode: Int,
         modifiers: UInt64,
-        isModifier: Bool
+        isModifier: Bool,
+        isMouse: Bool
     ) -> Unmanaged<CGEvent>? {
         let maxRequired = candidates.map(\.triggerMode.pressCount).max() ?? 1
 
@@ -303,7 +435,8 @@ final class QuickKeyEngine: @unchecked Sendable {
 
         if let pending = existing,
            pending.keyCode == keyCode,
-           pending.modifiers == modifiers {
+           pending.modifiers == modifiers,
+           pending.isMouse == isMouse {
             var next = pending
             next.pressCount += 1
             next.lastPressAt = CFAbsoluteTimeGetCurrent()
@@ -337,6 +470,7 @@ final class QuickKeyEngine: @unchecked Sendable {
             keyCode: keyCode,
             modifiers: modifiers,
             isModifier: isModifier,
+            isMouse: isMouse,
             candidates: candidates,
             pressCount: 1,
             lastPressAt: CFAbsoluteTimeGetCurrent()
@@ -404,6 +538,12 @@ final class QuickKeyEngine: @unchecked Sendable {
             lock.unlock()
         }
 
+        if QuickKeyMouse.isMouseKeyCode(keyCode),
+           let button = QuickKeyMouse.buttonNumber(fromKeyCode: keyCode) {
+            reinjectMouse(button: button)
+            return
+        }
+
         let code = CGKeyCode(keyCode)
         let flags = CGEventFlags(rawValue: modifiers)
         guard let source = CGEventSource(stateID: .combinedSessionState) else { return }
@@ -426,6 +566,43 @@ final class QuickKeyEngine: @unchecked Sendable {
         }
         if let up = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: false) {
             up.flags = flags
+            up.post(tap: .cgSessionEventTap)
+        }
+    }
+
+    private func reinjectMouse(button: Int) {
+        guard let source = CGEventSource(stateID: .combinedSessionState) else { return }
+        let types = QuickKeyMouse.eventTypes(forButton: button)
+        // Post at the current cursor location (quartz global coords).
+        let nsPoint = NSEvent.mouseLocation
+        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(nsPoint, $0.frame, false) })
+            ?? NSScreen.main else { return }
+        let height = screen.frame.maxY
+        let location = CGPoint(x: nsPoint.x, y: height - nsPoint.y)
+        let cgButton: CGMouseButton = {
+            switch button {
+            case 0: return .left
+            case 1: return .right
+            default: return .center
+            }
+        }()
+
+        if let down = CGEvent(
+            mouseEventSource: source,
+            mouseType: types.down,
+            mouseCursorPosition: location,
+            mouseButton: cgButton
+        ) {
+            down.setIntegerValueField(.mouseEventButtonNumber, value: Int64(button))
+            down.post(tap: .cgSessionEventTap)
+        }
+        if let up = CGEvent(
+            mouseEventSource: source,
+            mouseType: types.up,
+            mouseCursorPosition: location,
+            mouseButton: cgButton
+        ) {
+            up.setIntegerValueField(.mouseEventButtonNumber, value: Int64(button))
             up.post(tap: .cgSessionEventTap)
         }
     }

@@ -22,7 +22,7 @@ struct QuickKeybindInput: View {
 
     private var recordingPlaceholder: String {
         if detectMultiPress {
-            return Localization.get("Press · double · triple…", lang: appLanguage)
+            return Localization.get("Press key or mouse side…", lang: appLanguage)
         }
         return Localization.get("Press keys…", lang: appLanguage)
     }
@@ -32,7 +32,7 @@ struct QuickKeybindInput: View {
             return Localization.get("Stop (Esc)", lang: appLanguage)
         }
         if detectMultiPress {
-            return Localization.get("Record key (multi-tap = ×2 / ×3)", lang: appLanguage)
+            return Localization.get("Record key or mouse button (multi-tap = ×2 / ×3)", lang: appLanguage)
         }
         return Localization.get("Record keys", lang: appLanguage)
     }
@@ -59,7 +59,7 @@ struct QuickKeybindInput: View {
                 .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
 
             Button(action: toggleRecord) {
-                Image(systemName: isRecording ? "stop.circle.fill" : "keyboard")
+                Image(systemName: isRecording ? "stop.circle.fill" : (detectMultiPress ? "keyboard.badge.ellipsis" : "keyboard"))
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(isRecording ? Color.white.opacity(0.85) : tint.opacity(0.9))
             }
@@ -234,14 +234,14 @@ struct QuickKeyEditorSheet: View {
                         text: $triggerText,
                         isRecording: $recordingTrigger,
                         triggerMode: $triggerMode,
-                        placeholder: L("key · chord · x2 · x3"),
+                        placeholder: L("key · mouse4 · mouse5 · x2"),
                         allowPureModifiers: true,
                         detectMultiPress: true,
                         tint: tint
                     )
                     .onChange(of: recordingTrigger) { _, v in if v { recordingTarget = false } }
 
-                    Text(L("1 shortcut → 1 shortcut. Multi-tap while recording: ×2 / ×3."))
+                    Text(L("Key, mouse side buttons (Mouse 4/5), or Middle. Multi-tap while recording: ×2 / ×3."))
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.white.opacity(0.38))
                         .fixedSize(horizontal: false, vertical: true)

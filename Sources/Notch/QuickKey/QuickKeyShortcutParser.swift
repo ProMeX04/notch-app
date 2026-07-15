@@ -89,6 +89,23 @@ enum QuickKeyShortcutParser {
                 bareModifierFlags.append(flag)
                 continue
             }
+            if let mouseButton = QuickKeyMouse.buttonNumber(fromToken: normalize(token)) {
+                let code = QuickKeyMouse.keyCode(forButton: mouseButton)
+                if sawKey {
+                    if resolvedKey == code {
+                        sameKeyRepeats += 1
+                        triggerMode = QuickKeyTriggerMode(pressCount: 1 + sameKeyRepeats)
+                        continue
+                    }
+                    return .failure(.multipleKeys)
+                }
+                // Mouse triggers ignore chord modifiers (button alone).
+                bareModifierFlags.removeAll()
+                modifiers = 0
+                resolvedKey = code
+                sawKey = true
+                continue
+            }
             if let code = resolveKeyCode(token) {
                 if sawKey {
                     if resolvedKey == code {
@@ -124,7 +141,7 @@ enum QuickKeyShortcutParser {
         }
 
         guard let key = resolvedKey else { return .failure(.missingKey) }
-        if QuickKeyModifier.isModifierKeyCode(key) {
+        if QuickKeyMouse.isMouseKeyCode(key) || QuickKeyModifier.isModifierKeyCode(key) {
             return .success(Result(keyCode: key, modifiers: 0, triggerMode: triggerMode))
         }
         return .success(Result(keyCode: key, modifiers: modifiers, triggerMode: triggerMode))
@@ -132,7 +149,9 @@ enum QuickKeyShortcutParser {
 
     static func format(keyCode: Int, modifiers: UInt64, mode: QuickKeyTriggerMode = .single) -> String {
         let base: String
-        if QuickKeyModifier.isModifierKeyCode(keyCode) {
+        if QuickKeyMouse.isMouseKeyCode(keyCode) {
+            base = formatKeyOnly(keyCode)
+        } else if QuickKeyModifier.isModifierKeyCode(keyCode) {
             // Left pure keys use friendly names: ctrl / cmd / opt / shift
             // Right pure keys stay explicit: rctrl / rcmd / …
             base = formatKeyOnly(keyCode)
@@ -340,6 +359,10 @@ enum QuickKeyShortcutParser {
     }
 
     private static func formatKeyOnly(_ keyCode: Int) -> String {
+        if QuickKeyMouse.isMouseKeyCode(keyCode),
+           let button = QuickKeyMouse.buttonNumber(fromKeyCode: keyCode) {
+            return QuickKeyMouse.formatToken(button: button)
+        }
         switch keyCode {
         // Left pure modifiers: friendly names (match what users type).
         case Int(kVK_Command): return "cmd"

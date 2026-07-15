@@ -71,7 +71,13 @@ final class QuickKeyCaptureView: NSView {
 
     private func startMonitors() {
         stopMonitors()
-        let mask: NSEvent.EventTypeMask = [.keyDown, .flagsChanged]
+        // Key + extra mouse buttons (not left/right — those drive UI).
+        // Middle and side buttons arrive as otherMouseDown (buttonNumber 2+).
+        let mask: NSEvent.EventTypeMask = [
+            .keyDown,
+            .flagsChanged,
+            .otherMouseDown,
+        ]
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
             guard let self, self.isRecording else { return event }
             return self.handle(event) ? nil : event
@@ -100,8 +106,17 @@ final class QuickKeyCaptureView: NSView {
         switch event.type {
         case .keyDown: return handleKeyDown(event)
         case .flagsChanged: return handleFlagsChanged(event)
+        case .otherMouseDown: return handleMouseDown(event)
         default: return false
         }
+    }
+
+    private func handleMouseDown(_ event: NSEvent) -> Bool {
+        let button = Int(event.buttonNumber)
+        guard QuickKeyMouse.isRemappableButton(button) else { return false }
+        armedPureModifierKeyCode = nil
+        let code = QuickKeyMouse.keyCode(forButton: button)
+        return acceptPress(keyCode: code, modifiers: 0, isModifier: false)
     }
 
     private func handleKeyDown(_ event: NSEvent) -> Bool {

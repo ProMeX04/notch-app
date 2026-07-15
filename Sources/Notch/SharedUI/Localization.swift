@@ -745,16 +745,16 @@ struct Localization {
         // MARK: Shortcuts (QuickKey)
         "Shortcuts": ["English": "Shortcuts", "Tiếng Việt": "Phím tắt"],
         "Map spare keys to any app shortcut": [
-            "English": "Map spare keys to any app shortcut",
-            "Tiếng Việt": "Gán phím thừa thành phím tắt của app",
+            "English": "Map spare keys or mouse side buttons to any app shortcut",
+            "Tiếng Việt": "Gán phím thừa hoặc nút bên chuột thành phím tắt của app",
         ],
         "Accessibility required": [
             "English": "Accessibility required",
             "Tiếng Việt": "Cần quyền Trợ năng",
         ],
         "Needed to read and send key events": [
-            "English": "Needed to read and send key events",
-            "Tiếng Việt": "Cần để đọc và gửi sự kiện phím",
+            "English": "Needed to read and send key / mouse events",
+            "Tiếng Việt": "Cần để đọc và gửi sự kiện phím / chuột",
         ],
         "Open Settings": ["English": "Open Settings", "Tiếng Việt": "Mở Cài đặt"],
         "Grant": ["English": "Grant", "Tiếng Việt": "Cấp quyền"],
@@ -778,16 +778,32 @@ struct Localization {
             "English": "key · chord · x2 · x3",
             "Tiếng Việt": "phím · tổ hợp · x2 · x3",
         ],
+        "key · mouse4 · mouse5 · x2": [
+            "English": "key · mouse4 · mouse5 · x2",
+            "Tiếng Việt": "phím · mouse4 · mouse5 · x2",
+        ],
         "1 shortcut → 1 shortcut. Multi-tap while recording: ×2 / ×3.": [
             "English": "1 shortcut → 1 shortcut. Multi-tap while recording: ×2 / ×3.",
             "Tiếng Việt": "1 phím tắt → 1 phím tắt. Bấm nhiều lần khi ghi: ×2 / ×3.",
+        ],
+        "Key, mouse side buttons (Mouse 4/5), or Middle. Multi-tap while recording: ×2 / ×3.": [
+            "English": "Key, mouse side buttons (Mouse 4/5), or Middle. Multi-tap while recording: ×2 / ×3.",
+            "Tiếng Việt": "Phím, nút bên chuột (Mouse 4/5), hoặc Middle. Bấm nhiều lần khi ghi: ×2 / ×3.",
         ],
         "Press · double · triple…": [
             "English": "Press · double · triple…",
             "Tiếng Việt": "Bấm · double · triple…",
         ],
+        "Press key or mouse side…": [
+            "English": "Press key or mouse side…",
+            "Tiếng Việt": "Nhấn phím hoặc nút bên chuột…",
+        ],
         "Press keys…": ["English": "Press keys…", "Tiếng Việt": "Nhấn phím…"],
         "Stop (Esc)": ["English": "Stop (Esc)", "Tiếng Việt": "Dừng (Esc)"],
+        "Record key or mouse button (multi-tap = ×2 / ×3)": [
+            "English": "Record key or mouse button (multi-tap = ×2 / ×3)",
+            "Tiếng Việt": "Ghi phím hoặc nút chuột (bấm nhiều = ×2 / ×3)",
+        ],
         "Record key (multi-tap = ×2 / ×3)": [
             "English": "Record key (multi-tap = ×2 / ×3)",
             "Tiếng Việt": "Ghi phím (bấm nhiều = ×2 / ×3)",

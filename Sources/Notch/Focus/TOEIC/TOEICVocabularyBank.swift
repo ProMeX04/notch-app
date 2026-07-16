@@ -10,6 +10,8 @@ enum TOEICVocabularyBank {
         let pos: String?
         let pronunciation: String?
         let meaning: String?
+        /// Multi-sense English glosses, e.g. "(v.) to leave; (n.) lack of restraint".
+        let meaning_en: String?
         let example: String?
         let example_vn: String?
     }
@@ -44,6 +46,10 @@ enum TOEICVocabularyBank {
             let w = row.word.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !w.isEmpty, w.count > 1 else { return nil }
             if skip.contains(w.lowercased()) { return nil }
+            let pos = (row.pos ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolvedPOS = (pos.isEmpty || pos.caseInsensitiveCompare("Word") == .orderedSame)
+                ? ""
+                : pos
             return TOEICVocabCard(
                 id: "vocab-\(row.id)",
                 word: w,
@@ -51,17 +57,16 @@ enum TOEICVocabularyBank {
                     let p = row.pronunciation?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                     return p.isEmpty ? "" : (p.hasPrefix("/") ? p : "/\(p)/")
                 }(),
-                meaningVI: row.meaning ?? "",
-                meaningEN: row.pos ?? "",
+                // Multi-sense VI: "(v.) bỏ rơi, từ bỏ; (n.) sự buông thả"
+                meaningVI: (row.meaning ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+                // English glosses from meaning_en (not POS).
+                meaningEN: (row.meaning_en ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
                 example: {
                     let en = row.example?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                     if !en.isEmpty { return en }
                     return row.example_vn ?? ""
                 }(),
-                part: {
-                    let pos = row.pos?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                    return pos.isEmpty ? "Word" : pos
-                }()
+                part: resolvedPOS.isEmpty ? "Word" : resolvedPOS
             )
         }
     }

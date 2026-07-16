@@ -687,6 +687,21 @@ struct Localization {
             "Tiếng Việt": "Thuộc %d · Hôm nay %d · Quiz %d%%",
         ],
         "AI Quiz": ["English": "AI Quiz", "Tiếng Việt": "Quiz AI"],
+        "New quiz set": ["English": "New quiz set", "Tiếng Việt": "Bộ quiz mới"],
+        "Quiz ready: %d": [
+            "English": "Quiz ready: %d",
+            "Tiếng Việt": "Quiz sẵn sàng: %d",
+        ],
+        "Prebuilt quiz · offline": [
+            "English": "Prebuilt quiz · offline",
+            "Tiếng Việt": "Quiz có sẵn · offline",
+        ],
+        "SRS quiz · spaced + interleaved": [
+            "English": "SRS quiz · spaced + interleaved",
+            "Tiếng Việt": "Quiz SRS · giãn cách + xen kẽ",
+        ],
+        "Due": ["English": "Due", "Tiếng Việt": "Tới hạn"],
+        "New": ["English": "New", "Tiếng Việt": "Mới"],
         "AI Vocab": ["English": "AI Vocab", "Tiếng Việt": "Từ vựng AI"],
         "Word bank + AI stems": [
             "English": "Word bank + AI stems",
@@ -703,6 +718,10 @@ struct Localization {
         "Building quiz from bank…": [
             "English": "Building quiz from bank…",
             "Tiếng Việt": "Đang dựng quiz từ kho…",
+        ],
+        "Preparing examples…": [
+            "English": "Preparing examples…",
+            "Tiếng Việt": "Đang chuẩn bị câu ví dụ…",
         ],
         "Refreshing examples…": [
             "English": "Refreshing examples…",

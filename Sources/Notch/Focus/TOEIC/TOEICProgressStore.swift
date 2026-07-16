@@ -68,30 +68,84 @@ final class TOEICProgressStore: ObservableObject {
                 s.reviewedCardIDs.append(cardID)
             }
             s.dailyReviewCount += 1
+            // Flipping is retrieval practice but not a graded review — touch count only.
+            var sched = s.cardSchedules[cardID] ?? .default
+            if sched.reviewCount == 0 {
+                // First exposure: leave due immediately so it stays in today's queue.
+                sched.dueAt = Date.distantPast
+            }
+            s.cardSchedules[cardID] = sched
         }
     }
 
     func markKnown(cardID: String, known: Bool) {
+        gradeCard(cardID, grade: known ? .good : .again, alsoMarkKnown: known)
+    }
+
+    /// Apply SM-2 grade for a card (flashcard Know/Again or quiz outcome).
+    func gradeCard(_ cardID: String, grade: TOEICGrade, alsoMarkKnown: Bool? = nil) {
         mutate { s in
-            if known {
+            let previous = s.cardSchedules[cardID] ?? .default
+            let updated = TOEICScheduler.review(previous, grade: grade)
+            s.cardSchedules[cardID] = updated
+
+            if !s.reviewedCardIDs.contains(cardID) {
+                s.reviewedCardIDs.append(cardID)
+            }
+            s.dailyReviewCount += 1
+
+            let markKnown = alsoMarkKnown ?? (grade == .good || grade == .easy)
+            if markKnown {
                 if !s.knownCardIDs.contains(cardID) {
                     s.knownCardIDs.append(cardID)
                 }
-                if !s.reviewedCardIDs.contains(cardID) {
-                    s.reviewedCardIDs.append(cardID)
-                }
-            } else {
+            } else if grade.isFail {
                 s.knownCardIDs.removeAll { $0 == cardID }
             }
-            s.dailyReviewCount += 1
         }
     }
 
-    func recordQuiz(correct: Bool) {
+    func recordQuiz(correct: Bool, cardID: String? = nil) {
         mutate { s in
             s.quizAnswered += 1
             if correct { s.quizCorrect += 1 }
             s.dailyReviewCount += 1
+
+            // Retrieval practice grades the underlying word when mapped.
+            guard let cardID else { return }
+            let previous = s.cardSchedules[cardID] ?? .default
+            let grade: TOEICGrade = correct ? .good : .again
+            let updated = TOEICScheduler.review(previous, grade: grade)
+            s.cardSchedules[cardID] = updated
+            if !s.reviewedCardIDs.contains(cardID) {
+                s.reviewedCardIDs.append(cardID)
+            }
+            if correct {
+                if !s.knownCardIDs.contains(cardID) {
+                    s.knownCardIDs.append(cardID)
+                }
+            } else {
+                s.knownCardIDs.removeAll { $0 == cardID }
+            }
+        }
+    }
+
+    func schedule(for cardID: String) -> TOEICCardSchedule {
+        snapshot.cardSchedules[cardID] ?? .default
+    }
+
+    /// Count cards due now among the full bank ids.
+    func dueCount(in allIDs: [String], now: Date = Date()) -> Int {
+        allIDs.reduce(0) { partial, id in
+            let s = snapshot.cardSchedules[id] ?? .default
+            return partial + ((s.isDue(at: now) && !s.isNew) ? 1 : 0)
+        }
+    }
+
+    func newCount(in allIDs: [String]) -> Int {
+        allIDs.reduce(0) { partial, id in
+            let s = snapshot.cardSchedules[id] ?? .default
+            return partial + (s.isNew ? 1 : 0)
         }
     }
 

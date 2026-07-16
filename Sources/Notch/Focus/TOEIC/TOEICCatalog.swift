@@ -240,6 +240,23 @@ enum TOEICCatalog {
         return Array(ordered.prefix(n))
     }
 
+    /// SRS-aware draw: due reviews first, then new cards (spaced repetition).
+    static func drawVocabScheduled(
+        count: Int,
+        schedules: [String: TOEICCardSchedule],
+        excludingIDs: Set<String> = []
+    ) -> [TOEICVocabCard] {
+        let bank = wordBank.filter { !excludingIDs.contains($0.id) }
+        guard !bank.isEmpty else { return [] }
+        let byID = Dictionary(uniqueKeysWithValues: bank.map { ($0.id, $0) })
+        let orderedIDs = TOEICScheduler.selectCardIDs(
+            allIDs: bank.map(\.id),
+            schedules: schedules,
+            limit: count
+        )
+        return orderedIDs.compactMap { byID[$0] }
+    }
+
     /// Pick distractor words from the bank (different from the target).
     static func distractors(for target: TOEICVocabCard, count: Int = 3) -> [String] {
         wordBank
@@ -338,8 +355,15 @@ enum TOEICCatalog {
         return "Chọn từ tiếng Anh đúng cho: \(card.word.prefix(1))…"
     }
 
-    /// Temporary offline quiz while AI generates: meaning questions from vocab only.
+    /// Prebuilt cloze + meaning MCQs from `toeic_quiz.json`, falling back to live bank items.
     static func offlineQuizDeck(vocabCards: [TOEICVocabCard], limit: Int = 40) -> [TOEICQuizItem] {
+        let known: Set<String> = []
+        let prebuilt = TOEICQuizBank.draw(limit: limit, knownWordIDs: known)
+        if !prebuilt.isEmpty {
+            return prebuilt
+        }
+
+        // Fallback if quiz bank missing from bundle.
         var items = vocabCards.prefix(max(limit, 0)).map { offlineQuizItem(from: $0) }
         if items.isEmpty {
             items = seedVocab.prefix(limit).map { offlineQuizItem(from: $0) }
@@ -348,6 +372,65 @@ enum TOEICCatalog {
             items = quiz
         }
         return Array(items.prefix(limit))
+    }
+
+    /// Prefer prebuilt questions for the given cards' words when available.
+    static func quizDeck(for cards: [TOEICVocabCard], limit: Int, knownIDs: Set<String>) -> [TOEICQuizItem] {
+        quizDeckScheduled(
+            for: cards,
+            limit: limit,
+            schedules: [:],
+            knownIDs: knownIDs
+        )
+    }
+
+    /// Interleaved retrieval practice: meaning + cloze, due words first, no back-to-back same word.
+    static func quizDeckScheduled(
+        for cards: [TOEICVocabCard],
+        limit: Int,
+        schedules: [String: TOEICCardSchedule],
+        knownIDs: Set<String>
+    ) -> [TOEICQuizItem] {
+        let wordIDs = cards.map(\.id)
+        let interleaved = TOEICScheduler.buildInterleavedQuiz(
+            wordIDs: wordIDs,
+            allItems: TOEICQuizBank.allItems,
+            schedules: schedules,
+            limit: limit
+        )
+        if !interleaved.isEmpty {
+            return interleaved
+        }
+
+        // Fallback: previous pool filter.
+        let wordNums = Set(cards.compactMap { card -> Int? in
+            if card.id.hasPrefix("vocab-") { return Int(card.id.dropFirst(6)) }
+            return nil
+        })
+        let pool = TOEICQuizBank.draw(limit: max(limit * 4, limit), knownWordIDs: knownIDs)
+        if !pool.isEmpty {
+            var matched: [TOEICQuizItem] = []
+            var rest: [TOEICQuizItem] = []
+            for item in pool {
+                let num: Int? = {
+                    if item.id.hasPrefix("ai-cloze-") { return Int(item.id.dropFirst(9)) }
+                    if item.id.hasPrefix("ai-meaning-") { return Int(item.id.dropFirst(11)) }
+                    if item.id.hasPrefix("cloze-") { return Int(item.id.dropFirst(6)) }
+                    if item.id.hasPrefix("meaning-") { return Int(item.id.dropFirst(8)) }
+                    return nil
+                }()
+                if let num, wordNums.contains(num) {
+                    matched.append(item)
+                } else {
+                    rest.append(item)
+                }
+            }
+            let ordered = matched + rest
+            if !ordered.isEmpty {
+                return Array(ordered.prefix(limit))
+            }
+        }
+        return offlineQuizDeck(vocabCards: cards, limit: limit)
     }
 
     /// Accept only concrete business cloze sentences; reject AI meta-prompts.

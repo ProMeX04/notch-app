@@ -13,12 +13,18 @@ struct TOEICStudyRootView: View {
         Localization.get(key, lang: appLanguage)
     }
 
+    /// Matches unified titlebar height so controls sit on the traffic-light row.
+    private let titlebarRowHeight: CGFloat = 52
+
     var body: some View {
+        // Fixed chrome + content shell — never rebuilds toolbar when mode flips.
         VStack(spacing: 0) {
             topBar
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
-                .padding(.bottom, 12)
+                .padding(.leading, 78) // room for red / yellow / green
+                .padding(.trailing, 12)
+                .frame(height: titlebarRowHeight)
+                .frame(maxWidth: .infinity)
+                .background(Color.black)
 
             Divider().overlay(Color.white.opacity(0.06))
 
@@ -36,40 +42,15 @@ struct TOEICStudyRootView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black)
         .preferredColorScheme(.dark)
+        // Draw under the transparent titlebar so topBar shares its row.
+        .ignoresSafeArea(.container, edges: .top)
     }
 
-    // MARK: - Top bar
-
     private var topBar: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "text.book.closed.fill")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(tint)
-                .help(L("TOEIC Study"))
-
+        HStack(spacing: 10) {
             modeToggle
-
-            Spacer(minLength: 8)
-
             compactStats
-
-            toolbarDivider
-
-            iconButton("shuffle", help: L("Shuffle"), disabled: vm.isGenerating) {
-                vm.rebuildDecks(shuffle: true)
-            }
-            iconButton("sparkles", help: L("AI Quiz"), disabled: vm.isGenerating) {
-                Task { await vm.generateAIQuiz() }
-            }
-            iconButton("rectangle.on.rectangle.angled", help: L("AI Vocab"), disabled: vm.isGenerating) {
-                Task { await vm.generateAIVocab() }
-            }
-
-            if vm.isGenerating {
-                ProgressView()
-                    .controlSize(.small)
-                    .scaleEffect(0.85)
-            }
+            Spacer(minLength: 0)
         }
     }
 
@@ -93,17 +74,17 @@ struct TOEICStudyRootView: View {
     private func modeIconButton(mode: TOEICStudyMode, systemName: String, help: String) -> some View {
         let on = vm.mode == mode
         return Button {
-            withAnimation(.snappy(duration: 0.2)) {
-                vm.mode = mode
-                if mode == .quiz {
-                    vm.onEnterQuizMode()
-                }
+            // No tree-wide animation: animating mode used to tear down the window toolbar.
+            guard vm.mode != mode else { return }
+            vm.mode = mode
+            if mode == .quiz {
+                vm.onEnterQuizMode()
             }
         } label: {
             Image(systemName: systemName)
                 .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(on ? Color.black.opacity(0.85) : .white.opacity(0.55))
-                .frame(width: 32, height: 26)
+                .frame(width: 30, height: 24)
                 .background {
                     if on {
                         Capsule().fill(tint)
@@ -114,20 +95,39 @@ struct TOEICStudyRootView: View {
         .help(help)
     }
 
+    /// Only surface stats that currently carry signal (hide zero placeholders).
     private var compactStats: some View {
-        HStack(spacing: 10) {
-            // Leisure bank earned by studying → applied to the next Focus break.
-            statIcon(
-                "cup.and.saucer.fill",
-                "\(progress.snapshot.leisureMinutesBalance)m",
-                L("Leisure"),
-                .orange
-            )
+        HStack(spacing: 12) {
+            if vm.dueReviewCount > 0 {
+                statIcon("calendar.badge.clock", "\(vm.dueReviewCount)", L("Due"), .orange)
+            }
+
+            let leisure = progress.snapshot.leisureMinutesBalance
+            if leisure > 0 {
+                statIcon("cup.and.saucer.fill", "\(leisure)m", L("Leisure"), .orange.opacity(0.9))
+            }
+
             if vm.mode == .quiz {
-                statIcon("flame.fill", "\(vm.quizStreak)", L("Streak"), .orange.opacity(0.85))
-                statIcon("target", vm.sessionAccuracyLabel, L("Accuracy"), tint.opacity(0.9))
-            } else {
-                statIcon("checkmark.circle.fill", "\(progress.snapshot.knownCount)", L("Known"), tint)
+                if vm.quizStreak > 0 {
+                    statIcon("flame.fill", "\(vm.quizStreak)", L("Streak"), .orange.opacity(0.85))
+                }
+                if vm.sessionAnswered > 0 {
+                    statIcon("target", vm.sessionAccuracyLabel, L("Accuracy"), tint.opacity(0.9))
+                }
+                // Progress in the current quiz batch.
+                statIcon(
+                    "list.number",
+                    vm.quizProgressLabel,
+                    L("Progress"),
+                    .white.opacity(0.65)
+                )
+            } else if progress.snapshot.knownCount > 0 {
+                statIcon(
+                    "checkmark.circle.fill",
+                    "\(progress.snapshot.knownCount)",
+                    L("Known"),
+                    tint
+                )
             }
         }
     }
@@ -142,30 +142,6 @@ struct TOEICStudyRootView: View {
                 .foregroundStyle(.white.opacity(0.75))
                 .monospacedDigit()
         }
-        .help(help)
-    }
-
-    private var toolbarDivider: some View {
-        Rectangle()
-            .fill(Color.white.opacity(0.1))
-            .frame(width: 1, height: 16)
-    }
-
-    private func iconButton(
-        _ systemName: String,
-        help: String,
-        disabled: Bool = false,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(disabled ? .white.opacity(0.25) : .white.opacity(0.7))
-                .frame(width: 28, height: 28)
-                .background(Color.white.opacity(disabled ? 0.03 : 0.06), in: Circle())
-        }
-        .buttonStyle(.plain)
-        .disabled(disabled)
         .help(help)
     }
 
@@ -184,14 +160,25 @@ struct TOEICStudyRootView: View {
 
                             VStack(spacing: 14) {
                                 if vm.isFlipped {
+                                    if !card.part.isEmpty, card.part != "Word" {
+                                        Text(card.part)
+                                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                                            .foregroundStyle(tint.opacity(0.95))
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 4)
+                                            .background(tint.opacity(0.14), in: Capsule())
+                                    }
                                     Text(card.meaningVI)
-                                        .font(.system(size: 24, weight: .bold))
+                                        .font(.system(size: 20, weight: .bold))
                                         .foregroundStyle(.white.opacity(0.96))
                                         .multilineTextAlignment(.center)
+                                        .fixedSize(horizontal: false, vertical: true)
                                     if !card.meaningEN.isEmpty, card.meaningEN != "Word" {
                                         Text(card.meaningEN)
                                             .font(.system(size: 13, weight: .medium))
-                                            .foregroundStyle(.white.opacity(0.4))
+                                            .foregroundStyle(.white.opacity(0.42))
+                                            .multilineTextAlignment(.center)
+                                            .fixedSize(horizontal: false, vertical: true)
                                     }
                                     phoneticRow(for: card)
                                     if !card.example.isEmpty {
@@ -205,6 +192,11 @@ struct TOEICStudyRootView: View {
                                     Text(card.word)
                                         .font(.system(size: 36, weight: .bold, design: .rounded))
                                         .foregroundStyle(.white.opacity(0.98))
+                                    if !card.part.isEmpty, card.part != "Word" {
+                                        Text(card.part)
+                                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                            .foregroundStyle(.white.opacity(0.45))
+                                    }
                                     phoneticRow(for: card)
                                     Image(systemName: "hand.tap")
                                         .font(.system(size: 12, weight: .medium))

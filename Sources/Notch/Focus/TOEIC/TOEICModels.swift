@@ -191,6 +191,8 @@ struct TOEICProgressSnapshot: Codable, Equatable {
     var leisureMinutesSpentTotal: Int
     /// Leisure minutes earned today (resets with dailyReviewDayKey).
     var leisureMinutesEarnedToday: Int
+    /// SM-2 schedules keyed by card id (`vocab-123`).
+    var cardSchedules: [String: TOEICCardSchedule]
 
     static let empty = TOEICProgressSnapshot(
         reviewedCardIDs: [],
@@ -204,7 +206,8 @@ struct TOEICProgressSnapshot: Codable, Equatable {
         leisureMinutesBalance: 0,
         leisureMinutesEarnedTotal: 0,
         leisureMinutesSpentTotal: 0,
-        leisureMinutesEarnedToday: 0
+        leisureMinutesEarnedToday: 0,
+        cardSchedules: [:]
     )
 
     var accuracyPercent: Int {
@@ -215,10 +218,21 @@ struct TOEICProgressSnapshot: Codable, Equatable {
     var knownCount: Int { Set(knownCardIDs).count }
     var reviewedCount: Int { Set(reviewedCardIDs).count }
 
+    var dueCount: Int {
+        let now = Date()
+        return cardSchedules.values.filter { $0.isDue(at: now) && !$0.isNew }.count
+    }
+
+    var newCount: Int {
+        // Approximate: cards never scheduled are "new" relative to bank — UI uses store helper.
+        cardSchedules.values.filter(\.isNew).count
+    }
+
     enum CodingKeys: String, CodingKey {
         case reviewedCardIDs, knownCardIDs, quizAnswered, quizCorrect, sessionsCompleted
         case lastStudiedAt, dailyReviewCount, dailyReviewDayKey
         case leisureMinutesBalance, leisureMinutesEarnedTotal, leisureMinutesSpentTotal, leisureMinutesEarnedToday
+        case cardSchedules
     }
 
     init(
@@ -233,7 +247,8 @@ struct TOEICProgressSnapshot: Codable, Equatable {
         leisureMinutesBalance: Int,
         leisureMinutesEarnedTotal: Int,
         leisureMinutesSpentTotal: Int,
-        leisureMinutesEarnedToday: Int
+        leisureMinutesEarnedToday: Int,
+        cardSchedules: [String: TOEICCardSchedule]
     ) {
         self.reviewedCardIDs = reviewedCardIDs
         self.knownCardIDs = knownCardIDs
@@ -247,6 +262,7 @@ struct TOEICProgressSnapshot: Codable, Equatable {
         self.leisureMinutesEarnedTotal = leisureMinutesEarnedTotal
         self.leisureMinutesSpentTotal = leisureMinutesSpentTotal
         self.leisureMinutesEarnedToday = leisureMinutesEarnedToday
+        self.cardSchedules = cardSchedules
     }
 
     init(from decoder: Decoder) throws {
@@ -263,6 +279,7 @@ struct TOEICProgressSnapshot: Codable, Equatable {
         leisureMinutesEarnedTotal = try c.decodeIfPresent(Int.self, forKey: .leisureMinutesEarnedTotal) ?? 0
         leisureMinutesSpentTotal = try c.decodeIfPresent(Int.self, forKey: .leisureMinutesSpentTotal) ?? 0
         leisureMinutesEarnedToday = try c.decodeIfPresent(Int.self, forKey: .leisureMinutesEarnedToday) ?? 0
+        cardSchedules = try c.decodeIfPresent([String: TOEICCardSchedule].self, forKey: .cardSchedules) ?? [:]
     }
 }
 

@@ -8,6 +8,7 @@ final class TOEICStudyWindowController {
     static let shared = TOEICStudyWindowController()
 
     private var window: NSWindow?
+    private var hosting: NSHostingController<AnyView>?
 
     private init() {}
 
@@ -17,20 +18,29 @@ final class TOEICStudyWindowController {
                 ?? NotchAccentColorOption.defaultOption.rawValue
         ).brightColor
 
-        if window == nil {
-            let root = TOEICStudyRootView(tint: resolvedTint)
+        let root = AnyView(
+            TOEICStudyRootView(tint: resolvedTint)
                 .frame(minWidth: 440, minHeight: 520)
-            let hosting = NSHostingController(rootView: root)
-            let win = NSWindow(contentViewController: hosting)
-            win.title = "TOEIC"
-            win.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        )
+
+        if let hosting {
+            hosting.rootView = root
+        } else {
+            let hostingController = NSHostingController(rootView: root)
+            let win = NSWindow(contentViewController: hostingController)
+            win.title = ""
+            win.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
             win.setContentSize(NSSize(width: 480, height: 580))
             win.isReleasedWhenClosed = false
             win.backgroundColor = NSColor.black
             win.titlebarAppearsTransparent = true
+            win.titleVisibility = .hidden
+            win.titlebarSeparatorStyle = .none
+            // Content draws its own single chrome row under the traffic lights.
             win.appearance = NSAppearance(named: .darkAqua)
             win.hidesOnDeactivate = false
             applyAlwaysOnTop(win)
+            hosting = hostingController
             window = win
         }
 

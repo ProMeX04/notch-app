@@ -152,12 +152,6 @@ struct PomodoroActiveFocusPanel: View {
             }
 
             HStack(spacing: 8) {
-                // Study is open automatically during Focus — icon is status, not a launch button.
-                Image(systemName: "text.book.closed.fill")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(tint.opacity(0.9))
-                    .help(Localization.get("Study during Focus", lang: appLanguage))
-
                 StandardActionButton(
                     title: Localization.get("Pause", lang: appLanguage),
                     icon: "pause.fill",

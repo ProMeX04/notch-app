@@ -10,6 +10,10 @@ final class TOEICStudyViewModel: ObservableObject {
     static let autoQuizBatchSize = 5
     /// Prefetch more when this many unanswered AI items remain.
     static let autoQuizPrefetchThreshold = 2
+    /// Flashcard session size (due reviews + new cards via SRS).
+    static let flashcardDeckSize = 12
+    /// Quiz items per session (interleaved cloze + meaning).
+    static let quizSessionSize = 20
 
     @Published var mode: TOEICStudyMode = .flashcards
     @Published private(set) var deck: [TOEICVocabCard] = []
@@ -31,12 +35,10 @@ final class TOEICStudyViewModel: ObservableObject {
     /// Minutes granted by the last study action (for UI flash).
     @Published private(set) var lastLeisureRewardMinutes: Int = 0
 
-    @Published private(set) var isGenerating = false
     @Published var statusMessage: String?
 
     /// Optional Focus timer — when set, leisure minutes can extend breaks.
     weak var pomodoro: PomodoroViewModel?
-    @Published private(set) var usingAIContent = false
     @Published private(set) var bankWordCount: Int = 0
     /// Live IPA for the current card (from bank field, cache, or API).
     @Published private(set) var currentPhonetic: String = ""
@@ -45,8 +47,10 @@ final class TOEICStudyViewModel: ObservableObject {
     let speech = TOEICSpeechPlayer.shared
     let phonetics = TOEICPhoneticService.shared
 
-    private var autoQuizTask: Task<Void, Never>?
-    private var recentAIPrompts: [String] = []
+    /// Words already used in this Focus study session (avoid immediate recycle).
+    private var sessionSeenWordIDs: Set<String> = []
+    /// Quiz item ids already answered/shown this session.
+    private var sessionSeenQuizIDs: Set<String> = []
 
     private init(progress: TOEICProgressStore = .shared) {
         self.progress = progress
@@ -58,6 +62,8 @@ final class TOEICStudyViewModel: ObservableObject {
     func reloadBank() {
         bankWordCount = TOEICCatalog.wordBank.count
         statusMessage = nil
+        sessionSeenWordIDs.removeAll()
+        sessionSeenQuizIDs.removeAll()
         rebuildDecks(shuffle: true)
     }
 
@@ -116,47 +122,45 @@ final class TOEICStudyViewModel: ObservableObject {
     }
 
     var contentSourceLabelKey: String {
-        usingAIContent ? "AI quiz · auto" : "Vocab fallback · offline"
+        "SRS quiz · spaced + interleaved"
     }
 
-    var aiQuizCount: Int {
-        quizDeck.filter { $0.id.hasPrefix("ext-ai-") }.count
+    var prebuiltQuizCount: Int {
+        quizDeck.filter {
+            $0.id.hasPrefix("ai-cloze-")
+                || $0.id.hasPrefix("ai-meaning-")
+                || $0.id.hasPrefix("cloze-")
+                || $0.id.hasPrefix("meaning-")
+        }.count
+    }
+
+    /// Due reviews waiting (spaced repetition).
+    var dueReviewCount: Int {
+        progress.dueCount(in: TOEICCatalog.wordBank.map(\.id))
+    }
+
+    var newCardCount: Int {
+        progress.newCount(in: TOEICCatalog.wordBank.map(\.id))
     }
 
     // MARK: - Decks
 
     func rebuildDecks(shuffle: Bool) {
-        let known = Set(progress.snapshot.knownCardIDs)
         bankWordCount = TOEICCatalog.wordBank.count
-
-        var cards = TOEICCatalog.drawVocab(
-            count: min(50, max(bankWordCount, 1)),
-            knownIDs: known
-        )
-        if cards.isEmpty {
-            cards = TOEICCatalog.seedVocab
-        }
-
-        // Short meaning placeholders only — real Part 5 stems come from auto AI gen.
-        var quiz = TOEICCatalog.offlineQuizDeck(
-            vocabCards: Array(cards),
-            limit: Self.autoQuizBatchSize
-        )
-
         if shuffle {
-            cards.shuffle()
-            quiz.shuffle()
-        } else {
-            cards.sort { a, b in
-                let ak = known.contains(a.id)
-                let bk = known.contains(b.id)
-                if ak == bk { return false }
-                return !ak && bk
-            }
+            // Explicit refresh: allow previously seen session words again, but still SRS-order.
+            sessionSeenWordIDs.removeAll()
+            sessionSeenQuizIDs.removeAll()
         }
 
-        deck = Array(cards.prefix(50))
-        quizDeck = Array(quiz.prefix(Self.autoQuizBatchSize))
+        let cards = drawNextSRSCardBatch(excluding: sessionSeenWordIDs)
+        sessionSeenWordIDs.formUnion(cards.map(\.id))
+
+        let quiz = makeQuizBatch(for: cards, excludeQuizIDs: sessionSeenQuizIDs)
+        sessionSeenQuizIDs.formUnion(quiz.map(\.id))
+
+        deck = cards
+        quizDeck = quiz
         cardIndex = 0
         quizIndex = 0
         isFlipped = false
@@ -167,20 +171,83 @@ final class TOEICStudyViewModel: ObservableObject {
         sessionCorrect = 0
         sessionAnswered = 0
         quizStreak = 0
-        usingAIContent = false
         syncPhoneticForCurrentCard()
-
-        // Warm AI quiz pool in background.
-        scheduleAutoAIQuiz(replace: true, switchToQuiz: false)
     }
 
-    /// Call when user switches to Quiz tab — ensures AI stems are generating.
-    func onEnterQuizMode() {
-        if aiQuizCount == 0 {
-            scheduleAutoAIQuiz(replace: true, switchToQuiz: false)
-        } else {
-            schedulePrefetchIfNeeded()
+    /// Next flashcard/word batch via SRS, skipping words already used this session when possible.
+    private func drawNextSRSCardBatch(excluding: Set<String>) -> [TOEICVocabCard] {
+        let schedules = progress.snapshot.cardSchedules
+        let limit = min(Self.flashcardDeckSize, max(bankWordCount, 1))
+        var cards = TOEICCatalog.drawVocabScheduled(
+            count: limit,
+            schedules: schedules,
+            excludingIDs: excluding
+        )
+        // If we exhausted unseen words, allow recycle but still SRS-rank the full bank.
+        if cards.count < max(4, limit / 2) {
+            cards = TOEICCatalog.drawVocabScheduled(
+                count: limit,
+                schedules: schedules,
+                excludingIDs: []
+            )
         }
+        if cards.isEmpty {
+            cards = Array(TOEICCatalog.seedVocab.prefix(Self.flashcardDeckSize))
+        }
+        return cards
+    }
+
+    private func makeQuizBatch(
+        for cards: [TOEICVocabCard],
+        excludeQuizIDs: Set<String>
+    ) -> [TOEICQuizItem] {
+        let schedules = progress.snapshot.cardSchedules
+        let known = Set(progress.snapshot.knownCardIDs)
+        var batch = TOEICCatalog.quizDeckScheduled(
+            for: cards,
+            limit: Self.quizSessionSize,
+            schedules: schedules,
+            knownIDs: known
+        )
+        batch = batch.filter { !excludeQuizIDs.contains($0.id) }
+
+        // Pad from global bank with unseen items if the word-set is too thin.
+        if batch.count < Self.quizSessionSize {
+            let pad = TOEICQuizBank.draw(
+                limit: Self.quizSessionSize * 3,
+                knownWordIDs: known
+            ).filter { item in
+                !excludeQuizIDs.contains(item.id) && !batch.contains(where: { $0.id == item.id })
+            }
+            batch.append(contentsOf: pad.prefix(Self.quizSessionSize - batch.count))
+        }
+        return Array(batch.prefix(Self.quizSessionSize))
+    }
+
+    /// Call when user switches to Quiz tab — top up from prebuilt bank if deck is short.
+    func onEnterQuizMode() {
+        if quizDeck.isEmpty {
+            loadPrebuiltQuizDeck(replace: true)
+        }
+    }
+
+    /// Map quiz item → vocab card id for SRS grading.
+    static func cardID(forQuiz item: TOEICQuizItem) -> String? {
+        let id = item.id
+        let num: Int?
+        if id.hasPrefix("ai-cloze-") {
+            num = Int(id.dropFirst(9))
+        } else if id.hasPrefix("ai-meaning-") {
+            num = Int(id.dropFirst(11))
+        } else if id.hasPrefix("cloze-") {
+            num = Int(id.dropFirst(6))
+        } else if id.hasPrefix("meaning-") {
+            num = Int(id.dropFirst(8))
+        } else {
+            num = nil
+        }
+        guard let num else { return nil }
+        return "vocab-\(num)"
     }
 
     func flipCard() {
@@ -192,6 +259,7 @@ final class TOEICStudyViewModel: ObservableObject {
 
     func markCurrentKnown(_ known: Bool) {
         guard let id = currentCard?.id else { return }
+        // Know → Good (interval expands); Again → lapse + relearn soon.
         progress.markKnown(cardID: id, known: known)
         if known {
             creditLeisure(TOEICLeisureRewards.minutesPerKnownCard)
@@ -208,7 +276,10 @@ final class TOEICStudyViewModel: ObservableObject {
             cardIndex += 1
         } else {
             progress.completeSession()
-            deck.shuffle()
+            // New SRS batch of words (not reshuffle the same 12 forever).
+            let cards = drawNextSRSCardBatch(excluding: sessionSeenWordIDs)
+            sessionSeenWordIDs.formUnion(cards.map(\.id))
+            deck = cards
             cardIndex = 0
         }
         syncPhoneticForCurrentCard()
@@ -227,6 +298,11 @@ final class TOEICStudyViewModel: ObservableObject {
         didRevealAnswer = true
         liveExplanation = nil
         liveTranslation = TOEICQuizText.lineUnderQuestion(for: item)
+        sessionSeenQuizIDs.insert(item.id)
+        if let wordID = Self.cardID(forQuiz: item) {
+            sessionSeenWordIDs.insert(wordID)
+        }
+
         let correct = index == item.correctIndex
         sessionAnswered += 1
         if correct {
@@ -236,20 +312,21 @@ final class TOEICStudyViewModel: ObservableObject {
         } else {
             quizStreak = 0
             lastLeisureRewardMinutes = 0
+            // Successful relearning: one delayed retry later in this batch only.
+            requeueFailedQuiz(item)
         }
-        progress.recordQuiz(correct: correct)
+        progress.recordQuiz(correct: correct, cardID: Self.cardID(forQuiz: item))
+    }
 
-        let hasVI = !item.translationVI.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !TOEICQuizText.splitExplanationAndTranslation(
-                explanation: item.explanationVI,
-                translation: ""
-            ).translation.isEmpty
-        if !hasVI, TOEICQuizText.completedSentence(
-            prompt: item.prompt,
-            answer: item.choices.indices.contains(item.correctIndex) ? item.choices[item.correctIndex] : ""
-        ) != nil {
-            Task { await fillMissingTranslation(for: item) }
-        }
+    /// Insert a failed item ~3–5 slots later (once) — not forever looping.
+    private func requeueFailedQuiz(_ item: TOEICQuizItem) {
+        guard quizDeck.indices.contains(quizIndex) else { return }
+        let remaining = quizDeck.suffix(from: min(quizIndex + 1, quizDeck.count))
+        guard !remaining.contains(where: { $0.id == item.id }) else { return }
+        let lag = min(max(0, quizDeck.count - quizIndex - 1), Int.random(in: 3...5))
+        let insertAt = min(quizDeck.count, quizIndex + 1 + max(lag, 1))
+        // Tag as a one-shot retry copy so we don't requeue endlessly by id match alone.
+        quizDeck.insert(item, at: insertAt)
     }
 
     func nextQuiz() {
@@ -262,11 +339,61 @@ final class TOEICStudyViewModel: ObservableObject {
             quizIndex += 1
         } else {
             progress.completeSession()
-            // End of deck — generate a fresh AI batch instead of reshuffling offline.
-            quizIndex = max(0, quizDeck.count - 1)
-            scheduleAutoAIQuiz(replace: true, switchToQuiz: false)
+            // End of batch → advance to a NEW SRS word set (not the same 12 words).
+            advanceToNextQuizBatch()
         }
-        schedulePrefetchIfNeeded()
+    }
+
+    /// After ~20 items: new words via SRS + new question ids (correct learning progression).
+    private func advanceToNextQuizBatch() {
+        let cards = drawNextSRSCardBatch(excluding: sessionSeenWordIDs)
+        sessionSeenWordIDs.formUnion(cards.map(\.id))
+        deck = cards
+        cardIndex = 0
+
+        let batch = makeQuizBatch(for: cards, excludeQuizIDs: sessionSeenQuizIDs)
+        sessionSeenQuizIDs.formUnion(batch.map(\.id))
+
+        guard !batch.isEmpty else {
+            // True end of available unseen material this session — soft reset exclude list once.
+            if !sessionSeenQuizIDs.isEmpty {
+                sessionSeenQuizIDs.removeAll()
+                sessionSeenWordIDs.removeAll()
+                advanceToNextQuizBatch()
+            }
+            return
+        }
+
+        quizDeck = batch
+        quizIndex = 0
+        sessionCorrect = 0
+        sessionAnswered = 0
+        quizStreak = 0
+        selectedChoice = nil
+        didRevealAnswer = false
+        liveExplanation = nil
+        liveTranslation = nil
+        statusMessage = String(
+            format: Localization.get("Quiz ready: %d"),
+            quizDeck.count
+        )
+    }
+
+    /// Manual refresh (toolbar): new SRS words + new quiz batch.
+    func loadPrebuiltQuizDeck(replace: Bool) {
+        if replace {
+            advanceToNextQuizBatch()
+            mode = .quiz
+            return
+        }
+        let cards = deck.isEmpty ? drawNextSRSCardBatch(excluding: sessionSeenWordIDs) : deck
+        let batch = makeQuizBatch(for: cards, excludeQuizIDs: sessionSeenQuizIDs)
+        sessionSeenQuizIDs.formUnion(batch.map(\.id))
+        quizDeck.append(contentsOf: batch)
+        statusMessage = String(
+            format: Localization.get("Quiz ready: %d"),
+            quizDeck.count
+        )
     }
 
     /// Bank leisure minutes from study (shown in UI). Applied to Focus break when break starts.
@@ -291,215 +418,4 @@ final class TOEICStudyViewModel: ObservableObject {
         )
     }
 
-    private func fillMissingTranslation(for item: TOEICQuizItem) async {
-        let answer = item.choices.indices.contains(item.correctIndex)
-            ? item.choices[item.correctIndex]
-            : ""
-        guard let english = TOEICQuizText.completedSentence(prompt: item.prompt, answer: answer) else {
-            return
-        }
-        do {
-            let vi = try await TOEICAIGenerator.translateSentence(english)
-            let cleaned = vi.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !cleaned.isEmpty else { return }
-            if currentQuiz?.id == item.id, didRevealAnswer {
-                liveTranslation = cleaned
-            }
-            if let idx = quizDeck.firstIndex(where: { $0.id == item.id }) {
-                let old = quizDeck[idx]
-                quizDeck[idx] = TOEICQuizItem(
-                    id: old.id,
-                    prompt: old.prompt,
-                    choices: old.choices,
-                    correctIndex: old.correctIndex,
-                    explanationVI: old.explanationVI,
-                    part: old.part,
-                    translationVI: cleaned
-                )
-            }
-        } catch {
-            // Keep filled-English fallback.
-        }
-    }
-
-    // MARK: - Auto AI quiz pipeline
-
-    private func scheduleAutoAIQuiz(replace: Bool, switchToQuiz: Bool) {
-        autoQuizTask?.cancel()
-        autoQuizTask = Task { [weak self] in
-            await self?.generateAIQuiz(
-                count: Self.autoQuizBatchSize,
-                replace: replace,
-                switchToQuiz: switchToQuiz
-            )
-        }
-    }
-
-    private func schedulePrefetchIfNeeded() {
-        let remaining = max(0, quizDeck.count - quizIndex - 1)
-        let needMore = remaining <= Self.autoQuizPrefetchThreshold || aiQuizCount < Self.autoQuizBatchSize
-        guard needMore, !isGenerating else { return }
-        autoQuizTask = Task { [weak self] in
-            await self?.generateAIQuiz(
-                count: Self.autoQuizBatchSize,
-                replace: false,
-                switchToQuiz: false
-            )
-        }
-    }
-
-    /// AI-generated Part 5/6 from vocab seeds. Progressive: first stem replaces placeholders ASAP.
-    /// - Parameters:
-    ///   - replace: clear deck and session; otherwise append.
-    ///   - switchToQuiz: jump UI to quiz tab (sparkles button).
-    func generateAIQuiz(
-        count: Int = TOEICStudyViewModel.autoQuizBatchSize,
-        replace: Bool = true,
-        switchToQuiz: Bool = true
-    ) async {
-        guard !isGenerating else { return }
-        isGenerating = true
-        statusMessage = Localization.get("Generating TOEIC Part 5/6…")
-        defer {
-            isGenerating = false
-            if statusMessage?.contains("Generating") == true {
-                statusMessage = nil
-            }
-        }
-
-        let known = Set(progress.snapshot.knownCardIDs)
-        let drawn = TOEICCatalog.drawVocab(count: count, knownIDs: known)
-        guard !drawn.isEmpty else {
-            statusMessage = Localization.get("Word bank is empty")
-            return
-        }
-
-        let pool = TOEICCatalog.wordBank
-        var exclude = recentAIPrompts
-        if !replace {
-            exclude.append(contentsOf: quizDeck.map(\.prompt))
-        }
-
-        if replace {
-            selectedChoice = nil
-            didRevealAnswer = false
-            liveExplanation = nil
-            liveTranslation = nil
-            sessionCorrect = 0
-            sessionAnswered = 0
-            quizStreak = 0
-            quizIndex = 0
-            // Keep temporary offline placeholders until first AI item arrives.
-            if quizDeck.isEmpty || usingAIContent {
-                quizDeck = drawn.map { TOEICCatalog.offlineQuizItem(from: $0) }
-                usingAIContent = false
-            }
-        }
-
-        if switchToQuiz {
-            mode = .quiz
-        }
-
-        var producedAI = 0
-        let seedPool = (drawn + pool.shuffled().prefix(24))
-        var seenSeedIDs = Set<String>()
-
-        for focus in drawn {
-            if Task.isCancelled { break }
-
-            var seeds = [focus]
-            for extra in seedPool where seeds.count < 5 {
-                if extra.id == focus.id { continue }
-                if seenSeedIDs.contains(extra.id) { continue }
-                seeds.append(extra)
-            }
-            seenSeedIDs.insert(focus.id)
-
-            do {
-                let item = try await TOEICAIGenerator.generateOneExtensionStyleQuiz(
-                    seeds: seeds,
-                    excludeSentences: exclude,
-                    focus: focus
-                )
-                if Task.isCancelled { break }
-
-                producedAI += 1
-                exclude.append(item.prompt)
-                recentAIPrompts.append(item.prompt)
-                if recentAIPrompts.count > 40 {
-                    recentAIPrompts = Array(recentAIPrompts.suffix(40))
-                }
-
-                if replace && producedAI == 1 {
-                    // First real stem: swap out meaning placeholders.
-                    quizDeck = [item]
-                    quizIndex = 0
-                    selectedChoice = nil
-                    didRevealAnswer = false
-                    liveExplanation = nil
-                    liveTranslation = nil
-                    usingAIContent = true
-                } else if replace {
-                    quizDeck.append(item)
-                } else {
-                    // Prefetch: only append AI items (skip offline fillers).
-                    quizDeck.append(item)
-                    usingAIContent = true
-                }
-
-                statusMessage = String(
-                    format: Localization.get("AI quiz: %d ready"),
-                    aiQuizCount
-                )
-            } catch {
-                // Skip failed stem; keep going (no static question bank).
-                continue
-            }
-
-            try? await Task.sleep(nanoseconds: 200_000_000)
-        }
-
-        if producedAI == 0 {
-            // Gateway down: keep meaning-based vocab quiz only.
-            if replace || quizDeck.isEmpty {
-                quizDeck = drawn.map { TOEICCatalog.offlineQuizItem(from: $0) }
-                quizIndex = 0
-                usingAIContent = false
-            }
-            statusMessage = Localization.get("AI unavailable · meaning quiz")
-        } else if replace {
-            statusMessage = String(
-                format: Localization.get("AI Part 5/6: %d questions"),
-                producedAI
-            )
-        }
-    }
-
-    func generateAIVocab(count: Int = 8) async {
-        guard !isGenerating else { return }
-        isGenerating = true
-        statusMessage = Localization.get("Drawing from word bank…")
-        defer { isGenerating = false }
-
-        let known = Set(progress.snapshot.knownCardIDs)
-        let drawn = TOEICCatalog.drawVocab(count: count, knownIDs: known)
-        guard !drawn.isEmpty else {
-            statusMessage = Localization.get("Word bank is empty")
-            return
-        }
-
-        statusMessage = Localization.get("Refreshing examples…")
-        let cards = (try? await TOEICAIGenerator.enhanceExamplesFromBank(cards: drawn)) ?? drawn
-
-        deck = cards
-        cardIndex = 0
-        isFlipped = false
-        usingAIContent = true
-        mode = .flashcards
-        statusMessage = String(
-            format: Localization.get("Study set from bank: %d words"),
-            cards.count
-        )
-        syncPhoneticForCurrentCard()
-    }
 }
